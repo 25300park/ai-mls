@@ -8,6 +8,8 @@
 *.key
 
 # Generated output
+node_modules/
+.pnpm-store/
 build/
 dist/
 coverage/
@@ -21,6 +23,7 @@ temp/
 *.swp
 *.tmp
 *.log
+pnpm-debug.log*
 
 # Operating system metadata
 .DS_Store

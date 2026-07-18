@@ -1,0 +1,52 @@
+import { AuthenticationError } from "../../../modules/identity/src/session-service.js";
+
+export interface RequestContext {
+  readonly requestId?: string;
+  readonly correlationId: string;
+  readonly sessionId?: string;
+}
+
+export interface ResponseMeta {
+  readonly requestId?: string;
+  readonly correlationId: string;
+}
+
+export type ApiResponse<T> =
+  | Readonly<{ readonly ok: true; readonly data: T; readonly meta: ResponseMeta }>
+  | Readonly<{
+      readonly ok: false;
+      readonly error: Readonly<{ readonly code: string; readonly message: string }>;
+      readonly meta: ResponseMeta;
+    }>;
+
+function meta(context: RequestContext): ResponseMeta {
+  return Object.freeze({
+    ...(context.requestId === undefined ? {} : { requestId: context.requestId }),
+    correlationId: context.correlationId,
+  });
+}
+
+export function executeBoundary<T>(
+  context: RequestContext,
+  operation: () => T,
+): ApiResponse<T> {
+  try {
+    return Object.freeze({ ok: true, data: operation(), meta: meta(context) });
+  } catch (error: unknown) {
+    const publicError = error instanceof AuthenticationError
+      ? { code: error.code, message: error.publicMessage }
+      : { code: "REQUEST_REJECTED", message: "Request could not be completed." };
+    return Object.freeze({
+      ok: false,
+      error: Object.freeze(publicError),
+      meta: meta(context),
+    });
+  }
+}
+
+export function requireSessionId(context: RequestContext): string {
+  if (context.sessionId === undefined || context.sessionId.trim().length === 0) {
+    throw new AuthenticationError("AUTHENTICATION_REQUIRED", "Authentication required.");
+  }
+  return context.sessionId;
+}
