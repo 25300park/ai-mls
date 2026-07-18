@@ -252,3 +252,134 @@ test("TEST-047 rejects creator approval and allows an independent PUA", () => {
     2,
   );
 });
+
+test("TEST-027 grants collectors only scoped source and intake actions", () => {
+  const { service } = createService([
+    assignment({
+      principalId: "user-collector-1",
+      role: "COL",
+      resourceTypes: ["SourceRegistry", "Intake", "BackgroundJob"],
+      purposes: ["SOURCE_INTAKE"],
+    }),
+  ]);
+  const collector = session({
+    principalId: "user-collector-1",
+    roles: ["COL"],
+  });
+
+  for (const [action, resourceType] of [
+    ["source.read", "SourceRegistry"],
+    ["source.propose", "SourceRegistry"],
+    ["intake.create", "Intake"],
+    ["intake.read", "Intake"],
+    ["intake.validate", "Intake"],
+    ["intake.request-ai", "Intake"],
+    ["job.submit", "BackgroundJob"],
+    ["job.read", "BackgroundJob"],
+  ] as const) {
+    const decision = service.evaluate({
+      session: collector,
+      action,
+      resource: { type: resourceType, id: "sp002-resource-1", teamId: "team-a" },
+      purpose: "SOURCE_INTAKE",
+      correlationId: `correlation-${action}`,
+    });
+    assert.equal(decision.effect, "ALLOW", action);
+  }
+
+  const review = service.evaluate({
+    session: collector,
+    action: "intake.review",
+    resource: { type: "Intake", id: "intake-1", teamId: "team-a" },
+    purpose: "SOURCE_INTAKE",
+    correlationId: "correlation-intake-review-deny",
+  });
+  assert.equal(review.reasonCode, "CAPABILITY_DENIED");
+});
+
+test("TEST-036 service principals execute bounded work but cannot review intake", () => {
+  const { service } = createService([
+    assignment({
+      principalId: "service-worker-1",
+      role: "SVC",
+      resourceTypes: ["SourceRegistry", "Intake", "BackgroundJob"],
+      purposes: ["SOURCE_INTAKE"],
+    }),
+  ]);
+  const worker = session({
+    principalId: "service-worker-1",
+    principalType: "SERVICE",
+    roles: ["SVC"],
+    assurance: "WORKLOAD",
+    isMfaVerified: false,
+  });
+
+  const execute = service.evaluate({
+    session: worker,
+    action: "job.execute",
+    resource: { type: "BackgroundJob", id: "job-1", teamId: "team-a" },
+    purpose: "SOURCE_INTAKE",
+    correlationId: "correlation-job-execute",
+  });
+  const review = service.evaluate({
+    session: worker,
+    action: "intake.review",
+    resource: { type: "Intake", id: "intake-1", teamId: "team-a" },
+    purpose: "SOURCE_INTAKE",
+    correlationId: "correlation-service-review-deny",
+  });
+
+  assert.equal(execute.effect, "ALLOW");
+  assert.equal(review.reasonCode, "HUMAN_AUTHORITY_REQUIRED");
+});
+
+test("TEST-027 grants governed source view without proposal authority", () => {
+  for (const role of ["SAG", "SEC"] as const) {
+    const principalId = `user-${role.toLowerCase()}-source-view`;
+    const { service } = createService([assignment({
+      principalId,
+      role,
+      resourceTypes: ["SourceRegistry"],
+      purposes: ["SOURCE_INTAKE"],
+    })]);
+    const actor = session({ principalId, roles: [role] });
+    const read = service.evaluate({
+      session: actor, action: "source.read",
+      resource: { type: "SourceRegistry", id: "source-1", teamId: "team-a" },
+      purpose: "SOURCE_INTAKE", correlationId: `correlation-source-read-${role}`,
+    });
+    const propose = service.evaluate({
+      session: actor, action: "source.propose",
+      resource: { type: "SourceRegistry", id: "source-2", teamId: "team-a" },
+      purpose: "SOURCE_INTAKE", correlationId: `correlation-source-propose-${role}`,
+    });
+    assert.equal(read.effect, "ALLOW", role);
+    assert.equal(propose.effect, "DENY", role);
+  }
+});
+
+test("TEST-035 grants operations bounded job control", () => {
+  const { service } = createService([
+    assignment({
+      principalId: "user-operations-1",
+      role: "OPS",
+      resourceTypes: ["BackgroundJob"],
+      purposes: ["JOB_OPERATIONS"],
+    }),
+  ]);
+  const operations = session({
+    principalId: "user-operations-1",
+    roles: ["OPS"],
+  });
+
+  for (const action of ["job.submit", "job.read", "job.execute", "job.cancel", "job.retry"]) {
+    const decision = service.evaluate({
+      session: operations,
+      action,
+      resource: { type: "BackgroundJob", id: "job-1", teamId: "team-a" },
+      purpose: "JOB_OPERATIONS",
+      correlationId: `correlation-${action}`,
+    });
+    assert.equal(decision.effect, "ALLOW", action);
+  }
+});

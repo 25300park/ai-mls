@@ -1,5 +1,13 @@
 import { AuthenticationError } from "../../../modules/identity/src/session-service.js";
 
+const publicDomainErrorCodes = new Set([
+  "SOURCE_NOT_ALLOWED", "SOURCE_POLICY_STALE", "SOURCE_NOT_FOUND", "PROVENANCE_REQUIRED",
+  "EVIDENCE_INVALID", "CONTENT_QUARANTINED", "STATE_TRANSITION_INVALID", "VERSION_CONFLICT",
+  "AI_REQUEST_NOT_ELIGIBLE", "JOB_TYPE_NOT_ALLOWED", "JOB_INPUT_STALE", "JOB_NOT_FOUND",
+  "JOB_ALREADY_TERMINAL", "JOB_CANCEL_CONFLICT", "IDEMPOTENCY_CONFLICT", "RETRY_NOT_SAFE",
+  "RETRY_LIMIT_REACHED", "DEPENDENCY_UNAVAILABLE", "JOB_RESULT_INVALID",
+]);
+
 export interface RequestContext {
   readonly requestId?: string;
   readonly correlationId: string;
@@ -35,7 +43,9 @@ export function executeBoundary<T>(
   } catch (error: unknown) {
     const publicError = error instanceof AuthenticationError
       ? { code: error.code, message: error.publicMessage }
-      : { code: "REQUEST_REJECTED", message: "Request could not be completed." };
+      : error instanceof Error && publicDomainErrorCodes.has(error.message)
+        ? { code: error.message, message: "Request could not be completed." }
+        : { code: "REQUEST_REJECTED", message: "Request could not be completed." };
     return Object.freeze({
       ok: false,
       error: Object.freeze(publicError),

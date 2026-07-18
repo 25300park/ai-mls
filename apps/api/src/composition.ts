@@ -2,19 +2,29 @@ import type { AdministrationService } from "../../../modules/administration/src/
 import type { AuditLog } from "../../../modules/audit/src/audit-log.js";
 import type { AuthorizationService } from "../../../modules/authorization/src/authorization-service.js";
 import type { SessionService } from "../../../modules/identity/src/session-service.js";
+import type { IntakeService } from "../../../modules/intake/src/intake-service.js";
+import type { JobService } from "../../../modules/jobs/src/job-service.js";
+import type { SourceRegistryService } from "../../../modules/source/src/source-registry-service.js";
 import { AdminAuditApi } from "./admin-audit-api.js";
 import { IdentityApi } from "./identity-api.js";
+import { JobApi } from "./job-api.js";
+import { SourceIntakeApi } from "./source-intake-api.js";
 
 export interface ApiModuleDependencies {
   readonly sessionService: SessionService;
   readonly authorizationService: AuthorizationService;
   readonly administrationService: AdministrationService;
   readonly auditLog: AuditLog;
+  readonly sourceRegistryService: SourceRegistryService;
+  readonly intakeService: IntakeService;
+  readonly jobService: JobService;
 }
 
 export function composeApiModules(dependencies: ApiModuleDependencies): Readonly<{
   readonly identity: IdentityApi;
   readonly administrationAndAudit: AdminAuditApi;
+  readonly sourceAndIntake: SourceIntakeApi;
+  readonly jobs: JobApi;
 }> {
   return Object.freeze({
     identity: new IdentityApi({
@@ -25,6 +35,15 @@ export function composeApiModules(dependencies: ApiModuleDependencies): Readonly
       administrationService: dependencies.administrationService,
       authorizationService: dependencies.authorizationService,
       auditLog: dependencies.auditLog,
+      sessionReader: (sessionId) => dependencies.sessionService.readSession(sessionId),
+    }),
+    sourceAndIntake: new SourceIntakeApi({
+      sourceRegistryService: dependencies.sourceRegistryService,
+      intakeService: dependencies.intakeService,
+      sessionReader: (sessionId) => dependencies.sessionService.readSession(sessionId),
+    }),
+    jobs: new JobApi({
+      jobService: dependencies.jobService,
       sessionReader: (sessionId) => dependencies.sessionService.readSession(sessionId),
     }),
   });
