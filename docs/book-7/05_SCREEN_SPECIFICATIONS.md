@@ -1,0 +1,66 @@
+# Screen Specifications
+
+| 항목 | 값 |
+|---|---|
+| Document ID | DOC-UI-006 |
+| 문서 버전 | v1.0 |
+| 상태 | FROZEN |
+| 소유 역할 | Architecture Owner / Business Owner |
+| 기준일 | 2026-07-14 |
+
+## Purpose
+
+모든 logical screen의 input, output, workflow/entity/API/AI/permission과 visible action contract를 정의한다. 각 action의 괄호 안 `API-*`가 유일한 write/read boundary다.
+
+## Shared contract
+
+모든 screen은 API-001 session과 API-002 authorization을 재검사하고 request/correlation ID, object ID/version, canonical state와 audit result를 유지한다. `N/A — deterministic/human control`은 AI 누락이 아니라 명시적 비적용이다. 실제 role grant는 Phase 9에서 확정한다.
+
+## Screen specifications
+
+| ID | Purpose | Inputs | Outputs | Workflow | Entity | API | AI | Permission | Primary Actions | Secondary Actions |
+|---|---|---|---|---|---|---|---|---|---|---|
+| UI-001 | session 시작 | credential/federated assertion, return context | principal, role/team scope, session result | WF-001–012 | User, Role, User Action | API-001/002 | N/A — security | unauthenticated/session-own | Sign in/refresh/revoke (API-001) | inspect safe error (API-001) |
+| UI-002 | collector work 요약 | active scope, time window | intake/discovery task projection | WF-001/002 | Collector, Source Registry, Intake | API-002–004/016/018 | AI-001/002/007 summary only | collector scoped read | open assigned intake (API-004) | inspect activity/source (API-003/016) |
+| UI-003 | agent work 요약 | active scope, filters | client/requirement/match/proposal tasks | WF-005–008/011 | Client, Requirement, Match Result, Client Proposal | API-002/008–013/016 | AI-004–007 advisory | assigned-agent read | open next task (API-008–013) | inspect activity (API-016) |
+| UI-004 | review task 요약 | reviewer assignment/scope | independent review queues | WF-003/004/007/009/011 | AI Result, Duplicate Group, Verification, Permission, Publication Approval | API-002/006/011–013/016 | AI-001–007 advisory evidence | assigned reviewer | open review task (API-006/011–013) | inspect evidence/history (API-016) |
+| UI-005 | team oversight | team/time/status scope | workload, aging, quality, exception projections | WF-001–012 | Team, Audit Event, System Error | API-002/015/016 | N/A — metrics projection | manager scoped read | drill into governed queue (API-003–014/017) | export authorized view (API-016) |
+| UI-006 | admin oversight | admin scope/time | identity/policy/job/audit tasks | WF-001–012 | User, Role, AI Job, System Error | API-001/002/015–019 | AI-007 job validation view | administration scoped | open governed admin task (API-015/017–019) | inspect audit (API-016) |
+| UI-007 | partner work summary | partner identity/contract scope | contribution/status tasks | POST-MVP; WF-001/002/007/009/010 | Organization, Raw Source, Publication | API-001/002/004/011–014/018/019 | AI-001/002/007 advisory | POST-MVP partner scope | submit permitted contribution (API-004/018) | view status (API-011–014) |
+| UI-008 | authorized cross-domain search | query, result class, filters | masked/scoped results, explanation | WF-002/005/006 | Property, Candidate Listing, Requirement, Match Result | API-002/005/006/009/010 | AI-006/007 optional advisory | entity read scopes | search/select result (API-005/006/009/010) | inspect/refine result explanation (API-005/006/009/010) |
+| UI-009 | source policy access | source filters/proposal | source policy/version/status | WF-001 | Source Registry, Collector | API-002/003/015/016 | N/A — policy | source read/propose/admin approve separated | propose source change (API-003) | inspect history (API-016) |
+| UI-010 | discovery triage | source scope, discovery evidence | intake request/rejection rationale | WF-001 | Source Registry, Raw Source, Collector | API-003/004/018 | N/A until governed intake | collector capture scope | create intake request (API-004/018) | defer/record rationale (API-004) |
+| UI-011 | intake 작성 | source/evidence/attachments/draft | validated Intake and AI request option | WF-002 | Intake, Raw Source, Raw Attachment, Source Provenance | API-004 | AI-001/002/007 optional | collector create/edit own draft | validate/submit intake (API-004) | save draft/request AI (API-004) |
+| UI-012 | intake human review | exact intake/evidence/version | correction, rejection or candidate registration | WF-002 | Intake, Candidate Listing, Source Provenance | API-004/005/006/016 | AI-001/002/007 advisory | assigned senior reviewer | register/reject/correct (API-004/006) | inspect property/history (API-005/016) |
+| UI-013 | AI output review | AI Job/Result/schema/input refs | accept draft/correct/reject review disposition | WF-003 | AI Job, AI Result, Intake | API-004/017/019 | AI-001–007 | assigned AI reviewer | record correction/rejection (API-004/017) | compare input/version (API-017/019) |
+| UI-014 | candidate collection | query/filter/sort/scope | candidate/offer rows with authority/freshness | WF-002/004/006/007 | Candidate Listing, Listing Offer, Availability | API-005/006 | AI-006/007 optional search | listing scoped read | open candidate (API-006) | request governed search (API-005/006) |
+| UI-015 | candidate evidence view | candidate ID/version | canonical state, offer, evidence, related tasks | WF-002–004/006/007 | Candidate Listing, Listing Offer, Source Provenance, Availability | API-005/006/011/016 | AI-001–003/007 advisory | listing scoped read/write by action | propose revision/request verification (API-006/011) | inspect evidence/history (API-005/016) |
+| UI-016 | duplicate disposition | group/version/candidates/evidence | link/merge/separate/needs-evidence decision | WF-004 | Duplicate Group, Candidate Listing, Decision History | API-006/016 | AI-003/007 advisory | assigned duplicate reviewer | record disposition (API-006) | request evidence/view history (API-006/016) |
+| UI-017 | property master 탐색 | query/hierarchy/filter | canonical property hierarchy/results | WF-002–004/006 | Location, Property, Building, Tower, Floor, Unit, Property Alias | API-005 | AI-002/006/007 optional | property read/propose separated | search/select master (API-005) | propose correction (API-005) |
+| UI-018 | property master detail | property object/version | hierarchy, aliases, source/conflict | WF-002–004/006 | Property, Building, Tower, Floor, Unit, Property Alias | API-005/016 | AI-002/007 advisory | data steward change scope | propose/decide correction (API-005) | inspect history (API-016) |
+| UI-019 | contact case collection | purpose/scope/filter | masked contact/case rows | WF-007/008/011 | Contact, Contact Case, Contact Channel | API-002/007/016 | N/A — privacy control | purpose-scoped contact read | open authorized case (API-007) | inspect scoped history (API-016) |
+| UI-020 | contact/attempt handling | contact case, purpose, permitted channel | attempt evidence/outcome, verification request | WF-007/011 | Contact, Contact Channel, Contact Case, Communication | API-007/011/016 | N/A — human contact | assigned agent/verifier + purpose | record attempt/request verification (API-007/011) | reveal permitted channel/view history (API-002/016) |
+| UI-021 | client collection | agent/team/query/filter | scoped client rows | WF-005/008 | Client, Contact, Requirement | API-008/009 | AI-006 optional search | assigned-agent/team read | create/open client (API-008) | open requirement (API-009) |
+| UI-022 | client context | client ID/version | client, communication, requirements, proposals | WF-005/008 | Client, Communication, Requirement, Client Proposal | API-007–009/013/016 | AI-004/006/007 advisory | assigned-agent scoped | create requirement/proposal task (API-009/013) | record communication/history (API-007/016) |
+| UI-023 | requirement lifecycle | client, original need, draft/version | validated active/superseded Requirement | WF-005 | Requirement, Budget, Location Preference, Matching Preference, Requirement History | API-009 | AI-004/006/007 advisory | assigned agent; activation is human | validate/activate/revise (API-009) | request/accept corrected AI draft (API-009) |
+| UI-024 | matching review | active requirement/version, eligible inventory | ranked result, exclusion reason, shortlist disposition | WF-006 | Match Result, Requirement, Candidate Listing, Listing Offer | API-010/017 | AI-005–007 advisory | assigned agent/reviewer | request match/record shortlist (API-010) | mark stale/rerun (API-010/017) |
+| UI-025 | client-share proposal | shortlist, exact representation, permission refs | reviewed/shared proposal evidence | WF-008 | Client Proposal, Match Result, Permission, Communication | API-012/013/016 | N/A — AI cannot approve/share | assigned agent; senior approval where required | request approval/share (API-013) | inspect permission/history (API-012/016) |
+| UI-026 | verification work queue | assignment/scope/status/freshness | verification/permission/reverify tasks | WF-007/011 | Verification, Verifier Assignment, Permission, Reverification Request | API-011/012 | AI-007 support only | assigned verifier/reviewer | open assigned task (API-011/012) | reassign if authorized (API-011) |
+| UI-027 | verification decision | exact subject/version/evidence/assignment | verified/rejected/inconclusive/expired evidence | WF-007/011 | Verification, Availability, Verifier Assignment, Approval History | API-007/011/016 | AI-007 support only | authorized human verifier | decide/reverify (API-011) | record contact evidence/history (API-007/016) |
+| UI-028 | permission decision | purpose, fields, audience, expiry, evidence | granted/denied/revoked Permission | WF-007–011 | Permission, Verification, Approval History | API-012/016 | N/A — human authority | permission reviewer; SoD enforced | grant/deny/revoke (API-012) | inspect verification/history (API-011/016) |
+| UI-029 | publication approval queue | approver scope/status/age | exact pending representation rows | WF-009 | Publication Approval, Publication, Approval History | API-013/016 | N/A — human approval | publication approver | open approval (API-013) | inspect queue audit (API-016) |
+| UI-030 | publication approval decision | representation/version/gate evidence | approve/reject decision with rationale | WF-009 | Publication Approval, Verification, Permission, Publication | API-011–013/016 | N/A — AI cannot approve | independent publication approver | approve/reject exact version (API-013) | inspect gates/history (API-011/012/016) |
+| UI-031 | publication operations | approved representation/target/delivery evidence | delivery/reconcile/correct/suspend/withdraw result | WF-010–012 | Publication, Publication Target, Status History, System Error | API-014/018/019 | N/A — connector/deterministic | publication owner/reconciler | deliver/reconcile/correct/withdraw (API-014) | inspect connector/exception (API-018/019) |
+| UI-032 | expiry/reverify 관리 | expiring Verification/Permission/publication | restricted eligibility, renewal task/status | WF-011 | Reverification Request, Verification, Permission, Publication | API-011/012/014/017 | AI-007 support only | scoped agent/verifier/reviewer | request/decide reverify (API-011/012) | inspect affected publication/job (API-014/017) |
+| UI-033 | exception recovery | exception ID/context/version/evidence | containment, retry/manual action, recovery/closure | WF-012 | System Error, Audit Event, Decision History | API-014/016–019 | related AI capability only; advisory | named operations/domain owner | contain/retry/recover/close (API-017–019) | reconcile/audit (API-014/016) |
+| UI-034 | job operations | job ID/type/status/attempt | status/result/successor/error evidence | WF-003/006/010–012 | AI Job, AI Result, Retention Job, System Error | API-017–019 | AI-001–007 when AI job | domain/operations owner | submit/cancel/retry successor (API-017) | inspect integration/result (API-018/019) |
+| UI-035 | audit evidence 탐색 | authorized query/time/entity/actor | redacted audit/history export | WF-001–012 | Audit Event, Decision History, Status History, Approval History, User Action | API-016 | N/A — evidence query | security/governance scoped | query/export evidence (API-016) | follow authorized object link (API-003–015/017–019) |
+| UI-036 | governed administration | role/policy/source/target proposal/version | approved policy/configuration change evidence | WF-001–012 | User, Role, Team, Source Registry, Publication Target, Retention Policy | API-015/016 | N/A — administration | admin proposal/approval scopes separated | propose/apply governed change (API-015) | inspect audit (API-016) |
+| UI-037 | task/alert center | principal/scope/read state | redacted task, warning, result links | WF-001–012 | Audit Event, System Error, Approval History, AI Job | API-002/016/017 | AI-001–007 when source is AI Job; otherwise N/A — projection | recipient scope | open governed source task (API-003–015/017–019) | acknowledge/read projection (API-016/017) |
+
+## Action rules
+
+- Primary/secondary 구분은 visual priority이며 authorization priority가 아니다.
+- approval, permission, verification, publication와 destructive action은 exact subject/version, consequence와 rationale를 확인한다.
+- API가 conflict/unauthorized/stale을 반환하면 optimistic state를 되돌리고 [Error and Empty State](13_ERROR_AND_EMPTY_STATE.md)를 적용한다.
+- bulk action은 각 object별 gate/audit 결과를 보여 주며 일부 성공을 전체 성공으로 표시하지 않는다.

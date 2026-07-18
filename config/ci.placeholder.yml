@@ -1,0 +1,16 @@
+# Trace: DEV-024 | FEAT-024 | EPIC-001 | SP-000 | REQ-CONST-001..REQ-CONST-013 | TEST-056 | IMP-024
+status: PLACEHOLDER
+enabled: false
+executable: false
+provider: UNSELECTED
+stages:
+  - format_check
+  - lint
+  - static_check
+  - test
+  - traceability_validation
+required_evidence:
+  - immutable_revision
+  - check_result
+  - reviewer_approval
+selection_gate: APPROVED_TOOLCHAIN_AND_GIT_PROVIDER

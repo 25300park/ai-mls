@@ -1,0 +1,10 @@
+# Trace: DEV-024 | FEAT-024 | EPIC-001 | SP-000 | REQ-CONST-001..REQ-CONST-013 | TEST-056 | IMP-024
+status: PLACEHOLDER
+executable: false
+non_secret_defaults:
+  environment_name: local
+  log_level: info
+secrets:
+  storage: EXTERNAL_ONLY
+  repository_values_allowed: false
+production_data_allowed: false

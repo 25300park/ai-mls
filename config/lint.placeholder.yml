@@ -1,0 +1,10 @@
+# Trace: DEV-024 | FEAT-024 | EPIC-001 | SP-000 | REQ-CONST-001..REQ-CONST-013 | TEST-056 | IMP-024
+status: PLACEHOLDER
+executable: false
+tool: UNSELECTED
+principles:
+  - correctness
+  - explicit_validation
+  - no_secret_exposure
+  - no_authority_bypass
+selection_gate: APPROVED_TECHNOLOGY_STACK

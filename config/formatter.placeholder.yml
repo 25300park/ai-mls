@@ -1,0 +1,9 @@
+# Trace: DEV-024 | FEAT-024 | EPIC-001 | SP-000 | REQ-CONST-001..REQ-CONST-013 | TEST-056 | IMP-024
+status: PLACEHOLDER
+executable: false
+tool: UNSELECTED
+baseline:
+  charset: utf-8
+  final_newline: required
+  whitespace: editorconfig
+selection_gate: APPROVED_TECHNOLOGY_STACK

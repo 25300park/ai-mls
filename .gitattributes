@@ -1,0 +1,9 @@
+# Trace: DEV-024 | FEAT-024 | EPIC-001 | SP-000 | REQ-CONST-001..REQ-CONST-013 | TEST-056 | IMP-024
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.pdf binary

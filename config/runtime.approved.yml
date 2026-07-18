@@ -1,0 +1,15 @@
+# Trace: DEV-024 | FEAT-024 | EPIC-001 | SP-000 | REQ-CONST-001..REQ-CONST-013 | TEST-056 | IMP-024
+status: APPROVED
+executable: false
+approval_date: 2026-07-19
+runtime:
+  name: node
+  version: 24.18.0
+language:
+  name: typescript
+  version: 6.0.3
+package_manager:
+  name: pnpm
+  version: 11.9.0
+monorepo_tool: UNSELECTED
+selection_scope: SP-001_IMPLEMENTATION_BASELINE

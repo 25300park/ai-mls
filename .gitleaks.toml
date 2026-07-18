@@ -1,0 +1,20 @@
+# Trace: DEV-024 | FEAT-024 | EPIC-001 | SP-000 | REQ-CONST-001..REQ-CONST-013 | TEST-056 | IMP-024
+# Trace: DEV-024 | FEAT-024 | EPIC-001 | SP-000 | REQ-CONST-001..REQ-CONST-013 | TEST-056 | IMP-024
+title = "AI-MLS repository Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Frozen DR test wording false positive"
+condition = "AND"
+regexTarget = "match"
+paths = ['''^docs/book-10/10_DISASTER_RECOVERY_TESTS\.md$''']
+regexes = ['''^key compromise, malicious/ransomware $''']
+
+[[allowlists]]
+description = "Frozen DR plan wording false positive"
+condition = "AND"
+regexTarget = "match"
+paths = ['''^docs/book-9/08_DISASTER_RECOVERY\.md$''']
+regexes = ['''^key compromise, ransomware/malicious $''']
