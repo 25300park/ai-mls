@@ -65,7 +65,12 @@ const capabilities: Readonly<Record<RoleCode, readonly string[]>> = {
     "job.submit",
     "job.read",
   ],
-  AGT: ["resource.view", "resource.create", "resource.edit"],
+  AGT: [
+    "resource.view", "resource.create", "resource.edit",
+    "property.read", "property.propose",
+    "candidate.read", "candidate.create", "candidate.revise",
+    "offer.create", "offer.revise", "duplicate.suggest",
+  ],
   SAG: [
     "resource.view",
     "resource.create",
@@ -81,8 +86,8 @@ const capabilities: Readonly<Record<RoleCode, readonly string[]>> = {
     "job.read",
   ],
   REV: ["resource.view"],
-  AIR: ["resource.view", "ai.review", "intake.read"],
-  DUR: ["resource.view", "duplicate.dispose"],
+  AIR: ["resource.view", "ai.result.read", "ai.review", "intake.read"],
+  DUR: ["resource.view", "candidate.read", "duplicate.read", "duplicate.dispose"],
   VER: ["resource.view", "verification.perform"],
   PMR: ["resource.view", "permission.approve"],
   PUA: ["resource.view", "publication.approve"],
@@ -100,6 +105,15 @@ const capabilities: Readonly<Record<RoleCode, readonly string[]>> = {
     "intake.review",
     "job.submit",
     "job.read",
+    "property.read",
+    "property.propose",
+    "property.decide",
+    "candidate.read",
+    "candidate.create",
+    "candidate.revise",
+    "offer.create",
+    "offer.revise",
+    "duplicate.suggest",
   ],
   OPS: [
     "resource.view",
@@ -160,6 +174,7 @@ const humanAuthorityActions = new Set([
   "permission.approve",
   "proposal.approve",
   "publication.approve",
+  "property.decide",
   "verification.perform",
 ]);
 

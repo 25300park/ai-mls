@@ -383,3 +383,60 @@ test("TEST-035 grants operations bounded job control", () => {
     assert.equal(decision.effect, "ALLOW", action);
   }
 });
+
+test("SP-003 separates property, duplicate and AI review authority", () => {
+  const cases = [
+    { role: "DST", action: "property.decide", resourceType: "Property" },
+    { role: "DUR", action: "duplicate.dispose", resourceType: "DuplicateGroup" },
+    { role: "AIR", action: "ai.review", resourceType: "AiResult" },
+  ] as const;
+
+  for (const item of cases) {
+    const principalId = `user-${item.role.toLowerCase()}-sp003`;
+    const { service } = createService([assignment({
+      principalId,
+      role: item.role,
+      resourceTypes: [item.resourceType],
+      purposes: ["LISTING_GOVERNANCE"],
+    })]);
+    const decision = service.evaluate({
+      session: session({ principalId, roles: [item.role] }),
+      action: item.action,
+      resource: { type: item.resourceType, id: "subject-1", teamId: "team-a" },
+      purpose: "LISTING_GOVERNANCE",
+      correlationId: `correlation-${item.action}`,
+    });
+    assert.equal(decision.effect, "ALLOW", item.action);
+  }
+});
+
+test("SP-003 service principal cannot decide canonical, duplicate or AI review state", () => {
+  const { service } = createService([assignment({
+    principalId: "service-sp003",
+    role: "SVC",
+    resourceTypes: ["Property", "DuplicateGroup", "AiResult"],
+    purposes: ["LISTING_GOVERNANCE"],
+  })]);
+  const actor = session({
+    principalId: "service-sp003",
+    principalType: "SERVICE",
+    roles: ["SVC"],
+    assurance: "WORKLOAD",
+    isMfaVerified: false,
+  });
+
+  for (const [action, type] of [
+    ["property.decide", "Property"],
+    ["duplicate.dispose", "DuplicateGroup"],
+    ["ai.review", "AiResult"],
+  ] as const) {
+    const decision = service.evaluate({
+      session: actor,
+      action,
+      resource: { type, id: "subject-1", teamId: "team-a" },
+      purpose: "LISTING_GOVERNANCE",
+      correlationId: `correlation-service-${action}`,
+    });
+    assert.equal(decision.reasonCode, "HUMAN_AUTHORITY_REQUIRED", action);
+  }
+});

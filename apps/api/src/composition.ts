@@ -4,10 +4,13 @@ import type { AuthorizationService } from "../../../modules/authorization/src/au
 import type { SessionService } from "../../../modules/identity/src/session-service.js";
 import type { IntakeService } from "../../../modules/intake/src/intake-service.js";
 import type { JobService } from "../../../modules/jobs/src/job-service.js";
+import type { ListingService } from "../../../modules/listing/src/listing-service.js";
+import type { PropertyService } from "../../../modules/property/src/property-service.js";
 import type { SourceRegistryService } from "../../../modules/source/src/source-registry-service.js";
 import { AdminAuditApi } from "./admin-audit-api.js";
 import { IdentityApi } from "./identity-api.js";
 import { JobApi } from "./job-api.js";
+import { PropertyListingApi } from "./property-listing-api.js";
 import { SourceIntakeApi } from "./source-intake-api.js";
 
 export interface ApiModuleDependencies {
@@ -18,6 +21,8 @@ export interface ApiModuleDependencies {
   readonly sourceRegistryService: SourceRegistryService;
   readonly intakeService: IntakeService;
   readonly jobService: JobService;
+  readonly propertyService: PropertyService;
+  readonly listingService: ListingService;
 }
 
 export function composeApiModules(dependencies: ApiModuleDependencies): Readonly<{
@@ -25,6 +30,7 @@ export function composeApiModules(dependencies: ApiModuleDependencies): Readonly
   readonly administrationAndAudit: AdminAuditApi;
   readonly sourceAndIntake: SourceIntakeApi;
   readonly jobs: JobApi;
+  readonly propertyAndListing: PropertyListingApi;
 }> {
   return Object.freeze({
     identity: new IdentityApi({
@@ -44,6 +50,11 @@ export function composeApiModules(dependencies: ApiModuleDependencies): Readonly
     }),
     jobs: new JobApi({
       jobService: dependencies.jobService,
+      sessionReader: (sessionId) => dependencies.sessionService.readSession(sessionId),
+    }),
+    propertyAndListing: new PropertyListingApi({
+      propertyService: dependencies.propertyService,
+      listingService: dependencies.listingService,
       sessionReader: (sessionId) => dependencies.sessionService.readSession(sessionId),
     }),
   });
