@@ -1,0 +1,47 @@
+import type { AdvisoryValidationDecision } from "../../../modules/ai/src/advisory-ai-service.js";
+import type { SessionContext } from "../../../modules/identity/src/session-service.js";
+import type { Availability, Verification, VerificationService } from "../../../modules/verification/src/verification-service.js";
+import { executeBoundary, requireSessionId, type ApiResponse, type RequestContext } from "./contracts.js";
+
+type VerificationPort = Pick<VerificationService, "requestVerification" | "assignVerifier" | "recordReviewSupport" | "decide" | "revoke" | "evaluateExpiry" | "requestReverification" | "readVerification" | "readHistory" | "readAvailability" | "listQueue" | "listExpiry" | "validateEvidence">;
+export interface VerificationApiDependencies { readonly verificationService: VerificationPort; readonly sessionReader: (sessionId: string) => SessionContext }
+type Contextual<T> = Omit<T, "actor" | "requestId" | "correlationId"> & { readonly context: RequestContext };
+export type VerificationUiAction = "READ" | "REQUEST" | "ASSIGN" | "REVIEW_EVIDENCE" | "DECIDE" | "REVOKE" | "REVERIFY";
+export interface VerificationAccessibility { readonly landmarkLabel: string; readonly listLabel: string; readonly liveRegion: "polite"; readonly keyboardOperable: true; readonly errorSummaryLinked: true }
+export interface VerificationQueueView { readonly screenId: "UI-026"; readonly presentationState: "READY" | "EMPTY"; readonly verifications: readonly Verification[]; readonly allowedActions: readonly VerificationUiAction[]; readonly accessibility: VerificationAccessibility }
+export interface VerificationDetailView { readonly screenId: "UI-027"; readonly presentationState: Verification["status"]; readonly verification: Verification; readonly availability?: Availability; readonly allowedActions: readonly VerificationUiAction[]; readonly accessibility: VerificationAccessibility }
+export interface VerificationExpiryView { readonly screenId: "UI-032"; readonly presentationState: "ACTION_REQUIRED" | "EMPTY"; readonly verifications: readonly Verification[]; readonly allowedActions: readonly VerificationUiAction[]; readonly accessibility: VerificationAccessibility }
+
+const accessibility = (landmarkLabel: string, listLabel: string): VerificationAccessibility => Object.freeze({ landmarkLabel, listLabel, liveRegion: "polite", keyboardOperable: true, errorSummaryLinked: true });
+const queueAccessibility = accessibility("Verification queue", "Assigned verification work");
+const detailAccessibility = accessibility("Verification detail", "Evidence and immutable history");
+const expiryAccessibility = accessibility("Expiration and reverification", "Expired verification work");
+
+function detailActions(actor: SessionContext): readonly VerificationUiAction[] {
+  if (actor.roles.includes("MGR")) return Object.freeze(["READ", "REQUEST", "ASSIGN", "DECIDE", "REVOKE", "REVERIFY"]);
+  if (actor.roles.includes("VER")) return Object.freeze(["READ", "REQUEST", "DECIDE", "REVOKE", "REVERIFY"]);
+  if (actor.roles.includes("REV")) return Object.freeze(["READ", "REVIEW_EVIDENCE"]);
+  if (actor.roles.includes("AGT")) return Object.freeze(["READ", "REQUEST"]);
+  return Object.freeze(["READ"]);
+}
+function queueActions(actor: SessionContext): readonly VerificationUiAction[] { if (actor.roles.includes("MGR")) return Object.freeze(["READ", "REQUEST", "ASSIGN"]); if (actor.roles.includes("VER") || actor.roles.includes("AGT")) return Object.freeze(["READ", "REQUEST"]); if (actor.roles.includes("REV")) return Object.freeze(["READ", "REVIEW_EVIDENCE"]); return Object.freeze(["READ"]); }
+function expiryActions(actor: SessionContext): readonly VerificationUiAction[] { return actor.roles.some((role) => role === "VER" || role === "MGR" || role === "AGT") ? Object.freeze(["READ", "REVERIFY"]) : Object.freeze(["READ"]); }
+function detailView(verification: Verification, actor: SessionContext, availability?: Availability): VerificationDetailView { return Object.freeze({ screenId: "UI-027", presentationState: verification.status, verification, ...(availability === undefined ? {} : { availability }), allowedActions: detailActions(actor), accessibility: detailAccessibility }); }
+
+export class VerificationApi {
+  public constructor(private readonly dependencies: VerificationApiDependencies) {}
+  public requestVerification(input: Contextual<Parameters<VerificationService["requestVerification"]>[0]>): ApiResponse<VerificationDetailView> { return executeBoundary(input.context, () => { const actor = this.#actor(input.context); return detailView(this.dependencies.verificationService.requestVerification(this.#request(input, actor)), actor); }); }
+  public assignVerifier(input: Contextual<Parameters<VerificationService["assignVerifier"]>[0]>): ApiResponse<VerificationDetailView> { return executeBoundary(input.context, () => { const actor = this.#actor(input.context); return detailView(this.dependencies.verificationService.assignVerifier(this.#request(input, actor)).verification, actor); }); }
+  public recordReviewSupport(input: Contextual<Parameters<VerificationService["recordReviewSupport"]>[0]>): ApiResponse<VerificationDetailView> { return executeBoundary(input.context, () => { const actor = this.#actor(input.context); return detailView(this.dependencies.verificationService.recordReviewSupport(this.#request(input, actor)), actor); }); }
+  public decide(input: Contextual<Parameters<VerificationService["decide"]>[0]>): ApiResponse<VerificationDetailView> { return executeBoundary(input.context, () => { const actor = this.#actor(input.context); return detailView(this.dependencies.verificationService.decide(this.#request(input, actor)), actor); }); }
+  public revoke(input: Contextual<Parameters<VerificationService["revoke"]>[0]>): ApiResponse<VerificationDetailView> { return executeBoundary(input.context, () => { const actor = this.#actor(input.context); return detailView(this.dependencies.verificationService.revoke(this.#request(input, actor)), actor); }); }
+  public evaluateExpiry(input: Contextual<Parameters<VerificationService["evaluateExpiry"]>[0]>): ApiResponse<VerificationDetailView> { return executeBoundary(input.context, () => { const actor = this.#actor(input.context); return detailView(this.dependencies.verificationService.evaluateExpiry(this.#request(input, actor)), actor); }); }
+  public requestReverification(input: Contextual<Parameters<VerificationService["requestReverification"]>[0]>): ApiResponse<VerificationDetailView> { return executeBoundary(input.context, () => { const actor = this.#actor(input.context); return detailView(this.dependencies.verificationService.requestReverification(this.#request(input, actor)).verification, actor); }); }
+  public readVerification(input: Contextual<Parameters<VerificationService["readVerification"]>[0]>): ApiResponse<VerificationDetailView> { return executeBoundary(input.context, () => { const actor = this.#actor(input.context); const request = this.#request(input, actor); const verification = this.dependencies.verificationService.readVerification(request); return detailView(verification, actor, this.dependencies.verificationService.readAvailability(request)); }); }
+  public readHistory(input: Contextual<Parameters<VerificationService["readHistory"]>[0]>): ApiResponse<ReturnType<VerificationService["readHistory"]>> { return executeBoundary(input.context, () => this.dependencies.verificationService.readHistory(this.#request(input, this.#actor(input.context)))); }
+  public readQueue(input: Readonly<{ readonly context: RequestContext; readonly purpose: string }>): ApiResponse<VerificationQueueView> { return executeBoundary(input.context, () => { const actor = this.#actor(input.context); const verifications = this.dependencies.verificationService.listQueue(this.#request(input, actor)); return Object.freeze({ screenId: "UI-026", presentationState: verifications.length === 0 ? "EMPTY" : "READY", verifications, allowedActions: queueActions(actor), accessibility: queueAccessibility }); }); }
+  public readExpiry(input: Readonly<{ readonly context: RequestContext; readonly purpose: string }>): ApiResponse<VerificationExpiryView> { return executeBoundary(input.context, () => { const actor = this.#actor(input.context); const verifications = this.dependencies.verificationService.listExpiry(this.#request(input, actor)); return Object.freeze({ screenId: "UI-032", presentationState: verifications.length === 0 ? "EMPTY" : "ACTION_REQUIRED", verifications, allowedActions: expiryActions(actor), accessibility: expiryAccessibility }); }); }
+  public validateEvidence(input: Contextual<Parameters<VerificationService["validateEvidence"]>[0]>): ApiResponse<AdvisoryValidationDecision> { return executeBoundary(input.context, () => this.dependencies.verificationService.validateEvidence(this.#request(input, this.#actor(input.context)))); }
+  #request<T extends Readonly<Record<string, unknown>>>(input: T & { readonly context: RequestContext }, actor: SessionContext): Omit<T, "context"> & { readonly actor: SessionContext; readonly correlationId: string; readonly requestId?: string } { const { context, ...fields } = input; return { ...fields, actor, correlationId: context.correlationId, ...(context.requestId === undefined ? {} : { requestId: context.requestId }) }; }
+  #actor(context: RequestContext): SessionContext { return this.dependencies.sessionReader(requireSessionId(context)); }
+}

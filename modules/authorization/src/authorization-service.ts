@@ -76,6 +76,7 @@ const capabilities: Readonly<Record<RoleCode, readonly string[]>> = {
     "requirement.create", "requirement.read", "requirement.revise",
     "requirement.activate", "requirement.transition", "requirement.request-ai",
     "matching.request", "matching.read", "matching.review", "matching.stale",
+    "verification.request", "verification.read",
   ],
   SAG: [
     "resource.view",
@@ -110,13 +111,13 @@ const capabilities: Readonly<Record<RoleCode, readonly string[]>> = {
     "matching.review",
     "matching.stale",
   ],
-  REV: ["resource.view", "matching.read", "matching.review"],
+  REV: ["resource.view", "matching.read", "matching.review", "verification.read", "verification.review"],
   AIR: ["resource.view", "ai.result.read", "ai.review", "intake.read", "requirement.read", "matching.read"],
   DUR: ["resource.view", "candidate.read", "duplicate.read", "duplicate.dispose"],
-  VER: ["resource.view", "verification.perform", "contact.read", "contact.reveal", "contact.attempt"],
+  VER: ["resource.view", "verification.request", "verification.read", "verification.perform", "contact.read", "contact.reveal", "contact.attempt"],
   PMR: ["resource.view", "permission.approve", "contact.read"],
   PUA: ["resource.view", "publication.approve"],
-  MGR: ["resource.view", "audit.query", "client.read", "matching.read"],
+  MGR: ["resource.view", "audit.query", "client.read", "matching.read", "verification.request", "verification.read", "verification.assign", "verification.perform", "verification.override"],
   DST: [
     "resource.view",
     "resource.create",
@@ -179,6 +180,7 @@ const capabilities: Readonly<Record<RoleCode, readonly string[]>> = {
     "job.read",
     "job.execute",
     "requirement.read",
+    "verification.expire",
   ],
   EXT: [],
 };
@@ -192,6 +194,9 @@ const privilegedActions = new Set([
   "contact.reveal",
   "restricted.reveal",
   "security.admin",
+  "verification.assign",
+  "verification.perform",
+  "verification.override",
 ]);
 
 const humanAuthorityActions = new Set([
@@ -206,6 +211,7 @@ const humanAuthorityActions = new Set([
   "requirement.activate",
   "requirement.transition",
   "verification.perform",
+  "verification.override",
 ]);
 
 function immutableDecision(decision: AuthorizationDecision): AuthorizationDecision {
