@@ -1,6 +1,7 @@
 export * from "./admin-audit-api.js";
 export * from "./composition.js";
 export * from "./contracts.js";
+export * from "./contact-client-api.js";
 export * from "./identity-api.js";
 export * from "./job-api.js";
 export * from "./property-listing-api.js";

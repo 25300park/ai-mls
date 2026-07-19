@@ -440,3 +440,67 @@ test("SP-003 service principal cannot decide canonical, duplicate or AI review s
     assert.equal(decision.reasonCode, "HUMAN_AUTHORITY_REQUIRED", action);
   }
 });
+
+test("SP-004 grants agents purpose-scoped contact, client and requirement actions", () => {
+  const principalId = "user-agent-sp004";
+  const { service } = createService([assignment({
+    principalId,
+    role: "AGT",
+    resourceTypes: ["Contact", "ContactChannel", "ContactCase", "Client", "Requirement"],
+    purposes: ["CLIENT_SERVICE"],
+  })]);
+  const actor = session({ principalId, roles: ["AGT"] });
+
+  for (const [action, type] of [
+    ["contact.create", "Contact"],
+    ["contact.read", "Contact"],
+    ["contact.edit", "Contact"],
+    ["contact.reveal", "ContactChannel"],
+    ["contact.attempt", "ContactCase"],
+    ["contact.dnc", "ContactCase"],
+    ["client.create", "Client"],
+    ["client.read", "Client"],
+    ["requirement.create", "Requirement"],
+    ["requirement.read", "Requirement"],
+    ["requirement.revise", "Requirement"],
+    ["requirement.activate", "Requirement"],
+  ] as const) {
+    const decision = service.evaluate({
+      session: actor,
+      action,
+      resource: { type, id: "sp004-subject", teamId: "team-a" },
+      purpose: "CLIENT_SERVICE",
+      ...(action === "contact.reveal" ? { reason: "Authorized client communication" } : {}),
+      correlationId: `correlation-${action}`,
+    });
+    assert.equal(decision.effect, "ALLOW", action);
+  }
+});
+
+test("SP-004 reveal requires MFA and service principals cannot activate requirements", () => {
+  const humanId = "user-agent-sp004";
+  const serviceId = "service-sp004";
+  const { service } = createService([
+    assignment({ principalId: humanId, role: "AGT", resourceTypes: ["ContactChannel"], purposes: ["CLIENT_SERVICE"] }),
+    assignment({ principalId: serviceId, role: "SVC", resourceTypes: ["Requirement"], purposes: ["CLIENT_SERVICE"] }),
+  ]);
+
+  const reveal = service.evaluate({
+    session: session({ principalId: humanId, roles: ["AGT"], isMfaVerified: false }),
+    action: "contact.reveal",
+    resource: { type: "ContactChannel", id: "channel-1", teamId: "team-a" },
+    purpose: "CLIENT_SERVICE",
+    reason: "Authorized client communication",
+    correlationId: "correlation-contact-reveal",
+  });
+  const activate = service.evaluate({
+    session: session({ principalId: serviceId, principalType: "SERVICE", roles: ["SVC"], assurance: "WORKLOAD", isMfaVerified: false }),
+    action: "requirement.activate",
+    resource: { type: "Requirement", id: "requirement-1", teamId: "team-a" },
+    purpose: "CLIENT_SERVICE",
+    correlationId: "correlation-requirement-activate",
+  });
+
+  assert.equal(reveal.reasonCode, "REAUTHENTICATION_REQUIRED");
+  assert.equal(activate.reasonCode, "HUMAN_AUTHORITY_REQUIRED");
+});

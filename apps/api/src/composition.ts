@@ -1,6 +1,8 @@
 import type { AdministrationService } from "../../../modules/administration/src/administration-service.js";
 import type { AuditLog } from "../../../modules/audit/src/audit-log.js";
 import type { AuthorizationService } from "../../../modules/authorization/src/authorization-service.js";
+import type { ClientRequirementService } from "../../../modules/client/src/client-requirement-service.js";
+import type { ContactService } from "../../../modules/contact/src/contact-service.js";
 import type { SessionService } from "../../../modules/identity/src/session-service.js";
 import type { IntakeService } from "../../../modules/intake/src/intake-service.js";
 import type { JobService } from "../../../modules/jobs/src/job-service.js";
@@ -8,6 +10,7 @@ import type { ListingService } from "../../../modules/listing/src/listing-servic
 import type { PropertyService } from "../../../modules/property/src/property-service.js";
 import type { SourceRegistryService } from "../../../modules/source/src/source-registry-service.js";
 import { AdminAuditApi } from "./admin-audit-api.js";
+import { ContactClientApi } from "./contact-client-api.js";
 import { IdentityApi } from "./identity-api.js";
 import { JobApi } from "./job-api.js";
 import { PropertyListingApi } from "./property-listing-api.js";
@@ -23,6 +26,8 @@ export interface ApiModuleDependencies {
   readonly jobService: JobService;
   readonly propertyService: PropertyService;
   readonly listingService: ListingService;
+  readonly contactService: ContactService;
+  readonly clientRequirementService: ClientRequirementService;
 }
 
 export function composeApiModules(dependencies: ApiModuleDependencies): Readonly<{
@@ -31,6 +36,7 @@ export function composeApiModules(dependencies: ApiModuleDependencies): Readonly
   readonly sourceAndIntake: SourceIntakeApi;
   readonly jobs: JobApi;
   readonly propertyAndListing: PropertyListingApi;
+  readonly contactClient: ContactClientApi;
 }> {
   return Object.freeze({
     identity: new IdentityApi({
@@ -55,6 +61,11 @@ export function composeApiModules(dependencies: ApiModuleDependencies): Readonly
     propertyAndListing: new PropertyListingApi({
       propertyService: dependencies.propertyService,
       listingService: dependencies.listingService,
+      sessionReader: (sessionId) => dependencies.sessionService.readSession(sessionId),
+    }),
+    contactClient: new ContactClientApi({
+      contactService: dependencies.contactService,
+      clientRequirementService: dependencies.clientRequirementService,
       sessionReader: (sessionId) => dependencies.sessionService.readSession(sessionId),
     }),
   });
