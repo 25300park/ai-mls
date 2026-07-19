@@ -7,12 +7,14 @@ import type { SessionService } from "../../../modules/identity/src/session-servi
 import type { IntakeService } from "../../../modules/intake/src/intake-service.js";
 import type { JobService } from "../../../modules/jobs/src/job-service.js";
 import type { ListingService } from "../../../modules/listing/src/listing-service.js";
+import type { MatchingService } from "../../../modules/matching/src/matching-service.js";
 import type { PropertyService } from "../../../modules/property/src/property-service.js";
 import type { SourceRegistryService } from "../../../modules/source/src/source-registry-service.js";
 import { AdminAuditApi } from "./admin-audit-api.js";
 import { ContactClientApi } from "./contact-client-api.js";
 import { IdentityApi } from "./identity-api.js";
 import { JobApi } from "./job-api.js";
+import { MatchingApi, type MatchingInputResolver } from "./matching-api.js";
 import { PropertyListingApi } from "./property-listing-api.js";
 import { SourceIntakeApi } from "./source-intake-api.js";
 
@@ -28,6 +30,8 @@ export interface ApiModuleDependencies {
   readonly listingService: ListingService;
   readonly contactService: ContactService;
   readonly clientRequirementService: ClientRequirementService;
+  readonly matchingService: MatchingService;
+  readonly matchingInputResolver: MatchingInputResolver;
 }
 
 export function composeApiModules(dependencies: ApiModuleDependencies): Readonly<{
@@ -37,6 +41,7 @@ export function composeApiModules(dependencies: ApiModuleDependencies): Readonly
   readonly jobs: JobApi;
   readonly propertyAndListing: PropertyListingApi;
   readonly contactClient: ContactClientApi;
+  readonly matching: MatchingApi;
 }> {
   return Object.freeze({
     identity: new IdentityApi({
@@ -66,6 +71,11 @@ export function composeApiModules(dependencies: ApiModuleDependencies): Readonly
     contactClient: new ContactClientApi({
       contactService: dependencies.contactService,
       clientRequirementService: dependencies.clientRequirementService,
+      sessionReader: (sessionId) => dependencies.sessionService.readSession(sessionId),
+    }),
+    matching: new MatchingApi({
+      matchingService: dependencies.matchingService,
+      matchingInputResolver: dependencies.matchingInputResolver,
       sessionReader: (sessionId) => dependencies.sessionService.readSession(sessionId),
     }),
   });

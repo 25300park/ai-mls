@@ -4,5 +4,6 @@ export * from "./contracts.js";
 export * from "./contact-client-api.js";
 export * from "./identity-api.js";
 export * from "./job-api.js";
+export * from "./matching-api.js";
 export * from "./property-listing-api.js";
 export * from "./source-intake-api.js";
