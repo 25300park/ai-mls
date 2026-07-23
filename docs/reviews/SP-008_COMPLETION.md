@@ -3,8 +3,9 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-REVIEW-SP008-COMPLETION |
-| Version | v0.1 |
-| Status | DRAFT |
+| Version | v1.0 |
+| Status | FROZEN |
+| Sprint status | COMPLETED_ACCEPTED_FROZEN |
 | Owner | Development Owner / Architecture Owner |
 | Completion date | 2026-07-23 |
 | Brief | SP-008 — Client Proposal and Publication Approval |
@@ -92,7 +93,7 @@ None found after GOV-001 alignment. Frozen lifecycle에는 pending Approval의 `
 
 ### 10. Next brief prerequisites
 
-Architecture Owner가 SP-008 evidence와 implementation을 검토·승인해야 한다. FEAT-015 또는 다음 Sprint는 별도 명시적 authorization 전 시작할 수 없다.
+Architecture Owner acceptance와 commit authorization이 완료되었다. FEAT-015 또는 다음 Sprint는 별도 명시적 authorization 전 시작할 수 없다.
 
 ## SP-008 Required Codex Completion Report
 
@@ -110,7 +111,7 @@ Client Proposal lifecycle과 Publication Approval lifecycle을 별도 identity/n
 
 ### 3. Files Changed
 
-생성 11개, SP-008 직접 수정 6개다. 상세 목록은 위 `Files created`/`Files modified`에 기록했다. 별도의 GOV-001 미커밋 변경은 사용자 변경으로 보존했다.
+생성 11개, SP-008 직접 수정 6개다. 상세 목록은 위 `Files created`/`Files modified`에 기록했다. GOV-001은 별도 governance-only commit으로 분리했다.
 
 ### 4. Database or Migration Changes
 
@@ -160,7 +161,7 @@ PASS, 168/168. Baseline 138개와 SP-008 30개가 모두 통과했다.
 
 ### 14. RTM and Documentation Updates
 
-[Governance RTM](../governance/REQUIREMENTS_TRACEABILITY_MATRIX.md)에 `IMPLEMENTED_AWAITING_ACCEPTANCE` evidence row를 추가하고 [Implementation Registry](../book-12/15_IMPLEMENTATION_REGISTRY.md)의 post-freeze overlay에 `IMP-014` progress를 추가했다. Accepted architecture/governance 정의는 변경하지 않았다.
+[Governance RTM](../governance/REQUIREMENTS_TRACEABILITY_MATRIX.md)과 [Implementation Registry](../book-12/15_IMPLEMENTATION_REGISTRY.md)의 `IMP-014` evidence를 `COMPLETED_ACCEPTED_FROZEN`으로 갱신했다. Accepted architecture/governance 정의는 변경하지 않았다.
 
 ### 15. Deferred FEAT-015 Scope
 
@@ -168,20 +169,20 @@ Publication authoritative lifecycle, Publication Target mutation, connector, del
 
 ### 16. Known Issues or Risks
 
-Acceptance를 막는 known P0/P1 또는 Critical/Important code-review issue는 없다. Production persistence와 external execution은 의도적으로 deferred다. 기존 GOV-001 변경과 SP-008 변경이 한 working tree에 함께 존재하므로 향후 commit authorization 시 scope를 구분해야 한다.
+Acceptance를 막는 known P0/P1 또는 Critical/Important code-review issue는 없다. Production persistence와 external execution은 의도적으로 deferred다. GOV-001과 SP-008은 별도 commit으로 분리되었다.
 
 ### 17. Working Tree Status
 
-Clean하지 않다. 사용자 요청에 따라 commit을 만들지 않았고, 기존 GOV-001 변경과 의도된 SP-008 구현/evidence만 존재한다. `.env`, NAS, migration, probe, temporary artifact 변경은 없다.
+Evidence-only commit 완료 후 clean이다. `.env`, NAS, migration, probe, temporary artifact 변경은 없다.
 
 ### 18. Commit Status
 
-Commit not created. Explicit commit authorization이 없었다. Current HEAD는 `c1cdbfcdd2108c320829df4f5d8ba65f50b56cfd`다.
+GOV-001 commit은 `c7ad5b0a2ad6bd243abe81cd3c00c3599a29ad1b`, SP-008 implementation commit은 `0c9f2a519a3ea21d6f0de8d7b6e8c5a1ed64373a`다. Final repository HEAD는 이 report를 포함하는 evidence-only commit이며 정확한 hash는 Architecture Owner 최종 보고서에 기록한다.
 
 ### 19. SP-008 Completion Recommendation
 
-구현과 technical DoD evidence가 완료되어 현재 상태는 `IMPLEMENTED_AWAITING_ACCEPTANCE`다. Architecture Owner acceptance 전 공식 `DONE`으로 승격하지 않으며 FEAT-015를 시작하지 않는다.
+구현, technical DoD, Architecture Owner acceptance와 baseline freeze가 완료되어 현재 상태는 `COMPLETED_ACCEPTED_FROZEN`이다. FEAT-015는 시작하지 않았다.
 
 ## Completion statement
 
-SP-008 implementation과 기술 검증 evidence 작성을 완료했다. Architecture Owner acceptance는 남아 있으며, 다음 Brief 또는 FEAT-015를 시작하지 않는다.
+SP-008 implementation, 기술 검증, Architecture Owner acceptance와 frozen baseline evidence를 완료했다. 다음 Brief 또는 FEAT-015를 시작하지 않는다.

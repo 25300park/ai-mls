@@ -3,9 +3,10 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-DEV-SP008-TEST-EVIDENCE |
-| 문서 버전 | v0.1 |
-| 상태 | DRAFT |
+| 문서 버전 | v1.0 |
+| 상태 | FROZEN |
 | Sprint | SP-008 |
+| Sprint 상태 | COMPLETED_ACCEPTED_FROZEN |
 | Feature | FEAT-014 |
 | 기준 일자 | 2026-07-23 |
 
@@ -33,7 +34,18 @@
 | Build | `pnpm build` | PASS |
 | Aggregate verify | `pnpm verify` | PASS |
 | Gitleaks | `gitleaks detect --source . --config .gitleaks.toml --redact` | PASS, actual secrets 0, unexplained findings 0 |
-| Dependency audit | `pnpm audit` | PASS, exit code 0, `No known vulnerabilities found` |
+| Dependency audit | `pnpm audit --registry=https://registry.npmjs.org` | PASS, exit code 0, `No known vulnerabilities found`; findings 0, severity/package/path/directness `N/A` |
+
+## Accepted baseline
+
+| 항목 | 값 |
+|---|---|
+| GOV-001 commit | `c7ad5b0a2ad6bd243abe81cd3c00c3599a29ad1b` |
+| SP-008 implementation commit | `0c9f2a519a3ea21d6f0de8d7b6e8c5a1ed64373a` |
+| Accepted implementation HEAD | `0c9f2a519a3ea21d6f0de8d7b6e8c5a1ed64373a` |
+| Final repository HEAD | 이 문서를 포함하는 evidence-only commit이며 정확한 hash는 Architecture Owner 최종 보고서에 기록한다. |
+| Working tree | evidence-only commit 후 clean |
+| Deferred scope | FEAT-015, API-014, WF-010–012, Publication execution/delivery/reconciliation 미착수 |
 
 ## Security coverage
 
