@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-TEST-016 |
-| 문서 버전 | v1.0 |
+| 문서 버전 | v1.1 |
 | 상태 | FROZEN |
 | 소유 역할 | Quality Owner / Architecture Owner |
 | 기준일 | 2026-07-15 |
@@ -39,7 +39,7 @@ Phase 11 logical test identity와 Requirement/WF/Entity/API/UI/AI/SEC/OPS/owner/
 | TEST-019 | Matching, hard filters and shortlist | REQ-CONST-001/002 | WF-006 | Match Result, Requirement, Candidate Listing | API-010/017 | UI-024 | AI-005–007 | SEC-014/021/031 | OPS-014/023 | Matching/Quality Owner | DEFINED |
 | TEST-020 | Contact and Verification workflow | REQ-CONST-002/003/011/012 | WF-007 | Contact Case, Verification, Availability | API-007/011/012 | UI-019/020/026–028 | AI-007 support only | SEC-010/011/014/015 | OPS-014 | Verification/Quality Owner | DEFINED |
 | TEST-021 | Client Proposal sharing control | REQ-CONST-002/013 | WF-008 | Client Proposal, Match Result, Permission, Communication | API-012/013 | UI-025/028 | N/A — human share | SEC-010/011/015/021 | OPS-014 | Business/Quality Owner | DEFINED |
-| TEST-022 | Publication approval exact version and SoD | REQ-CONST-002–004/012/013 | WF-009 | Publication Approval, Verification, Permission, Approval History | API-011–013/016 | UI-029/030/035 | N/A — human approval | SEC-004/010/011/021 | OPS-008/014 | Publication/Quality Owner | DEFINED |
+| TEST-022 | Publication approval exact snapshot, target/channel and actor-level SoD | REQ-CONST-002–004/007/010/012/013 | WF-009 | Publication Approval, Immutable Representation Snapshot, Verification, Permission, Approval History; Publication Target read-only dependency | API-011–013/016 | UI-029/030/035 | N/A — human `PUA` approval | SEC-001/002/004/007/008/010/011/013–015/021/025/028/030 | OPS-008/014 | Publication/Security/Quality Owner | DEFINED |
 | TEST-023 | Publication delivery, unknown and reconciliation | REQ-CONST-003/004/007/012/013 | WF-010 | Publication, Publication Target, Status History, System Error | API-014/018/019 | UI-031/033/035 | N/A — external effect | SEC-011/021/024/032 | OPS-014/031/032 | Publication/Operations/Quality Owner | DEFINED |
 | TEST-024 | Expiration and reverification restriction | REQ-CONST-002–004/012/013 | WF-011 | Reverification Request, Verification, Permission, Publication | API-011/012/014/017 | UI-032 | AI-007 support only | SEC-010/011/021 | OPS-010/014 | Verification/Quality Owner | DEFINED |
 | TEST-025 | Exception containment, retry and recovery | REQ-CONST-006/007/010 | WF-012 | System Error, Audit Event, Decision History | API-014/016–019 | UI-033/034/035 | related AI only; no authority | SEC-024–028 | OPS-015/025/032 | Operations/Quality Owner | DEFINED |
@@ -50,7 +50,7 @@ Phase 11 logical test identity와 Requirement/WF/Entity/API/UI/AI/SEC/OPS/owner/
 | TEST-030 | Client/Requirement API lifecycle | REQ-CONST-001/002/007 | WF-005/008 | Client, Requirement, Requirement History | API-008/009 | UI-021–023 | AI-004/006/007 | SEC-014/015/021 | OPS-014 | API/Quality Owner | DEFINED |
 | TEST-031 | Matching API eligibility/staleness | REQ-CONST-001/002/011 | WF-006/008/011 | Match Result, Requirement, Candidate Listing | API-010 | UI-024/025 | AI-005–007 | SEC-014/021 | OPS-023 | API/Quality Owner | DEFINED |
 | TEST-032 | Verification/Permission API authority | REQ-CONST-002–004/010/013 | WF-007–011 | Verification, Permission, Approval History | API-011/012 | UI-026–032 | AI-007 support only | SEC-004/010/011/021 | OPS-014 | API/Security/Quality Owner | DEFINED |
-| TEST-033 | Publication API gate/idempotency/reconciliation | REQ-CONST-002–004/007/012/013 | WF-008–012 | Client Proposal, Publication Approval, Publication | API-013/014 | UI-025/029–033 | N/A — human/external | SEC-010/011/021/024 | OPS-009/014/032 | API/Publication/Quality Owner | DEFINED |
+| TEST-033 | Publication contract partition: Approval/effective safe boundary versus delivery/reconciliation lifecycle | REQ-CONST-002–004/007/010/012/013 | SP-008: WF-008/009; FEAT-015: WF-010–012 | SP-008: Client Proposal, Publication Approval, Immutable Representation Snapshot; FEAT-015: Publication, Publication Target, Published Listing Projection | SP-008: API-013; FEAT-015: API-014 | SP-008: UI-025/029/030; FEAT-015: UI-031–033 | N/A — human/external authority separated | SEC-001/002/004/010/011/013–015/021/024/025/028/030/032 | OPS-009/014/032 | API/Publication/Security/Quality Owner | DEFINED — partitioned ownership |
 | TEST-034 | Administration and audit API | REQ-CONST-006/007/010 | WF-001–012 | User, Role, Audit Event, Decision History | API-015/016 | UI-006/035/036 | N/A — administration | SEC-001–010/021–023/033 | OPS-026–030 | Security/API/Quality Owner | DEFINED |
 | TEST-035 | Background job contract | REQ-CONST-007/008/010 | WF-003/006/010–012 | AI Job, AI Result, System Error | API-017 | UI-034 | AI-001–007 when AI job | SEC-006/021/024/031 | OPS-012/013/032 | Operations/API/Quality Owner | DEFINED |
 | TEST-036 | Connector contract isolation | REQ-CONST-005/007/009/010 | WF-001–004/009–012 | Collector, Raw Source, Publication, System Error | API-018 | UI-009–013/031/033/034 | AI-001–003/007 after intake | SEC-006/023/024/032 | OPS-031/032 | Integration/Quality Owner | DEFINED |
@@ -74,6 +74,30 @@ Phase 11 logical test identity와 Requirement/WF/Entity/API/UI/AI/SEC/OPS/owner/
 | TEST-054 | Collector/Agent/Reviewer UAT | REQ-CONST-001–005/007–013 | WF-001–011 | Intake, Candidate Listing, Client, Requirement, Verification, Permission, Publication | API-003–014 | UI-002–004/008–032/037 | AI-001–007 | SEC-001/002/010–15/021 | OPS-014/020/021 | Business/UAT Owner | DEFINED |
 | TEST-055 | Manager/Administrator/Operations UAT | REQ-CONST-006/007/010 | WF-001–012 | User, Role, Audit Event, System Error | API-001/002/015–019 | UI-005/006/031–037 | AI job visibility only | SEC-001–10/021–30/033 | OPS-010–15/22–30 | Business/Operations UAT Owner | DEFINED |
 | TEST-056 | Regression and release acceptance gate | REQ-CONST-001–013 | WF-001–012 | Audit Event, Decision History, Approval History, System Error | API-001–019 | UI-001–037 | AI-001–007 | SEC-001–034 | OPS-001–032 | Quality/Release Owner | DEFINED |
+
+## GOV-001 TEST-022 acceptance coverage
+
+`TEST-022`는 다음 승인 권한 경계를 명시적으로 검증한다.
+
+- requester conflict;
+- exact snapshot creator/editor conflict;
+- verifier conflict;
+- referenced Permission decision-maker conflict;
+- Publication executor/reconciler conflict;
+- role stacking과 session role switching;
+- MFA와 documented reason;
+- authorized `PUA` approve, reject, revoke;
+- scheduler-only expiry와 expiry 연장 금지;
+- break-glass approval rejection;
+- recovery/replay 시 actor와 authority 재검증;
+- 하나의 Approval에 대한 exact Target, Channel, Policy Version binding;
+- Service Actor, Connector, AI Actor의 decision prohibition.
+
+## GOV-001 TEST-033 ownership partition
+
+- SP-008은 approval request/read/queue/review/claim/decision/revoke/expiry, `CheckEffectiveApproval`, idempotency와 delivery를 수행하지 않는 safe boundary를 소유한다.
+- FEAT-015는 delivery, reconciliation, `UNKNOWN`, correction, suspend, withdraw, republish와 Publication lifecycle을 소유한다.
+- SP-008 partition의 통과는 FEAT-015 partition의 통과를 의미하지 않는다.
 
 ## Coverage contract
 

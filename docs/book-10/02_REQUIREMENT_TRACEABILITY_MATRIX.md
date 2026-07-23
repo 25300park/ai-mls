@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-TEST-003 |
-| 문서 버전 | v1.0 |
+| 문서 버전 | v1.1 |
 | 상태 | FROZEN |
 | 소유 역할 | Quality Owner / Architecture Owner |
 | 기준일 | 2026-07-15 |
@@ -25,10 +25,16 @@
 | REQ-CONST-007 | Important actions auditable | WF-001–012 | Audit Event, User Action, Status History, Approval History | API-001–019 | UI-001–037 | AI Job/Result trace | TEST-006, TEST-034/037/049/053 |
 | REQ-CONST-008 | No direct AI production authority | WF-003–006 | AI Job, AI Result, Candidate Listing, Requirement, Match Result | API-004/006/009/010/017/019 | UI-013/015/023/024 | AI-001–007 | TEST-007, TEST-039–045 |
 | REQ-CONST-009 | No connector bypass | WF-001–004/009/010/012 | Collector, Raw Source, Publication, System Error | API-004/014/018/019 | UI-009–013/031/033/034 | AI-001–003/007 after intake | TEST-008, TEST-036/037 |
-| REQ-CONST-010 | No privilege escalation | WF-001–012 | User, Role, Team, User Action | API-001/002/015/016 | UI-001–037 | N/A — security control | TEST-009, TEST-026/034/035/046/047 |
+| REQ-CONST-010 | No privilege escalation | WF-001–012 | User, Role, Team, User Action, Publication Approval, Approval History | API-001/002/013/015/016 | UI-001–037, with UI-029/030 actor-level SoD | N/A — security control | TEST-009, TEST-022, TEST-026/033–035/046/047 |
 | REQ-CONST-011 | Candidate is not verified | WF-002/007 | Candidate Listing, Verification, Availability | API-004/006/011 | UI-012/015/026/027 | AI-001/002/007 advisory | TEST-010, TEST-015/020 |
 | REQ-CONST-012 | Verified is not published | WF-007/009/010 | Verification, Publication Approval, Publication | API-011–014 | UI-027–031 | N/A — human publication | TEST-011, TEST-020/022/023 |
 | REQ-CONST-013 | Client share permission differs from public permission | WF-007–010 | Permission, Client Proposal, Publication Approval, Publication | API-012–014 | UI-025/028–031 | N/A — human permission | TEST-012, TEST-021–023 |
+
+### GOV-001 SP-008 canonical chain
+
+`REQ-CONST-002–004/007/010/012/013 → FEAT-014 → DEV-014 → IMP-014 → WF-008/009 → Client Proposal / Publication Approval / Immutable Representation Snapshot → API-013 → UI-025/028–030 → SEC-001/002/004/007/008/010/011/013–015/021/025/028/030 → TEST-021/022/033 (SP-008 partition) → SP-008 → REL-003`
+
+`Publication Target`은 FEAT-015 소유의 read-only dependency이고 `Channel`은 Approval binding에 복사되는 value object이다. `Publication`, `API-014`, `WF-010–012`, `TEST-033`의 execution partition은 FEAT-015에 남는다.
 
 ## Coverage result
 
@@ -37,4 +43,3 @@ Requirements defined: 13. Requirements with test: 13. Orphan requirement: 0. Tes
 ## Change impact
 
 Requirement/Workflow/Entity/API/UI/AI/SEC/OPS 변경 시 affected matrix row와 all linked TEST IDs를 review하고 regression scope를 갱신한다. Requirement 삭제/대체는 Constitution governance 없이는 허용하지 않는다.
-

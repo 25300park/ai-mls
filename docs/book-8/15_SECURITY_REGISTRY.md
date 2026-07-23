@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-SEC-016 |
-| 문서 버전 | v1.0 |
+| 문서 버전 | v1.1 |
 | 상태 | FROZEN |
 | 소유 역할 | Security/Privacy Reviewer / Architecture Owner |
 | 기준일 | 2026-07-14 |
@@ -31,12 +31,12 @@ Phase 9 logical control ID, owning document와 workflow/entity/API/screen/AI map
 | SEC-007 | Session traceability and revocation | DOC-SEC-010 | WF-001–012 | User, User Action, Audit Event | API-001/002/016 | UI-001–037 | N/A — session control | Security Owner | DEFINED |
 | SEC-008 | Timeout and step-up policy | DOC-SEC-010 | WF-007–012 | User, Approval History, User Action | API-001/002/011–016 | UI-019/020/025/027–036 | N/A — session control | Security Owner | DEFINED |
 | SEC-009 | Device/risk and concurrent session control | DOC-SEC-010 | WF-001–012 | User, User Action, System Error | API-001/002/016 | UI-001/006/035/036 | N/A — risk signal | Security Owner | DEFINED |
-| SEC-010 | Role hierarchy and separation of duties | DOC-SEC-004/005 | WF-002–012 | Role, Team, Verifier Assignment, Approval History | API-002/004–016 | UI-004/012/013/016/023–036 | AI-001–007 advisory only | Security + Business Owner | DEFINED |
+| SEC-010 | Role hierarchy and separation of duties | DOC-SEC-004/005 | WF-002–012 | Role, Team, Verifier Assignment, Publication Approval, Approval History | API-002/004–016 | UI-004/012/013/016/023–036 | AI-001–007 advisory only; no decision authority | Security + Business Owner | DEFINED |
 | SEC-011 | Independent Verification/Permission/Approval/Publication | DOC-SEC-004/005 | WF-007–010 | Verification, Permission, Publication Approval, Publication, Approval History | API-011–014/016 | UI-026–031/035 | N/A — human authority | Business/Security Owner | DEFINED |
 | SEC-012 | Authorized and audited export | DOC-SEC-005/006/008 | WF-001–012 | Audit Event, User Action, Decision History | API-002/005–016 | UI-005/006/008/009/014/015/017–036 | AI Result only when exported subject; no authority | Data/Privacy Owner | DEFINED |
-| SEC-013 | Canonical data classification | DOC-SEC-006 | WF-001–012 | Raw Source, Contact, Client, AI Result, Audit Event | API-003–019 | UI-008–037 | AI-001–007 inherit highest input class | Data/Privacy Owner | DEFINED |
-| SEC-014 | Privacy minimization and masking | DOC-SEC-006/007 | WF-001–012 | Contact, Contact Channel, Client, Communication, Raw Source | API-004/007–010/013/016/019 | UI-008/011/013–025/035/037 | AI-001–007 minimized input/output | Privacy Owner | DEFINED |
-| SEC-015 | Consent/basis and purpose limitation | DOC-SEC-007 | WF-001/002/005/007–010 | Contact, Contact Channel, Contact Case, Client, Permission, Publication | API-003/004/007–009/012–014/019 | UI-009–012/019–023/025/028–031 | AI-001/004/006/007 purpose bound | Privacy/Business Owner | DEFINED |
+| SEC-013 | Canonical data classification | DOC-SEC-006 | WF-001–012 | Raw Source, Contact, Client, AI Result, Immutable Representation Snapshot, Publication Approval, Audit Event | API-003–019 | UI-008–037 | AI-001–007 inherit highest input class | Data/Privacy Owner | DEFINED |
+| SEC-014 | Privacy minimization and masking | DOC-SEC-006/007 | WF-001–012 | Contact, Contact Channel, Client, Communication, Raw Source, Immutable Representation Snapshot, Publication Approval | API-004/007–010/013/016/019 | UI-008/011/013–025/029/030/035/037 | AI-001–007 minimized input/output; no Approval authority | Privacy Owner | DEFINED |
+| SEC-015 | Consent/basis and purpose limitation | DOC-SEC-007 | WF-001/002/005/007–010 | Contact, Contact Channel, Contact Case, Client, Permission, Immutable Representation Snapshot, Publication Approval, Publication Target, Publication | API-003/004/007–009/012–014/019 | UI-009–012/019–023/025/028–031 | AI-001/004/006/007 purpose bound; no target/channel selection authority | Privacy/Business Owner | DEFINED |
 | SEC-016 | Governed deletion and legal hold | DOC-SEC-007 | WF-011/012 | Retention Policy, Legal Hold, Retention Job, Audit Event | API-015–017 | UI-006/033–036 | AI Result subject to same disposition | Privacy/Data Owner | DEFINED |
 | SEC-017 | Encryption in transit | DOC-SEC-009 | WF-001–012 | User, Raw Source, AI Job, Publication, System Error | API-001–019 | UI-001–037 | AI-001–007 provider boundary | Security/Operations Owner | DEFINED |
 | SEC-018 | Encryption at rest | DOC-SEC-009 | WF-001–012 | Raw Attachment, Contact, AI Result, Audit Event, Publication | API-003–019 | UI-008–037 | AI-001–007 stored payload/result | Security/Data Owner | DEFINED |
@@ -56,6 +56,20 @@ Phase 9 logical control ID, owning document와 workflow/entity/API/screen/AI map
 | SEC-032 | Connector/integration isolation | DOC-SEC-002/003/012 | WF-001–004/009–012 | Collector, Source Registry, Raw Source, Publication Target, Publication, System Error | API-004/014/017–019 | UI-009–013/031/033/034/036 | AI-001/002/003/007 after intake only | Integration/Security Owner | DEFINED |
 | SEC-033 | Access recertification and exception expiry | DOC-SEC-004/008 | WF-001–012 | User, Role, Team, Verifier Assignment, Decision History | API-002/015/016 | UI-006/026/035/036 | N/A — access governance | Security/Business Owner | DEFINED |
 | SEC-034 | Attribute-based authorization extension | DOC-SEC-004 | WF-001–012 | User, Role, Team, Organization | API-002/015/019 | UI-001–037 | AI cannot supply authoritative attributes | Security Owner | POST-MVP |
+
+## GOV-001 Publication Approval control mapping
+
+| Accepted decision | Required binding/control | Canonical Security IDs |
+|---|---|---|
+| AO-018 | representation identity, exact version, checksum, immutable snapshot, classification inheritance | SEC-002, SEC-013, SEC-014, SEC-021–023 |
+| AO-019 | one target + one target-scoped channel, exact target/channel policy versions, language/audience/field scope, inactive target/channel deny | SEC-002, SEC-011, SEC-013–015, SEC-021 |
+| AO-020 | API-013 scoped reads/mutations, effective Approval, API-014 no-execution boundary, immutable history write/query separation | SEC-001/002, SEC-004, SEC-008, SEC-010/011, SEC-021–023 |
+| AO-021 | actor-level requester/creator/verifier/Permission-decider/executor conflict, role stacking deny, PUA-only decision, MFA/reason, break-glass no-bypass | SEC-001/002, SEC-004, SEC-007/008, SEC-010/011, SEC-021, SEC-025, SEC-028, SEC-030 |
+
+- `ExpireApproval`은 scheduler-only restriction이며 Scheduler는 Approval을 create/approve/reject/revoke/extend하지 않는다.
+- Service, connector와 AI actor는 Publication Approval decision authority가 없고 effective Approval을 생성하거나 복원하지 않는다.
+- recovery/replay는 current session, assignment, actor-level SoD, exact versions, Verification, Permission, target/channel policy, expiry와 revocation을 재인가한다.
+- break-glass는 containment에만 사용하며 missing/conflicted/expired/revoked Approval을 우회하거나 복원하지 않는다.
 
 ## Coverage contract
 

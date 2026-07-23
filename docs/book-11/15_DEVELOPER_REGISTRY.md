@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-DEV-016 |
-| 문서 버전 | v1.0 |
+| 문서 버전 | v1.1 |
 | 상태 | FROZEN |
 | 소유 역할 | Development Reviewer / Architecture Owner |
 | 기준일 | 2026-07-15 |
@@ -43,8 +43,8 @@
 | DEV-011 | Matching contract | REQ-CONST-001/002/008/011 | WF-006/008/011 | Match Result, Requirement, Candidate Listing | API-010 | UI-024/025 | AI-005–007 | TEST-019/031/043–045 | Matching/API Owner | PLANNED |
 | DEV-012 | Verification authority contract | REQ-CONST-002/003/010–012 | WF-007/009–011 | Verification, Availability, Approval History | API-011 | UI-026/027/029–032 | AI-007 support only | TEST-002/010/011/020/022/024/032/051 | Verification/API Owner | PLANNED |
 | DEV-013 | Permission authority contract | REQ-CONST-002–004/010/013 | WF-007–011 | Permission, Approval History, Contact Channel | API-012 | UI-026/028–032 | AI-007 support only | TEST-003/012/020–022/024/032 | Permission/API Owner | PLANNED |
-| DEV-014 | Proposal and approval contract | REQ-CONST-002–004/012/013 | WF-008/009 | Client Proposal, Publication Approval, Verification, Permission | API-013 | UI-025/028–030 | N/A — human approval | TEST-021/022/033 | Business/Publication API Owner | PLANNED |
-| DEV-015 | Publication external-effect contract | REQ-CONST-002–007/009/012/013 | WF-009–012 | Publication, Publication Target, Status History, System Error | API-014 | UI-029–033/035 | N/A — human/external authority | TEST-002–004/008/011/012/022–025/033/049 | Publication/API Owner | PLANNED |
+| DEV-014 | Proposal and approval contract | REQ-CONST-002–004/007/010/012/013 | WF-008/009 | Client Proposal, Publication Approval, Immutable Representation Snapshot, Verification, Permission; Publication Target read-only dependency | API-013 | UI-025/028–030 | N/A — human approval | TEST-021/022/033 SP-008 partition | Business/Publication API Owner | PLANNED |
+| DEV-015 | Publication external-effect contract | REQ-CONST-002–007/009/012/013 | WF-010–012 | Publication, Publication Target, Published Listing Projection, Status History, System Error | API-014 | UI-031–033/035 | N/A — human/external authority | TEST-002–004/008/011/012/023–025/033 FEAT-015 partition/049 | Publication/API Owner | PLANNED |
 | DEV-016 | Administration contract | REQ-CONST-006/007/010 | WF-001–012 | User, Role, Team, Decision History | API-015 | UI-006/036 | N/A — administration | TEST-005/034/037/048/053 | Administration/API Owner | PLANNED |
 | DEV-017 | Audit query and evidence contract | REQ-CONST-005–007/010 | WF-001–012 | Audit Event, User Action, Status History, Approval History | API-016 | UI-035/036 | AI metadata when applicable | TEST-004–006/017/022/025/034/046/049/051/053 | Audit/API Owner | PLANNED |
 | DEV-018 | Background job orchestration contract | REQ-CONST-007/008/010 | WF-003/006/010–012 | AI Job, AI Result, System Error | API-017 | UI-034 | AI-001–007 when applicable | TEST-016/024/025/035/039–043/045/051 | Operations/API Owner | PLANNED |

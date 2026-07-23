@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-UI-006 |
-| 문서 버전 | v1.0 |
+| 문서 버전 | v1.1 |
 | 상태 | FROZEN |
 | 소유 역할 | Architecture Owner / Business Owner |
 | 기준일 | 2026-07-14 |
@@ -48,8 +48,8 @@
 | UI-026 | verification work queue | assignment/scope/status/freshness | verification/permission/reverify tasks | WF-007/011 | Verification, Verifier Assignment, Permission, Reverification Request | API-011/012 | AI-007 support only | assigned verifier/reviewer | open assigned task (API-011/012) | reassign if authorized (API-011) |
 | UI-027 | verification decision | exact subject/version/evidence/assignment | verified/rejected/inconclusive/expired evidence | WF-007/011 | Verification, Availability, Verifier Assignment, Approval History | API-007/011/016 | AI-007 support only | authorized human verifier | decide/reverify (API-011) | record contact evidence/history (API-007/016) |
 | UI-028 | permission decision | purpose, fields, audience, expiry, evidence | granted/denied/revoked Permission | WF-007–011 | Permission, Verification, Approval History | API-012/016 | N/A — human authority | permission reviewer; SoD enforced | grant/deny/revoke (API-012) | inspect verification/history (API-011/016) |
-| UI-029 | publication approval queue | approver scope/status/age | exact pending representation rows | WF-009 | Publication Approval, Publication, Approval History | API-013/016 | N/A — human approval | publication approver | open approval (API-013) | inspect queue audit (API-016) |
-| UI-030 | publication approval decision | representation/version/gate evidence | approve/reject decision with rationale | WF-009 | Publication Approval, Verification, Permission, Publication | API-011–013/016 | N/A — AI cannot approve | independent publication approver | approve/reject exact version (API-013) | inspect gates/history (API-011/012/016) |
+| UI-029 | publication approval queue | approver scope/status/age, target/channel/policy versions | exact pending immutable representation snapshot rows with checksum and SoD result | WF-009 | Publication Approval, Immutable Representation Snapshot, Approval History; Publication Target read-only dependency | API-013/016 | N/A — human approval | scoped `PUA`; actor-level SoD | open/claim approval (API-013) | inspect queue audit (API-016) |
+| UI-030 | publication approval decision | representation identity/version/checksum, target/channel/policy, Verification/Permission and SoD evidence | approve/reject/revoke decision with rationale and effective status | WF-009 | Publication Approval, Immutable Representation Snapshot, Verification, Permission, Approval History; Publication Target read-only dependency | API-011/012/013/016 | N/A — AI cannot approve | independent `PUA`; MFA/reason/SoD | decide exact snapshot or revoke (API-013) | inspect gates/history (API-011/012/016) |
 | UI-031 | publication operations | approved representation/target/delivery evidence | delivery/reconcile/correct/suspend/withdraw result | WF-010–012 | Publication, Publication Target, Status History, System Error | API-014/018/019 | N/A — connector/deterministic | publication owner/reconciler | deliver/reconcile/correct/withdraw (API-014) | inspect connector/exception (API-018/019) |
 | UI-032 | expiry/reverify 관리 | expiring Verification/Permission/publication | restricted eligibility, renewal task/status | WF-011 | Reverification Request, Verification, Permission, Publication | API-011/012/014/017 | AI-007 support only | scoped agent/verifier/reviewer | request/decide reverify (API-011/012) | inspect affected publication/job (API-014/017) |
 | UI-033 | exception recovery | exception ID/context/version/evidence | containment, retry/manual action, recovery/closure | WF-012 | System Error, Audit Event, Decision History | API-014/016–019 | related AI capability only; advisory | named operations/domain owner | contain/retry/recover/close (API-017–019) | reconcile/audit (API-014/016) |

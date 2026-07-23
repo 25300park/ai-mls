@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-ROADMAP-006 |
-| 문서 버전 | v1.1 |
+| 문서 버전 | v1.2 |
 | 상태 | FROZEN |
 | 소유 역할 | Product Owner / Development Owner |
 | 기준일 | 2026-07-15 |
@@ -35,11 +35,23 @@ Sprint는 calendar duration/날짜가 없는 logical iteration이다. entry에�
 | FEAT-014 / DEV-014 / IMP-014 / API-013 / TRACE-014 | SP-008 | Publication Approval Authority only |
 | WF-008 / WF-009 | SP-008 | Publication Approval portions only |
 | UI-029 / UI-030 | SP-008 | Publication Approval states and actions only |
-| TEST-021 / TEST-022 / TEST-033 | SP-008 | FEAT-014-owned acceptance and regression coverage |
+| TEST-021 / TEST-022 / TEST-033 SP-008 partition | SP-008 | FEAT-014-owned acceptance, Effective Approval and safe-boundary regression coverage |
 | FEAT-015 / DEV-015 / IMP-015 / API-014 | `PENDING ARCHITECTURE OWNER DECISION` | Publication execution and delivery; excluded from SP-008/SP-009 |
 | RC stabilization, migration rehearsal and cutover rehearsal | SP-009 | governance ownership only; implementation has not started |
 
 SP-007 Permission Authority의 승인 commit과 구현 기준선은 AO-017로 변경되지 않는다. Production cutover와 post-deployment verification의 Sprint assignment는 `PENDING ARCHITECTURE OWNER DECISION`이다.
+
+## GOV-001 Publication Approval governance boundary
+
+| 항목 | SP-008 / FEAT-014 | FEAT-015 |
+|---|---|---|
+| Requirement | REQ-CONST-002–004/007/010/012/013 | Publication execution requirements |
+| Entity ownership | Client Proposal, Publication Approval, Immutable Representation Snapshot | Publication, Publication Target, Published Listing Projection |
+| API | API-013 approval lifecycle only | API-014 execution, delivery, reconciliation |
+| Workflow | WF-008/009 | WF-010–012 |
+| Test | TEST-021/022, TEST-033 SP-008 partition | TEST-033 FEAT-015 partition |
+
+SP-008은 `Publication Target`을 read-only dependency로 참조하며 Publication lifecycle을 소유하지 않는다.
 
 ## Sprint controls
 

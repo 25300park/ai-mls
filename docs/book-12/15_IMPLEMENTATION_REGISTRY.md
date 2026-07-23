@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-ROADMAP-016 |
-| 문서 버전 | v1.1 |
+| 문서 버전 | v1.2 |
 | 상태 | FROZEN |
 | 소유 역할 | Development Owner / Architecture Owner |
 | 기준일 | 2026-07-15 |
@@ -35,8 +35,8 @@
 | IMP-011 | EPIC-006 | FEAT-011 | DEV-011 | WF-006/008/011 | Match Result, Requirement, Candidate Listing | API-010 | UI-024/025 | AI-005–007 | TEST-019/031/043–045 | SP-005 | REL-001 | Matching/API Owner | PLANNED |
 | IMP-012 | EPIC-007 | FEAT-012 | DEV-012 | WF-007/009–011 | Verification, Availability, Approval History | API-011 | UI-026/027/029–032 | AI-007 support | TEST-002/010/011/020/022/024/032/051 | SP-006 | REL-002 | Verification/API Owner | PLANNED |
 | IMP-013 | EPIC-007 | FEAT-013 | DEV-013 | WF-007–011 | Permission, Approval History, Contact Channel | API-012 | UI-026/028–032 | AI-007 support | TEST-003/012/020–022/024/032 | SP-007 | REL-002 | Permission/API Owner | PLANNED |
-| IMP-014 | EPIC-007 | FEAT-014 | DEV-014 | WF-008/009 | Client Proposal, Publication Approval, Verification, Permission | API-013 | UI-025/028–030 | N/A — human approval | TEST-021/022/033 | SP-008 | REL-003 | Business/Publication API Owner | PLANNED |
-| IMP-015 | EPIC-007 | FEAT-015 | DEV-015 | WF-009–012 | Publication, Publication Target, Status History, System Error | API-014 | UI-029–033/035 | N/A — external effect | TEST-002–004/008/011/012/022–025/033/049 | `PENDING ARCHITECTURE OWNER DECISION` | REL-004 | Publication/API Owner | PLANNED |
+| IMP-014 | EPIC-007 | FEAT-014 | DEV-014 | WF-008/009 | Client Proposal, Publication Approval, Immutable Representation Snapshot, Verification, Permission; Publication Target read-only dependency | API-013 | UI-025/028–030 | N/A — human approval | TEST-021/022/033 SP-008 partition | SP-008 | REL-003 | Business/Publication API Owner | PLANNED |
+| IMP-015 | EPIC-007 | FEAT-015 | DEV-015 | WF-010–012 | Publication, Publication Target, Published Listing Projection, Status History, System Error | API-014 | UI-031–033/035 | N/A — external effect | TEST-002–004/008/011/012/023–025/033 FEAT-015 partition/049 | `PENDING ARCHITECTURE OWNER DECISION` | REL-004 | Publication/API Owner | PLANNED |
 | IMP-016 | EPIC-008 | FEAT-016 | DEV-016 | WF-001–012 | User, Role, Team, Decision History | API-015 | UI-006/036 | N/A — administration | TEST-005/034/037/048/053 | SP-001 | REL-001 | Administration/API Owner | PLANNED |
 | IMP-017 | EPIC-008 | FEAT-017 | DEV-017 | WF-001–012 | Audit Event, User Action, Status History, Approval History | API-016 | UI-035/036 | AI metadata | TEST-004–006/017/022/025/034/046/049/051/053 | SP-001 | REL-001 | Audit/API Owner | PLANNED |
 | IMP-018 | EPIC-008 | FEAT-018 | DEV-018 | WF-003/006/010–012 | AI Job, AI Result, System Error | API-017 | UI-034 | AI-001–007 | TEST-016/024/025/035/039–043/045/051 | SP-002 | REL-001 | Operations/API Owner | PLANNED |

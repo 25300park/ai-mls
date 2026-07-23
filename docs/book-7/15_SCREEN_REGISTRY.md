@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-UI-016 |
-| 문서 버전 | v1.0 |
+| 문서 버전 | v1.1 |
 | 상태 | FROZEN |
 | 소유 역할 | Architecture Owner / Business Owner |
 | 기준일 | 2026-07-14 |
@@ -50,8 +50,8 @@
 | UI-026 | Verification Queue | WF-007/011 | Verification, Verifier Assignment, Permission, Reverification Request | API-011/012 | AI-007 | assigned verifier/reviewer | Verification Owner | DEFINED |
 | UI-027 | Verification Detail | WF-007/011 | Verification, Availability, Verifier Assignment, Approval History | API-007/011/016 | AI-007 support | human verifier | Verification Owner | DEFINED |
 | UI-028 | Permission Review | WF-007–011 | Permission, Verification, Approval History | API-011/012/016 | N/A human authority | permission reviewer | Permission Owner | DEFINED |
-| UI-029 | Publication Approval Queue | WF-009 | Publication Approval, Publication, Approval History | API-013/016 | N/A human approval | publication approver | Publication Approval Owner | DEFINED |
-| UI-030 | Publication Approval Detail | WF-009 | Publication Approval, Verification, Permission, Publication | API-011–013/016 | N/A human approval | independent approver | Publication Approval Owner | DEFINED |
+| UI-029 | Publication Approval Queue | WF-009 | Publication Approval, Immutable Representation Snapshot, Approval History; Publication Target read-only dependency | API-013/016 | N/A human approval | scoped `PUA`; actor-level SoD | Publication Approval Owner | DEFINED |
+| UI-030 | Publication Approval Detail | WF-009 | Publication Approval, Immutable Representation Snapshot, Verification, Permission, Approval History; Publication Target read-only dependency | API-011/012/013/016 | N/A human approval | independent `PUA`; MFA/reason/SoD | Publication Approval Owner | DEFINED |
 | UI-031 | Publication Operations | WF-010–012 | Publication, Publication Target, Status History, System Error | API-014/018/019 | N/A external control | owner/reconciler | Publication Owner | DEFINED |
 | UI-032 | Expiration and Reverification | WF-011 | Reverification Request, Verification, Permission, Publication | API-011/012/014/017 | AI-007 support | scoped renewal roles | Verification Owner | DEFINED |
 | UI-033 | Exception Recovery | WF-012 | System Error, Audit Event, Decision History | API-014/016–019 | related capability only | named recovery owner | Operations Owner | DEFINED |
@@ -59,6 +59,20 @@
 | UI-035 | Audit Explorer | WF-001–012 | Audit Event, Decision History, Status History, Approval History, User Action | API-016 | N/A evidence | security/governance | Security/Governance Owner | DEFINED |
 | UI-036 | Role and Policy Administration | WF-001–012 | User, Role, Team, Source Registry, Publication Target, Retention Policy | API-015/016 | N/A administration | admin separated scopes | Administration Owner | DEFINED |
 | UI-037 | Notification Center | WF-001–012 | Audit Event, System Error, Approval History, AI Job | API-002/016/017 and API-003–015/018/019 source capability | AI-001–007 when source is AI Job; otherwise N/A — notification projection | recipient scope | Business/Operations Owner | DEFINED |
+
+## GOV-001 Publication Approval mapping
+
+`UI-029`와 `UI-030`은 `WF-009`만 소유하며 API-013을 primary API, API-011/012를 prerequisite read, API-016을 immutable history read로 사용한다. 두 화면은 Publication entity나 lifecycle을 소유하지 않는다.
+
+표시·검증 context는 다음을 포함한다.
+
+- representation identity, version, checksum과 immutable snapshot
+- one Publication Target와 target-scoped Channel
+- exact target/channel policy versions
+- language, audience와 approved field/media scope
+- current Verification/Permission prerequisites
+- requester, creator/editor, verifier, Permission decision actor, assigned PUA와 executor conflict 결과
+- effective Approval, expiry/revocation과 safe error state
 
 ## Coverage validation contract
 

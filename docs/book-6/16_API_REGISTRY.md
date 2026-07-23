@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-API-017 |
-| 문서 버전 | v1.0 |
+| 문서 버전 | v1.1 |
 | 상태 | FROZEN |
 | 소유 역할 | Architecture Owner / Development Reviewer |
 | 기준일 | 2026-07-14 |
@@ -34,8 +34,8 @@ Phase 7 API capability ID, owning document, logical operations, workflow/entity/
 | API-010 | Matching | DOC-API-008 | Request/read/review/stale match | WF-006, WF-008, WF-011 | Match Result, Requirement, Candidate Listing, Listing Offer | AI-005, AI-006, AI-007 | Agent/Human reviewer |
 | API-011 | Verification | DOC-API-009 | Request/assign/decide/reverify | WF-007, WF-011 | Verification, Verifier Assignment, Availability, Reverification Request | AI-007 support only | Authorized human verifier |
 | API-012 | Permission | DOC-API-009 | Request/decide/revoke permission | WF-007, WF-008, WF-009, WF-010, WF-011 | Permission, Verification, Approval History | N/A human authority | Permission Reviewer |
-| API-013 | Proposal and publication approval | DOC-API-010 | Proposal share; approval request/decision | WF-008, WF-009 | Match Result, Client Proposal, Verification, Permission, Publication Approval, Publication, Approval History | N/A human authority | Senior Agent/Publication Approver |
-| API-014 | Publication delivery and reconciliation | DOC-API-010 | Deliver/reconcile/correct/suspend/withdraw/republish | WF-010, WF-011, WF-012 | Publication Target, Publication, Status History, System Error | N/A deterministic/external evidence | Publication Owner/Reconciler |
+| API-013 | Proposal and publication approval | DOC-API-010 | Proposal create/read/review/share/feedback; ReadApproval; ListApprovalQueue; GetApprovalReviewContext; CheckEffectiveApproval; CreateApprovalRequest; AssignOrClaimApprover; ReassignOrReleaseApprover; DecideApproval; RevokeApproval; ExpireApproval | WF-008, WF-009 | Match Result, Client Proposal, Verification, Permission, Publication Approval, Immutable Representation Snapshot, Approval History; Publication Target read-only dependency | N/A human authority | Senior Agent by proposal scope / independent Publication Approver (`PUA`) |
+| API-014 | Publication delivery and reconciliation | DOC-API-010 | Deliver/reconcile/correct/suspend/withdraw/republish | WF-010, WF-011, WF-012 | Publication Target, Publication, Published Listing Projection, Status History, System Error | N/A deterministic/external evidence | Publication Owner/Reconciler |
 | API-015 | Administration | DOC-API-011 | Role/policy/source/target governed changes | WF-001, WF-002, WF-003, WF-004, WF-005, WF-006, WF-007, WF-008, WF-009, WF-010, WF-011, WF-012 | User, Role, Team, Source Registry, Publication Target, Retention Policy | N/A | Administration/Security Owner |
 | API-016 | Audit and history | DOC-API-011 | Query/export audit and history | WF-001, WF-002, WF-003, WF-004, WF-005, WF-006, WF-007, WF-008, WF-009, WF-010, WF-011, WF-012 | Audit Event, Decision History, Status History, Approval History, User Action | N/A | Security/Governance Owner |
 | API-017 | Background jobs | DOC-API-012 | Submit/read/cancel/successor/result | WF-003, WF-006, WF-010, WF-011, WF-012 | AI Job, AI Result, Reverification Request, Publication, Retention Job, System Error | AI-001, AI-002, AI-003, AI-004, AI-005, AI-006, AI-007 when AI job | Domain/Operations Owner |
@@ -43,6 +43,17 @@ Phase 7 API capability ID, owning document, logical operations, workflow/entity/
 | API-019 | External integration lifecycle | DOC-API-014 | Contract/map/reconcile/suspend integration | WF-001, WF-002, WF-003, WF-004, WF-005, WF-006, WF-007, WF-008, WF-009, WF-010, WF-011, WF-012 | Source Registry, Source Provenance, Client, AI Job, AI Result, Publication, System Error | AI-001, AI-002, AI-003, AI-004, AI-005, AI-006, AI-007 for AI Provider | Integration + affected domain owners |
 
 ## Request Model
+
+### GOV-001 API-013 ownership boundary
+
+API-013의 Publication Approval contract는 exact representation identity/version/checksum, one target, one target-scoped channel, target/channel policy versions, language/audience/field scope, valid Verification, active `PUBLIC_PUBLICATION` Permission, expected version, actor/session, idempotency와 trace context를 입력으로 사용한다.
+
+- read operations는 scoped Approval/queue/review context와 current effective result를 반환한다.
+- mutations는 `Publication Approval` lifecycle만 변경하고 append-only Approval History/Audit Event를 만든다.
+- `DecideApproval`은 closed disposition `APPROVED` 또는 `REJECTED`를 사용한다.
+- `ExpireApproval`은 scheduler-only deterministic restriction이다.
+- `CheckEffectiveApproval`은 downstream prerequisite이며 delivery success를 뜻하지 않는다.
+- API-013은 Publication lifecycle, connector invocation, delivery, reconciliation, correction, suspension, withdrawal 또는 republish를 소유하거나 실행하지 않는다. 해당 operation은 API-014 소유다.
 
 각 API는 owning document의 domain request와 [API Principles](01_API_PRINCIPLES.md)의 identity/trace/concurrency/idempotency context를 결합한다. Registry 자체 write API는 Phase 7에서 정의하지 않으며 변경은 CR/Decision/document review로 관리한다.
 

@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-035 |
-| 문서 버전 | v1.1 |
+| 문서 버전 | v1.2 |
 | 상태 | FROZEN |
 | 소유 역할 | Architecture Owner / Quality Owner |
 | 기준일 | 2026-07-15 |
@@ -37,8 +37,8 @@
 | TRACE-011 | REQ-CONST-001, REQ-CONST-002, REQ-CONST-008, REQ-CONST-011 | WF-006, WF-008, WF-011 | Match Result, Requirement, Candidate Listing | API-010 | UI-024, UI-025 | AI-005–007 | DEV-011 | SP-005 | REL-001 | TEST-019, TEST-031, TEST-043–045 | VERIFIED |
 | TRACE-012 | REQ-CONST-002, REQ-CONST-003, REQ-CONST-010–012 | WF-007, WF-009–011 | Verification, Availability, Approval History | API-011 | UI-026, UI-027, UI-029–032 | AI-007 — evidence support only; human review required | DEV-012 | SP-006 | REL-002 | TEST-002, TEST-010, TEST-011, TEST-020, TEST-022, TEST-024, TEST-032, TEST-051 | VERIFIED |
 | TRACE-013 | REQ-CONST-002–004, REQ-CONST-010, REQ-CONST-013 | WF-007–011 | Permission, Approval History, Contact Channel | API-012 | UI-026, UI-028–032 | AI-007 — evidence support only; no approval authority | DEV-013 | SP-007 | REL-002 | TEST-003, TEST-012, TEST-020–022, TEST-024, TEST-032 | VERIFIED |
-| TRACE-014 | REQ-CONST-002–004, REQ-CONST-010, REQ-CONST-013 | WF-008, WF-009 | Client Proposal, Publication Approval, Verification, Permission | API-013 | UI-025, UI-028–030 | N/A — human approval is mandatory | DEV-014 | SP-008 | REL-003 | TEST-021, TEST-022, TEST-033 | VERIFIED |
-| TRACE-015 | REQ-CONST-002–007, REQ-CONST-009, REQ-CONST-012, REQ-CONST-013 | WF-009–012 | Publication, Publication Target, Status History, System Error | API-014 | UI-029–033, UI-035 | N/A — publication authority is deterministic and human-approved | DEV-015 | `PENDING ARCHITECTURE OWNER DECISION` | REL-004 | TEST-002–004, TEST-008, TEST-011, TEST-012, TEST-022–025, TEST-033, TEST-049 | VERIFIED |
+| TRACE-014 | REQ-CONST-002–004, REQ-CONST-007, REQ-CONST-010, REQ-CONST-012, REQ-CONST-013 | WF-008, WF-009 | Client Proposal, Publication Approval, Immutable Representation Snapshot, Verification, Permission; Publication Target is read-only dependency only | API-013 | UI-025, UI-028–030 | N/A — human approval is mandatory | DEV-014 | SP-008 | REL-003 | TEST-021, TEST-022, TEST-033 SP-008 Approval/Effective Approval/Safe Boundary partition | VERIFIED |
+| TRACE-015 | REQ-CONST-002–007, REQ-CONST-009, REQ-CONST-012, REQ-CONST-013 | WF-010–012 | Publication, Publication Target, Published Listing Projection, Status History, System Error | API-014 | UI-031–033, UI-035 | N/A — publication authority is deterministic and human-approved | DEV-015 | `PENDING ARCHITECTURE OWNER DECISION` | REL-004 | TEST-002–004, TEST-008, TEST-011, TEST-012, TEST-023–025, TEST-033 FEAT-015 Delivery/Reconciliation/Publication Lifecycle partition, TEST-049 | VERIFIED |
 | TRACE-016 | REQ-CONST-006, REQ-CONST-007, REQ-CONST-010 | WF-001–012 | User, Role, Team, Decision History | API-015 | UI-006, UI-036 | N/A — administration is permission-controlled | DEV-016 | SP-001 | REL-001 | TEST-005, TEST-034, TEST-037, TEST-048, TEST-053 | VERIFIED |
 | TRACE-017 | REQ-CONST-005–007, REQ-CONST-010 | WF-001–012 | Audit Event, User Action, Status History, Approval History | API-016 | UI-035, UI-036 | AI-001–007 metadata is audited; AI cannot alter audit truth | DEV-017 | SP-001 | REL-001 | TEST-004–006, TEST-017, TEST-022, TEST-025, TEST-034, TEST-046, TEST-049, TEST-051, TEST-053 | VERIFIED |
 | TRACE-018 | REQ-CONST-007, REQ-CONST-008, REQ-CONST-010 | WF-003, WF-006, WF-010–012 | AI Job, AI Result, System Error | API-017 | UI-034 | AI-001–007 | DEV-018 | SP-002 | REL-001 | TEST-016, TEST-024, TEST-025, TEST-035, TEST-039–043, TEST-045, TEST-051 | VERIFIED |
