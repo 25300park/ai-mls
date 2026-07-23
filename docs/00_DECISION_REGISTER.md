@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-020 |
-| 문서 버전 | v1.0 |
+| 문서 버전 | v1.1 |
 | 상태 | FROZEN |
 | 소유 역할 | Architecture Owner |
 | 기준일 | 2026-07-13 |
@@ -123,6 +123,34 @@
 | DEC-092 | [Phase 13 request](reviews/PHASE13_COMPLETION.md) | Roadmap IDs are permanent planning identities | EPIC/FEAT/SP/REL/IMP IDs는 implementation artifact나 date가 아니라 permanent planning identity이며 split/replacement/cancel 시 history와 supersession을 보존한다. | Workflow | Architecture/Product Owner | 2026-07-15 | APPROVED | DOC-ROADMAP-001, DOC-ROADMAP-003–006, DOC-ROADMAP-015–016 | Phase 13 이후 | None | planning-tool integration pending; Phase 14 APPROVE recommendation and Phase 15 user authorization |
 | DEC-093 | [Phase 15 authorization](reviews/PHASE15_CORRECTION_REPORT.md) | Canonical traceability authority | `DOC-CORE-035`를 requirement-to-test end-to-end 연결의 단일 authoritative matrix로 사용하고 Book별 matrix/registry는 상세 근거로 유지한다. | Architecture | Architecture Owner / Quality Owner | 2026-07-15 | APPROVED | DOC-CORE-019, DOC-CORE-035, DOC-REVIEW-026–028 | Phase 15 이후 | None | F14-C-002/ACT-14-002 correction; no new product architecture |
 | DEC-094 | [Phase 16 authorization](freeze/FREEZE_BASELINE.md) | Architecture Bible v1.0 freeze | 승인된 Architecture Bible candidate를 v1.0 immutable baseline으로 동결하고 ADR-003/DEC-013/062/065와 validating assumptions는 기존 open status로 유지한다. | Architecture | User Approver / Architecture Owner | 2026-07-15 | APPROVED | DOC-FREEZE-001–008, DOC-REVIEW-029–030 | Phase 16 | None | freeze metadata decision only; no new architecture or implementation |
+| DEC-095 | AO-017 Governance Alignment Brief | Align Publication Approval with SP-008 | Frozen roadmap entries의 Publication Approval ownership을 SP-008/REL-003으로 재배정하고 기존 SP-008 RC stabilization scope를 SP-009로 이동한다. | Architecture | Architecture Owner | 2026-07-23 | APPROVED | DOC-CORE-007, DOC-CORE-020–021, DOC-CORE-035, DOC-ROADMAP-005–007, DOC-ROADMAP-015–016 | AO-017 | None | CR-020; no ADR required because AO-017 explicitly supersedes roadmap ownership without changing product authority |
+
+## AO-017 change-control rationale
+
+### Problem
+
+Frozen registries가 Publication Approval을 SP-007에 배정했으나 SP-007은 이미 Permission Authority로 구현, 승인, 동결됐다.
+
+### Decision
+
+Publication Approval Authority artifacts를 SP-008/REL-003으로 재배정하고 기존 SP-008 RC stabilization scope를 SP-009로 이동한다. SP-007 Permission Authority baseline은 변경하지 않는다.
+
+### Rationale
+
+- accepted SP-007 baseline을 보존한다.
+- frozen Sprint를 다시 열지 않는다.
+- Permission과 Publication Approval의 분리를 보존한다.
+- sequential implementation ownership을 유지한다.
+- canonical registry의 silent reinterpretation을 방지한다.
+
+### Consequences
+
+- TRACE-014는 SP-008/REL-003으로 이동한다.
+- Publication Approval Authority는 REL-003에 포함된다.
+- RC stabilization, migration rehearsal와 cutover rehearsal은 SP-009로 이동한다.
+- FEAT-015는 SP-008/SP-009 밖에 유지되며 Sprint assignment는 `PENDING ARCHITECTURE OWNER DECISION`이다.
+- SP-008 Scope Mapping은 이 governance alignment 후 별도 execution에서 다시 수행해야 한다.
+- Production cutover와 post-deployment verification의 Sprint assignment도 `PENDING ARCHITECTURE OWNER DECISION`이다.
 
 ## Open-decision disposition catalog
 

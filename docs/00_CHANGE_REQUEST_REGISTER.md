@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-021 |
-| 문서 버전 | v1.0 |
+| 문서 버전 | v1.1 |
 | 상태 | FROZEN |
 | 소유 역할 | Architecture Owner |
 | 기준일 | 2026-07-13 |
@@ -53,6 +53,7 @@
 | CR-017 | Perform Phase 14 Architecture Review | Book 0–12, ADR, registry와 review의 consistency/traceability/quality/readiness를 검증하고 findings, recommendations와 action items를 기록한다. | User | Architecture Freeze 전 complete review와 correction-only Phase 15 input 필요 | CRITICAL | DOC-REVIEW-021–025, ACT-14-001–012와 freeze readiness | DOC-REVIEW-021–025 | Phase 14 이후 | IMPLEMENTED | No new architecture decision; review dispositions only | NOT_REQUIRED — verification and correction proposals only | 2026-07-15 |
 | CR-018 | Execute Phase 15 Architecture Corrections | Phase 14의 ACT-14-001–012와 critical/major/minor findings만 교정하고 canonical trace/status/registry를 동기화한다. | User | Architecture Freeze 전 review findings closure 필요 | CRITICAL | Books 0–12 status, DOC-CORE-019/035, DEC/ADR/ASM/register/review evidence | DOC-CORE-001–035, DOC-ADR-001–006, DOC-REVIEW-021–028 | Phase 15 | IMPLEMENTED | DEC-093; Phase 14 APPROVE/KEEP OPEN dispositions | ADR-001/002/004/005/006 approved; ADR-003 remains IN REVIEW | 2026-07-15 |
 | CR-019 | Freeze Architecture Bible v1.0 | 승인된 250-document candidate와 Phase 16 freeze evidence를 v1.0 baseline으로 동결하고 open exception을 보존한다. | User | Codex development 전 immutable architecture authority 필요 | CRITICAL | version/status metadata, freeze manifest/snapshot/trace/decision/open-item records와 future change control | DOC-CORE-001–035, DOC-ADR-001–006, DOC-FREEZE-001–008, DOC-REVIEW-001–030 | Phase 16 | IMPLEMENTED | DEC-094 — APPROVED | NOT_REQUIRED — freeze metadata/governance only | 2026-07-15 |
+| CR-020 | Align Publication Approval with SP-008 | FEAT-014/DEV-014/IMP-014/API-013/TRACE-014와 Publication Approval workflow/UI/test ownership을 SP-008/REL-003으로 이동하고 기존 SP-008 RC stabilization scope를 SP-009로 이동한다. | Architecture Owner | SP-007 Permission Authority accepted baseline과 frozen roadmap ownership의 충돌 해소 | CRITICAL | Sprint/trace/release ownership correction; FEAT-015와 Production cutover Sprint assignment는 pending 유지 | DOC-CORE-007, DOC-CORE-020–021, DOC-CORE-035, DOC-ROADMAP-005–007, DOC-ROADMAP-015–016 | AO-017 | IMPLEMENTED | DEC-095 — APPROVED | NOT_REQUIRED — explicit Architecture Owner roadmap supersession; no product authority change | 2026-07-23 |
 
 ## 처리 절차
 

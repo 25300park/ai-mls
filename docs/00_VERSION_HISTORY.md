@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-007 |
-| 문서 버전 | v1.0 |
+| 문서 버전 | v1.1 |
 | 상태 | FROZEN |
 | 소유 역할 | Architecture Owner |
 
@@ -32,6 +32,7 @@ Architecture Bible과 운영 문서의 release-level 변경 이력을 관리한�
 | 2026-07-15 | v0.1 | APPROVED | Phase 15 — Architecture Corrections | ACT-14-001–012 교정, canonical trace matrix, metadata/status/ADR/DEC/ASM/registry synchronization과 zero-orphan validation | CR-018; DEC-093; Phase 15 user authorization; ADR-003/DEC-013/062/065 remain in review |
 | 2026-07-15 | v1.0 | FROZEN | Phase 16 — Architecture Freeze v1.0 | 260 documents를 frozen baseline으로 전환하고 manifest/document snapshot/trace/decision/open-item/baseline/validation evidence 확립 | CR-019; DEC-094; DOC-FREEZE-001–008; DOC-REVIEW-029–030; ADR-003 remains IN REVIEW |
 | 2026-07-15 | v1.0 | FROZEN | Sprint 0 implementation progress metadata | SP-000/EPIC-001/FEAT-024/DEV-024/IMP-024/TEST-056에 매핑된 repository·tooling placeholder와 execution evidence 생성; normative architecture 변경 없음 | User-authorized Sprint 0; `docs/development/SPRINT0_*` |
+| 2026-07-23 | v1.1 | FROZEN | AO-017 Governance Alignment | Publication Approval Authority를 SP-008/REL-003으로 재배정하고 RC stabilization을 SP-009로 이동; FEAT-015와 Production cutover Sprint는 pending 처리 | AO-017; CR-020; DEC-095; Architecture Owner approval |
 
 ## 기록 규칙
 

@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-ROADMAP-007 |
-| 문서 버전 | v1.0 |
+| 문서 버전 | v1.1 |
 | 상태 | FROZEN |
 | 소유 역할 | Release Owner / Product Owner |
 | 기준일 | 2026-07-15 |
@@ -20,17 +20,17 @@ Exit: mapped Features Ready/Done, no orphan trace, synthetic-data test, role/per
 
 ## Beta — REL-002
 
-제한된 audience/target에서 verification, separate permission, proposal/approval, publication delivery/reconciliation와 expiry/recovery를 검증한다. target/source/legal/privacy approval가 없는 integration은 제외한다.
+SP-007까지 완료된 verification과 separate permission authority를 제한된 audience에서 검증한다. Publication Approval과 publication execution/delivery는 포함하지 않으며 target/source/legal/privacy approval가 없는 integration도 제외한다.
 
-Exit: exact-version human approval, idempotency, unknown-state reconciliation, withdrawal/rollback, privacy/security와 controlled UAT sign-off.
+Exit: verification/permission separation, expiry/recovery, privacy/security와 controlled UAT sign-off.
 
 ## RC — REL-003
 
-기능 동결 candidate다. Beta의 모든 capability와 fix만 포함하며 migration/cutover rehearsal, full regression, performance/security/AI evaluation, restore/DR와 documentation/operations readiness를 검증한다.
+기능 동결 candidate다. Beta의 모든 capability와 SP-008 Publication Approval Authority를 포함한다. SP-009에서 migration/cutover rehearsal, full regression, performance/security/AI evaluation, restore/DR와 documentation/operations readiness를 검증한다. Publication execution/delivery는 포함하지 않는다.
 
 ## Production — REL-004
 
-RC의 fresh evidence와 named approval로 go-live한다. monitoring, on-call/hypercare, backup/restore, rollback/cutover communication와 post-deployment verification이 준비돼야 한다.
+RC의 fresh evidence와 named approval로 go-live한다. Publication execution/delivery와 Production cutover의 Sprint assignment는 `PENDING ARCHITECTURE OWNER DECISION`이며, 승인 전 REL-004 scope를 구현하지 않는다. monitoring, on-call/hypercare, backup/restore, rollback/cutover communication와 post-deployment verification이 준비돼야 한다.
 
 ## Future releases — REL-005
 

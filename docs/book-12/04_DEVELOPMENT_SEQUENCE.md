@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-ROADMAP-005 |
-| 문서 버전 | v1.0 |
+| 문서 버전 | v1.1 |
 | 상태 | FROZEN |
 | 소유 역할 | Architecture Owner / Development Owner |
 | 기준일 | 2026-07-15 |
@@ -25,10 +25,12 @@ Implementation evidence chain에는 Workflow/Entity/API/Screen/AI, Sprint, Relea
 | 4 | contact/client/requirement | EPIC-005 / FEAT-008–010 | DEV-008–010 | privacy, lifecycle, parser tests |
 | 5 | matching와 role-aware UI | EPIC-006/010 / FEAT-011/021 | DEV-011/021 | eligibility, accessibility/UAT |
 | 6 | verification와 permission | EPIC-007 / FEAT-012/013 | DEV-012/013 | separate human authority, expiry |
-| 7 | proposal, approval와 publication | EPIC-007 / FEAT-014/015 | DEV-014/015 | exact version, idempotency, reconciliation |
-| 8 | cumulative RC stabilization | all REL-002 Features | DEV-024 coordination | regression/UAT/security/performance/AI/DR |
-| 9 | Production cutover and verification | all REL-003 accepted Features | DEV-024 coordination | go-live/rollback/post-deployment acceptance |
+| 7 | Publication Approval Authority | EPIC-007 / FEAT-014 | DEV-014 | exact-version human approval, separation of duties |
+| 8 | Publication execution ownership — `PENDING ARCHITECTURE OWNER DECISION` | EPIC-007 / FEAT-015 | DEV-015 | idempotency, reconciliation, external-effect recovery |
+| 9 | cumulative RC stabilization, migration rehearsal와 cutover rehearsal | all REL-003 Features | DEV-024 coordination | regression/UAT/security/performance/AI/DR |
 | 10 | conditional POST-MVP integration expansion | EPIC-009 / FEAT-019/020 | DEV-019/020 | new approval, isolation, source policy, recovery |
+
+Production cutover와 post-deployment verification의 Sprint assignment는 `PENDING ARCHITECTURE OWNER DECISION`이다. AO-017은 기존 SP-008 RC stabilization scope만 SP-009로 이동하며 Production cutover의 새 Sprint를 지정하지 않는다.
 
 ## Ordering rules
 

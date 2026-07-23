@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-ROADMAP-015 |
-| 문서 버전 | v1.0 |
+| 문서 버전 | v1.1 |
 | 상태 | FROZEN |
 | 소유 역할 | Release Owner / Product Owner |
 | 기준일 | 2026-07-15 |
@@ -23,9 +23,9 @@ logical release identity, included Epic/Feature/Sprint, approval와 status를 �
 | Release ID | Release | Epic | Feature | Sprint | Approval | Status |
 |---|---|---|---|---|---|---|
 | REL-001 | MVP internal baseline | EPIC-001–006/008/010 | FEAT-001–011/016–018/021–024 | SP-000–005 | PENDING — Business/Architecture/Security/Quality/Operations/User | PLANNED |
-| REL-002 | Controlled Beta | EPIC-001–008/010 | FEAT-001–018/021–024 | SP-000–007 | PENDING — REL-001 + Publication/Privacy/Integration | PLANNED |
-| REL-003 | Release Candidate | EPIC-001–008/010 | FEAT-001–018/021–024 | SP-008 | PENDING — full regression/UAT/security/AI/DR/migration | PLANNED |
-| REL-004 | Production | EPIC-001–008/010 | FEAT-001–018/021–024 | SP-009 | PENDING — go-live board/user approval | PLANNED |
+| REL-002 | Controlled Beta | EPIC-001–008/010 | FEAT-001–013/016–018/021–024 | SP-000–007 | PENDING — REL-001 + Verification/Permission/Privacy | PLANNED |
+| REL-003 | Release Candidate | EPIC-001–008/010 | FEAT-001–014/016–018/021–024 | SP-000–009 | PENDING — Publication Approval + full regression/UAT/security/AI/DR/migration | PLANNED |
+| REL-004 | Production | EPIC-001–008/010 | FEAT-001–018/021–024 | `PENDING ARCHITECTURE OWNER DECISION` | PENDING — publication execution, go-live board/user approval | PLANNED |
 | REL-005 | Future expansion — POST-MVP | EPIC-001/009 | FEAT-019/020/024 | SP-010 | PENDING — new business/legal/source/privacy/architecture approval | PLANNED |
 
 ## No-orphan rule
@@ -34,7 +34,7 @@ logical release identity, included Epic/Feature/Sprint, approval와 status를 �
 
 ## Cumulative rule
 
-REL-002–004는 이전 accepted capability를 포함하고 fresh regression/approval을 요구한다. REL-005는 Production의 자동 후속이 아니며 별도 `POST-MVP` authorization이 필요하다.
+REL-002–004는 이전 accepted capability를 포함하고 fresh regression/approval을 요구한다. REL-002는 SP-007까지의 completed boundary이며 REL-003은 SP-008 Publication Approval과 SP-009 RC stabilization evidence를 포함한다. FEAT-015와 Production cutover의 Sprint assignment는 `PENDING ARCHITECTURE OWNER DECISION`이다. REL-005는 Production의 자동 후속이 아니며 별도 `POST-MVP` authorization이 필요하다.
 
 ## Governance
 
