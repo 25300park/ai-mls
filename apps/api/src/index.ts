@@ -6,6 +6,7 @@ export * from "./identity-api.js";
 export * from "./job-api.js";
 export * from "./matching-api.js";
 export * from "./permission-api.js";
+export * from "./proposal-approval-api.js";
 export * from "./property-listing-api.js";
 export * from "./source-intake-api.js";
 export * from "./verification-api.js";

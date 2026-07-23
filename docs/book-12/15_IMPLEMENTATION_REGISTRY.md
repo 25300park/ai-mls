@@ -74,3 +74,4 @@ new implementation plan은 duplicate check 후 next ID를 발급한다. split/re
 | Implementation ID | Sprint | Execution status | Architecture change | Evidence | Updated |
 |---|---|---|---|---|---|
 | IMP-024 | SP-000 | DONE | None | [Sprint 0 Completion](../development/SPRINT0_COMPLETION.md), [Sprint 0 Task Status](../development/SPRINT0_TASK_STATUS.md) | 2026-07-15 |
+| IMP-014 | SP-008 | IMPLEMENTED_AWAITING_ACCEPTANCE | None | [SP-008 Test Evidence](../development/SP008_TEST_EVIDENCE.md), [SP-008 Completion](../reviews/SP-008_COMPLETION.md) | 2026-07-23 |

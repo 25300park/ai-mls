@@ -9,6 +9,8 @@ import type { JobService } from "../../../modules/jobs/src/job-service.js";
 import type { ListingService } from "../../../modules/listing/src/listing-service.js";
 import type { MatchingService } from "../../../modules/matching/src/matching-service.js";
 import type { PermissionService } from "../../../modules/permission/src/permission-service.js";
+import type { PublicationApprovalService } from "../../../modules/publication-approval/src/publication-approval-service.js";
+import type { ProposalService } from "../../../modules/proposal/src/proposal-service.js";
 import type { PropertyService } from "../../../modules/property/src/property-service.js";
 import type { SourceRegistryService } from "../../../modules/source/src/source-registry-service.js";
 import type { VerificationService } from "../../../modules/verification/src/verification-service.js";
@@ -18,6 +20,7 @@ import { IdentityApi } from "./identity-api.js";
 import { JobApi } from "./job-api.js";
 import { MatchingApi, type MatchingInputResolver } from "./matching-api.js";
 import { PermissionApi } from "./permission-api.js";
+import { ProposalApprovalApi } from "./proposal-approval-api.js";
 import { PropertyListingApi } from "./property-listing-api.js";
 import { SourceIntakeApi } from "./source-intake-api.js";
 import { VerificationApi } from "./verification-api.js";
@@ -38,6 +41,8 @@ export interface ApiModuleDependencies {
   readonly matchingInputResolver: MatchingInputResolver;
   readonly verificationService: VerificationService;
   readonly permissionService: PermissionService;
+  readonly proposalService: ProposalService;
+  readonly publicationApprovalService: PublicationApprovalService;
 }
 
 export function composeApiModules(dependencies: ApiModuleDependencies): Readonly<{
@@ -50,6 +55,7 @@ export function composeApiModules(dependencies: ApiModuleDependencies): Readonly
   readonly matching: MatchingApi;
   readonly verification: VerificationApi;
   readonly permission: PermissionApi;
+  readonly proposalAndApproval: ProposalApprovalApi;
 }> {
   return Object.freeze({
     identity: new IdentityApi({
@@ -92,6 +98,11 @@ export function composeApiModules(dependencies: ApiModuleDependencies): Readonly
     }),
     permission: new PermissionApi({
       permissionService: dependencies.permissionService,
+      sessionReader: (sessionId) => dependencies.sessionService.readSession(sessionId),
+    }),
+    proposalAndApproval: new ProposalApprovalApi({
+      proposalService: dependencies.proposalService,
+      publicationApprovalService: dependencies.publicationApprovalService,
       sessionReader: (sessionId) => dependencies.sessionService.readSession(sessionId),
     }),
   });
