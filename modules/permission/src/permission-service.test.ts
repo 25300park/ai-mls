@@ -104,16 +104,65 @@ test("TEST-020/032 only PMR grants or denies while REV is review support only", 
   const granted = service.decide({ ...context("pmr", ["PMR"]), permissionId: draft.id, expectedVersion: supported.version, decision: "GRANT", reason: "PMR grants exact scope", idempotencyKey: "grant-pmr" }); assert.equal(granted.status, "ACTIVE");
 });
 
-test("TEST-001/047 rejects self-permission and same verifier except explicit PMR+MGR override", () => {
+test("AO-015 denies Manager Override without MFA, preserves state and emits no business decision audit", () => {
+  const { service, audit } = fixture({ approvalHistory: [{ actorId: "manager-pmr", decision: "VERIFIED", reason: "Evidence confirmed", occurredAt: "2026-07-19T07:00:00.000Z", managerOverride: false }] });
+  const draft = request(service, { idempotencyKey: "override-no-mfa-request" });
+  const review = service.beginReview({ ...context("manager-pmr", ["PMR", "MGR"]), permissionId: draft.id, expectedVersion: draft.version, reason: "Override evidence review", idempotencyKey: "override-no-mfa-review" });
+  assert.throws(() => service.decide({ ...context("manager-pmr", ["PMR", "MGR"]), actor: actor("manager-pmr", ["PMR", "MGR"], { assurance: "SINGLE_FACTOR", isMfaVerified: false }), permissionId: draft.id, expectedVersion: review.version, decision: "GRANT", reason: "Override requires fresh MFA", idempotencyKey: "override-no-mfa", managerOverride: true }), /REAUTHENTICATION_REQUIRED/u);
+  assert.equal(service.readPermission({ ...context("manager-pmr", ["PMR", "MGR"]), permissionId: draft.id }).status, "UNDER_REVIEW");
+  assert.equal(audit.query({ requesterId: "security", purpose: "AUDIT_INTEGRITY", eventType: "PERMISSION_DECIDED", targetId: draft.id }).length, 0);
+});
+
+test("AO-015 denies Manager Override with an empty documented reason and preserves state", () => {
+  const { service } = fixture({ approvalHistory: [{ actorId: "manager-pmr", decision: "VERIFIED", reason: "Evidence confirmed", occurredAt: "2026-07-19T07:00:00.000Z", managerOverride: false }] });
+  const draft = request(service, { idempotencyKey: "override-no-reason-request" });
+  const review = service.beginReview({ ...context("manager-pmr", ["PMR", "MGR"]), permissionId: draft.id, expectedVersion: draft.version, reason: "Override evidence review", idempotencyKey: "override-no-reason-review" });
+  assert.throws(() => service.decide({ ...context("manager-pmr", ["PMR", "MGR"]), permissionId: draft.id, expectedVersion: review.version, decision: "GRANT", reason: "", idempotencyKey: "override-no-reason", managerOverride: true }), /REASON_REQUIRED/u);
+  assert.equal(service.readPermission({ ...context("manager-pmr", ["PMR", "MGR"]), permissionId: draft.id }).status, "UNDER_REVIEW");
+});
+
+test("AO-015 rejects self-permission and the same verifier without Manager Override", () => {
   const { service } = fixture({ approvalHistory: [{ actorId: "manager-pmr", decision: "VERIFIED", reason: "Evidence confirmed", occurredAt: "2026-07-19T07:00:00.000Z", managerOverride: false }] });
   const selfDraft = request(service, { actor: actor("pmr", ["PMR"]), idempotencyKey: "self-request" });
   const selfReview = service.beginReview({ ...context("pmr", ["PMR"]), permissionId: selfDraft.id, expectedVersion: selfDraft.version, reason: "Self review", idempotencyKey: "self-review" });
   assert.throws(() => service.decide({ ...context("pmr", ["PMR"]), permissionId: selfDraft.id, expectedVersion: selfReview.version, decision: "GRANT", reason: "Self grant denied", idempotencyKey: "self-grant" }), /SEPARATION_OF_DUTIES_DENIED/u);
   const draft = request(service, { idempotencyKey: "verifier-conflict" });
   const review = service.beginReview({ ...context("manager-pmr", ["PMR", "MGR"]), permissionId: draft.id, expectedVersion: draft.version, reason: "Override review", idempotencyKey: "override-review" });
-  assert.throws(() => service.decide({ ...context("manager", ["MGR"]), permissionId: draft.id, expectedVersion: review.version, decision: "GRANT", reason: "MGR alone denied", idempotencyKey: "manager-grant", managerOverride: true }), /PERMISSION_DECISION_DENIED|CAPABILITY_DENIED/u);
-  const overridden = service.decide({ ...context("manager-pmr", ["PMR", "MGR"]), permissionId: draft.id, expectedVersion: review.version, decision: "GRANT", reason: "MFA manager override for verifier conflict", idempotencyKey: "override-grant", managerOverride: true });
-  assert.equal(overridden.status, "ACTIVE"); assert.equal(overridden.approvalHistory.at(-1)?.managerOverride, true);
+  assert.throws(() => service.decide({ ...context("manager-pmr", ["PMR", "MGR"]), permissionId: draft.id, expectedVersion: review.version, decision: "GRANT", reason: "Same verifier cannot decide normally", idempotencyKey: "same-verifier-normal" }), /SEPARATION_OF_DUTIES_DENIED/u);
+});
+
+test("AO-015 denies a PMR attempting Manager Override without MGR capability", () => {
+  const { service } = fixture({ approvalHistory: [{ actorId: "pmr", decision: "VERIFIED", reason: "Evidence confirmed", occurredAt: "2026-07-19T07:00:00.000Z", managerOverride: false }] });
+  const draft = request(service, { idempotencyKey: "pmr-only-override-request" });
+  const review = service.beginReview({ ...context("pmr", ["PMR"]), permissionId: draft.id, expectedVersion: draft.version, reason: "PMR reviews evidence", idempotencyKey: "pmr-only-override-review" });
+  assert.throws(() => service.decide({ ...context("pmr", ["PMR"]), permissionId: draft.id, expectedVersion: review.version, decision: "GRANT", reason: "PMR cannot use Manager Override", idempotencyKey: "pmr-only-override", managerOverride: true }), /CAPABILITY_DENIED/u);
+  assert.equal(service.readPermission({ ...context("pmr", ["PMR"]), permissionId: draft.id }).status, "UNDER_REVIEW");
+});
+
+test("AO-015 denies Manager Override against a different verifier", () => {
+  const { service } = fixture();
+  const draft = request(service, { idempotencyKey: "different-verifier-request" });
+  const review = service.beginReview({ ...context("manager-pmr", ["PMR", "MGR"]), permissionId: draft.id, expectedVersion: draft.version, reason: "Manager reviews evidence", idempotencyKey: "different-verifier-review" });
+  assert.throws(() => service.decide({ ...context("manager-pmr", ["PMR", "MGR"]), permissionId: draft.id, expectedVersion: review.version, decision: "GRANT", reason: "Override cannot target another verifier", idempotencyKey: "different-verifier-override", managerOverride: true }), /MANAGER_OVERRIDE_DENIED/u);
+  assert.equal(service.readPermission({ ...context("manager-pmr", ["PMR", "MGR"]), permissionId: draft.id }).status, "UNDER_REVIEW");
+});
+
+test("AO-015 successful Manager Override records immutable approval, audit and append-only history", () => {
+  const { service, audit } = fixture({ approvalHistory: [{ actorId: "manager-pmr", decision: "VERIFIED", reason: "Evidence confirmed", occurredAt: "2026-07-19T07:00:00.000Z", managerOverride: false }] });
+  const reason = "MFA manager override for verifier conflict";
+  const draft = request(service, { idempotencyKey: "successful-override-request" });
+  const review = service.beginReview({ ...context("manager-pmr", ["PMR", "MGR"]), permissionId: draft.id, expectedVersion: draft.version, reason: "Override evidence review", idempotencyKey: "successful-override-review" });
+  const overridden = service.decide({ ...context("manager-pmr", ["PMR", "MGR"]), permissionId: draft.id, expectedVersion: review.version, decision: "GRANT", reason, idempotencyKey: "successful-override", managerOverride: true });
+  const approval = overridden.approvalHistory.at(-1); const events = audit.query({ requesterId: "security", purpose: "AUDIT_INTEGRITY", eventType: "PERMISSION_DECIDED", targetId: draft.id }); const event = events.at(-1);
+  assert.equal(overridden.status, "ACTIVE"); assert.equal(approval?.managerOverride, true); assert.equal(approval?.actorId, "manager-pmr"); assert.equal(approval?.occurredAt, "2026-07-19T08:00:00.000Z"); assert.equal(approval?.reason, reason); assert.equal(Object.isFrozen(approval), true); assert.throws(() => Object.assign(approval as object, { reason: "Changed" }), TypeError);
+  assert.equal(events.length, 1); assert.equal(event?.action, "permission.override"); assert.equal(event?.principal.id, "manager-pmr"); assert.equal(event?.occurredAt, "2026-07-19T08:00:00.000Z"); assert.equal(event?.reason, reason); assert.equal(Object.isFrozen(event), true); assert.throws(() => Object.assign(event as object, { outcome: "FAILED" }), TypeError);
+  const history = service.readHistory({ ...context("manager-pmr", ["PMR", "MGR"]), permissionId: draft.id }); assert.deepEqual(history.map((item) => item.status), ["DRAFT", "UNDER_REVIEW", "ACTIVE"]); assert.equal(Object.isFrozen(history[0]), true);
+});
+
+test("AO-015 denies normal MGR revoke authority and preserves ACTIVE state", () => {
+  const { service } = fixture(); const permission = active(service, { idempotencyKey: "mgr-revoke-request" });
+  assert.throws(() => service.revoke({ ...context("manager", ["MGR"]), permissionId: permission.id, expectedVersion: permission.version, reason: "MGR cannot revoke normally", idempotencyKey: "mgr-revoke" }), /PERMISSION_DECISION_DENIED/u);
+  assert.equal(service.readPermission({ ...context("manager", ["MGR"]), permissionId: permission.id }).status, "ACTIVE");
 });
 
 test("TEST-024/032 applies type validity, Verification caps and immutable successors", () => {

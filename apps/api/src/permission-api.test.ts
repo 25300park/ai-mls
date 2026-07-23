@@ -70,8 +70,11 @@ test("TEST-032 API-012 ignores forged actors and returns stable privacy-safe err
   const noSession = api.readQueue({ context: { correlationId: "correlation-no-session-permission" }, purpose: permission.permissionPurpose });
   const versionApi = new PermissionApi(dependencies([], baseActor, "VERSION_CONFLICT"));
   const versionConflict = versionApi.beginReview({ context: { sessionId: baseActor.id, correlationId: "correlation-version-permission" }, permissionId: permission.id, expectedVersion: permission.version + 1, reason: "Stale review request", idempotencyKey: "api-version-conflict", purpose: permission.permissionPurpose });
+  const noMfaOverrideApi = new PermissionApi(dependencies([], Object.freeze({ ...baseActor, principalId: "manager-pmr", roles: ["PMR", "MGR"] as const, assurance: "SINGLE_FACTOR", isMfaVerified: false }), "REAUTHENTICATION_REQUIRED"));
+  const noMfaOverride = noMfaOverrideApi.decide({ context: { sessionId: baseActor.id, correlationId: "correlation-no-mfa-override" }, permissionId: permission.id, expectedVersion: permission.version, decision: "GRANT", reason: "Override requires MFA", idempotencyKey: "api-no-mfa-override", managerOverride: true, purpose: permission.permissionPurpose });
   assert.equal(response.ok, false); if (!response.ok) { assert.equal(response.error.code, "PERMISSION_NOT_FOUND"); assert.equal(response.error.message, "Request could not be completed."); assert.equal(JSON.stringify(response.error).match(/phone|email|contactValue/giu), null); }
   assert.equal(versionConflict.ok, false); if (!versionConflict.ok) assert.equal(versionConflict.error.code, "VERSION_CONFLICT");
+  assert.equal(noMfaOverride.ok, false); if (!noMfaOverride.ok) { assert.equal(noMfaOverride.error.code, "REQUEST_REJECTED"); assert.equal(noMfaOverride.error.message, "Request could not be completed."); }
   assert.equal(noSession.ok, false); assert.deepEqual(seen, [baseActor]);
 });
 
