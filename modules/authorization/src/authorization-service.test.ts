@@ -504,3 +504,43 @@ test("SP-004 reveal requires MFA and service principals cannot activate requirem
   assert.equal(reveal.reasonCode, "REAUTHENTICATION_REQUIRED");
   assert.equal(activate.reasonCode, "HUMAN_AUTHORITY_REQUIRED");
 });
+
+test("TEST-032/047 SP-007 grants bounded Permission capabilities without senior-role inheritance", () => {
+  const purpose = "PURPOSE_CLIENT_PRESENTATION";
+  const roleCases = [
+    { role: "PMR", action: "permission.decide", expected: "ALLOW" },
+    { role: "REV", action: "permission.support", expected: "ALLOW" },
+    { role: "AGT", action: "permission.read", expected: "ALLOW" },
+    { role: "VER", action: "permission.read", expected: "ALLOW" },
+    { role: "MGR", action: "permission.decide", expected: "DENY" },
+    { role: "SEC", action: "permission.decide", expected: "DENY" },
+    { role: "ADM", action: "permission.decide", expected: "DENY" },
+  ] as const;
+
+  for (const item of roleCases) {
+    const principalId = `permission-${item.role.toLowerCase()}`;
+    const { service } = createService([assignment({ principalId, role: item.role, resourceTypes: ["Permission"], purposes: [purpose] })]);
+    const decision = service.evaluate({
+      session: session({ principalId, roles: [item.role] }),
+      action: item.action,
+      resource: { type: "Permission", id: "permission-1", teamId: "team-a", createdBy: "requester" },
+      purpose,
+      reason: "Exact scope Permission review",
+      correlationId: `correlation-permission-${item.role}`,
+    });
+    assert.equal(decision.effect, item.expected, `${item.role}:${item.action}`);
+  }
+
+  const serviceId = "permission-scheduler";
+  const { service } = createService([assignment({ principalId: serviceId, role: "SVC", resourceTypes: ["Permission"], purposes: [purpose] })]);
+  const worker = session({ principalId: serviceId, principalType: "SERVICE", roles: ["SVC"], assurance: "WORKLOAD", isMfaVerified: false });
+  const expiry = service.evaluate({ session: worker, action: "permission.expire", resource: { type: "Permission", id: "permission-1", teamId: "team-a" }, purpose, correlationId: "correlation-permission-expiry" });
+  const grant = service.evaluate({ session: worker, action: "permission.decide", resource: { type: "Permission", id: "permission-1", teamId: "team-a" }, purpose, reason: "Automated grant denied", correlationId: "correlation-permission-grant" });
+  assert.equal(expiry.effect, "ALLOW");
+  assert.equal(grant.reasonCode, "HUMAN_AUTHORITY_REQUIRED");
+
+  const agentId = "permission-agent-request";
+  const agentAuthorization = createService([assignment({ principalId: agentId, role: "AGT", resourceTypes: ["Permission"], purposes: [purpose] })]).service;
+  const agentRequest = agentAuthorization.evaluate({ session: session({ principalId: agentId, roles: ["AGT"] }), action: "permission.request", resource: { type: "Permission", id: "new", teamId: "team-a" }, purpose, correlationId: "correlation-permission-agent-request" });
+  assert.equal(agentRequest.reasonCode, "CAPABILITY_DENIED");
+});

@@ -8,6 +8,7 @@ import type { IntakeService } from "../../../modules/intake/src/intake-service.j
 import type { JobService } from "../../../modules/jobs/src/job-service.js";
 import type { ListingService } from "../../../modules/listing/src/listing-service.js";
 import type { MatchingService } from "../../../modules/matching/src/matching-service.js";
+import type { PermissionService } from "../../../modules/permission/src/permission-service.js";
 import type { PropertyService } from "../../../modules/property/src/property-service.js";
 import type { SourceRegistryService } from "../../../modules/source/src/source-registry-service.js";
 import type { VerificationService } from "../../../modules/verification/src/verification-service.js";
@@ -16,6 +17,7 @@ import { ContactClientApi } from "./contact-client-api.js";
 import { IdentityApi } from "./identity-api.js";
 import { JobApi } from "./job-api.js";
 import { MatchingApi, type MatchingInputResolver } from "./matching-api.js";
+import { PermissionApi } from "./permission-api.js";
 import { PropertyListingApi } from "./property-listing-api.js";
 import { SourceIntakeApi } from "./source-intake-api.js";
 import { VerificationApi } from "./verification-api.js";
@@ -35,6 +37,7 @@ export interface ApiModuleDependencies {
   readonly matchingService: MatchingService;
   readonly matchingInputResolver: MatchingInputResolver;
   readonly verificationService: VerificationService;
+  readonly permissionService: PermissionService;
 }
 
 export function composeApiModules(dependencies: ApiModuleDependencies): Readonly<{
@@ -46,6 +49,7 @@ export function composeApiModules(dependencies: ApiModuleDependencies): Readonly
   readonly contactClient: ContactClientApi;
   readonly matching: MatchingApi;
   readonly verification: VerificationApi;
+  readonly permission: PermissionApi;
 }> {
   return Object.freeze({
     identity: new IdentityApi({
@@ -84,6 +88,10 @@ export function composeApiModules(dependencies: ApiModuleDependencies): Readonly
     }),
     verification: new VerificationApi({
       verificationService: dependencies.verificationService,
+      sessionReader: (sessionId) => dependencies.sessionService.readSession(sessionId),
+    }),
+    permission: new PermissionApi({
+      permissionService: dependencies.permissionService,
       sessionReader: (sessionId) => dependencies.sessionService.readSession(sessionId),
     }),
   });

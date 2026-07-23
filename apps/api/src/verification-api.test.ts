@@ -62,5 +62,5 @@ test("TEST-032 API-011 ignores forged actors and returns stable safe errors", ()
 
 test("SP-006 composition adds API-011 without replacing SP-001–005 modules", () => {
   const composed = composeApiModules({ sessionService: { readSession: () => baseActor }, verificationService: dependencies([]).verificationService, authorizationService: {}, administrationService: {}, auditLog: {}, sourceRegistryService: {}, intakeService: {}, jobService: {}, propertyService: {}, listingService: {}, contactService: {}, clientRequirementService: {}, matchingService: {}, matchingInputResolver: {} } as unknown as ApiModuleDependencies);
-  assert.ok(composed.verification instanceof VerificationApi); assert.ok("identity" in composed); assert.ok("matching" in composed); assert.equal("permission" in composed, false);
+  assert.ok(composed.verification instanceof VerificationApi); assert.ok("identity" in composed); assert.ok("matching" in composed); assert.equal("publication" in composed, false); assert.equal("proposal" in composed, false);
 });
