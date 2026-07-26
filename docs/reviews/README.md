@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-009 |
-| 문서 버전 | v2.2 |
+| 문서 버전 | v2.3 |
 | 상태 | IN REVIEW |
 | 소유 역할 | Architecture Owner |
 
@@ -72,5 +72,9 @@
 | [Phase 11-12 Freeze Validation](PHASE11_12_FREEZE_VALIDATION.md) | Book/Registry/zero-gap/deferred/immutable baseline 검증 | IN REVIEW |
 | [Phase 11-12 Deferred Decisions](PHASE11_12_DEFERRED_DECISIONS.md) | implementation/runtime/product deferred topics review evidence | IN REVIEW |
 | [Phase 11-12 Completion](PHASE11_12_COMPLETION.md) | freeze result와 correction prerequisite | IN REVIEW |
+| [Phase 12 Architecture Remediation](PHASE12_ARCHITECTURE_REMEDIATION.md) | Phase 11 blocker remediation과 remaining lifecycle gate | IN REVIEW |
+| [Phase 12 Freeze Readiness](PHASE12_FREEZE_READINESS.md) | zero-gap, baseline integrity와 implementation authorization gate | IN REVIEW |
+| [Phase 12 Cross-Registry Final Validation](PHASE12_CROSS_REGISTRY_FINAL_VALIDATION.md) | Registry 10/10과 reciprocal matrix 9/9 최종 검증 | IN REVIEW |
+| [Phase 12 Architecture Remediation Completion](PHASE12_ARCHITECTURE_REMEDIATION_COMPLETION.md) | Phase 12 remediation 결과, validation과 approval prerequisite | IN REVIEW |
 
 전체 review document와 current lifecycle status의 authoritative registry는 [Master Index](../00_MASTER_INDEX.md)와 [Freeze Document Registry](../freeze/FREEZE_DOCUMENT_REGISTRY.md)다. Phase 14/15/16은 각각 legacy `R1`/`R2`/`F1`을 대체한다.

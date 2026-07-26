@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-001 |
-| 문서 버전 | v2.2 |
+| 문서 버전 | v2.3 |
 | 상태 | IN REVIEW |
 | 소유 역할 | Architecture Owner |
 | 기준일 | 2026-07-24 |
@@ -816,6 +816,11 @@
 | DOC-REVIEW-067 | Phase 11-12 Freeze Validation Report | [PHASE11_12_FREEZE_VALIDATION.md](reviews/PHASE11_12_FREEZE_VALIDATION.md) |
 | DOC-REVIEW-068 | Phase 11-12 Deferred Decision Register — Review Evidence | [PHASE11_12_DEFERRED_DECISIONS.md](reviews/PHASE11_12_DEFERRED_DECISIONS.md) |
 | DOC-REVIEW-069 | Phase 11-12 Completion Report | [PHASE11_12_COMPLETION.md](reviews/PHASE11_12_COMPLETION.md) |
+| DOC-REVIEW-070 | Phase 12 Architecture Remediation Report | [PHASE12_ARCHITECTURE_REMEDIATION.md](reviews/PHASE12_ARCHITECTURE_REMEDIATION.md) |
+| DOC-REVIEW-071 | Phase 12 Freeze Readiness Report | [PHASE12_FREEZE_READINESS.md](reviews/PHASE12_FREEZE_READINESS.md) |
+| DOC-REVIEW-072 | Phase 12 Cross-Registry Final Validation Report | [PHASE12_CROSS_REGISTRY_FINAL_VALIDATION.md](reviews/PHASE12_CROSS_REGISTRY_FINAL_VALIDATION.md) |
+| DOC-REVIEW-073 | Phase 12 Architecture Remediation Completion Report | [PHASE12_ARCHITECTURE_REMEDIATION_COMPLETION.md](reviews/PHASE12_ARCHITECTURE_REMEDIATION_COMPLETION.md) |
+| DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books
 
@@ -849,6 +854,7 @@
 | Remaining open items | [PHASE15_COMPLETION.md](reviews/PHASE15_COMPLETION.md) | Phase 15 (`R2`) | AVAILABLE |
 | v1 manifest and baseline | [Freeze Manifest](freeze/FREEZE_MANIFEST_V1.md) / [Freeze Baseline](freeze/FREEZE_BASELINE.md) | Phase 16 (`F1` legacy alias) | AVAILABLE |
 | v1 document snapshot | [Freeze Document Registry](freeze/FREEZE_DOCUMENT_REGISTRY.md) | Phase 16 (`F1` legacy alias) | AVAILABLE |
+| v1.1 candidate manifest/checksum | [Architecture v1.1 Baseline Manifest](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) / [Checksum](freeze/ARCHITECTURE_V1_1_BASELINE_CHECKSUM.sha256) | Phase 12 remediation | AVAILABLE |
 | Trace/decision/open-item freeze evidence | [Freeze Traceability](freeze/FREEZE_TRACEABILITY_REPORT.md) / [Decision Summary](freeze/FREEZE_DECISION_SUMMARY.md) / [Known Open Items](freeze/FREEZE_KNOWN_OPEN_ITEMS.md) | Phase 16 (`F1` legacy alias) | AVAILABLE |
 | Post-freeze control | [Freeze Baseline](freeze/FREEZE_BASELINE.md#future-change-process) | Phase 16 (`F1` legacy alias) | AVAILABLE |
 | Development phase records | `docs/phases/PHASE_<N>_COMPLETION.md` | D0 이후 | PLANNED |
