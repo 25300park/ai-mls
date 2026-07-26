@@ -71,6 +71,16 @@
 | Runtime evidence | PENDING | Phase 13-1은 planning only |
 | Production adapter | DEFERRED | storage/transport/provider decision 미승인 |
 
+## 4.1 Phase 13-2B Implementation Evidence
+
+| Trace | Implementation evidence | Validation | Status |
+|---|---|---|---|
+| `F15-TASK-001` | `modules/publication/src/publication-contracts.ts`, `publication-entities.ts`, `publication-commands.ts`, `publication-domain-error.ts`, `publication-factory.ts` | immutable contract/value equality, required field, version, classification, child entity와 safe domain error 검증 | VERIFIED |
+| `F15-TASK-002` | `modules/publication/src/publication-aggregate.ts`, `publication-materiality-service.ts` | `PUB-TR-001`–`PUB-TR-020`, suspension, optimistic version guard, correction materiality, successor/republish/withdrawal/reconciliation invariant 검증 | VERIFIED |
+| Acceptance → Test | `publication-contracts.test.ts`, `publication-materiality-service.test.ts`, `publication-aggregate.test.ts` | 신규 domain test 16/16 PASS; 전체 regression 184/184 PASS | VERIFIED |
+| Scope boundary | Domain source/test only | repository, persistence, schema, migration, API, application service, event bus, queue, worker, projection, connector 구현 0 | VERIFIED |
+| Completion evidence | [Phase 13-2B Domain Foundation Implementation Report](../reviews/PHASE13_2B_DOMAIN_FOUNDATION_IMPLEMENTATION_REPORT.md) | lint, typecheck, build, verify, test, architecture checksum | VERIFIED |
+
 ## 5. 상호 참조
 
 - [Implementation Plan](FEAT015_IMPLEMENTATION_PLAN.md)
