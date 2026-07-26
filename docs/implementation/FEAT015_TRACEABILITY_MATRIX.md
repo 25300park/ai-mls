@@ -81,6 +81,18 @@
 | Scope boundary | Domain source/test only | repository, persistence, schema, migration, API, application service, event bus, queue, worker, projection, connector 구현 0 | VERIFIED |
 | Completion evidence | [Phase 13-2B Domain Foundation Implementation Report](../reviews/PHASE13_2B_DOMAIN_FOUNDATION_IMPLEMENTATION_REPORT.md) | lint, typecheck, build, verify, test, architecture checksum | VERIFIED |
 
+## 4.2 Phase 13-3A Implementation Evidence
+
+| Trace | Implementation evidence | Validation | Status |
+|---|---|---|---|
+| `F15-TASK-003` Repository Port / Adapter | `modules/publication/src/publication-repository.ts`, `in-memory-publication-repository.ts` | tenant-scoped save, update, find, exists, version check, optimistic concurrency와 append-only revision history 검증 | VERIFIED |
+| `F15-TASK-003` Mapper | `modules/publication/src/publication-persistence-model.ts`, `publication-persistence-mapper.ts` | pure deterministic mapping과 Domain → Persistence → Domain logical equality 검증 | VERIFIED |
+| `F15-TASK-003` Logical Unit of Work | `modules/publication/src/publication-unit-of-work.ts`, `in-memory-persistence-state.ts` | aggregate-scoped begin, atomic in-memory commit, rollback와 overlapping transaction rejection 검증 | VERIFIED |
+| `F15-TASK-003` Idempotency / Audit | `modules/publication/src/publication-idempotency-store.ts`, `publication-audit-store.ts` | duplicate replay, conflicting intent denial, immutable append-only success/failure evidence 검증 | VERIFIED |
+| Acceptance → Test | `modules/publication/src/publication-persistence.test.ts` | 신규 persistence contract test 13/13 PASS; 전체 regression 197/197 PASS | VERIFIED |
+| Scope boundary | logical port/model/mapper와 deterministic memory adapter only | physical schema, SQL, migration, ORM, production adapter, database transaction/dependency, API, event, projection 구현 0; `DFD-005` unchanged | VERIFIED |
+| Completion evidence | [Phase 13-3A Logical Persistence Foundation Implementation Report](../reviews/PHASE13_3A_LOGICAL_PERSISTENCE_IMPLEMENTATION_REPORT.md) | lint, typecheck, build, verify, test, architecture checksum | VERIFIED |
+
 ## 5. 상호 참조
 
 - [Implementation Plan](FEAT015_IMPLEMENTATION_PLAN.md)
