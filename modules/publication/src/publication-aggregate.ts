@@ -2,12 +2,16 @@ import {
   createCommandContext,
   createPublicationBinding,
   createPublicationIdentity,
+  createPublicationVersions,
   DELIVERY_OPERATIONS,
   immutableDomain,
+  OPERATION_ORIGINS,
   PUBLICATION_CLASSIFICATIONS,
+  PUBLICATION_LIFECYCLE_STATES,
   PUBLICATION_SUSPENSION_STATUSES,
   RECONCILIATION_RESOLUTIONS,
   requireClosedValue,
+  requireIsoTimestamp,
   requirePositiveInteger,
   requireText,
   samePublicationBinding,
@@ -65,6 +69,10 @@ export class PublicationAggregate {
       attempts: [], reconciliationCases: [], transitionHistory: [transition], bindingHistory: [versionRecord], ...(predecessorPublicationId === undefined ? {} : { predecessorPublicationId }),
       createdAt: command.occurredAt, updatedAt: command.occurredAt, auditCorrelationId: command.correlationId,
     });
+  }
+
+  public static rehydrate(snapshot: PublicationSnapshot): PublicationAggregate {
+    return new PublicationAggregate(snapshot);
   }
 
   public get snapshot(): PublicationSnapshot { return this.#snapshot; }
@@ -266,10 +274,32 @@ type PublicationTransitionPatch = Partial<Omit<PublicationSnapshot, "pendingOper
 };
 
 function validateSnapshot(snapshot: PublicationSnapshot): void {
+  createPublicationIdentity({ publicationId: snapshot.publicationId, tenantScopeId: snapshot.tenantScopeId });
   if (snapshot.aggregateId !== snapshot.publicationId) throw domainError("PUBLICATION_INVARIANT_VIOLATION", "INVARIANT", "Aggregate identity must equal Publication identity.");
-  requirePositiveInteger(snapshot.aggregateVersion, "aggregateVersion");
-  if (!Number.isSafeInteger(snapshot.publicationVersion) || snapshot.publicationVersion < 0) throw domainError("PUBLICATION_INVARIANT_VIOLATION", "INVARIANT", "Publication version is invalid.");
-  if (snapshot.effectiveVersion !== undefined && snapshot.effectiveVersion > snapshot.publicationVersion) throw domainError("PUBLICATION_INVARIANT_VIOLATION", "INVARIANT", "Effective version cannot exceed Publication version.");
+  createPublicationVersions({ aggregateVersion: snapshot.aggregateVersion, publicationVersion: snapshot.publicationVersion, ...(snapshot.effectiveVersion === undefined ? {} : { effectiveVersion: snapshot.effectiveVersion }) });
+  createPublicationBinding(snapshot.binding);
+  requireClosedValue(snapshot.lifecycleState, PUBLICATION_LIFECYCLE_STATES, "lifecycleState");
+  requireClosedValue(snapshot.suspensionStatus, PUBLICATION_SUSPENSION_STATUSES, "suspensionStatus");
+  requireClosedValue(snapshot.authorizationState, ["NOT_EVALUATED", "REVALIDATION_REQUIRED", "AUTHORIZED_FOR_COMMAND", "BLOCKED", "EXPIRED", "REVOKED"], "authorizationState");
+  requireClosedValue(snapshot.withdrawalStatus, ["NOT_REQUESTED", "AUTHORIZATION_REQUIRED", "AUTHORIZED", "EXECUTION_PENDING", "RECONCILIATION_REQUIRED", "CONFIRMED", "CONFIRMED_NO_EFFECT", "REJECTED"], "withdrawalStatus");
+  requireClosedValue(snapshot.republishStatus, ["NOT_REQUESTED", "AUTHORIZATION_REQUIRED", "AUTHORIZED", "EXECUTION_PENDING", "RECONCILIATION_REQUIRED", "CONFIRMED", "CONFIRMED_NO_EFFECT", "REJECTED"], "republishStatus");
+  requireClosedValue(snapshot.classification, PUBLICATION_CLASSIFICATIONS, "classification");
+  requireIsoTimestamp(snapshot.createdAt, "createdAt");
+  requireIsoTimestamp(snapshot.updatedAt, "updatedAt");
+  requireText(snapshot.auditCorrelationId, "auditCorrelationId");
+  if (snapshot.effectiveAt !== undefined) requireIsoTimestamp(snapshot.effectiveAt, "effectiveAt");
+  if (snapshot.externalObjectReference !== undefined) requireText(snapshot.externalObjectReference, "externalObjectReference");
+  if (snapshot.predecessorPublicationId !== undefined) requireText(snapshot.predecessorPublicationId, "predecessorPublicationId");
+  if (snapshot.successorPublicationId !== undefined) requireText(snapshot.successorPublicationId, "successorPublicationId");
+  for (const attempt of snapshot.attempts) createDeliveryAttempt(attempt);
+  for (const reconciliation of snapshot.reconciliationCases) createReconciliationCase(reconciliation);
+  for (const transition of snapshot.transitionHistory) createTransitionRecord(transition);
+  for (const version of snapshot.bindingHistory) createPublicationVersionRecord(version);
+  if (snapshot.pendingOperation !== undefined) {
+    requireClosedValue(snapshot.pendingOperation.origin, OPERATION_ORIGINS, "pendingOperation.origin");
+    requireClosedValue(snapshot.pendingOperation.operation, DELIVERY_OPERATIONS, "pendingOperation.operation");
+    requireText(snapshot.pendingOperation.attemptId, "pendingOperation.attemptId");
+  }
   const currentVersion = snapshot.bindingHistory.find((entry) => entry.publicationVersion === snapshot.publicationVersion);
   if (currentVersion === undefined || !samePublicationBinding(currentVersion.binding, snapshot.binding)) throw domainError("PUBLICATION_INVARIANT_VIOLATION", "INVARIANT", "Current Publication binding must have immutable version evidence.");
   if (snapshot.effectiveVersion !== undefined && !snapshot.bindingHistory.some((entry) => entry.publicationVersion === snapshot.effectiveVersion)) throw domainError("PUBLICATION_INVARIANT_VIOLATION", "INVARIANT", "Effective Publication binding version is missing.");
