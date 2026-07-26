@@ -3,10 +3,10 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-001 |
-| 문서 버전 | v1.0 |
-| 상태 | FROZEN |
+| 문서 버전 | v2.2 |
+| 상태 | IN REVIEW |
 | 소유 역할 | Architecture Owner |
-| 기준일 | 2026-07-13 |
+| 기준일 | 2026-07-24 |
 
 이 문서는 Architecture Bible의 master navigation이자 계획 manifest다. `AVAILABLE`은 현재 파일이 존재함을, `PLANNED`는 해당 Brief에서 생성할 예정임을 뜻한다. 문서 상태(`DRAFT` 등)와 파일 존재 상태(`AVAILABLE` 등)는 서로 다른 값이다.
 
@@ -72,6 +72,127 @@
 | Document ID | 문서 | 목적 | 존재 상태 |
 |---|---|---|---|
 | DOC-CORE-035 | [Canonical Traceability Matrix](00_CANONICAL_TRACEABILITY_MATRIX.md) | requirement부터 test까지 단일 authoritative zero-orphan trace | AVAILABLE |
+
+## Phase 11-1 — Decision Register Alignment
+
+| Document ID | 문서 | 목적 | 존재 상태 |
+|---|---|---|---|
+| DOC-CORE-020 | [Decision Register v1.3 candidate](00_DECISION_REGISTER.md) | AO-023–AO-035를 DEC-100–DEC-112로 canonical 등록 | AVAILABLE |
+| DOC-CORE-036 | [Decision Index](00_DECISION_INDEX.md) | AO/DEC one-to-one 탐색과 status/version 정렬 | AVAILABLE |
+| DOC-CORE-037 | [Decision Dependency Matrix](00_DECISION_DEPENDENCY_MATRIX.md) | 선행·후속·refinement와 cycle 검증 | AVAILABLE |
+| DOC-CORE-038 | [Decision Trace Matrix](00_DECISION_TRACE_MATRIX.md) | Registry, API, Workflow, Security, Test와 RTM 연결 | AVAILABLE |
+| DOC-REVIEW-031 | [Phase 11-1 Decision Validation](reviews/PHASE11_1_DECISION_VALIDATION.md) | uniqueness, dependency, reference와 freeze readiness 검증 | AVAILABLE |
+| DOC-REVIEW-032 | [Phase 11-1 Completion](reviews/PHASE11_1_COMPLETION.md) | 범위, 변경, gap과 다음 prerequisite evidence | AVAILABLE |
+
+## Phase 11-2 — Requirements Traceability Matrix Alignment
+
+| Document ID | 문서 | 목적 | 존재 상태 |
+|---|---|---|---|
+| DOC-CORE-035 | [Canonical Traceability Matrix v1.3 candidate](00_CANONICAL_TRACEABILITY_MATRIX.md) | AO-023–AO-035 requirement-to-validation alignment | AVAILABLE |
+| DOC-CORE-039 | [Requirement Index](00_REQUIREMENT_INDEX.md) | Requirement category, Decision relationship와 validation 탐색 | AVAILABLE |
+| DOC-REVIEW-033 | [Phase 11-2 Trace Validation](reviews/PHASE11_2_TRACE_VALIDATION.md) | missing/orphan/duplicate/broken/circular trace 검증 | AVAILABLE |
+| DOC-REVIEW-034 | [Phase 11-2 RTM Coverage](reviews/PHASE11_2_RTM_COVERAGE.md) | Requirement, Decision, Registry, Test coverage 집계 | AVAILABLE |
+| DOC-REVIEW-035 | [Phase 11-2 Completion](reviews/PHASE11_2_COMPLETION.md) | 범위, 변경, limitation과 approval prerequisite evidence | AVAILABLE |
+
+## Phase 11-3 — Publication Registry Alignment
+
+| Document ID | 문서 | 목적 | 존재 상태 |
+|---|---|---|---|
+| DOC-CORE-040 | [Canonical Publication Registry](00_PUBLICATION_REGISTRY.md) | aggregate, lifecycle, version, authority, Withdrawal/Republish governance | AVAILABLE |
+| DOC-CORE-041 | [Publication Index](00_PUBLICATION_INDEX.md) | state, operation, version, vocabulary와 Decision 탐색 | AVAILABLE |
+| DOC-REVIEW-036 | [Phase 11-3 Publication Validation](reviews/PHASE11_3_PUBLICATION_VALIDATION.md) | lifecycle/version/mapping/duplicate/broken reference 검증 | AVAILABLE |
+| DOC-REVIEW-037 | [Phase 11-3 Publication Coverage](reviews/PHASE11_3_PUBLICATION_COVERAGE.md) | AO/DEC/state/transition/version/Registry coverage 집계 | AVAILABLE |
+| DOC-REVIEW-038 | [Phase 11-3 Completion](reviews/PHASE11_3_COMPLETION.md) | 범위, inconsistency, limitation과 approval prerequisite evidence | AVAILABLE |
+
+## Phase 11-4 — Workflow Registry Alignment
+
+| Document ID | 문서 | 목적 | 존재 상태 |
+|---|---|---|---|
+| DOC-CORE-042 | [Canonical Workflow Registry](00_WORKFLOW_REGISTRY.md) | workflow identity, path, transition, command와 authority governance | AVAILABLE |
+| DOC-CORE-043 | [Workflow Index](00_WORKFLOW_INDEX.md) | canonical Workflow/path/command 탐색 | AVAILABLE |
+| DOC-REVIEW-039 | [Phase 11-4 Workflow Validation](reviews/PHASE11_4_WORKFLOW_VALIDATION.md) | workflow/transition/command/mapping/duplicate/cycle 검증 | AVAILABLE |
+| DOC-REVIEW-040 | [Phase 11-4 Workflow Coverage](reviews/PHASE11_4_WORKFLOW_COVERAGE.md) | AO/DEC/workflow/path/command/Registry coverage 집계 | AVAILABLE |
+| DOC-REVIEW-041 | [Phase 11-4 Completion](reviews/PHASE11_4_COMPLETION.md) | 범위, inconsistency, limitation과 approval prerequisite evidence | AVAILABLE |
+
+## Phase 11-5 — API Registry Alignment
+
+| Document ID | 문서 | 목적 | 존재 상태 |
+|---|---|---|---|
+| DOC-CORE-044 | [Canonical API Registry](00_API_REGISTRY.md) | API identity, contract, command/query/internal, version와 authority governance | AVAILABLE |
+| DOC-CORE-045 | [API Index](00_API_INDEX.md) | canonical API classification과 Publication API boundary 탐색 | AVAILABLE |
+| DOC-REVIEW-042 | [Phase 11-5 API Validation](reviews/PHASE11_5_API_VALIDATION.md) | API/contract/version/mapping/authority/duplicate 검증 | AVAILABLE |
+| DOC-REVIEW-043 | [Phase 11-5 API Coverage](reviews/PHASE11_5_API_COVERAGE.md) | AO/DEC/API/contract/version/Registry coverage 집계 | AVAILABLE |
+| DOC-REVIEW-044 | [Phase 11-5 Completion](reviews/PHASE11_5_COMPLETION.md) | 범위, inconsistency, limitation과 approval prerequisite evidence | AVAILABLE |
+
+## Phase 11-6 — Security Registry Alignment
+
+| Document ID | 문서 | 목적 | 존재 상태 |
+|---|---|---|---|
+| DOC-CORE-046 | [Canonical Security Registry](00_SECURITY_REGISTRY.md) | control, authority, SoD, classification, audit/event/projection security governance | AVAILABLE |
+| DOC-CORE-047 | [Security Index](00_SECURITY_INDEX.md) | canonical Security Control category와 authority/classification 탐색 | AVAILABLE |
+| DOC-REVIEW-045 | [Phase 11-6 Security Validation](reviews/PHASE11_6_SECURITY_VALIDATION.md) | control/mapping/authority/SoD/classification/duplicate 검증 | AVAILABLE |
+| DOC-REVIEW-046 | [Phase 11-6 Security Coverage](reviews/PHASE11_6_SECURITY_COVERAGE.md) | AO/DEC/control/category/Registry coverage 집계 | AVAILABLE |
+| DOC-REVIEW-047 | [Phase 11-6 Completion](reviews/PHASE11_6_COMPLETION.md) | 범위, inconsistency, limitation과 approval prerequisite evidence | AVAILABLE |
+
+## Phase 11-7 — Canonical Projection Registry
+
+| Document ID | 문서 | 목적 | 존재 상태 |
+|---|---|---|---|
+| DOC-CORE-048 | [Canonical Projection Registry](00_PROJECTION_REGISTRY.md) | PRJ definition, catalog, lifecycle, ownership, version, security와 rebuild governance | AVAILABLE |
+| DOC-CORE-049 | [Projection Index](00_PROJECTION_INDEX.md) | canonical Projection/type/lifecycle/version 탐색 | AVAILABLE |
+| DOC-REVIEW-048 | [Phase 11-7 Projection Validation](reviews/PHASE11_7_PROJECTION_VALIDATION.md) | projection/owner/lifecycle/version/mapping/duplicate 검증 | AVAILABLE |
+| DOC-REVIEW-049 | [Phase 11-7 Projection Coverage](reviews/PHASE11_7_PROJECTION_COVERAGE.md) | PRJ/type/version/drift/rebuild/Registry coverage 집계 | AVAILABLE |
+| DOC-REVIEW-050 | [Phase 11-7 Completion](reviews/PHASE11_7_COMPLETION.md) | 범위, inconsistency, limitation과 approval prerequisite evidence | AVAILABLE |
+
+## Phase 11-8 — Canonical Event Registry
+
+| Document ID | 문서 | 목적 | 존재 상태 |
+|---|---|---|---|
+| DOC-CORE-050 | [Canonical Event Registry](00_EVENT_REGISTRY.md) | EVT catalog, identity, ordering, version, classification, replay와 retention governance | AVAILABLE |
+| DOC-CORE-051 | [Event Index](00_EVENT_INDEX.md) | canonical Event/category/aggregate/projection 탐색 | AVAILABLE |
+| DOC-REVIEW-051 | [Phase 11-8 Event Validation](reviews/PHASE11_8_EVENT_VALIDATION.md) | catalog/identity/order/version/replay/retention/mapping 검증 | AVAILABLE |
+| DOC-REVIEW-052 | [Phase 11-8 Event Coverage](reviews/PHASE11_8_EVENT_COVERAGE.md) | EVT/category/Workflow/API/Projection/Security/Test coverage 집계 | AVAILABLE |
+| DOC-REVIEW-053 | [Phase 11-8 Completion](reviews/PHASE11_8_COMPLETION.md) | 범위, inconsistency, limitation과 approval prerequisite evidence | AVAILABLE |
+
+## Phase 11-9 — Operations Registry Alignment
+
+| Document ID | 문서 | 목적 | 존재 상태 |
+|---|---|---|---|
+| DOC-CORE-052 | [Operations Registry Alignment Candidate](00_OPERATIONS_REGISTRY.md) | frozen OPS catalog, classification, authority, recovery, monitoring, audit와 Registry mapping 정렬 | AVAILABLE |
+| DOC-CORE-053 | [Operations Index](00_OPERATIONS_INDEX.md) | canonical Operation/category/capability/Registry 탐색 | AVAILABLE |
+| DOC-REVIEW-054 | [Phase 11-9 Operations Validation](reviews/PHASE11_9_OPERATIONS_VALIDATION.md) | catalog identity, authority, recovery, monitoring, audit와 mapping 검증 | AVAILABLE |
+| DOC-REVIEW-055 | [Phase 11-9 Operations Coverage](reviews/PHASE11_9_OPERATIONS_COVERAGE.md) | OPS/capability/category/Registry/security/test coverage 집계 | AVAILABLE |
+| DOC-REVIEW-056 | [Phase 11-9 Completion](reviews/PHASE11_9_COMPLETION.md) | conflict, limitation, disposition과 approval prerequisite evidence | AVAILABLE |
+
+## Phase 11-10 — Test Registry Alignment
+
+| Document ID | 문서 | 목적 | 존재 상태 |
+|---|---|---|---|
+| DOC-CORE-054 | [Canonical Test Registry Alignment Candidate](00_TEST_REGISTRY.md) | TST catalog, classification, evidence, coverage와 cross-registry validation governance | AVAILABLE |
+| DOC-CORE-055 | [Test Index](00_TEST_INDEX.md) | TST/TEST namespace, category, Registry, chain와 gap 탐색 | AVAILABLE |
+| DOC-REVIEW-057 | [Phase 11-10 Test Validation](reviews/PHASE11_10_TEST_VALIDATION.md) | catalog, policy, evidence, Registry coverage와 chain 검증 | AVAILABLE |
+| DOC-REVIEW-058 | [Phase 11-10 Test Coverage](reviews/PHASE11_10_TEST_COVERAGE.md) | TST/category/Registry/chain/evidence coverage 집계 | AVAILABLE |
+| DOC-REVIEW-059 | [Phase 11-10 Completion](reviews/PHASE11_10_COMPLETION.md) | gap, inconsistency, disposition과 approval prerequisite evidence | AVAILABLE |
+
+## Phase 11-11 — Cross-Registry Consistency Review
+
+| Document ID | 문서 | 목적 | 존재 상태 |
+|---|---|---|---|
+| DOC-REVIEW-060 | [Cross-Registry Consistency Report](reviews/PHASE11_11_CROSS_REGISTRY_CONSISTENCY.md) | 10개 Registry identity/authority/vocabulary/mapping/trace consistency 최종 검토 | AVAILABLE |
+| DOC-REVIEW-061 | [Registry Matrix](reviews/PHASE11_11_REGISTRY_MATRIX.md) | required chain, pairwise reference와 consistency dimension matrix | AVAILABLE |
+| DOC-REVIEW-062 | [Consistency Validation Report](reviews/PHASE11_11_CONSISTENCY_VALIDATION.md) | identity, decision, vocabulary, authority, lifecycle, mapping과 trace 검증 | AVAILABLE |
+| DOC-REVIEW-063 | [Architecture Gap Report](reviews/PHASE11_11_ARCHITECTURE_GAPS.md) | blocking/high governance gap와 correction dependency | AVAILABLE |
+| DOC-REVIEW-064 | [Phase 11-11 Completion](reviews/PHASE11_11_COMPLETION.md) | final recommendation, limitation과 approval prerequisite evidence | AVAILABLE |
+
+## Phase 11-12 — Architecture Freeze Review
+
+| Document ID | 문서 | 목적 | 존재 상태 |
+|---|---|---|---|
+| DOC-REVIEW-065 | [Architecture Freeze Report](reviews/PHASE11_12_ARCHITECTURE_FREEZE.md) | v1.1 freeze와 FEAT-015 authorization 최종 gate 판정 | AVAILABLE |
+| DOC-REVIEW-066 | [Baseline Definition](reviews/PHASE11_12_BASELINE_DEFINITION.md) | existing v1.0과 proposed v1.1 candidate scope/identity/governance 경계 | AVAILABLE |
+| DOC-REVIEW-067 | [Freeze Validation Report](reviews/PHASE11_12_FREEZE_VALIDATION.md) | Book/Registry/zero-gap/deferred/immutable baseline 검증 | AVAILABLE |
+| DOC-REVIEW-068 | [Deferred Decision Register — Review Evidence](reviews/PHASE11_12_DEFERRED_DECISIONS.md) | 8개 implementation/runtime/product deferred topic 분리 | AVAILABLE |
+| DOC-REVIEW-069 | [Phase 11-12 Completion](reviews/PHASE11_12_COMPLETION.md) | freeze result, limitation과 correction prerequisite evidence | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -410,6 +531,26 @@
 | DOC-CORE-033 | Decision Rules | [07_DECISION_RULES.md](book-0/07_DECISION_RULES.md) |
 | DOC-CORE-034 | Definition of Done | [08_DEFINITION_OF_DONE.md](book-0/08_DEFINITION_OF_DONE.md) |
 | DOC-CORE-035 | Canonical Traceability Matrix | [00_CANONICAL_TRACEABILITY_MATRIX.md](00_CANONICAL_TRACEABILITY_MATRIX.md) |
+| DOC-CORE-036 | Decision Index | [00_DECISION_INDEX.md](00_DECISION_INDEX.md) |
+| DOC-CORE-037 | Decision Dependency Matrix | [00_DECISION_DEPENDENCY_MATRIX.md](00_DECISION_DEPENDENCY_MATRIX.md) |
+| DOC-CORE-038 | Decision Trace Matrix | [00_DECISION_TRACE_MATRIX.md](00_DECISION_TRACE_MATRIX.md) |
+| DOC-CORE-039 | Requirement Index | [00_REQUIREMENT_INDEX.md](00_REQUIREMENT_INDEX.md) |
+| DOC-CORE-040 | Canonical Publication Registry | [00_PUBLICATION_REGISTRY.md](00_PUBLICATION_REGISTRY.md) |
+| DOC-CORE-041 | Publication Index | [00_PUBLICATION_INDEX.md](00_PUBLICATION_INDEX.md) |
+| DOC-CORE-042 | Canonical Workflow Registry | [00_WORKFLOW_REGISTRY.md](00_WORKFLOW_REGISTRY.md) |
+| DOC-CORE-043 | Workflow Index | [00_WORKFLOW_INDEX.md](00_WORKFLOW_INDEX.md) |
+| DOC-CORE-044 | Canonical API Registry | [00_API_REGISTRY.md](00_API_REGISTRY.md) |
+| DOC-CORE-045 | API Index | [00_API_INDEX.md](00_API_INDEX.md) |
+| DOC-CORE-046 | Canonical Security Registry | [00_SECURITY_REGISTRY.md](00_SECURITY_REGISTRY.md) |
+| DOC-CORE-047 | Security Index | [00_SECURITY_INDEX.md](00_SECURITY_INDEX.md) |
+| DOC-CORE-048 | Canonical Projection Registry | [00_PROJECTION_REGISTRY.md](00_PROJECTION_REGISTRY.md) |
+| DOC-CORE-049 | Projection Index | [00_PROJECTION_INDEX.md](00_PROJECTION_INDEX.md) |
+| DOC-CORE-050 | Canonical Event Registry | [00_EVENT_REGISTRY.md](00_EVENT_REGISTRY.md) |
+| DOC-CORE-051 | Event Index | [00_EVENT_INDEX.md](00_EVENT_INDEX.md) |
+| DOC-CORE-052 | Operations Registry Alignment Candidate | [00_OPERATIONS_REGISTRY.md](00_OPERATIONS_REGISTRY.md) |
+| DOC-CORE-053 | Operations Index | [00_OPERATIONS_INDEX.md](00_OPERATIONS_INDEX.md) |
+| DOC-CORE-054 | Canonical Test Registry Alignment Candidate | [00_TEST_REGISTRY.md](00_TEST_REGISTRY.md) |
+| DOC-CORE-055 | Test Index | [00_TEST_INDEX.md](00_TEST_INDEX.md) |
 | DOC-BIZ-001 | Business Strategy Index | [00_BUSINESS_STRATEGY_INDEX.md](book-1/00_BUSINESS_STRATEGY_INDEX.md) |
 | DOC-BIZ-002 | Problem Statement | [01_PROBLEM_STATEMENT.md](book-1/01_PROBLEM_STATEMENT.md) |
 | DOC-BIZ-003 | Current Workflow Analysis | [02_CURRENT_WORKFLOW_ANALYSIS.md](book-1/02_CURRENT_WORKFLOW_ANALYSIS.md) |
@@ -636,6 +777,45 @@
 | DOC-REVIEW-028 | Phase 15 Completion Report | [PHASE15_COMPLETION.md](reviews/PHASE15_COMPLETION.md) |
 | DOC-REVIEW-029 | Phase 16 Freeze Validation | [PHASE16_FREEZE_VALIDATION.md](reviews/PHASE16_FREEZE_VALIDATION.md) |
 | DOC-REVIEW-030 | Phase 16 Completion Report | [PHASE16_COMPLETION.md](reviews/PHASE16_COMPLETION.md) |
+| DOC-REVIEW-031 | Phase 11-1 Decision Validation | [PHASE11_1_DECISION_VALIDATION.md](reviews/PHASE11_1_DECISION_VALIDATION.md) |
+| DOC-REVIEW-032 | Phase 11-1 Completion Report | [PHASE11_1_COMPLETION.md](reviews/PHASE11_1_COMPLETION.md) |
+| DOC-REVIEW-033 | Phase 11-2 Trace Validation | [PHASE11_2_TRACE_VALIDATION.md](reviews/PHASE11_2_TRACE_VALIDATION.md) |
+| DOC-REVIEW-034 | Phase 11-2 RTM Coverage Report | [PHASE11_2_RTM_COVERAGE.md](reviews/PHASE11_2_RTM_COVERAGE.md) |
+| DOC-REVIEW-035 | Phase 11-2 Completion Report | [PHASE11_2_COMPLETION.md](reviews/PHASE11_2_COMPLETION.md) |
+| DOC-REVIEW-036 | Phase 11-3 Publication Validation | [PHASE11_3_PUBLICATION_VALIDATION.md](reviews/PHASE11_3_PUBLICATION_VALIDATION.md) |
+| DOC-REVIEW-037 | Phase 11-3 Publication Coverage Report | [PHASE11_3_PUBLICATION_COVERAGE.md](reviews/PHASE11_3_PUBLICATION_COVERAGE.md) |
+| DOC-REVIEW-038 | Phase 11-3 Completion Report | [PHASE11_3_COMPLETION.md](reviews/PHASE11_3_COMPLETION.md) |
+| DOC-REVIEW-039 | Phase 11-4 Workflow Validation | [PHASE11_4_WORKFLOW_VALIDATION.md](reviews/PHASE11_4_WORKFLOW_VALIDATION.md) |
+| DOC-REVIEW-040 | Phase 11-4 Workflow Coverage Report | [PHASE11_4_WORKFLOW_COVERAGE.md](reviews/PHASE11_4_WORKFLOW_COVERAGE.md) |
+| DOC-REVIEW-041 | Phase 11-4 Completion Report | [PHASE11_4_COMPLETION.md](reviews/PHASE11_4_COMPLETION.md) |
+| DOC-REVIEW-042 | Phase 11-5 API Validation | [PHASE11_5_API_VALIDATION.md](reviews/PHASE11_5_API_VALIDATION.md) |
+| DOC-REVIEW-043 | Phase 11-5 API Coverage Report | [PHASE11_5_API_COVERAGE.md](reviews/PHASE11_5_API_COVERAGE.md) |
+| DOC-REVIEW-044 | Phase 11-5 Completion Report | [PHASE11_5_COMPLETION.md](reviews/PHASE11_5_COMPLETION.md) |
+| DOC-REVIEW-045 | Phase 11-6 Security Validation | [PHASE11_6_SECURITY_VALIDATION.md](reviews/PHASE11_6_SECURITY_VALIDATION.md) |
+| DOC-REVIEW-046 | Phase 11-6 Security Coverage Report | [PHASE11_6_SECURITY_COVERAGE.md](reviews/PHASE11_6_SECURITY_COVERAGE.md) |
+| DOC-REVIEW-047 | Phase 11-6 Completion Report | [PHASE11_6_COMPLETION.md](reviews/PHASE11_6_COMPLETION.md) |
+| DOC-REVIEW-048 | Phase 11-7 Projection Validation | [PHASE11_7_PROJECTION_VALIDATION.md](reviews/PHASE11_7_PROJECTION_VALIDATION.md) |
+| DOC-REVIEW-049 | Phase 11-7 Projection Coverage Report | [PHASE11_7_PROJECTION_COVERAGE.md](reviews/PHASE11_7_PROJECTION_COVERAGE.md) |
+| DOC-REVIEW-050 | Phase 11-7 Completion Report | [PHASE11_7_COMPLETION.md](reviews/PHASE11_7_COMPLETION.md) |
+| DOC-REVIEW-051 | Phase 11-8 Event Validation | [PHASE11_8_EVENT_VALIDATION.md](reviews/PHASE11_8_EVENT_VALIDATION.md) |
+| DOC-REVIEW-052 | Phase 11-8 Event Coverage Report | [PHASE11_8_EVENT_COVERAGE.md](reviews/PHASE11_8_EVENT_COVERAGE.md) |
+| DOC-REVIEW-053 | Phase 11-8 Completion Report | [PHASE11_8_COMPLETION.md](reviews/PHASE11_8_COMPLETION.md) |
+| DOC-REVIEW-054 | Phase 11-9 Operations Validation | [PHASE11_9_OPERATIONS_VALIDATION.md](reviews/PHASE11_9_OPERATIONS_VALIDATION.md) |
+| DOC-REVIEW-055 | Phase 11-9 Operations Coverage Report | [PHASE11_9_OPERATIONS_COVERAGE.md](reviews/PHASE11_9_OPERATIONS_COVERAGE.md) |
+| DOC-REVIEW-056 | Phase 11-9 Completion Report | [PHASE11_9_COMPLETION.md](reviews/PHASE11_9_COMPLETION.md) |
+| DOC-REVIEW-057 | Phase 11-10 Test Validation | [PHASE11_10_TEST_VALIDATION.md](reviews/PHASE11_10_TEST_VALIDATION.md) |
+| DOC-REVIEW-058 | Phase 11-10 Test Coverage Report | [PHASE11_10_TEST_COVERAGE.md](reviews/PHASE11_10_TEST_COVERAGE.md) |
+| DOC-REVIEW-059 | Phase 11-10 Completion Report | [PHASE11_10_COMPLETION.md](reviews/PHASE11_10_COMPLETION.md) |
+| DOC-REVIEW-060 | Phase 11-11 Cross-Registry Consistency Report | [PHASE11_11_CROSS_REGISTRY_CONSISTENCY.md](reviews/PHASE11_11_CROSS_REGISTRY_CONSISTENCY.md) |
+| DOC-REVIEW-061 | Phase 11-11 Registry Matrix | [PHASE11_11_REGISTRY_MATRIX.md](reviews/PHASE11_11_REGISTRY_MATRIX.md) |
+| DOC-REVIEW-062 | Phase 11-11 Consistency Validation Report | [PHASE11_11_CONSISTENCY_VALIDATION.md](reviews/PHASE11_11_CONSISTENCY_VALIDATION.md) |
+| DOC-REVIEW-063 | Phase 11-11 Architecture Gap Report | [PHASE11_11_ARCHITECTURE_GAPS.md](reviews/PHASE11_11_ARCHITECTURE_GAPS.md) |
+| DOC-REVIEW-064 | Phase 11-11 Completion Report | [PHASE11_11_COMPLETION.md](reviews/PHASE11_11_COMPLETION.md) |
+| DOC-REVIEW-065 | Phase 11-12 Architecture Freeze Report | [PHASE11_12_ARCHITECTURE_FREEZE.md](reviews/PHASE11_12_ARCHITECTURE_FREEZE.md) |
+| DOC-REVIEW-066 | Phase 11-12 Baseline Definition | [PHASE11_12_BASELINE_DEFINITION.md](reviews/PHASE11_12_BASELINE_DEFINITION.md) |
+| DOC-REVIEW-067 | Phase 11-12 Freeze Validation Report | [PHASE11_12_FREEZE_VALIDATION.md](reviews/PHASE11_12_FREEZE_VALIDATION.md) |
+| DOC-REVIEW-068 | Phase 11-12 Deferred Decision Register — Review Evidence | [PHASE11_12_DEFERRED_DECISIONS.md](reviews/PHASE11_12_DEFERRED_DECISIONS.md) |
+| DOC-REVIEW-069 | Phase 11-12 Completion Report | [PHASE11_12_COMPLETION.md](reviews/PHASE11_12_COMPLETION.md) |
 
 ## 계획된 Books
 

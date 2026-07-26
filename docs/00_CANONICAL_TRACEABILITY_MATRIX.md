@@ -3,11 +3,11 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-035 |
-| 문서 버전 | v1.2 |
-| 상태 | FROZEN |
+| 문서 버전 | v1.4 |
+| 상태 | IN REVIEW |
 | 소유 역할 | Architecture Owner / Quality Owner |
-| 기준일 | 2026-07-15 |
-| 승인 근거 | Phase 15 correction authorization; [Phase 14 Recommendations](reviews/PHASE14_RECOMMENDATIONS.md) |
+| 기준일 | 2026-07-24 |
+| 승인 근거 | v1.2: Phase 15 correction authorization; v1.3: Phase 11-2 alignment candidate; v1.4: Phase 11-8 Event Registry alignment candidate |
 
 이 문서는 AI MLS Platform Architecture Bible의 단일 authoritative traceability record다. 기존 Book별 matrix와 registry는 각 domain의 상세 근거이며, end-to-end 연결의 존재 여부와 orphan 판정은 이 문서를 기준으로 한다. 연결 규칙은 [End-to-End Traceability Rule](00_TRACEABILITY_RULE.md)을 따른다.
 
@@ -49,6 +49,47 @@
 | TRACE-023 | REQ-CONST-002, REQ-CONST-005–007, REQ-CONST-010, REQ-CONST-013 | WF-001–012 | User, Role, Contact, Client, Retention Policy, Legal Hold, Audit Event, System Error | API-001–019 | UI-001–037 | AI-001–007 data access follows security controls | DEV-023 | SP-001 | REL-001 | TEST-046–053 | VERIFIED |
 | TRACE-024 | REQ-CONST-001–013 | WF-001–012 | All 52 entities in Book 3 Data Dictionary, including Raw Attachment, Listing Source, Building, Tower, Floor, Unit, Matching Preference, Verifier Assignment, Reverification Request, Retention Job | API-001–019 | UI-001–037 | AI-001–007 | DEV-024 | SP-000–010 | REL-001–005 | TEST-001–056 | VERIFIED |
 
+## Phase 11-2 — AO-023–AO-035 requirement alignment candidate
+
+이 절은 기존 `TRACE-001`–`TRACE-024`의 ID나 의미를 변경하지 않고, AO-023–AO-035가 Publication Execution architecture에 적용하는 requirement-to-validation view를 추가한다. `DIRECT`는 [Decision Register](00_DECISION_REGISTER.md)의 명시적 requirement mapping이고, `CONSTRAINT`와 `PREREQUISITE`는 기존 승인 Decision이 후속 AO를 제한하는 관계다. `VERIFIED`는 governance architecture evidence와 reciprocal trace가 완전함을 뜻하며 FEAT-015 runtime implementation PASS를 뜻하지 않는다. Projection/Event Registry placeholder는 Phase 11-7/11-8 canonical registries로 해소됐다.
+
+Registry 약어:
+
+- `DR`: [Decision Register](00_DECISION_REGISTER.md)
+- `PR`: [Canonical Publication Registry](00_PUBLICATION_REGISTRY.md); [Publication Model](book-3/11_PUBLICATION_MODEL.md)과 [Implementation Registry](book-12/15_IMPLEMENTATION_REGISTRY.md)은 supporting sources
+- `WR`: [Canonical Workflow Registry](00_WORKFLOW_REGISTRY.md); [Book 5 Workflow Index](book-5/00_WORKFLOW_INDEX.md)은 frozen supporting source
+- `AR`: [Canonical API Registry](00_API_REGISTRY.md); [Book 6 API Registry](book-6/16_API_REGISTRY.md)은 frozen supporting source
+- `SR`: [Canonical Security Registry](00_SECURITY_REGISTRY.md); [Book 8 Security Registry](book-8/15_SECURITY_REGISTRY.md)은 frozen supporting source
+- `TR`: [Test Registry](book-10/15_TEST_REGISTRY.md)
+- `PJR`: [Canonical Projection Registry](00_PROJECTION_REGISTRY.md) — PRJ-001~008
+- `ER`: [Canonical Event Registry](00_EVENT_REGISTRY.md) — EVT-001~012
+
+| Requirement ID | Requirement Name | Category | Relationship | Related AO | Related DEC | Related Registry | Related Workflow | Related API | Related Security Control | Related Test | Validation Status |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| REQ-CONST-001 | AI recommends | Governance / Security | CONSTRAINT | AO-026/029/035 | DEC-024; DEC-103/106/112 consume the constraint | DR/PR/WR/AR/SR/TR/PJR/ER | WF-010–012 | API-014/017–019 | SEC-001/002/010/021/031/032 | TEST-007/013/035/037/056 | VERIFIED |
+| REQ-CONST-002 | Humans approve | Functional / Governance | DIRECT | AO-023/024/027–029/031–035 | DEC-100/101/104–106/108–112 | DR/PR/WR/AR/SR/TR | WF-009–012 | API-013–16/018/019 | SEC-001/002/004/007/008/010/011/021/025/028/030 | TEST-001/021/022/024/033/047/054/056 | VERIFIED |
+| REQ-CONST-003 | No publication without verification | Functional / Security | DIRECT | AO-023/024/027–029/031–034 | DEC-100/101/104–106/108–111 | DR/PR/WR/AR/SR/TR | WF-007/009–012 | API-011/013/014/018/019 | SEC-010/011/021/025/028/030/032 | TEST-002/020/022–024/033/052/054/056 | VERIFIED |
+| REQ-CONST-004 | No publication without permission | Privacy / Security | DIRECT | AO-023/024/027–029/031–034 | DEC-100/101/104–106/108–111 | DR/PR/WR/AR/SR/TR | WF-007/009–012 | API-012–014/018/019 | SEC-010/011/015/021/025/028/030/032 | TEST-003/022–024/033/052/054/056 | VERIFIED |
+| REQ-CONST-005 | No loss of source provenance | Audit / Data Integrity | DIRECT | AO-023–035 | DEC-100–112 | DR/PR/WR/AR/SR/TR/PJR/ER | WF-010–012 | API-014/016–019 | SEC-013/021–24/031/032 | TEST-004/023/036/037/048/051/052/054/056 | VERIFIED |
+| REQ-CONST-006 | No hidden architectural changes | Governance | DIRECT | AO-023/024/026–029/031–035 | DEC-100/101/103–106/108–112 | DR/PR/WR/AR/SR/TR | WF-012 | API-015/016 | SEC-021/022/026 | TEST-005/025/034/049/053/055/056; Phase 11-1/11-2 governance validation | VERIFIED |
+| REQ-CONST-007 | Every important action is auditable | Audit / Security | DIRECT | AO-023–035 | DEC-100–112 | DR/PR/WR/AR/SR/TR/PJR/ER | WF-009–012 | API-013–019 | SEC-021–24/027/028/032 | TEST-006/022/023/025/033/036/037/049/051–056 | VERIFIED |
+| REQ-CONST-008 | No direct AI authority over production data | Security / Governance | DIRECT | AO-026/028/035 | DEC-103/105/112 | DR/PR/WR/AR/SR/TR/PJR/ER | WF-010–012 | API-014/017–019 | SEC-001/002/010/021/031/032 | TEST-007/013/035/037/052/054/056 | VERIFIED |
+| REQ-CONST-009 | No connector bypass | Operations / Security | DIRECT | AO-023–028/030–035 | DEC-100–105/107–112 | DR/PR/WR/AR/SR/TR/PJR/ER | WF-009–012 | API-014/018/019 | SEC-006/020/024/025/032 | TEST-008/023/036/037/052/054/056 | VERIFIED |
+| REQ-CONST-010 | No privilege escalation | Security | DIRECT | AO-025/026/028–035 | DEC-102/103/105–112 | DR/PR/WR/AR/SR/TR | WF-009–012 | API-002/013–16/018/019 | SEC-001/002/004/007/008/010/011/021/025/028/030/032 | TEST-009/022/025/033–037/046/047/049–056 | VERIFIED |
+| REQ-CONST-011 | Internal candidate is not a verified listing | Functional / Data Integrity | PREREQUISITE | AO-028/031 | DEC-003; DEC-105/108 consume valid Verification as prerequisite | DR/PR/WR/AR/SR/TR | WF-002/007/009/010 | API-004/006/011/013/014 | SEC-010/011/021 | TEST-010/015/020/056 | VERIFIED |
+| REQ-CONST-012 | Verified listing is not a published listing | Functional / Security | DIRECT | AO-023/024/027–029/031–035 | DEC-100/101/104–106/108–112 | DR/PR/WR/AR/SR/TR | WF-007/009–012 | API-011–14/018/019 | SEC-010/011/021/024/025/028/030/032 | TEST-011/020/022–024/033/054/056 | VERIFIED |
+| REQ-CONST-013 | Client-sharing permission is not public-publication permission | Privacy / Governance | DIRECT | AO-023–025/027–029/031–035 | DEC-100–102/104–106/108–112 | DR/PR/WR/AR/SR/TR | WF-007–012 | API-012–14/018/019 | SEC-010/011/015/021/025/028/030/032 | TEST-012/021–024/033/047/048/054/056 | VERIFIED |
+
+### Phase 11-2 audit events
+
+| Audit event | Evidence | Status |
+|---|---|---|
+| Requirement mapping added | 이 절의 13개 requirement row | IN REVIEW |
+| Decision mapping normalized | AO-023–AO-035 / DEC-100–DEC-112 direct mapping과 DEC-003/024 constraint mapping | IN REVIEW |
+| Trace validation changed | [Phase 11-2 Trace Validation Report](reviews/PHASE11_2_TRACE_VALIDATION.md) | IN REVIEW |
+| Coverage validation changed | [Phase 11-2 RTM Coverage Report](reviews/PHASE11_2_RTM_COVERAGE.md) | IN REVIEW |
+| Freeze approval | Architecture Owner approval 필요 | PENDING |
+
 ## Coverage summary
 
 | Node type | Canonical target | Covered | Orphan |
@@ -69,9 +110,11 @@ Coverage counts are verified by [Phase 15 Validation Report](reviews/PHASE15_VAL
 ## Source registries and evidence
 
 - Requirements: [Project Constitution](book-0/00_PROJECT_CONSTITUTION.md) and [Test Traceability Matrix](book-10/02_REQUIREMENT_TRACEABILITY_MATRIX.md)
-- Workflows: [Workflow Registry](book-5/00_WORKFLOW_INDEX.md)
+- Workflows: [Canonical Workflow Registry](00_WORKFLOW_REGISTRY.md); [Book 5 Workflow Index](book-5/00_WORKFLOW_INDEX.md)은 frozen supporting source
 - Entities: [Data Dictionary](book-3/15_DATA_DICTIONARY.md)
-- APIs: [API Registry](book-6/16_API_REGISTRY.md)
+- APIs: [Canonical API Registry](00_API_REGISTRY.md); [Book 6 API Registry](book-6/16_API_REGISTRY.md)은 frozen supporting source
+- Security controls: [Canonical Security Registry](00_SECURITY_REGISTRY.md); [Book 8 Security Registry](book-8/15_SECURITY_REGISTRY.md)은 frozen supporting source
+- Projections: [Canonical Projection Registry](00_PROJECTION_REGISTRY.md)
 - Screens: [Screen Registry](book-7/15_SCREEN_REGISTRY.md)
 - AI capabilities: [AI Capability Registry](book-4/00_AI_ARCHITECTURE_INDEX.md)
 - Developer tasks: [Developer Registry](book-11/15_DEVELOPER_REGISTRY.md)
