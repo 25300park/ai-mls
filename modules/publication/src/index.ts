@@ -23,3 +23,5 @@ export * from "./publication-interface-presenter.js";
 export * from "./publication-interface-service.js";
 export * from "./publication-interface-validation.js";
 export * from "./publication-request-mapper.js";
+export * from "./publication-infrastructure-configuration.js";
+export * from "./publication-infrastructure.js";
