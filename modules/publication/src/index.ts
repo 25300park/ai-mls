@@ -18,3 +18,8 @@ export * from "./publication-application-error.js";
 export * from "./publication-application-service.js";
 export * from "./publication-clock.js";
 export * from "./publication-command-handlers.js";
+export * from "./publication-interface-models.js";
+export * from "./publication-interface-presenter.js";
+export * from "./publication-interface-service.js";
+export * from "./publication-interface-validation.js";
+export * from "./publication-request-mapper.js";
