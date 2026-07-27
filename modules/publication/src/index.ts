@@ -25,3 +25,6 @@ export * from "./publication-interface-validation.js";
 export * from "./publication-request-mapper.js";
 export * from "./publication-infrastructure-configuration.js";
 export * from "./publication-infrastructure.js";
+export * from "./publication-runtime-contracts.js";
+export * from "./publication-runtime-registry.js";
+export * from "./publication-runtime.js";
