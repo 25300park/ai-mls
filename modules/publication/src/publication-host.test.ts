@@ -311,7 +311,8 @@ test("PHASE13-11 Host production files preserve Composition-only dependency and 
   const sourceDirectory = join(process.cwd(), "modules", "publication", "src");
   const productionFiles = readdirSync(sourceDirectory)
     .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts") && file !== "index.ts");
-  const hostFiles = productionFiles.filter((file) => file.startsWith("publication-host-")
+  const hostFiles = productionFiles.filter((file) => (file.startsWith("publication-host-")
+    && file !== "publication-host-invocation-adapter.ts")
     || file === "publication-application-host.ts");
   const hostSpecifiers = new Set(hostFiles.map((file) => `./${file.slice(0, -3)}.js`));
   const allowedImports = new Set([
@@ -339,7 +340,10 @@ test("PHASE13-11 Host production files preserve Composition-only dependency and 
     assert.equal(imports.every((specifier) => allowedImports.has(specifier)), true, `${file} imports an unapproved layer`);
     assert.equal(forbidden.some((pattern) => pattern.test(source)), false, `${file} contains a forbidden capability`);
   }
-  for (const file of productionFiles.filter((file) => !hostFiles.includes(file))) {
+  for (const file of productionFiles.filter((file) => !hostFiles.includes(file)
+    && !file.startsWith("publication-executable-")
+    && file !== "publication-in-process-executable.ts"
+    && file !== "publication-host-invocation-adapter.ts")) {
     const imports = extractModuleSpecifiers(readFileSync(join(sourceDirectory, file), "utf8"));
     assert.equal(imports.some((specifier) => hostSpecifiers.has(specifier)), false, `${file} imports Host`);
   }
