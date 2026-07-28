@@ -304,7 +304,9 @@ test("PHASE13-10 exposes no service locator and preserves architecture isolation
     const source = readFileSync(join(sourceDirectory, file), "utf8").toLowerCase();
     assert.equal(forbidden.some((pattern) => pattern.test(source)), false, `${file} contains a forbidden capability`);
   }
-  for (const file of productionFiles.filter((file) => !compositionFiles.includes(file))) {
+  for (const file of productionFiles.filter((file) => !compositionFiles.includes(file)
+    && !file.startsWith("publication-host-")
+    && file !== "publication-application-host.ts")) {
     const imports = extractModuleSpecifiers(readFileSync(join(sourceDirectory, file), "utf8"));
     assert.equal(imports.some((specifier) => compositionSpecifiers.has(specifier)), false, `${file} imports Composition`);
   }

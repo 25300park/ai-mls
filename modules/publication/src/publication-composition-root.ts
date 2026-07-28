@@ -23,6 +23,84 @@ export interface PublicationCompositionOptions {
   readonly runtimeOptions?: PublicationRuntimeBootstrapOptions;
 }
 
+export type PublicationHostCompositionFactory = (
+  options?: PublicationCompositionOptions,
+) => PublicationHostCompositionFacade;
+
+export class PublicationHostCompositionFacade {
+  readonly #graph: PublicationCompositionGraph;
+
+  public static compose(
+    options: PublicationCompositionOptions = {},
+  ): PublicationHostCompositionFacade {
+    return new PublicationHostCompositionFacade(composePublicationApplication(options));
+  }
+
+  public static isApproved(value: unknown): value is PublicationHostCompositionFacade {
+    return typeof value === "object"
+      && value !== null
+      && Object.getPrototypeOf(value) === PublicationHostCompositionFacade.prototype
+      && #graph in value;
+  }
+
+  private constructor(graph: PublicationCompositionGraph) {
+    this.#graph = graph;
+    Object.freeze(this);
+  }
+
+  public get runtimeStatus(): PublicationCompositionGraph["diagnostics"]["runtimeStatus"] {
+    return this.#graph.runtime.context.status;
+  }
+
+  public get validationStatus(): PublicationCompositionGraph["diagnostics"]["validationStatus"] {
+    return this.#graph.diagnostics.validationStatus;
+  }
+
+  public execute(
+    request: unknown,
+  ): ReturnType<PublicationCompositionGraph["application"]["execute"]> {
+    if (this.#graph.runtime.context.status !== "READY") {
+      throw new PublicationCompositionError(
+        "COMPOSITION_RUNTIME_UNAVAILABLE",
+        "Composition Runtime is unavailable for execution.",
+      );
+    }
+    return this.#graph.application.execute(request);
+  }
+
+  public shutdown(): void {
+    if (this.#graph.runtime.context.status === "DISPOSED") return;
+    if (this.#graph.runtime.context.status === "READY"
+      || this.#graph.runtime.context.status === "STARTED") {
+      this.#graph.runtime.stop();
+    }
+    if (this.#graph.runtime.context.status !== "STOPPED") {
+      throw new PublicationCompositionError(
+        "COMPOSITION_RUNTIME_UNAVAILABLE",
+        "Composition Runtime cannot shut down from its current state.",
+      );
+    }
+    this.#graph.runtime.dispose();
+  }
+}
+
+export function composePublicationHostApplication(
+  options: PublicationCompositionOptions = {},
+): PublicationHostCompositionFacade {
+  return PublicationHostCompositionFacade.compose(options);
+}
+
+export function isApprovedPublicationHostComposition(
+  value: unknown,
+): value is PublicationHostCompositionFacade {
+  return PublicationHostCompositionFacade.isApproved(value);
+}
+
+export function isPublicationCompositionRuntimeFailure(error: unknown): boolean {
+  return error instanceof PublicationCompositionError
+    && error.code === "COMPOSITION_RUNTIME_UNAVAILABLE";
+}
+
 export function composePublicationApplication(
   options: PublicationCompositionOptions = {},
 ): PublicationCompositionGraph {
