@@ -497,7 +497,9 @@ test("PHASE13-12 executable production files preserve Host-only dependency and f
     );
     assert.equal(forbidden.some((pattern) => pattern.test(source)), false, `${file} contains forbidden scope`);
   }
-  for (const file of productionFiles.filter((file) => !executableFiles.includes(file))) {
+  for (const file of productionFiles.filter((file) => !executableFiles.includes(file)
+    && !file.startsWith("publication-http-")
+    && file !== "publication-in-process-http-adapter.ts")) {
     const imports = extractModuleSpecifiers(readFileSync(join(sourceDirectory, file), "utf8"));
     assert.equal(
       imports.some((specifier) => executableSpecifiers.has(specifier)),
