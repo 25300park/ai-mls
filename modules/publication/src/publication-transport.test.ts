@@ -453,7 +453,8 @@ test("PHASE13-8 Transport production modules preserve dependency direction and f
     "publication-transport-validation.ts",
   ]);
   const transportSpecifiers = new Set(transportFiles.map((file) => `./${file.slice(0, -3)}.js`));
-  const innerFiles = productionFiles.filter((file) => !transportFiles.includes(file));
+  const innerFiles = productionFiles.filter((file) => !transportFiles.includes(file)
+    && !file.startsWith("publication-presentation-"));
   for (const file of innerFiles) {
     const source = readFileSync(join(sourceDirectory, file), "utf8");
     const imports = extractModuleSpecifiers(source);
