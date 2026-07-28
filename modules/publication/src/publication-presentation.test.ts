@@ -375,7 +375,8 @@ test("PHASE13-9 Presentation production modules preserve isolation and framework
   }
 
   const presentationSpecifiers = new Set(presentationFiles.map((file) => `./${file.slice(0, -3)}.js`));
-  const innerFiles = productionFiles.filter((file) => !presentationFiles.includes(file));
+  const innerFiles = productionFiles.filter((file) => !presentationFiles.includes(file)
+    && !file.startsWith("publication-composition-"));
   for (const file of innerFiles) {
     const imports = extractModuleSpecifiers(readFileSync(join(sourceDirectory, file), "utf8"));
     assert.equal(imports.some((specifier) => presentationSpecifiers.has(specifier)), false, `${file} imports Presentation`);

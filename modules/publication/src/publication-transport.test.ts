@@ -454,7 +454,8 @@ test("PHASE13-8 Transport production modules preserve dependency direction and f
   ]);
   const transportSpecifiers = new Set(transportFiles.map((file) => `./${file.slice(0, -3)}.js`));
   const innerFiles = productionFiles.filter((file) => !transportFiles.includes(file)
-    && !file.startsWith("publication-presentation-"));
+    && !file.startsWith("publication-presentation-")
+    && !file.startsWith("publication-composition-"));
   for (const file of innerFiles) {
     const source = readFileSync(join(sourceDirectory, file), "utf8");
     const imports = extractModuleSpecifiers(source);
