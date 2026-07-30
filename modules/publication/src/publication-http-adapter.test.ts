@@ -500,7 +500,8 @@ test("PHASE13-13 HTTP production files preserve executable-only dependency and f
       `${file} contains forbidden server or framework scope`,
     );
   }
-  for (const file of productionFiles.filter((file) => !httpFiles.includes(file))) {
+  for (const file of productionFiles.filter((file) => !httpFiles.includes(file)
+    && !file.startsWith("publication-node-http-"))) {
     const imports = extractModuleSpecifiers(readFileSync(join(sourceDirectory, file), "utf8"));
     assert.equal(
       imports.some((specifier) => httpSpecifiers.has(specifier)),

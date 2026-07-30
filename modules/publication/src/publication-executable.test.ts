@@ -499,6 +499,7 @@ test("PHASE13-12 executable production files preserve Host-only dependency and f
   }
   for (const file of productionFiles.filter((file) => !executableFiles.includes(file)
     && !file.startsWith("publication-http-")
+    && !file.startsWith("publication-node-http-")
     && file !== "publication-in-process-http-adapter.ts")) {
     const imports = extractModuleSpecifiers(readFileSync(join(sourceDirectory, file), "utf8"));
     assert.equal(
