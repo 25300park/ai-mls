@@ -171,6 +171,7 @@ test("PHASE13-6 infrastructure source depends only on approved in-process contra
     "./publication-request-mapper.js",
     "./publication-repository.js",
     "./publication-service.js",
+    "./publication-lifecycle-service.js",
     "./publication-unit-of-work.js",
   ]);
   const files = ["publication-infrastructure-configuration.ts", "publication-infrastructure.ts"];

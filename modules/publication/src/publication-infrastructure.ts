@@ -24,6 +24,7 @@ import { StructuralPublicationInterfaceValidator } from "./publication-interface
 import { DefaultPublicationRequestMapper } from "./publication-request-mapper.js";
 import { InMemoryPublicationUnitOfWork } from "./publication-unit-of-work.js";
 import type { PublicationRepository } from "./publication-repository.js";
+import { PublicationLifecycleService } from "./publication-lifecycle-service.js";
 import {
   PublicationCoordinationService,
   unavailablePublicationConnectorDispatcher,
@@ -42,6 +43,7 @@ export interface PublicationInfrastructure {
   readonly authorization: PublicationAuthorizationGuard;
   readonly authorizationEvidence: PublicationAuthorizationEvidenceStore;
   readonly coordination: PublicationCoordinationService;
+  readonly lifecycle: PublicationLifecycleService;
   readonly connectorDispatcher: PublicationConnectorDispatcher;
 }
 
@@ -81,12 +83,17 @@ export function createPublicationInfrastructure(
     audit: unitOfWork.audit,
     clock: configuration.clock,
   });
+  const lifecycle = new PublicationLifecycleService({
+    application,
+    effectiveApproval: configuration.effectiveApprovalPort ?? unavailablePublicationEffectiveApprovalPort,
+  });
   const inputPort = new PublicationInterfaceService(
     application,
     new DefaultPublicationRequestMapper(),
     new DeterministicPublicationPresenter(),
     new StructuralPublicationInterfaceValidator(),
     coordination,
+    lifecycle,
   );
 
   return Object.freeze({
@@ -100,6 +107,7 @@ export function createPublicationInfrastructure(
     authorization,
     authorizationEvidence,
     coordination,
+    lifecycle,
     connectorDispatcher,
   });
 }

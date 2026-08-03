@@ -74,6 +74,46 @@ export interface PublicationCoordinationPort {
   publish(request: PublishPublicationCoordinationRequest): PublicationCoordinationResult;
 }
 
+export interface PublicationLifecycleRequest<Input extends PublicationModificationCommand> {
+  readonly context: PublicationExecutionContext;
+  readonly identity: PublicationIdentity;
+  readonly input: Input;
+}
+
+export type CorrectPublicationRequest = PublicationLifecycleRequest<BeginActiveOperationCommand & { readonly operation: "CORRECTION" }>;
+export type RepublishPublicationRequest = PublicationLifecycleRequest<
+  | (BeginActiveOperationCommand & { readonly operation: "REPUBLISH" })
+  | BeginWithdrawnRepublishCommand
+>;
+export type RequestWithdrawalLifecycleRequest = PublicationLifecycleRequest<RequestWithdrawalCommand>;
+export type ResolveWithdrawalLifecycleRequest = PublicationLifecycleRequest<ResolveWithdrawalCommand>;
+export type SuspendPublicationRequest = PublicationLifecycleRequest<SetSuspensionCommand & { readonly suspensionStatus: Exclude<SetSuspensionCommand["suspensionStatus"], "NOT_SUSPENDED"> }>;
+export type ResumePublicationRequest = PublicationLifecycleRequest<SetSuspensionCommand & { readonly suspensionStatus: "NOT_SUSPENDED" }>;
+export type SupersedePublicationRequest = PublicationLifecycleRequest<SupersedePublicationCommand>;
+export type TerminatePublicationRequest = PublicationLifecycleRequest<TerminatePublicationCommand>;
+
+export type PublicationLifecycleCoordinationRequest =
+  | ({ readonly action: "CORRECT" } & CorrectPublicationRequest)
+  | ({ readonly action: "REPUBLISH" } & RepublishPublicationRequest)
+  | ({ readonly action: "REQUEST_WITHDRAWAL" } & RequestWithdrawalLifecycleRequest)
+  | ({ readonly action: "RESOLVE_WITHDRAWAL" } & ResolveWithdrawalLifecycleRequest)
+  | ({ readonly action: "SUSPEND" } & SuspendPublicationRequest)
+  | ({ readonly action: "RESUME" } & ResumePublicationRequest)
+  | ({ readonly action: "SUPERSEDE" } & SupersedePublicationRequest)
+  | ({ readonly action: "TERMINATE" } & TerminatePublicationRequest);
+
+export interface PublicationLifecyclePort {
+  correctPublication(request: CorrectPublicationRequest): PublicationApplicationResult;
+  republishPublication(request: RepublishPublicationRequest): PublicationApplicationResult;
+  requestWithdrawal(request: RequestWithdrawalLifecycleRequest): PublicationApplicationResult;
+  resolveWithdrawal(request: ResolveWithdrawalLifecycleRequest): PublicationApplicationResult;
+  suspendPublication(request: SuspendPublicationRequest): PublicationApplicationResult;
+  resumePublication(request: ResumePublicationRequest): PublicationApplicationResult;
+  supersedePublication(request: SupersedePublicationRequest): PublicationApplicationResult;
+  terminatePublication(request: TerminatePublicationRequest): PublicationApplicationResult;
+  execute(request: PublicationLifecycleCoordinationRequest): PublicationApplicationResult;
+}
+
 export interface ModifyPublicationApplicationCommand {
   readonly kind: "MODIFY_PUBLICATION";
   readonly identity: PublicationIdentity;

@@ -368,6 +368,7 @@ function layerOf(file: string): ArchitectureLayer {
   if (file.startsWith("publication-application-")
     || file === "publication-command-handlers.ts"
     || file === "publication-service.ts"
+    || file === "publication-lifecycle-service.ts"
     || file === "publication-clock.ts") return "APPLICATION";
   if (file.startsWith("in-memory-")
     || file.startsWith("publication-persistence-")

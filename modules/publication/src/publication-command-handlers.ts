@@ -88,7 +88,15 @@ function executeModificationBoundary(
   try {
     validateApplicationContext(applicationCommand, context);
     const commandType = authorizationCommandType(applicationCommand);
-    const expectedAggregateVersion = applicationCommand.kind === "CREATE_PUBLICATION" ? 0 : applicationCommand.input.expectedAggregateVersion;
+    const replayKeyExists = applicationCommand.kind === "MODIFY_PUBLICATION"
+      && hasRecordedIdempotencyKey(dependencies, identity, context);
+    if (replayKeyExists) {
+      current = dependencies.repository.find(identity);
+      if (current !== undefined) currentVersion = current.aggregateVersion;
+    }
+    const expectedAggregateVersion = applicationCommand.kind === "CREATE_PUBLICATION"
+      ? 0
+      : replayKeyExists ? currentVersion : applicationCommand.input.expectedAggregateVersion;
     const authorization = dependencies.authorization.authorize({
       ...(context.sessionId === undefined ? {} : { sessionId: context.sessionId }),
       commandType,
@@ -106,7 +114,7 @@ function executeModificationBoundary(
         if (applicationCommand.kind === "CREATE_PUBLICATION") {
           return Object.freeze({ binding: applicationCommand.input.binding, currentAggregateVersion: 0 });
         }
-        current = dependencies.repository.find(identity);
+        current ??= dependencies.repository.find(identity);
         if (current === undefined) throw persistenceError("PUBLICATION_NOT_FOUND", "Publication was not found.");
         currentVersion = current.aggregateVersion;
         return Object.freeze({
@@ -175,6 +183,30 @@ function executeModificationBoundary(
       );
     }
     return mapPublicationApplicationError(error, committing);
+  }
+}
+
+function hasRecordedIdempotencyKey(
+  dependencies: PublicationApplicationDependencies,
+  identity: PublicationIdentity,
+  context: PublicationExecutionContext,
+): boolean {
+  const auditMatch = dependencies.audit.list(identity).some((record) => {
+    const evidence = decodeAuditId(record.id);
+    return evidence?.tenantScopeId === identity.tenantScopeId
+      && evidence.publicationId === identity.publicationId
+      && evidence.idempotencyKey === context.idempotencyKey
+      && evidence.outcome === "completed";
+  });
+  if (auditMatch) return true;
+  try {
+    return dependencies.idempotency.find({
+      tenantScopeId: identity.tenantScopeId,
+      aggregateId: identity.publicationId,
+      commandKey: context.idempotencyKey,
+    }) !== undefined;
+  } catch {
+    return false;
   }
 }
 

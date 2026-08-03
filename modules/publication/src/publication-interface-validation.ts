@@ -44,6 +44,10 @@ export class StructuralPublicationInterfaceValidator implements PublicationInter
               && validCommandContext(request["command"])
               && validAttempt(request["attempt"])
               && positiveInteger(request["expectedAggregateVersion"])
+          : request["operation"] === "COORDINATE_PUBLICATION_LIFECYCLE"
+            ? hasOnlyKeys(request, ["operation", "action", "context", "identity", "input"])
+              && validIdentity(request["identity"])
+              && validLifecycleAction(request["action"], request["input"])
         : request["operation"] === "MODIFY_PUBLICATION"
           && hasOnlyKeys(request, ["operation", "context", "identity", "input"])
           && validIdentity(request["identity"])
@@ -52,6 +56,26 @@ export class StructuralPublicationInterfaceValidator implements PublicationInter
       ? immutableInterfaceValue({ valid: true as const })
       : immutableInterfaceValue({ valid: false as const, failureCode: "INTERFACE_REQUEST_INVALID" as const });
   }
+}
+
+function validLifecycleAction(action: unknown, input: unknown): boolean {
+  if (!validModificationInput(input) || typeof action !== "string" || !isRecord(input)) return false;
+  const expected: Readonly<Record<string, readonly string[]>> = {
+    CORRECT: ["BEGIN_ACTIVE_OPERATION"],
+    REPUBLISH: ["BEGIN_ACTIVE_OPERATION", "BEGIN_WITHDRAWN_REPUBLISH"],
+    REQUEST_WITHDRAWAL: ["REQUEST_WITHDRAWAL"],
+    RESOLVE_WITHDRAWAL: ["RESOLVE_WITHDRAWAL"],
+    SUSPEND: ["SET_SUSPENSION"],
+    RESUME: ["SET_SUSPENSION"],
+    SUPERSEDE: ["SUPERSEDE"],
+    TERMINATE: ["TERMINATE"],
+  };
+  if (!(action in expected) || !expected[action]!.includes(input["type"] as string)) return false;
+  if (action === "CORRECT") return input["operation"] === "CORRECTION";
+  if (action === "REPUBLISH" && input["type"] === "BEGIN_ACTIVE_OPERATION") return input["operation"] === "REPUBLISH";
+  if (action === "SUSPEND") return input["suspensionStatus"] !== "NOT_SUSPENDED";
+  if (action === "RESUME") return input["suspensionStatus"] === "NOT_SUSPENDED";
+  return true;
 }
 
 function validCoordinationCreateCommand(value: unknown): boolean {

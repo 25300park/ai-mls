@@ -93,7 +93,7 @@ export class PublicationCoordinationService {
     return this.dependencies.application.executeAuthorized(
       command,
       stageContext(request.context, "create"),
-      (authorization) => { this.requireEffectiveApproval(identity, request.context, authorization.actorId, authorization.binding); },
+      (authorization) => { requireEffectivePublicationApproval(this.dependencies.effectiveApproval, identity, request.context, authorization.actorId, authorization.binding); },
     );
   }
 
@@ -115,7 +115,7 @@ export class PublicationCoordinationService {
       },
     }, stageContext(request.context, "publish"), (authorization) => {
       authorizedActorId = authorization.actorId;
-      approvalDecisionReference = this.requireEffectiveApproval(identity, request.context, authorization.actorId, authorization.binding).decisionReference!;
+      approvalDecisionReference = requireEffectivePublicationApproval(this.dependencies.effectiveApproval, identity, request.context, authorization.actorId, authorization.binding).decisionReference;
     });
     if (!beginResult.ok) return beginResult;
 
@@ -241,35 +241,38 @@ export class PublicationCoordinationService {
     }
   }
 
-  private requireEffectiveApproval(identity: PublicationIdentity, context: PublicationExecutionContext, actorId: string, binding: PublicationBinding): Extract<PublicationEffectiveApprovalDecision, { readonly effective: true }> {
-    let decision: PublicationEffectiveApprovalDecision;
-    try {
-      decision = this.dependencies.effectiveApproval.check({
-        ...binding,
-        actorId,
-        sessionId: context.sessionId ?? "",
-        correlationId: context.correlationId,
-        tenantScopeId: identity.tenantScopeId,
-        purpose: "PUBLICATION_EXECUTION",
-        consumerDuty: "EXECUTION",
-      });
-    } catch {
-      throw new PublicationApplicationError("APPROVAL_NOT_EFFECTIVE", "DOMAIN_REJECTION", "Publication Approval is not effective.");
-    }
-    if (decision.effective !== true || decision.decisionReference.trim().length === 0
-      || decision.checkedAt.trim().length === 0 || decision.reasonCodes.length === 0) {
-      throw new PublicationApplicationError("APPROVAL_NOT_EFFECTIVE", "DOMAIN_REJECTION", "Publication Approval is not effective.");
-    }
-    if (decision.approvalId !== binding.approvalId) {
-      throw new PublicationApplicationError("APPROVAL_NOT_EFFECTIVE", "DOMAIN_REJECTION", "Publication Approval is not effective.");
-    }
-    if (decision.approvalVersion !== binding.approvalVersion
-      || decision.effectiveScope.targetId !== binding.targetId
-      || decision.effectiveScope.channelId !== binding.channelId) {
-      throw new PublicationApplicationError("APPROVAL_NOT_EFFECTIVE", "DOMAIN_REJECTION", "Publication Approval is not effective.");
-    }
-    return decision;
+}
+
+export function requireEffectivePublicationApproval(
+  effectiveApproval: PublicationEffectiveApprovalPort,
+  identity: PublicationIdentity,
+  context: PublicationExecutionContext,
+  actorId: string,
+  binding: PublicationBinding,
+): Extract<PublicationEffectiveApprovalDecision, { readonly effective: true }> {
+  let decision: PublicationEffectiveApprovalDecision;
+  try {
+    decision = effectiveApproval.check({
+      ...binding,
+      actorId,
+      sessionId: context.sessionId ?? "",
+      correlationId: context.correlationId,
+      tenantScopeId: identity.tenantScopeId,
+      purpose: "PUBLICATION_EXECUTION",
+      consumerDuty: "EXECUTION",
+    });
+  } catch {
+    throw new PublicationApplicationError("APPROVAL_NOT_EFFECTIVE", "DOMAIN_REJECTION", "Publication Approval is not effective.");
   }
+  if (decision.effective !== true || decision.decisionReference.trim().length === 0
+    || decision.checkedAt.trim().length === 0 || decision.reasonCodes.length === 0
+    || decision.approvalId !== binding.approvalId
+    || decision.approvalVersion !== binding.approvalVersion
+    || decision.effectiveScope.targetId !== binding.targetId
+    || decision.effectiveScope.channelId !== binding.channelId) {
+    throw new PublicationApplicationError("APPROVAL_NOT_EFFECTIVE", "DOMAIN_REJECTION", "Publication Approval is not effective.");
+  }
+  return decision;
 }
 
 function normalizeConnectorResult(result: PublicationConnectorDispatchResult, attemptId: string): PublicationConnectorDispatchResult {
