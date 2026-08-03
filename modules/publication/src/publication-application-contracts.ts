@@ -1,4 +1,10 @@
-import type { PublicationBinding, PublicationIdentity, PublicationLifecycleState } from "./publication-contracts.js";
+import type {
+  DomainCommandContext,
+  PublicationBinding,
+  PublicationIdentity,
+  PublicationLifecycleState,
+  ReconciliationResolution,
+} from "./publication-contracts.js";
 import type {
   BeginActiveOperationCommand,
   BeginInitialExecutionCommand,
@@ -114,6 +120,51 @@ export interface PublicationLifecyclePort {
   execute(request: PublicationLifecycleCoordinationRequest): PublicationApplicationResult;
 }
 
+export const PUBLICATION_RECOVERY_CATEGORIES = Object.freeze([
+  "CONFIRMED_SUCCESS",
+  "CONFIRMED_FAILURE",
+  "UNKNOWN",
+  "PARTIAL_COMPLETION",
+  "EXTERNAL_TIMEOUT",
+  "MANUAL_REVIEW_REQUIRED",
+] as const);
+
+export type PublicationRecoveryCategory = typeof PUBLICATION_RECOVERY_CATEGORIES[number];
+export type PublicationRecoveryDecision = "CONFIRMED" | "RECOVERED" | "REJECTED" | "MANUAL_REVIEW_REQUIRED" | "NO_ACTION_REQUIRED";
+
+export interface PublicationReconciliationInput {
+  readonly expectedAggregateVersion: number;
+  readonly caseId: string;
+  readonly category: PublicationRecoveryCategory;
+  readonly resolution?: ReconciliationResolution;
+  readonly evidenceRefs: readonly string[];
+  readonly externalObjectReference?: string;
+  readonly command: DomainCommandContext;
+}
+
+export interface PublicationReconciliationRequest {
+  readonly context: PublicationExecutionContext;
+  readonly identity: PublicationIdentity;
+  readonly input: PublicationReconciliationInput;
+}
+
+export interface PublicationReconciliationSuccessResult {
+  readonly ok: true;
+  readonly publicationId: string;
+  readonly aggregateVersion: number;
+  readonly decision: PublicationRecoveryDecision;
+  readonly resultReference: string;
+  readonly replayed: boolean;
+}
+
+export type PublicationReconciliationResult = PublicationReconciliationSuccessResult | PublicationApplicationErrorResult;
+
+export interface PublicationReconciliationPort {
+  reconcile(request: PublicationReconciliationRequest): PublicationReconciliationResult;
+  recover(request: PublicationReconciliationRequest): PublicationReconciliationResult;
+  execute(request: PublicationReconciliationRequest): PublicationReconciliationResult;
+}
+
 export interface ModifyPublicationApplicationCommand {
   readonly kind: "MODIFY_PUBLICATION";
   readonly identity: PublicationIdentity;
@@ -154,3 +205,10 @@ export interface PublicationAuthorizedExecution {
 }
 
 export type PublicationAuthorizedPreflight = (execution: PublicationAuthorizedExecution) => void;
+
+export interface PublicationApplicationAuditDetails {
+  readonly decision: PublicationRecoveryDecision;
+  readonly reason: string;
+  readonly correlationId: string;
+  readonly evidenceRefs: readonly string[];
+}

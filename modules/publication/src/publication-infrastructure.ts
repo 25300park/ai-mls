@@ -25,6 +25,7 @@ import { DefaultPublicationRequestMapper } from "./publication-request-mapper.js
 import { InMemoryPublicationUnitOfWork } from "./publication-unit-of-work.js";
 import type { PublicationRepository } from "./publication-repository.js";
 import { PublicationLifecycleService } from "./publication-lifecycle-service.js";
+import { PublicationReconciliationService } from "./publication-reconciliation-service.js";
 import {
   PublicationCoordinationService,
   unavailablePublicationConnectorDispatcher,
@@ -44,6 +45,7 @@ export interface PublicationInfrastructure {
   readonly authorizationEvidence: PublicationAuthorizationEvidenceStore;
   readonly coordination: PublicationCoordinationService;
   readonly lifecycle: PublicationLifecycleService;
+  readonly reconciliation: PublicationReconciliationService;
   readonly connectorDispatcher: PublicationConnectorDispatcher;
 }
 
@@ -87,6 +89,16 @@ export function createPublicationInfrastructure(
     application,
     effectiveApproval: configuration.effectiveApprovalPort ?? unavailablePublicationEffectiveApprovalPort,
   });
+  const reconciliation = new PublicationReconciliationService({
+    application,
+    repository: unitOfWork.repository,
+    authorization,
+    effectiveApproval: configuration.effectiveApprovalPort ?? unavailablePublicationEffectiveApprovalPort,
+    unitOfWork,
+    idempotency: unitOfWork.idempotency,
+    audit: unitOfWork.audit,
+    clock: configuration.clock,
+  });
   const inputPort = new PublicationInterfaceService(
     application,
     new DefaultPublicationRequestMapper(),
@@ -94,6 +106,7 @@ export function createPublicationInfrastructure(
     new StructuralPublicationInterfaceValidator(),
     coordination,
     lifecycle,
+    reconciliation,
   );
 
   return Object.freeze({
@@ -108,6 +121,7 @@ export function createPublicationInfrastructure(
     authorizationEvidence,
     coordination,
     lifecycle,
+    reconciliation,
     connectorDispatcher,
   });
 }

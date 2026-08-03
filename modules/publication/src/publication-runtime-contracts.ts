@@ -17,6 +17,7 @@ export type PublicationRuntimeServiceName =
   | "authorizationEvidence"
   | "coordination"
   | "lifecycle"
+  | "reconciliation"
   | "connectorDispatcher";
 
 export type PublicationRuntimeFailureCode =

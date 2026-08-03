@@ -15,6 +15,7 @@ export const publicationRuntimeServiceNames: readonly PublicationRuntimeServiceN
   "authorizationEvidence",
   "coordination",
   "lifecycle",
+  "reconciliation",
   "connectorDispatcher",
 ]);
 
@@ -30,6 +31,7 @@ export interface PublicationRuntimeServiceRegistry {
   readonly authorizationEvidence: PublicationInfrastructure["authorizationEvidence"];
   readonly coordination: PublicationInfrastructure["coordination"];
   readonly lifecycle: PublicationInfrastructure["lifecycle"];
+  readonly reconciliation: PublicationInfrastructure["reconciliation"];
   readonly connectorDispatcher: PublicationInfrastructure["connectorDispatcher"];
 }
 
@@ -49,6 +51,7 @@ export function createPublicationRuntimeServiceRegistry(
     authorizationEvidence: infrastructure.authorizationEvidence,
     coordination: infrastructure.coordination,
     lifecycle: infrastructure.lifecycle,
+    reconciliation: infrastructure.reconciliation,
     connectorDispatcher: infrastructure.connectorDispatcher,
   });
 }
@@ -75,6 +78,7 @@ export function validatePublicationRuntimeInfrastructure(
     || !hasMethods(value["authorizationEvidence"], ["append", "list"])
     || !hasMethods(value["coordination"], ["create", "publish"])
     || !hasMethods(value["lifecycle"], ["correctPublication", "republishPublication", "requestWithdrawal", "resolveWithdrawal", "suspendPublication", "resumePublication", "supersedePublication", "terminatePublication", "execute"])
+    || !hasMethods(value["reconciliation"], ["reconcile", "recover", "execute"])
     || !hasMethods(value["connectorDispatcher"], ["dispatch"])) {
     throw new PublicationRuntimeError("RUNTIME_DEPENDENCY_MISSING", "A mandatory runtime authorization port is unavailable.");
   }

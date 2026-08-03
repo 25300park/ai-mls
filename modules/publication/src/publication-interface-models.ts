@@ -4,6 +4,7 @@ import type {
   ModifyPublicationApplicationCommand,
   PublishPublicationCoordinationRequest,
   PublicationLifecycleCoordinationRequest,
+  PublicationReconciliationRequest,
   PublicationExecutionContext,
 } from "./publication-application-contracts.js";
 
@@ -34,10 +35,15 @@ export type CoordinatePublicationLifecycleInterfaceRequest = PublicationLifecycl
   readonly operation: "COORDINATE_PUBLICATION_LIFECYCLE";
 };
 
+export type CoordinatePublicationReconciliationInterfaceRequest = PublicationReconciliationRequest & {
+  readonly operation: "COORDINATE_PUBLICATION_RECONCILIATION";
+};
+
 export type PublicationOuterRequest = PublicationInterfaceRequest
   | CoordinateCreatePublicationInterfaceRequest
   | CoordinatePublishPublicationInterfaceRequest
-  | CoordinatePublicationLifecycleInterfaceRequest;
+  | CoordinatePublicationLifecycleInterfaceRequest
+  | CoordinatePublicationReconciliationInterfaceRequest;
 
 export interface PublicationInterfaceSuccessResponse {
   readonly operationResult: "SUCCEEDED";

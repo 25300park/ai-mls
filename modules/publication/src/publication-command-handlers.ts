@@ -4,6 +4,7 @@ import type {
   CreatePublicationApplicationCommand,
   ModifyPublicationApplicationCommand,
   PublicationApplicationCommand,
+  PublicationApplicationAuditDetails,
   PublicationApplicationResult,
   PublicationApplicationSuccessResult,
   PublicationAuthorizedPreflight,
@@ -57,7 +58,7 @@ export class ModifyPublicationHandler implements PublicationCommandHandler<Modif
     return this.executeAuthorized(command, context);
   }
 
-  public executeAuthorized(command: ModifyPublicationApplicationCommand, context: PublicationExecutionContext, preflight?: PublicationAuthorizedPreflight): PublicationApplicationResult {
+  public executeAuthorized(command: ModifyPublicationApplicationCommand, context: PublicationExecutionContext, preflight?: PublicationAuthorizedPreflight, auditDetails?: PublicationApplicationAuditDetails): PublicationApplicationResult {
     return executeModificationBoundary(this.dependencies, command, command.identity, context, (transaction, authorizedCommand) => {
       if (authorizedCommand.kind !== "MODIFY_PUBLICATION") throw new Error("APPLICATION_COMMAND_INVALID");
       const snapshot = transaction.repository.find(authorizedCommand.identity);
@@ -66,7 +67,7 @@ export class ModifyPublicationHandler implements PublicationCommandHandler<Modif
       const updated = executeDomainBehaviour(aggregate, authorizedCommand.input).snapshot;
       transaction.repository.update(snapshot.aggregateVersion, updated);
       return updated;
-    }, preflight);
+    }, preflight, auditDetails);
   }
 }
 
@@ -77,6 +78,7 @@ function executeModificationBoundary(
   context: PublicationExecutionContext,
   executeDomain: (transaction: PublicationTransaction, authorizedCommand: PublicationApplicationCommand) => PublicationSnapshot,
   preflight?: PublicationAuthorizedPreflight,
+  auditDetails?: PublicationApplicationAuditDetails,
 ): PublicationApplicationResult {
   let transaction: PublicationTransaction | undefined;
   let currentVersion = applicationCommand.kind === "MODIFY_PUBLICATION" ? applicationCommand.input.expectedAggregateVersion : 0;
@@ -138,15 +140,23 @@ function executeModificationBoundary(
     transaction = dependencies.unitOfWork.begin(identity);
     const snapshot = executeDomain(transaction, authorizedCommand);
     currentVersion = snapshot.aggregateVersion;
+    const auditTimestamp = dependencies.clock.now();
     transaction.audit.append({
       id: auditId(identity, authorizedContext, commandName(authorizedCommand), authorizedContext.intentFingerprint, "completed"),
       tenantScopeId: identity.tenantScopeId,
       aggregateId: identity.publicationId,
       command: commandName(applicationCommand),
       actorId: authorizedContext.actorId,
-      timestamp: dependencies.clock.now(),
+      timestamp: auditTimestamp,
       version: snapshot.aggregateVersion,
       result: "COMPLETED",
+      ...(auditDetails === undefined ? {} : {
+        decision: auditDetails.decision,
+        reason: auditDetails.reason,
+        correlationId: auditDetails.correlationId,
+        checkedAt: auditTimestamp,
+        evidenceRefs: auditDetails.evidenceRefs,
+      }),
     });
     committing = true;
     transaction.commit();

@@ -2,6 +2,7 @@ import type {
   PublicationCoordinationPort,
   PublicationCommandHandler,
   PublicationLifecyclePort,
+  PublicationReconciliationPort,
 } from "./publication-application-contracts.js";
 import type {
   PublicationInterfaceRequest,
@@ -25,6 +26,7 @@ export class PublicationInterfaceService implements PublicationInputPort {
     private readonly validator: PublicationInterfaceValidator,
     private readonly coordination?: PublicationCoordinationPort,
     private readonly lifecycle?: PublicationLifecyclePort,
+    private readonly reconciliation?: PublicationReconciliationPort,
   ) {}
 
   public execute(request: PublicationOuterRequest): PublicationInterfaceResponse {
@@ -35,6 +37,9 @@ export class PublicationInterfaceService implements PublicationInputPort {
     if (!validation.valid) return this.presenter.presentInterfaceFailure(validation.failureCode);
     if (request.operation === "COORDINATE_CREATE_PUBLICATION" || request.operation === "COORDINATE_PUBLISH_PUBLICATION"
       || request.operation === "COORDINATE_PUBLICATION_LIFECYCLE") {
+      return this.executeCoordination(request);
+    }
+    if (request.operation === "COORDINATE_PUBLICATION_RECONCILIATION") {
       return this.executeCoordination(request);
     }
     return this.executeApplication(request);
@@ -52,6 +57,18 @@ export class PublicationInterfaceService implements PublicationInputPort {
   private executeCoordination(
     request: Exclude<PublicationOuterRequest, PublicationInterfaceRequest>,
   ): PublicationInterfaceResponse {
+    if (request.operation === "COORDINATE_PUBLICATION_RECONCILIATION") {
+      if (this.reconciliation === undefined) return this.presenter.presentInterfaceFailure("INTERFACE_EXECUTION_FAILED");
+      try {
+        return this.presenter.present(this.reconciliation.execute({
+          context: request.context,
+          identity: request.identity,
+          input: request.input,
+        }));
+      } catch {
+        return this.presenter.presentInterfaceFailure("INTERFACE_EXECUTION_FAILED");
+      }
+    }
     if (request.operation === "COORDINATE_PUBLICATION_LIFECYCLE") {
       if (this.lifecycle === undefined) return this.presenter.presentInterfaceFailure("INTERFACE_EXECUTION_FAILED");
       try {

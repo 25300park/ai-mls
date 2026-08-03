@@ -1,5 +1,6 @@
 import type {
   PublicationApplicationCommand,
+  PublicationApplicationAuditDetails,
   PublicationApplicationResult,
   PublicationAuthorizedPreflight,
   PublicationCommandHandler,
@@ -19,9 +20,9 @@ export class PublicationApplicationService implements PublicationCommandHandler 
       : this.modifyHandler.execute(command, context);
   }
 
-  public executeAuthorized(command: PublicationApplicationCommand, context: PublicationExecutionContext, preflight: PublicationAuthorizedPreflight): PublicationApplicationResult {
+  public executeAuthorized(command: PublicationApplicationCommand, context: PublicationExecutionContext, preflight: PublicationAuthorizedPreflight, auditDetails?: PublicationApplicationAuditDetails): PublicationApplicationResult {
     return command.kind === "CREATE_PUBLICATION"
       ? this.createHandler.executeAuthorized(command, context, preflight)
-      : this.modifyHandler.executeAuthorized(command, context, preflight);
+      : this.modifyHandler.executeAuthorized(command, context, preflight, auditDetails);
   }
 }
