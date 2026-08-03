@@ -159,6 +159,32 @@ test("PHASE13-5 presenter replaces unknown internal error codes with an interfac
   assert.deepEqual(presenter.presentInterfaceFailure("POSTGRES_INTERNAL"), { operationResult: "FAILED", failureCode: "INTERFACE_EXECUTION_FAILED" });
 });
 
+test("F15-TASK-005 presenter preserves only the approved safe authorization error vocabulary", () => {
+  const presenter = new DeterministicPublicationPresenter();
+  for (const failureCode of [
+    "AUTHENTICATION_REQUIRED",
+    "AUTHORIZATION_DENIED",
+    "PURPOSE_SCOPE_DENIED",
+    "MFA_REQUIRED",
+    "REASON_REQUIRED",
+    "SEPARATION_OF_DUTIES_DENIED",
+    "APPROVAL_NOT_EFFECTIVE",
+    "VERIFICATION_NOT_EFFECTIVE",
+    "PERMISSION_NOT_EFFECTIVE",
+    "BINDING_MISMATCH",
+    "POLICY_VERSION_STALE",
+  ]) {
+    assert.deepEqual(presenter.presentInterfaceFailure(failureCode), {
+      operationResult: "FAILED",
+      failureCode,
+    });
+  }
+  assert.deepEqual(presenter.presentInterfaceFailure("INTERNAL_POLICY_DETAIL"), {
+    operationResult: "FAILED",
+    failureCode: "INTERFACE_EXECUTION_FAILED",
+  });
+});
+
 test("PHASE13-5 input port invokes the application boundary and returns the presented response", () => {
   let executions = 0;
   const inputPort = service({

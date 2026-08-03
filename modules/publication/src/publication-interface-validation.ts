@@ -147,8 +147,9 @@ function validAttempt(value: unknown): boolean {
 
 function validExecutionContext(value: unknown): boolean {
   return isRecord(value)
-    && hasOnlyKeys(value, ["actorId", "correlationId", "idempotencyKey", "intentFingerprint"])
+    && hasOnlyKeys(value, ["actorId", "sessionId", "correlationId", "idempotencyKey", "intentFingerprint"])
     && nonBlankString(value["actorId"])
+    && (!("sessionId" in value) || validIdentifier(value["sessionId"]))
     && nonBlankString(value["correlationId"])
     && validIdentifier(value["idempotencyKey"])
     && nonBlankString(value["intentFingerprint"]);

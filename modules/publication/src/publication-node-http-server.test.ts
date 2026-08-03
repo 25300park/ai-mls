@@ -6,6 +6,9 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { createPublicationInProcessExecutable } from "./publication-executable-bootstrap.js";
+import { createPublicationApplicationHost } from "./publication-host-bootstrap.js";
+import { FixedClock } from "./publication-clock.js";
+import { createTestPublicationAuthorizationConfiguration } from "./publication-authorization-test-support.test.js";
 import { createInProcessPublicationHttpAdapter } from "./publication-in-process-http-adapter.js";
 import {
   PublicationNodeHttpServerError,
@@ -514,7 +517,9 @@ test("PHASE13-14 construction and import never starts a listener", () => {
 });
 
 test("PHASE13-14 completes the real loopback FEAT-015 execution path", async () => {
-  const executable = createPublicationInProcessExecutable();
+  const executable = createPublicationInProcessExecutable(undefined, () => createPublicationApplicationHost({
+    compositionOptions: { runtimeOptions: { infrastructureConfiguration: createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)) } },
+  }));
   executable.start();
   const httpAdapter = createInProcessPublicationHttpAdapter(executable);
   const server = createPublicationNodeHttpServer({
@@ -806,6 +811,7 @@ async function sendRaw(port: number, path: string, body: string, requestId: stri
         "content-type": "application/json",
         "content-length": Buffer.byteLength(body),
         "x-request-id": requestId,
+        "x-session-id": "actor-node-http",
       },
     }, (response) => {
       const chunks: Buffer[] = [];

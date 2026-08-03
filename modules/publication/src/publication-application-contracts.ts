@@ -15,6 +15,8 @@ import type {
 
 export interface PublicationExecutionContext {
   readonly actorId: string;
+  /** Compatibility-only caller claim. Publication authorization never treats it as authoritative. */
+  readonly sessionId?: string;
   readonly correlationId: string;
   readonly idempotencyKey: string;
   readonly intentFingerprint: string;

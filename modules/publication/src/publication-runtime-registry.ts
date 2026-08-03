@@ -11,6 +11,8 @@ export const publicationRuntimeServiceNames: readonly PublicationRuntimeServiceN
   "idempotency",
   "audit",
   "clock",
+  "authorization",
+  "authorizationEvidence",
 ]);
 
 export interface PublicationRuntimeServiceRegistry {
@@ -21,6 +23,8 @@ export interface PublicationRuntimeServiceRegistry {
   readonly idempotency: PublicationInfrastructure["idempotency"];
   readonly audit: PublicationInfrastructure["audit"];
   readonly clock: PublicationInfrastructure["clock"];
+  readonly authorization: PublicationInfrastructure["authorization"];
+  readonly authorizationEvidence: PublicationInfrastructure["authorizationEvidence"];
 }
 
 export function createPublicationRuntimeServiceRegistry(
@@ -35,6 +39,8 @@ export function createPublicationRuntimeServiceRegistry(
     idempotency: infrastructure.idempotency,
     audit: infrastructure.audit,
     clock: infrastructure.clock,
+    authorization: infrastructure.authorization,
+    authorizationEvidence: infrastructure.authorizationEvidence,
   });
 }
 
@@ -55,6 +61,10 @@ export function validatePublicationRuntimeInfrastructure(
     || !hasMethods(value["audit"], ["append", "list"])
     || !hasMethods(value["clock"], ["now"])) {
     throw new PublicationRuntimeError("RUNTIME_DEPENDENCY_MISSING", "A mandatory runtime port is unavailable.");
+  }
+  if (!hasMethods(value["authorization"], ["authorize"])
+    || !hasMethods(value["authorizationEvidence"], ["append", "list"])) {
+    throw new PublicationRuntimeError("RUNTIME_DEPENDENCY_MISSING", "A mandatory runtime authorization port is unavailable.");
   }
   const configuration = value["configuration"];
   const unitOfWork = value["unitOfWork"];

@@ -76,5 +76,23 @@
 | [Phase 12 Freeze Readiness](PHASE12_FREEZE_READINESS.md) | zero-gap, baseline integrity와 implementation authorization gate | IN REVIEW |
 | [Phase 12 Cross-Registry Final Validation](PHASE12_CROSS_REGISTRY_FINAL_VALIDATION.md) | Registry 10/10과 reciprocal matrix 9/9 최종 검증 | IN REVIEW |
 | [Phase 12 Architecture Remediation Completion](PHASE12_ARCHITECTURE_REMEDIATION_COMPLETION.md) | Phase 12 remediation 결과, validation과 approval prerequisite | IN REVIEW |
+| [Phase 13-1 Implementation Planning](PHASE13_1_IMPLEMENTATION_PLANNING_REPORT.md) | FEAT-015 implementation plan, trace, task와 test strategy evidence | DRAFT |
+| [Phase 13-2A Prerequisite Recovery](PHASE13_2A_PREREQUISITE_RECOVERY_REPORT.md) | Node/toolchain, planning baseline과 clean repository recovery evidence | DRAFT |
+| [Phase 13-2B Domain Foundation](PHASE13_2B_DOMAIN_FOUNDATION_IMPLEMENTATION_REPORT.md) | FEAT-015 Domain contract와 aggregate implementation evidence | DRAFT |
+| [Phase 13-3A Logical Persistence](PHASE13_3A_LOGICAL_PERSISTENCE_IMPLEMENTATION_REPORT.md) | logical repository, mapper, unit-of-work, idempotency와 audit evidence | DRAFT |
+| [Phase 13-4A Hydration Boundary](PHASE13_4A_HYDRATION_BOUNDARY_IMPLEMENTATION_REPORT.md) | aggregate rehydration boundary evidence | DRAFT |
+| [Phase 13-4 Application Foundation](PHASE13_4_APPLICATION_FOUNDATION_IMPLEMENTATION_REPORT.md) | application orchestration과 handler evidence | DRAFT |
+| [Phase 13-5 Interface Foundation](PHASE13_5_INTERFACE_FOUNDATION_IMPLEMENTATION_REPORT.md) | Interface request, validation, presentation port evidence | DRAFT |
+| [Phase 13-6 Infrastructure Foundation](PHASE13_6_INFRASTRUCTURE_FOUNDATION_IMPLEMENTATION_REPORT.md) | in-process Infrastructure composition evidence | DRAFT |
+| [Phase 13-7 Runtime Foundation](PHASE13_7_RUNTIME_FOUNDATION_IMPLEMENTATION_REPORT.md) | deterministic Runtime lifecycle evidence | DRAFT |
+| [Phase 13-8 Transport Boundary](PHASE13_8_TRANSPORT_BOUNDARY_FOUNDATION_IMPLEMENTATION_REPORT.md) | framework-neutral Transport boundary evidence | DRAFT |
+| [Phase 13-9 Presentation Boundary](PHASE13_9_PRESENTATION_BOUNDARY_FOUNDATION_IMPLEMENTATION_REPORT.md) | deterministic Presentation mapping evidence | DRAFT |
+| [Phase 13-10 Composition Root](PHASE13_10_COMPOSITION_ROOT_FOUNDATION_IMPLEMENTATION_REPORT.md) | explicit dependency graph composition evidence | DRAFT |
+| [Phase 13-11 Application Host](PHASE13_11_APPLICATION_HOST_FOUNDATION_IMPLEMENTATION_REPORT.md) | Host startup, execution, shutdown와 diagnostics evidence | DRAFT |
+| [Phase 13-12 In-Process Executable](PHASE13_12_IN_PROCESS_EXECUTABLE_FOUNDATION_IMPLEMENTATION_REPORT.md) | executable lifecycle와 Host-only invocation evidence | DRAFT |
+| [Phase 13-13 HTTP Adapter](PHASE13_13_HTTP_ADAPTER_FOUNDATION_IMPLEMENTATION_REPORT.md) | framework-independent HTTP contract evidence | DRAFT |
+| [Phase 13-14 Node HTTP Server](PHASE13_14_NODE_HTTP_SERVER_FOUNDATION_IMPLEMENTATION_REPORT.md) | loopback listener, request/response와 shutdown evidence | DRAFT |
+| [Phase 13-15 End-to-End Architecture Verification](PHASE13_15_END_TO_END_ARCHITECTURE_VERIFICATION_REPORT.md) | full-stack dependency, regression, diagnostics와 FEAT-015 final assessment | DRAFT |
+| [F15-TASK-005 Authorization Implementation](F15_TASK_005_AUTHORIZATION_IMPLEMENTATION_REPORT.md) | session-derived Actor, SoD, live revalidation 및 immutable authorization evidence | DRAFT |
 
 전체 review document와 current lifecycle status의 authoritative registry는 [Master Index](../00_MASTER_INDEX.md)와 [Freeze Document Registry](../freeze/FREEZE_DOCUMENT_REGISTRY.md)다. Phase 14/15/16은 각각 legacy `R1`/`R2`/`F1`을 대체한다.

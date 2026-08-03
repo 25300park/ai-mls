@@ -25,7 +25,7 @@ export class PublicationHttpRequestMapper {
       request: {
         requestId: request.requestId,
         operation: resolution.route.operation,
-        payload: request.body,
+        payload: createApprovedPayload(request),
         metadata: createMetadata(request),
       },
     }) as unknown as PublicationExecutableRequest;
@@ -33,7 +33,7 @@ export class PublicationHttpRequestMapper {
 }
 
 function createMetadata(request: PublicationHttpRequest): Readonly<Record<string, string>> {
-  const entries: [string, string][] = [];
+  const entries: [string, string][] = [["http.boundary", "true"]];
   for (const [key, value] of Object.entries(request.pathParameters)) {
     entries.push([`http.path.${key}`, value]);
   }
@@ -41,6 +41,22 @@ function createMetadata(request: PublicationHttpRequest): Readonly<Record<string
     entries.push([`http.query.${key}`, typeof value === "string" ? value : JSON.stringify(value)]);
   }
   return Object.fromEntries(entries.sort(([left], [right]) => left.localeCompare(right)));
+}
+
+function createApprovedPayload(request: PublicationHttpRequest): Readonly<Record<string, unknown>> {
+  const body = request.body as Readonly<Record<string, unknown>>;
+  const bodyContext = isPlainObject(body["context"]) ? body["context"] : {};
+  const nonAuthoritativeContext = Object.fromEntries(
+    Object.entries(bodyContext).filter(([key]) => !["sessionId", "roles", "capabilities"].includes(key)),
+  );
+  const sessionId = request.headers["x-session-id"];
+  return {
+    ...body,
+    context: {
+      ...nonAuthoritativeContext,
+      ...(sessionId === undefined || sessionId.trim().length === 0 ? {} : { sessionId }),
+    },
+  };
 }
 
 function isPlainObject(value: unknown): value is Readonly<Record<string, unknown>> {

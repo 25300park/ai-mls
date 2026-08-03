@@ -4,6 +4,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { FixedClock } from "./publication-clock.js";
+import { createTestPublicationAuthorizationConfiguration } from "./publication-authorization-test-support.test.js";
 import {
   createPublicationTransportRequestEnvelope,
   type PublicationTransportRequestEnvelope,
@@ -22,6 +23,7 @@ const timestamp = "2026-07-28T01:00:00.000Z";
 const identity = { publicationId: "publication-transport-1", tenantScopeId: "team-a" } as const;
 const context = {
   actorId: "actor-transport",
+  sessionId: "actor-transport",
   correlationId: "correlation-transport",
   idempotencyKey: "idempotency-transport-create",
   intentFingerprint: "sha256:transport-create",
@@ -76,7 +78,7 @@ function createEnvelope(
 
 function readyRuntime(): PublicationRuntime {
   const result = bootstrapPublicationRuntime({
-    infrastructureConfiguration: { clock: new FixedClock(timestamp) },
+    infrastructureConfiguration: createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)),
   });
   assert.equal(result.ok, true);
   if (!result.ok) throw new Error("Runtime bootstrap unexpectedly failed.");
@@ -287,6 +289,29 @@ test("PHASE13-8 maps approved domain rejection codes without changing applicatio
     error: { code: "PUBLICATION_TRANSITION_INVALID", message: "Publication operation was rejected." },
     metadata: { source: "in-process-test", sequence: 1 },
   });
+});
+
+test("F15-TASK-005 preserves approved safe authorization rejection codes through Transport", () => {
+  const mapper = new DeterministicPublicationTransportResponseMapper();
+  for (const failureCode of [
+    "AUTHENTICATION_REQUIRED",
+    "AUTHORIZATION_DENIED",
+    "PURPOSE_SCOPE_DENIED",
+    "MFA_REQUIRED",
+    "REASON_REQUIRED",
+    "SEPARATION_OF_DUTIES_DENIED",
+    "APPROVAL_NOT_EFFECTIVE",
+    "VERIFICATION_NOT_EFFECTIVE",
+    "PERMISSION_NOT_EFFECTIVE",
+    "BINDING_MISMATCH",
+    "POLICY_VERSION_STALE",
+  ]) {
+    const response = mapper.map(createEnvelope(), { operationResult: "FAILED", failureCode });
+    assert.equal(response.success, false);
+    assert.equal(!response.success && response.status, "APPLICATION_REJECTED");
+    assert.equal(!response.success && response.error.code, failureCode);
+    assert.equal(!response.success && response.error.message, "Publication operation was rejected.");
+  }
 });
 
 test("PHASE13-8 unknown Interface failure codes are sanitised", () => {

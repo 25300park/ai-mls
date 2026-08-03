@@ -4,6 +4,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { FixedClock } from "./publication-clock.js";
+import { createTestPublicationAuthorizationConfiguration } from "./publication-authorization-test-support.test.js";
 import {
   createPublicationInfrastructure,
   type PublicationInfrastructure,
@@ -14,7 +15,7 @@ import { createPublicationRuntimeServiceRegistry } from "./publication-runtime-r
 import { PublicationRuntime, bootstrapPublicationRuntime } from "./publication-runtime.js";
 
 const timestamp = "2026-07-27T17:00:00.000Z";
-const serviceNames = ["inputPort", "unitOfWork", "repository", "idempotency", "audit", "clock"] as const;
+const serviceNames = ["inputPort", "unitOfWork", "repository", "idempotency", "audit", "clock", "authorization", "authorizationEvidence"] as const;
 const identity = { publicationId: "publication-runtime-1", tenantScopeId: "team-a" } as const;
 
 function createRequest() {
@@ -22,6 +23,7 @@ function createRequest() {
     operation: "CREATE_PUBLICATION",
     context: {
       actorId: "actor-runtime",
+      sessionId: "actor-runtime",
       correlationId: "correlation-runtime",
       idempotencyKey: "idempotency-runtime",
       intentFingerprint: "sha256:runtime-intent",
@@ -65,7 +67,7 @@ function assertRuntimeError(code: string): (error: unknown) => boolean {
 
 test("PHASE13-7 bootstrap reports a deterministic ready runtime", () => {
   const result = bootstrapPublicationRuntime({
-    infrastructureConfiguration: { clock: new FixedClock(timestamp) },
+    infrastructureConfiguration: createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)),
   });
 
   assert.equal(result.ok, true);
@@ -123,7 +125,7 @@ test("PHASE13-7 startup validation reports a missing mandatory dependency", () =
       const infrastructure = createPublicationInfrastructure(configuration);
       return { ...infrastructure, audit: undefined } as unknown as PublicationInfrastructure;
     },
-    infrastructureConfiguration: { clock: new FixedClock(timestamp) },
+    infrastructureConfiguration: createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)),
   });
 
   assert.deepEqual(result, {
@@ -141,7 +143,7 @@ test("PHASE13-7 startup validation reports inconsistent infrastructure configura
         clock: new FixedClock("2026-07-27T18:00:00.000Z"),
       };
     },
-    infrastructureConfiguration: { clock: new FixedClock(timestamp) },
+    infrastructureConfiguration: createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)),
   });
 
   assert.deepEqual(result, {
@@ -244,7 +246,7 @@ test("PHASE13-7 bootstrap redacts unexpected startup failures", () => {
 
 test("PHASE13-7 complete publication command executes through the ready runtime", () => {
   const result = bootstrapPublicationRuntime({
-    infrastructureConfiguration: { clock: new FixedClock(timestamp) },
+    infrastructureConfiguration: createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)),
   });
   assert.equal(result.ok, true);
   if (!result.ok) throw new Error("Runtime bootstrap unexpectedly failed.");
@@ -263,7 +265,7 @@ test("PHASE13-7 complete publication command executes through the ready runtime"
 
 test("PHASE13-7 graceful shutdown prevents duplicate shutdown and preserves in-memory business data", () => {
   const result = bootstrapPublicationRuntime({
-    infrastructureConfiguration: { clock: new FixedClock(timestamp) },
+    infrastructureConfiguration: createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)),
   });
   assert.equal(result.ok, true);
   if (!result.ok) throw new Error("Runtime bootstrap unexpectedly failed.");
@@ -278,7 +280,7 @@ test("PHASE13-7 graceful shutdown prevents duplicate shutdown and preserves in-m
 });
 
 test("PHASE13-7 repeated bootstrap with the same clock produces equal runtime state and isolated services", () => {
-  const options = { infrastructureConfiguration: { clock: new FixedClock(timestamp) } } as const;
+  const options = { infrastructureConfiguration: createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)) } as const;
   const first = bootstrapPublicationRuntime(options);
   const second = bootstrapPublicationRuntime(options);
   assert.equal(first.ok, true);

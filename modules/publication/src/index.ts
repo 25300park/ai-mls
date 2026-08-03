@@ -75,3 +75,4 @@ export * from "./publication-node-http-lifecycle.js";
 export * from "./publication-node-http-request-reader.js";
 export * from "./publication-node-http-response-writer.js";
 export * from "./publication-node-http-server.js";
+export * from "./publication-authorization.js";

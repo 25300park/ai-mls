@@ -4,6 +4,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { FixedClock } from "./publication-clock.js";
+import { createTestPublicationAuthorizationConfiguration } from "./publication-authorization-test-support.test.js";
 import {
   PublicationCompositionError,
   publicationCompositionDependencyEdges,
@@ -80,6 +81,66 @@ test("PHASE13-10 runtime composition adapter executes through Transport and Pres
     publicationId: "publication-composition-adapter",
     tenantScopeId: "team-a",
   })?.lifecycleState, "READY");
+});
+
+test("F15-TASK-005 composed execution ignores body actors and persists only the resolved Session Actor", () => {
+  const graph = composedGraph();
+  const request = createRequest("authorization-session-actor", "actor-body-forged", "actor-session-authoritative");
+
+  const result = graph.application.execute(request);
+
+  assert.equal(result.presentationResult, "SUCCESS");
+  const identity = { publicationId: "publication-authorization-session-actor", tenantScopeId: "team-a" };
+  const snapshot = graph.runtime.services.repository.find(identity);
+  assert.equal(snapshot?.transitionHistory[0]?.actorId, "actor-session-authoritative");
+  assert.notEqual(snapshot?.transitionHistory[0]?.actorId, "actor-body-forged");
+  assert.deepEqual(graph.runtime.services.authorizationEvidence.list(identity.publicationId).map((evidence) => ({
+    actorId: evidence.actorId,
+    decision: evidence.decision,
+  })), [{ actorId: "actor-session-authoritative", decision: "ALLOW" }]);
+});
+
+test("F15-TASK-005 composed SoD rejection preserves the safe code and leaves persistence unchanged", () => {
+  const clock = new FixedClock(timestamp);
+  const base = createTestPublicationAuthorizationConfiguration(clock);
+  const baseResolver = base.liveContextResolver!;
+  const graph = composePublicationApplication({
+    runtimeOptions: {
+      infrastructureConfiguration: {
+        ...base,
+        liveContextResolver: {
+          resolve: (binding, scope) => {
+            const live = baseResolver.resolve(binding, scope);
+            if (live === undefined) return undefined;
+            return Object.freeze({
+              ...live,
+              representation: Object.freeze({ ...live.representation, creatorActorId: "actor-sod-conflict" }),
+            });
+          },
+        },
+      },
+    },
+  });
+  const request = createRequest("authorization-sod", "actor-body-forged", "actor-sod-conflict");
+
+  const transport = graph.transport.execute(request);
+  const presentation = graph.application.execute(request);
+
+  assert.equal(transport.success, false);
+  assert.equal(!transport.success && transport.status, "APPLICATION_REJECTED");
+  assert.equal(!transport.success && transport.error.code, "SEPARATION_OF_DUTIES_DENIED");
+  assert.equal(!transport.success && transport.error.message, "Publication operation was rejected.");
+  assert.equal(presentation.presentationResult, "ERROR");
+  assert.equal(presentation.category, "APPLICATION_REJECTION");
+  assert.equal(presentation.message.includes("creator"), false);
+  const identity = { publicationId: "publication-authorization-sod", tenantScopeId: "team-a" };
+  assert.equal(graph.runtime.services.repository.find(identity), undefined);
+  assert.deepEqual(graph.runtime.services.audit.list(identity), []);
+  assert.equal(graph.runtime.services.idempotency.find({
+    tenantScopeId: identity.tenantScopeId,
+    aggregateId: identity.publicationId,
+    commandKey: "idempotency-authorization-sod",
+  }), undefined);
 });
 
 test("PHASE13-10 graph containers and diagnostics resist external mutation", () => {
@@ -315,7 +376,7 @@ test("PHASE13-10 exposes no service locator and preserves architecture isolation
 function composedGraph() {
   return composePublicationApplication({
     runtimeOptions: {
-      infrastructureConfiguration: { clock: new FixedClock(timestamp) },
+      infrastructureConfiguration: createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)),
     },
   });
 }
@@ -324,13 +385,14 @@ function registrationsFrom(graph: ReturnType<typeof composedGraph>): Publication
   return [...createPublicationCompositionRegistrations(graph)];
 }
 
-function createRequest(requestId: string) {
+function createRequest(requestId: string, actorId = "actor-composition", sessionId = actorId) {
   return createPublicationTransportRequestEnvelope({
     requestId,
     operation: "CREATE_PUBLICATION",
     payload: {
       context: {
-        actorId: "actor-composition",
+        actorId,
+        sessionId,
         correlationId: `correlation-${requestId}`,
         idempotencyKey: `idempotency-${requestId}`,
         intentFingerprint: `sha256:${requestId}`,
@@ -361,7 +423,7 @@ function createRequest(requestId: string) {
         },
         classification: "CONFIDENTIAL_BUSINESS",
         command: {
-          actorId: "actor-composition",
+          actorId,
           authorityContext: "PUBLICATION_EXECUTION",
           reason: "Approved composition request",
           correlationId: `correlation-${requestId}`,

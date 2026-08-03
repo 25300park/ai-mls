@@ -1,6 +1,7 @@
 import { immutableDomain } from "./publication-contracts.js";
 import { PublicationDomainError } from "./publication-domain-error.js";
 import { PublicationPersistenceError } from "./publication-persistence-error.js";
+import { PublicationAuthorizationError } from "./publication-authorization.js";
 import type { PublicationApplicationErrorResult } from "./publication-application-contracts.js";
 
 export class PublicationApplicationError extends Error {
@@ -15,6 +16,10 @@ export class PublicationApplicationError extends Error {
 }
 
 export function mapPublicationApplicationError(error: unknown, commitFailed = false): PublicationApplicationErrorResult {
+  if (error instanceof PublicationAuthorizationError) {
+    const category = error.code === "PUBLICATION_VERSION_CONFLICT" ? "CONFLICT" : "DOMAIN_REJECTION";
+    return failure(error.code, category, error.message);
+  }
   if (error instanceof PublicationApplicationError) return failure(error.code, error.category, error.message);
   if (error instanceof PublicationDomainError) {
     if (error.code === "PUBLICATION_VERSION_CONFLICT") return failure(error.code, "CONFLICT", "Publication version conflict.");

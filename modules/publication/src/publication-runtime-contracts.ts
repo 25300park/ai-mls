@@ -12,7 +12,9 @@ export type PublicationRuntimeServiceName =
   | "repository"
   | "idempotency"
   | "audit"
-  | "clock";
+  | "clock"
+  | "authorization"
+  | "authorizationEvidence";
 
 export type PublicationRuntimeFailureCode =
   | "RUNTIME_STARTUP_FAILED"

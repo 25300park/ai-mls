@@ -11,8 +11,12 @@ import type {
   PublicationModificationCommand,
 } from "./publication-application-contracts.js";
 import type { PublicationAuditStore } from "./publication-audit-store.js";
+import {
+  type PublicationAuthorizationCommandType,
+  type PublicationAuthorizationGuard,
+} from "./publication-authorization.js";
 import type { PublicationClock } from "./publication-clock.js";
-import { immutableDomain, type PublicationIdentity, type PublicationSnapshot } from "./publication-contracts.js";
+import { immutableDomain, type PublicationBinding, type PublicationIdentity, type PublicationSnapshot } from "./publication-contracts.js";
 import type { PublicationIdempotencyStore } from "./publication-idempotency-store.js";
 import { persistenceError } from "./publication-persistence-error.js";
 import type { PublicationRepository } from "./publication-repository.js";
@@ -24,6 +28,7 @@ export interface PublicationApplicationDependencies {
   readonly idempotency: PublicationIdempotencyStore;
   readonly audit: PublicationAuditStore;
   readonly clock: PublicationClock;
+  readonly authorization: PublicationAuthorizationGuard;
 }
 
 export class CreatePublicationHandler implements PublicationCommandHandler<CreatePublicationApplicationCommand> {
@@ -31,8 +36,9 @@ export class CreatePublicationHandler implements PublicationCommandHandler<Creat
 
   public execute(command: CreatePublicationApplicationCommand, context: PublicationExecutionContext): PublicationApplicationResult {
     const identity = command.input.identity;
-    return executeModificationBoundary(this.dependencies, command, identity, context, (transaction) => {
-      const aggregate = PublicationAggregate.create(command.input);
+    return executeModificationBoundary(this.dependencies, command, identity, context, (transaction, authorizedCommand) => {
+      if (authorizedCommand.kind !== "CREATE_PUBLICATION") throw new Error("APPLICATION_COMMAND_INVALID");
+      const aggregate = PublicationAggregate.create(authorizedCommand.input);
       transaction.repository.save(aggregate.snapshot);
       return aggregate.snapshot;
     });
@@ -43,11 +49,12 @@ export class ModifyPublicationHandler implements PublicationCommandHandler<Modif
   public constructor(private readonly dependencies: PublicationApplicationDependencies) {}
 
   public execute(command: ModifyPublicationApplicationCommand, context: PublicationExecutionContext): PublicationApplicationResult {
-    return executeModificationBoundary(this.dependencies, command, command.identity, context, (transaction) => {
-      const snapshot = transaction.repository.find(command.identity);
+    return executeModificationBoundary(this.dependencies, command, command.identity, context, (transaction, authorizedCommand) => {
+      if (authorizedCommand.kind !== "MODIFY_PUBLICATION") throw new Error("APPLICATION_COMMAND_INVALID");
+      const snapshot = transaction.repository.find(authorizedCommand.identity);
       if (snapshot === undefined) throw persistenceError("PUBLICATION_NOT_FOUND", "Publication was not found.");
       const aggregate = PublicationAggregate.rehydrate(snapshot);
-      const updated = executeDomainBehaviour(aggregate, command.input).snapshot;
+      const updated = executeDomainBehaviour(aggregate, authorizedCommand.input).snapshot;
       transaction.repository.update(snapshot.aggregateVersion, updated);
       return updated;
     });
@@ -59,27 +66,61 @@ function executeModificationBoundary(
   applicationCommand: PublicationApplicationCommand,
   identity: PublicationIdentity,
   context: PublicationExecutionContext,
-  executeDomain: (transaction: PublicationTransaction) => PublicationSnapshot,
+  executeDomain: (transaction: PublicationTransaction, authorizedCommand: PublicationApplicationCommand) => PublicationSnapshot,
 ): PublicationApplicationResult {
   let transaction: PublicationTransaction | undefined;
   let currentVersion = applicationCommand.kind === "MODIFY_PUBLICATION" ? applicationCommand.input.expectedAggregateVersion : 0;
   let committing = false;
-  let contextValidated = false;
+  let guardPassed = false;
+  let sessionActorResolved = false;
+  let auditContext = context;
+  let current: PublicationSnapshot | undefined;
   try {
     validateApplicationContext(applicationCommand, context);
-    contextValidated = true;
-    const replay = findReplay(dependencies, applicationCommand, identity, context);
+    const commandType = authorizationCommandType(applicationCommand);
+    const expectedAggregateVersion = applicationCommand.kind === "CREATE_PUBLICATION" ? 0 : applicationCommand.input.expectedAggregateVersion;
+    const authorization = dependencies.authorization.authorize({
+      ...(context.sessionId === undefined ? {} : { sessionId: context.sessionId }),
+      commandType,
+      actorIdClaim: context.actorId,
+      tenantId: identity.tenantScopeId,
+      teamId: identity.tenantScopeId,
+      purpose: applicationCommand.input.command.authorityContext,
+      aggregateId: identity.publicationId,
+      expectedAggregateVersion,
+      reason: applicationCommand.input.command.reason,
+      correlationId: context.correlationId,
+      resolveResource: (actor) => {
+        auditContext = immutableDomain({ ...context, actorId: actor.principalId });
+        sessionActorResolved = true;
+        if (applicationCommand.kind === "CREATE_PUBLICATION") {
+          return Object.freeze({ binding: applicationCommand.input.binding, currentAggregateVersion: 0 });
+        }
+        current = dependencies.repository.find(identity);
+        if (current === undefined) throw persistenceError("PUBLICATION_NOT_FOUND", "Publication was not found.");
+        currentVersion = current.aggregateVersion;
+        return Object.freeze({
+          binding: authorizationBinding(applicationCommand, current),
+          currentAggregateVersion: current.aggregateVersion,
+        });
+      },
+    });
+    guardPassed = true;
+    const authorizedContext = immutableDomain({ ...context, actorId: authorization.actor.principalId });
+    auditContext = authorizedContext;
+    const authorizedCommand = withAuthoritativeActor(applicationCommand, authorization.actor.principalId);
+    const replay = findReplay(dependencies, authorizedCommand, identity, authorizedContext);
     if (replay !== undefined) return replay;
 
     transaction = dependencies.unitOfWork.begin(identity);
-    const snapshot = executeDomain(transaction);
+    const snapshot = executeDomain(transaction, authorizedCommand);
     currentVersion = snapshot.aggregateVersion;
     transaction.audit.append({
-      id: auditId(identity, context, commandName(applicationCommand), context.intentFingerprint, "completed"),
+      id: auditId(identity, authorizedContext, commandName(authorizedCommand), authorizedContext.intentFingerprint, "completed"),
       tenantScopeId: identity.tenantScopeId,
       aggregateId: identity.publicationId,
       command: commandName(applicationCommand),
-      actorId: context.actorId,
+      actorId: authorizedContext.actorId,
       timestamp: dependencies.clock.now(),
       version: snapshot.aggregateVersion,
       result: "COMPLETED",
@@ -92,8 +133,8 @@ function executeModificationBoundary(
       dependencies.idempotency.record({
         tenantScopeId: identity.tenantScopeId,
         aggregateId: identity.publicationId,
-        commandKey: context.idempotencyKey,
-        fingerprint: context.intentFingerprint,
+        commandKey: authorizedContext.idempotencyKey,
+        fingerprint: authorizedContext.intentFingerprint,
         resultReference: result.resultReference,
         recordedAt: dependencies.clock.now(),
       });
@@ -104,11 +145,19 @@ function executeModificationBoundary(
   } catch (error) {
     if (transaction !== undefined) {
       try { transaction.rollback(); } catch { /* Commit conflict may already have closed the logical transaction. */ }
-      appendFailureAudit(dependencies, applicationCommand, identity, context, currentVersion, error, committing);
-    } else if (contextValidated) {
+      appendFailureAudit(dependencies, applicationCommand, identity, auditContext, currentVersion, error, committing);
+    } else if (guardPassed || mapPublicationApplicationError(error, false).error.code === "PUBLICATION_NOT_FOUND") {
       let persistedVersion = currentVersion;
       try { persistedVersion = dependencies.repository.find(identity)?.aggregateVersion ?? currentVersion; } catch { /* Auxiliary evidence lookup cannot replace the original safe error. */ }
-      appendFailureAudit(dependencies, applicationCommand, identity, context, persistedVersion, error, false);
+      appendFailureAudit(
+        dependencies,
+        applicationCommand,
+        identity,
+        guardPassed || sessionActorResolved ? auditContext : immutableDomain({ ...context, actorId: "anonymous" }),
+        persistedVersion,
+        error,
+        false,
+      );
     }
     return mapPublicationApplicationError(error, committing);
   }
@@ -119,9 +168,32 @@ function validateApplicationContext(command: PublicationApplicationCommand, cont
   if (values.some((value) => value.trim().length === 0)) {
     throw new PublicationApplicationError("APPLICATION_CONTEXT_INVALID", "VALIDATION", "Application execution context is invalid.");
   }
-  if (command.input.command.actorId !== context.actorId || command.input.command.correlationId !== context.correlationId) {
+  if (command.input.command.correlationId !== context.correlationId) {
     throw new PublicationApplicationError("APPLICATION_CONTEXT_INVALID", "VALIDATION", "Application execution context is invalid.");
   }
+}
+
+function authorizationCommandType(command: PublicationApplicationCommand): PublicationAuthorizationCommandType {
+  return command.kind === "CREATE_PUBLICATION" ? "CREATE_PUBLICATION" : command.input.type;
+}
+
+function authorizationBinding(command: PublicationApplicationCommand, current: PublicationSnapshot | undefined): PublicationBinding {
+  if (command.kind === "CREATE_PUBLICATION") return command.input.binding;
+  if (command.input.type === "BEGIN_ACTIVE_OPERATION" || command.input.type === "BEGIN_WITHDRAWN_REPUBLISH") {
+    return command.input.nextBinding;
+  }
+  if (current === undefined) throw persistenceError("PUBLICATION_NOT_FOUND", "Publication was not found.");
+  return current.binding;
+}
+
+function withAuthoritativeActor(command: PublicationApplicationCommand, actorId: string): PublicationApplicationCommand {
+  return immutableDomain({
+    ...command,
+    input: {
+      ...command.input,
+      command: { ...command.input.command, actorId },
+    },
+  }) as PublicationApplicationCommand;
 }
 
 function findReplay(

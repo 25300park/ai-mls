@@ -1,5 +1,10 @@
 import { PublicationApplicationService } from "./publication-application-service.js";
 import type { PublicationAuditStore } from "./publication-audit-store.js";
+import {
+  InMemoryPublicationAuthorizationEvidenceStore,
+  PublicationAuthorizationGuard,
+  type PublicationAuthorizationEvidenceStore,
+} from "./publication-authorization.js";
 import type { PublicationClock } from "./publication-clock.js";
 import {
   CreatePublicationHandler,
@@ -28,6 +33,8 @@ export interface PublicationInfrastructure {
   readonly idempotency: PublicationIdempotencyStore;
   readonly audit: PublicationAuditStore;
   readonly clock: PublicationClock;
+  readonly authorization: PublicationAuthorizationGuard;
+  readonly authorizationEvidence: PublicationAuthorizationEvidenceStore;
 }
 
 export function createPublicationInfrastructure(
@@ -35,12 +42,22 @@ export function createPublicationInfrastructure(
 ): PublicationInfrastructure {
   const configuration = createPublicationInfrastructureConfiguration(configurationInput);
   const unitOfWork = new InMemoryPublicationUnitOfWork();
+  const authorizationEvidence = new InMemoryPublicationAuthorizationEvidenceStore();
+  const authorization = new PublicationAuthorizationGuard({
+    ...(configuration.sessionResolver === undefined ? {} : { sessionResolver: configuration.sessionResolver }),
+    ...(configuration.authorizationEvaluator === undefined ? {} : { authorizationEvaluator: configuration.authorizationEvaluator }),
+    ...(configuration.liveContextResolver === undefined ? {} : { liveContextResolver: configuration.liveContextResolver }),
+    evidence: authorizationEvidence,
+    clock: configuration.clock,
+    ...(configuration.publicationPolicyVersion === undefined ? {} : { publicationPolicyVersion: configuration.publicationPolicyVersion }),
+  });
   const dependencies: PublicationApplicationDependencies = {
     unitOfWork,
     repository: unitOfWork.repository,
     idempotency: unitOfWork.idempotency,
     audit: unitOfWork.audit,
     clock: configuration.clock,
+    authorization,
   };
   const application = new PublicationApplicationService(
     new CreatePublicationHandler(dependencies),
@@ -61,5 +78,7 @@ export function createPublicationInfrastructure(
     idempotency: unitOfWork.idempotency,
     audit: unitOfWork.audit,
     clock: configuration.clock,
+    authorization,
+    authorizationEvidence,
   });
 }

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { FixedClock } from "./publication-clock.js";
+import { createTestPublicationAuthorizationConfiguration } from "./publication-authorization-test-support.test.js";
 import {
   PublicationPresentationAdapter,
   createPublicationPresentationAdapter,
@@ -278,7 +279,7 @@ test("PHASE13-9 mapping does not mutate Transport input or copy internal Transpo
 
 test("PHASE13-9 completes Publication execution through Transport and Presentation boundaries", () => {
   const runtimeResult = bootstrapPublicationRuntime({
-    infrastructureConfiguration: { clock: new FixedClock(generatedAt) },
+    infrastructureConfiguration: createTestPublicationAuthorizationConfiguration(new FixedClock(generatedAt)),
   });
   assert.equal(runtimeResult.ok, true);
   if (!runtimeResult.ok) throw new Error("Runtime bootstrap unexpectedly failed.");
@@ -289,6 +290,7 @@ test("PHASE13-9 completes Publication execution through Transport and Presentati
     payload: {
       context: {
         actorId: "actor-presentation",
+        sessionId: "actor-presentation",
         correlationId: "correlation-presentation",
         idempotencyKey: "idempotency-presentation",
         intentFingerprint: "sha256:presentation-intent",

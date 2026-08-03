@@ -203,6 +203,96 @@ test("TEST-047 service principals cannot receive human approval authority", () =
   assert.equal(decision.reasonCode, "HUMAN_AUTHORITY_REQUIRED");
 });
 
+test("F15-TASK-005 grants only scoped OPS command capabilities with MFA and reason", () => {
+  const opsAssignment = assignment({
+    principalId: "publication-operator-1",
+    role: "OPS",
+    resourceTypes: ["Publication"],
+    purposes: ["PUBLICATION_EXECUTION"],
+  });
+  const { service } = createService([opsAssignment]);
+  const actions = [
+    "publication.create",
+    "publication.execution.begin",
+    "publication.execution.resolve",
+    "publication.withdraw.request",
+    "publication.withdraw.resolve",
+    "publication.active-operation.begin",
+    "publication.republish.begin",
+    "publication.reconciliation.resolve",
+    "publication.supersede",
+    "publication.terminate",
+    "publication.suspension.set",
+  ] as const;
+  for (const action of actions) {
+    const decision = service.evaluate({
+      session: session({ principalId: "publication-operator-1", roles: ["OPS"] }),
+      action,
+      resource: { type: "Publication", id: "publication-1", teamId: "team-a" },
+      purpose: "PUBLICATION_EXECUTION",
+      reason: "Documented publication execution reason",
+      correlationId: `correlation-${action}`,
+    });
+    assert.equal(decision.effect, "ALLOW", action);
+    assert.deepEqual(decision.obligations, ["MFA", "REASON", "AUDIT"]);
+  }
+  assert.equal(service.evaluate({
+    session: session({ principalId: "publication-operator-1", roles: ["OPS"], isMfaVerified: false }),
+    action: "publication.execution.begin",
+    resource: { type: "Publication", id: "publication-1", teamId: "team-a" },
+    purpose: "PUBLICATION_EXECUTION",
+    reason: "Documented reason",
+    correlationId: "correlation-no-mfa",
+  }).reasonCode, "REAUTHENTICATION_REQUIRED");
+  assert.equal(service.evaluate({
+    session: session({ principalId: "publication-operator-1", roles: ["OPS"] }),
+    action: "publication.execution.begin",
+    resource: { type: "Publication", id: "publication-1", teamId: "team-a" },
+    purpose: "PUBLICATION_EXECUTION",
+    reason: "",
+    correlationId: "correlation-no-reason",
+  }).reasonCode, "REASON_REQUIRED");
+});
+
+test("F15-TASK-005 Manager, Administrator, Security, AI and Connector roles cannot inherit Publication human authority", () => {
+  const roles = ["MGR", "ADM", "SEC", "AIR", "EXT"] as const;
+  const assignments = roles.map((role) => assignment({
+    id: `assignment-${role}`,
+    principalId: `actor-${role}`,
+    role,
+    resourceTypes: ["Publication"],
+    purposes: ["PUBLICATION_EXECUTION"],
+  }));
+  assignments.push(assignment({
+    id: "assignment-SVC",
+    principalId: "actor-SVC",
+    role: "SVC",
+    resourceTypes: ["Publication"],
+    purposes: ["PUBLICATION_EXECUTION"],
+  }));
+  const { service } = createService(assignments);
+  for (const role of roles) {
+    const decision = service.evaluate({
+      session: session({ principalId: `actor-${role}`, roles: [role] }),
+      action: "publication.execution.resolve",
+      resource: { type: "Publication", id: "publication-1", teamId: "team-a" },
+      purpose: "PUBLICATION_EXECUTION",
+      reason: "Attempted role-name elevation",
+      correlationId: `correlation-${role}`,
+    });
+    assert.equal(decision.reasonCode, "CAPABILITY_DENIED", role);
+  }
+  const serviceDecision = service.evaluate({
+    session: session({ principalId: "actor-SVC", principalType: "SERVICE", roles: ["SVC"], assurance: "WORKLOAD", isMfaVerified: false }),
+    action: "publication.execution.resolve",
+    resource: { type: "Publication", id: "publication-1", teamId: "team-a" },
+    purpose: "PUBLICATION_EXECUTION",
+    reason: "Technical identity attempted business resolution",
+    correlationId: "correlation-SVC",
+  });
+  assert.equal(serviceDecision.reasonCode, "HUMAN_AUTHORITY_REQUIRED");
+});
+
 test("TEST-047 rejects creator approval and allows an independent PUA", () => {
   const { service, auditLog } = createService([
     assignment({

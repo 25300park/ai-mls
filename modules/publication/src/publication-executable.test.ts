@@ -16,6 +16,7 @@ import {
 import { PublicationExecutableLifecycleController } from "./publication-executable-lifecycle.js";
 import { PublicationInProcessExecutable } from "./publication-in-process-executable.js";
 import { FixedClock } from "./publication-clock.js";
+import { createTestPublicationAuthorizationConfiguration } from "./publication-authorization-test-support.test.js";
 import {
   composePublicationHostApplication,
 } from "./publication-composition-root.js";
@@ -538,7 +539,7 @@ function createTestExecutable() {
 function compositionOptions() {
   return {
     runtimeOptions: {
-      infrastructureConfiguration: { clock: new FixedClock(timestamp) },
+      infrastructureConfiguration: createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)),
     },
   };
 }
@@ -550,6 +551,7 @@ function createRequest(requestId: string) {
     payload: {
       context: {
         actorId: "actor-executable",
+        sessionId: "actor-executable",
         correlationId: `correlation-${requestId}`,
         idempotencyKey: `idempotency-${requestId}`,
         intentFingerprint: `sha256:${requestId}`,

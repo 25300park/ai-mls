@@ -2,7 +2,7 @@
 
 | 항목 | 값 |
 |---|---|
-| 버전 | v0.1 |
+| 버전 | v0.2 |
 | 상태 | DRAFT |
 | 범위 | `EPIC-007` / `FEAT-015` / `DEV-015` / `IMP-015` |
 | 기준 | Architecture Bible v1.1 |
@@ -68,7 +68,7 @@
 | Workflow → Feature | VERIFIED | `WF-010`–`WF-012` → `FEAT-015` |
 | Security → command/evidence | VERIFIED | `SEC-001/002/006/007/010/011/013–015/017–030/032` |
 | Acceptance → Test | VERIFIED_FOR_PLAN | canonical `TEST-*`와 task test requirement 연결 |
-| Runtime evidence | PENDING | Phase 13-1은 planning only |
+| Runtime evidence | PARTIALLY_VERIFIED | Phase 13-2B~13-15 foundation execution evidence는 존재하나 canonical `F15-TASK-004~012` implementation evidence가 없음 |
 | Production adapter | DEFERRED | storage/transport/provider decision 미승인 |
 
 ## 4.1 Phase 13-2B Implementation Evidence
@@ -92,6 +92,22 @@
 | Acceptance → Test | `modules/publication/src/publication-persistence.test.ts` | 신규 persistence contract test 13/13 PASS; 전체 regression 197/197 PASS | VERIFIED |
 | Scope boundary | logical port/model/mapper와 deterministic memory adapter only | physical schema, SQL, migration, ORM, production adapter, database transaction/dependency, API, event, projection 구현 0; `DFD-005` unchanged | VERIFIED |
 | Completion evidence | [Phase 13-3A Logical Persistence Foundation Implementation Report](../reviews/PHASE13_3A_LOGICAL_PERSISTENCE_IMPLEMENTATION_REPORT.md) | lint, typecheck, build, verify, test, architecture checksum | VERIFIED |
+
+## 4.3 Phase 13-4~13-15 Foundation 및 Final Verification Evidence
+
+Phase 13-4~13-14에서 추가된 Application부터 Node HTTP Server까지의 foundation은 cross-layer execution을 검증하지만, `F15-TASK-004~012`의 canonical Publication execution scope를 대체하지 않는다. 다음 상태는 [Task Breakdown](FEAT015_TASK_BREAKDOWN.md)의 원래 task 의미를 보존한다.
+
+| Trace | Implementation evidence | Validation | Status |
+|---|---|---|---|
+| Application~Node HTTP Server foundation | `publication-application-*`, `publication-interface-*`, `publication-infrastructure*`, `publication-runtime*`, `publication-transport-*`, `publication-presentation-*`, `publication-composition-*`, `publication-host-*`, `publication-executable-*`, `publication-http-*`, `publication-node-http-*` | approved in-process 12-layer success/error execution, lifecycle, correlation, diagnostics와 cleanup | VERIFIED |
+| `F15-TASK-004` Attempt / Evidence / Event Journal | canonical port와 journal implementation evidence 없음 | Phase 13-15 scope에서 신규 business capability 구현 금지 | PENDING |
+| `F15-TASK-005` Authorization / SoD / Live Revalidation | `publication-authorization.ts:211-399`, `publication-command-handlers.ts:66-205`, `authorization-service.ts:54-319`, HTTP/Infrastructure/Runtime wiring | direct guard 35/35, Task integration/error tests PASS; full regression 449/449 and checksum PASS; [completion evidence](../reviews/F15_TASK_005_AUTHORIZATION_IMPLEMENTATION_REPORT.md) | IMPLEMENTED_AND_VERIFIED |
+| `F15-TASK-006~009` Publication coordination / lifecycle / reconciliation / API-014·UI | canonical use-case 및 contract implementation evidence 없음 | foundation boundary는 Publication execution capability를 구현하지 않음 | PENDING |
+| `F15-TASK-010` Domain Event Emission | canonical event emission implementation evidence 없음 | Event Bus 선택과 별개로 domain event emission contract가 필요함 | PENDING |
+| `F15-TASK-011` `PRJ-002` Listing Projection | canonical projection implementation evidence 없음 | projection 구현은 Phase 13-15에서 금지됨 | PENDING |
+| `F15-TASK-012` Operations / Observability | canonical operations control implementation evidence 없음 | server diagnostics는 task 전체를 대체하지 않음 | PENDING |
+| `F15-TASK-013` Acceptance / Architecture Conformance | `publication-end-to-end-architecture.test.ts`와 repository gates | loopback 5/5, regression 404/404, checksum, Gitleaks PASS; dependency audit는 external metadata transmission 미승인으로 미완료 | PARTIALLY_VERIFIED |
+| Completion evidence | [Phase 13-15 End-to-End Architecture Verification Report](../reviews/PHASE13_15_END_TO_END_ARCHITECTURE_VERIFICATION_REPORT.md) | foundation verification은 통과했으나 canonical task coverage gap으로 FEAT-015 final acceptance 차단 | PARTIALLY_VERIFIED |
 
 ## 5. 상호 참조
 

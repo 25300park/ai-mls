@@ -4,6 +4,9 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { createPublicationInProcessExecutable } from "./publication-executable-bootstrap.js";
+import { createPublicationApplicationHost } from "./publication-host-bootstrap.js";
+import { FixedClock } from "./publication-clock.js";
+import { createTestPublicationAuthorizationConfiguration } from "./publication-authorization-test-support.test.js";
 import {
   createPublicationHttpRequest,
   createPublicationHttpResponse,
@@ -236,14 +239,50 @@ test("PHASE13-13 maps a valid HTTP request to the executable boundary", () => {
     request: {
       requestId: "request-mapped",
       operation: "CREATE_PUBLICATION",
-      payload: body,
+      payload: { ...body, context: { ...body.context, sessionId: "actor-http" } },
       metadata: {
+        "http.boundary": "true",
         "http.path.tenant": "team-a",
         "http.query.include": "[\"summary\",\"status\"]",
         "http.query.view": "full",
       },
     },
   });
+});
+
+test("F15-TASK-005 HTTP boundary accepts Session identity only from the header and drops body authority claims", () => {
+  const mapper = new PublicationHttpRequestMapper(createDefaultPublicationHttpRouteRegistry());
+  const original = validCreateBody("session-boundary");
+  const forgedBody = {
+    ...original,
+    context: {
+      ...original.context,
+      actorId: "actor-body-forged",
+      sessionId: "session-body-forged",
+      roles: ["OPS"],
+      capabilities: ["publication.create"],
+    },
+  };
+
+  const mapped = mapper.map(createPublicationHttpRequest({
+    ...validHttpRequest("session-boundary"),
+    headers: { "x-session-id": "session-header-authoritative" },
+    body: forgedBody,
+  }));
+  const context = ((mapped as { request: { payload: { context: Readonly<Record<string, unknown>> } } }).request.payload).context;
+
+  assert.equal(context["sessionId"], "session-header-authoritative");
+  assert.equal(context["actorId"], "actor-body-forged");
+  assert.equal("roles" in context, false);
+  assert.equal("capabilities" in context, false);
+
+  const withoutHeader = mapper.map(createPublicationHttpRequest({
+    ...validHttpRequest("session-boundary-missing"),
+    headers: {},
+    body: forgedBody,
+  }));
+  const missingContext = ((withoutHeader as { request: { payload: { context: Readonly<Record<string, unknown>> } } }).request.payload).context;
+  assert.equal("sessionId" in missingContext, false);
 });
 
 test("PHASE13-13 contains malformed and hostile HTTP request input", async () => {
@@ -436,7 +475,9 @@ test("PHASE13-13 construction and import never start the executable", () => {
 });
 
 test("PHASE13-13 completes the full HTTP-shaped in-process execution path", async () => {
-  const executable = createPublicationInProcessExecutable();
+  const executable = createPublicationInProcessExecutable(undefined, () => createPublicationApplicationHost({
+    compositionOptions: { runtimeOptions: { infrastructureConfiguration: createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)) } },
+  }));
   executable.start();
   const adapter = createInProcessPublicationHttpAdapter(executable);
 
@@ -525,7 +566,7 @@ function validHttpRequest(requestId: string): PublicationHttpRequest {
   return {
     method: "POST",
     path: "/publications/commands/create",
-    headers: {},
+    headers: { "x-session-id": "actor-http" },
     query: {},
     pathParameters: {},
     body: validCreateBody(requestId),

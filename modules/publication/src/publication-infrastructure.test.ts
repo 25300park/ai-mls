@@ -4,6 +4,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { FixedClock, SystemPublicationClock } from "./publication-clock.js";
+import { createTestPublicationAuthorizationConfiguration } from "./publication-authorization-test-support.test.js";
 import {
   createPublicationInfrastructureConfiguration,
 } from "./publication-infrastructure-configuration.js";
@@ -18,6 +19,7 @@ function createRequest() {
     operation: "CREATE_PUBLICATION",
     context: {
       actorId: "actor-infrastructure",
+      sessionId: "actor-infrastructure",
       correlationId: "correlation-infrastructure",
       idempotencyKey: "idempotency-infrastructure",
       intentFingerprint: "sha256:infrastructure-intent",
@@ -85,7 +87,7 @@ test("PHASE13-6 composition root canonicalizes caller-owned mutable configuratio
 
 test("PHASE13-6 composed input port executes through repository, unit of work, audit and idempotency adapters", () => {
   const infrastructure = createPublicationInfrastructure(
-    createPublicationInfrastructureConfiguration({ clock: new FixedClock(timestamp) }),
+    createPublicationInfrastructureConfiguration(createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp))),
   );
   const request = createRequest();
 
@@ -143,7 +145,7 @@ test("PHASE13-6 system clock adapter wraps runtime time and deterministic replac
 });
 
 test("PHASE13-6 deterministic startup creates isolated in-process state", () => {
-  const configuration = createPublicationInfrastructureConfiguration({ clock: new FixedClock(timestamp) });
+  const configuration = createPublicationInfrastructureConfiguration(createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)));
   const first = createPublicationInfrastructure(configuration);
   const second = createPublicationInfrastructure(configuration);
 
@@ -158,6 +160,7 @@ test("PHASE13-6 infrastructure source depends only on approved in-process contra
   const allowedImports = new Set([
     "./publication-application-service.js",
     "./publication-audit-store.js",
+    "./publication-authorization.js",
     "./publication-clock.js",
     "./publication-command-handlers.js",
     "./publication-idempotency-store.js",

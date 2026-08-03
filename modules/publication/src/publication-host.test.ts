@@ -4,6 +4,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { FixedClock } from "./publication-clock.js";
+import { createTestPublicationAuthorizationConfiguration } from "./publication-authorization-test-support.test.js";
 import { PublicationCompositionError } from "./publication-composition-contracts.js";
 import {
   composePublicationHostApplication,
@@ -387,7 +388,7 @@ function composedHostApplication() {
 function compositionOptions() {
   return {
     runtimeOptions: {
-      infrastructureConfiguration: { clock: new FixedClock(timestamp) },
+      infrastructureConfiguration: createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)),
     },
   };
 }
@@ -399,6 +400,7 @@ function createRequest(requestId: string) {
     payload: {
       context: {
         actorId: "actor-host",
+        sessionId: "actor-host",
         correlationId: `correlation-${requestId}`,
         idempotencyKey: `idempotency-${requestId}`,
         intentFingerprint: `sha256:${requestId}`,

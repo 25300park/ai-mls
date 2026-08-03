@@ -9,6 +9,11 @@ import type {
 import { FixedClock } from "./publication-clock.js";
 import { CreatePublicationHandler, ModifyPublicationHandler } from "./publication-command-handlers.js";
 import { PublicationApplicationService } from "./publication-application-service.js";
+import { createTestPublicationAuthorizationGuard } from "./publication-authorization-test-support.test.js";
+import {
+  InMemoryPublicationAuthorizationEvidenceStore,
+  PublicationAuthorizationGuard,
+} from "./publication-authorization.js";
 import type { PublicationAuditStore } from "./publication-audit-store.js";
 import type { PublicationIdempotencyStore } from "./publication-idempotency-store.js";
 import { persistenceError } from "./publication-persistence-error.js";
@@ -34,6 +39,7 @@ const binding = {
 function context(suffix: string, fingerprint = `sha256:${suffix}`): PublicationExecutionContext {
   return {
     actorId: `actor-${suffix}`,
+    sessionId: `actor-${suffix}`,
     correlationId: `correlation-${suffix}`,
     idempotencyKey: `idempotency-${suffix}`,
     intentFingerprint: fingerprint,
@@ -88,13 +94,17 @@ type TestUnitOfWork = PublicationUnitOfWork & {
   readonly audit: PublicationAuditStore;
 };
 
-function application(unitOfWork: TestUnitOfWork = new InMemoryPublicationUnitOfWork()) {
+function application(
+  unitOfWork: TestUnitOfWork = new InMemoryPublicationUnitOfWork(),
+  authorization = createTestPublicationAuthorizationGuard(new FixedClock(applicationTime)),
+) {
   const dependencies = {
     unitOfWork,
     repository: unitOfWork.repository,
     idempotency: unitOfWork.idempotency,
     audit: unitOfWork.audit,
     clock: new FixedClock(applicationTime),
+    authorization,
   };
   const create = new CreatePublicationHandler(dependencies);
   const modify = new ModifyPublicationHandler(dependencies);
@@ -145,22 +155,84 @@ test("F15-TASK-004 missing aggregate returns a deterministic safe error and roll
   });
   assert.equal(unitOfWork.repository.find(identity), undefined);
   assert.deepEqual(unitOfWork.audit.list(identity).map((record) => record.failureReason), ["PUBLICATION_NOT_FOUND"]);
+  assert.equal(unitOfWork.audit.list(identity)[0]?.actorId, execution.sessionId);
 });
 
-test("F15-TASK-004 application context mismatch fails before idempotency or transaction state", () => {
+test("F15-TASK-005 body actor mismatch is ignored in favor of the resolved Session Actor", () => {
   const commandContext = context("context-command");
   const executionContext = { ...commandContext, actorId: "actor-forged" };
   const { unitOfWork, service } = application();
 
   const result = service.execute(createCommand(commandContext), executionContext);
 
+  assert.equal(result.ok, true);
+  assert.equal(unitOfWork.repository.find(identity)?.transitionHistory[0]?.actorId, commandContext.sessionId);
+  assert.notEqual(unitOfWork.repository.find(identity)?.transitionHistory[0]?.actorId, executionContext.actorId);
+});
+
+test("F15-TASK-005 authentication failure stops before transaction, Domain, persistence, success audit, and idempotency", () => {
+  const execution = context("missing-resolver");
+  const backing = new InMemoryPublicationUnitOfWork();
+  let beginCount = 0;
+  const unitOfWork: TestUnitOfWork = {
+    repository: backing.repository,
+    idempotency: backing.idempotency,
+    audit: backing.audit,
+    begin: (scope) => {
+      beginCount += 1;
+      return backing.begin(scope);
+    },
+  };
+  const evidence = new InMemoryPublicationAuthorizationEvidenceStore();
+  const authorization = new PublicationAuthorizationGuard({
+    evidence,
+    clock: new FixedClock(applicationTime),
+  });
+  const { service } = application(unitOfWork, authorization);
+
+  const result = service.execute(createCommand(execution), execution);
+  const missingModifyResult = service.execute(transitionCommand(execution), execution);
+
   assert.deepEqual(result, {
     ok: false,
-    error: { code: "APPLICATION_CONTEXT_INVALID", category: "VALIDATION", message: "Application execution context is invalid." },
+    error: { code: "AUTHENTICATION_REQUIRED", category: "DOMAIN_REJECTION", message: "Authentication is required." },
   });
+  assert.deepEqual(missingModifyResult, {
+    ok: false,
+    error: { code: "AUTHENTICATION_REQUIRED", category: "DOMAIN_REJECTION", message: "Authentication is required." },
+  });
+  assert.equal(beginCount, 0);
   assert.equal(unitOfWork.repository.find(identity), undefined);
-  assert.equal(unitOfWork.audit.list(identity).length, 0);
-  assert.equal(unitOfWork.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: executionContext.idempotencyKey }), undefined);
+  assert.deepEqual(unitOfWork.audit.list(identity), []);
+  assert.equal(unitOfWork.idempotency.find({
+    tenantScopeId: identity.tenantScopeId,
+    aggregateId: identity.publicationId,
+    commandKey: execution.idempotencyKey,
+  }), undefined);
+  assert.deepEqual(evidence.list(identity.publicationId).map(({ decision, reasonCode, actorId }) => ({ decision, reasonCode, actorId })), [
+    { decision: "DENY", reasonCode: "AUTHENTICATION_REQUIRED", actorId: "anonymous" },
+    { decision: "DENY", reasonCode: "AUTHENTICATION_REQUIRED", actorId: "anonymous" },
+  ]);
+});
+
+test("F15-TASK-005 post-authorization failure audit uses the resolved Session Actor", () => {
+  const created = context("authoritative-audit-create");
+  const rejected = context("authoritative-audit-reject");
+  const forgedContext = { ...rejected, actorId: "actor-forged" };
+  const { unitOfWork, service } = application();
+  assert.equal(service.execute(createCommand(created), created).ok, true);
+  assert.equal(service.execute({
+    kind: "MODIFY_PUBLICATION",
+    identity,
+    input: { type: "TERMINATE", expectedAggregateVersion: 1, command: domainContext(rejected) },
+  }, rejected).ok, true);
+
+  const result = service.execute(transitionCommand(rejected, 2), forgedContext);
+
+  assert.equal(result.ok, false);
+  const failure = unitOfWork.audit.list(identity).find((record) => record.result === "FAILED");
+  assert.equal(failure?.actorId, rejected.sessionId);
+  assert.notEqual(failure?.actorId, forgedContext.actorId);
 });
 
 test("F15-TASK-004 domain rejection is mapped without changing persisted state", () => {
