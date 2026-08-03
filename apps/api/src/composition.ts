@@ -14,6 +14,7 @@ import type { ProposalService } from "../../../modules/proposal/src/proposal-ser
 import type { PropertyService } from "../../../modules/property/src/property-service.js";
 import type { SourceRegistryService } from "../../../modules/source/src/source-registry-service.js";
 import type { VerificationService } from "../../../modules/verification/src/verification-service.js";
+import type { PublicationInfrastructure } from "../../../modules/publication/src/publication-infrastructure.js";
 import { AdminAuditApi } from "./admin-audit-api.js";
 import { ContactClientApi } from "./contact-client-api.js";
 import { IdentityApi } from "./identity-api.js";
@@ -24,8 +25,14 @@ import { ProposalApprovalApi } from "./proposal-approval-api.js";
 import { PropertyListingApi } from "./property-listing-api.js";
 import { SourceIntakeApi } from "./source-intake-api.js";
 import { VerificationApi } from "./verification-api.js";
+import { PublicationApi } from "./publication-api.js";
+
+export function composePublicationApiModule(infrastructure: PublicationInfrastructure): PublicationApi {
+  return new PublicationApi(infrastructure);
+}
 
 export interface ApiModuleDependencies {
+  readonly publicationInfrastructure: PublicationInfrastructure;
   readonly sessionService: SessionService;
   readonly authorizationService: AuthorizationService;
   readonly administrationService: AdministrationService;
@@ -45,7 +52,7 @@ export interface ApiModuleDependencies {
   readonly publicationApprovalService: PublicationApprovalService;
 }
 
-export function composeApiModules(dependencies: ApiModuleDependencies): Readonly<{
+export interface ApiModulesBeforePublication {
   readonly identity: IdentityApi;
   readonly administrationAndAudit: AdminAuditApi;
   readonly sourceAndIntake: SourceIntakeApi;
@@ -56,7 +63,19 @@ export function composeApiModules(dependencies: ApiModuleDependencies): Readonly
   readonly verification: VerificationApi;
   readonly permission: PermissionApi;
   readonly proposalAndApproval: ProposalApprovalApi;
-}> {
+}
+
+export function composeApiModules(dependencies: ApiModuleDependencies): Readonly<ApiModulesBeforePublication & { readonly publication: PublicationApi }> {
+  if (dependencies.publicationInfrastructure === undefined) {
+    throw new TypeError("PublicationInfrastructure is required to compose API-014.");
+  }
+  return Object.freeze({
+    ...composeApiModulesBeforePublication(dependencies),
+    publication: composePublicationApiModule(dependencies.publicationInfrastructure),
+  });
+}
+
+export function composeApiModulesBeforePublication(dependencies: Omit<ApiModuleDependencies, "publicationInfrastructure">): Readonly<ApiModulesBeforePublication> {
   return Object.freeze({
     identity: new IdentityApi({
       sessionService: dependencies.sessionService,

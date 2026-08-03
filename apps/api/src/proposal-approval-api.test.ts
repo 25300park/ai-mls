@@ -3,7 +3,7 @@ import test from "node:test";
 import type { SessionContext } from "../../../modules/identity/src/session-service.js";
 import type { PublicationApproval, ApprovalReviewContext, EffectiveApprovalDecision, ImmutableRepresentationSnapshot } from "../../../modules/publication-approval/src/publication-approval-service.js";
 import type { ClientProposal } from "../../../modules/proposal/src/proposal-service.js";
-import { composeApiModules, type ApiModuleDependencies } from "./composition.js";
+import { composeApiModulesBeforePublication, type ApiModuleDependencies } from "./composition.js";
 import { ProposalApprovalApi } from "./proposal-approval-api.js";
 
 const baseActor: SessionContext = Object.freeze({ id: "session-pua", principalId: "pua-1", principalType: "HUMAN", roles: ["PUA"], teamId: "team-a", state: "ACTIVE", assurance: "MFA", isMfaVerified: true, authenticatedAt: "2026-07-23T00:00:00.000Z", expiresAt: "2026-07-24T00:00:00.000Z", absoluteExpiresAt: "2026-07-25T00:00:00.000Z", familyId: "family-pua", refreshReference: "refresh-pua" } as const);
@@ -78,6 +78,6 @@ test("API-013 returns stable safe semantic errors without restricted evidence", 
 });
 
 test("SP-008 composition adds API-013 without replacing API-001 through API-012", () => {
-  const deps = dependencies([]); const composed = composeApiModules({ sessionService: { readSession: () => baseActor }, proposalService: deps.proposalService, publicationApprovalService: deps.publicationApprovalService, permissionService: {}, verificationService: {}, authorizationService: {}, administrationService: {}, auditLog: {}, sourceRegistryService: {}, intakeService: {}, jobService: {}, propertyService: {}, listingService: {}, contactService: {}, clientRequirementService: {}, matchingService: {}, matchingInputResolver: {} } as unknown as ApiModuleDependencies);
+  const deps = dependencies([]); const composed = composeApiModulesBeforePublication({ sessionService: { readSession: () => baseActor }, proposalService: deps.proposalService, publicationApprovalService: deps.publicationApprovalService, permissionService: {}, verificationService: {}, authorizationService: {}, administrationService: {}, auditLog: {}, sourceRegistryService: {}, intakeService: {}, jobService: {}, propertyService: {}, listingService: {}, contactService: {}, clientRequirementService: {}, matchingService: {}, matchingInputResolver: {} } as unknown as ApiModuleDependencies);
   assert.equal(composed.proposalAndApproval instanceof ProposalApprovalApi, true); assert.ok(composed.identity); assert.ok(composed.permission); assert.equal("publicationDelivery" in composed, false);
 });

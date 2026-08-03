@@ -3,7 +3,7 @@ import test from "node:test";
 
 import type { SessionContext } from "../../../modules/identity/src/session-service.js";
 import type { Verification } from "../../../modules/verification/src/verification-service.js";
-import { composeApiModules, type ApiModuleDependencies } from "./composition.js";
+import { composeApiModulesBeforePublication, type ApiModuleDependencies } from "./composition.js";
 import { VerificationApi, type VerificationApiDependencies } from "./verification-api.js";
 
 const baseActor: SessionContext = Object.freeze({ id: "session-api-verification", principalId: "agent-api-verification", principalType: "HUMAN", roles: ["AGT"] as const, teamId: "team-a", state: "ACTIVE", assurance: "MFA", isMfaVerified: true, authenticatedAt: "2026-07-19T07:00:00.000Z", expiresAt: "2026-07-20T08:00:00.000Z", absoluteExpiresAt: "2026-07-21T08:00:00.000Z", familyId: "family-api-verification", refreshReference: "refresh-api-verification" });
@@ -61,6 +61,6 @@ test("TEST-032 API-011 ignores forged actors and returns stable safe errors", ()
 });
 
 test("SP-006 composition adds API-011 without replacing SP-001–005 modules", () => {
-  const composed = composeApiModules({ sessionService: { readSession: () => baseActor }, verificationService: dependencies([]).verificationService, authorizationService: {}, administrationService: {}, auditLog: {}, sourceRegistryService: {}, intakeService: {}, jobService: {}, propertyService: {}, listingService: {}, contactService: {}, clientRequirementService: {}, matchingService: {}, matchingInputResolver: {} } as unknown as ApiModuleDependencies);
+  const composed = composeApiModulesBeforePublication({ sessionService: { readSession: () => baseActor }, verificationService: dependencies([]).verificationService, authorizationService: {}, administrationService: {}, auditLog: {}, sourceRegistryService: {}, intakeService: {}, jobService: {}, propertyService: {}, listingService: {}, contactService: {}, clientRequirementService: {}, matchingService: {}, matchingInputResolver: {} } as unknown as ApiModuleDependencies);
   assert.ok(composed.verification instanceof VerificationApi); assert.ok("identity" in composed); assert.ok("matching" in composed); assert.equal("publication" in composed, false); assert.equal("proposal" in composed, false);
 });

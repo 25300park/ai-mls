@@ -5,7 +5,7 @@ import type { Client, Requirement } from "../../../modules/client/src/client-req
 import type { Contact, ContactChannel } from "../../../modules/contact/src/contact-service.js";
 import type { SessionContext } from "../../../modules/identity/src/session-service.js";
 import { ContactClientApi, type ContactClientApiDependencies } from "./contact-client-api.js";
-import { composeApiModules, type ApiModuleDependencies } from "./composition.js";
+import { composeApiModulesBeforePublication, type ApiModuleDependencies } from "./composition.js";
 
 const actor: SessionContext = Object.freeze({ id: "session-api-sp004", principalId: "agent-api-sp004", principalType: "HUMAN", roles: ["AGT"] as const, teamId: "team-a", state: "ACTIVE", assurance: "MFA", isMfaVerified: true, authenticatedAt: "2026-07-19T02:00:00.000Z", expiresAt: "2026-07-19T04:00:00.000Z", absoluteExpiresAt: "2026-07-19T05:00:00.000Z", familyId: "family-api-sp004", refreshReference: "refresh-api-sp004" });
 const contact: Contact = Object.freeze({ id: "contact-api-1", version: 1, displayLabel: "Masked Client", teamId: "team-a", status: "ACTIVE", consentRefs: ["consent-api"], channels: [], classification: "RESTRICTED_PERSONAL" });
@@ -60,7 +60,7 @@ test("API-007–009 fail with safe errors for missing session and invalid Requir
 
 test("SP-004 composition exposes API-007–009 without replacing earlier API modules", () => {
   const sp004 = dependencies([]);
-  const composed = composeApiModules({
+  const composed = composeApiModulesBeforePublication({
     sessionService: { readSession: sp004.sessionReader },
     contactService: sp004.contactService,
     clientRequirementService: sp004.clientRequirementService,

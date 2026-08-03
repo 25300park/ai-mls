@@ -3,7 +3,7 @@ import test from "node:test";
 
 import type { SessionContext } from "../../../modules/identity/src/session-service.js";
 import type { Permission } from "../../../modules/permission/src/permission-service.js";
-import { composeApiModules, type ApiModuleDependencies } from "./composition.js";
+import { composeApiModulesBeforePublication, type ApiModuleDependencies } from "./composition.js";
 import { PermissionApi, type PermissionApiDependencies } from "./permission-api.js";
 
 const baseActor: SessionContext = Object.freeze({ id: "session-api-permission", principalId: "agent-api-permission", principalType: "HUMAN", roles: ["AGT"] as const, teamId: "team-a", state: "ACTIVE", assurance: "MFA", isMfaVerified: true, authenticatedAt: "2026-07-19T07:00:00.000Z", expiresAt: "2026-08-20T08:00:00.000Z", absoluteExpiresAt: "2026-08-21T08:00:00.000Z", familyId: "family-api-permission", refreshReference: "refresh-api-permission" });
@@ -79,6 +79,6 @@ test("TEST-032 API-012 ignores forged actors and returns stable privacy-safe err
 });
 
 test("SP-007 composition adds API-012 without replacing API-001–011 modules", () => {
-  const composed = composeApiModules({ sessionService: { readSession: () => baseActor }, permissionService: dependencies([]).permissionService, verificationService: {}, authorizationService: {}, administrationService: {}, auditLog: {}, sourceRegistryService: {}, intakeService: {}, jobService: {}, propertyService: {}, listingService: {}, contactService: {}, clientRequirementService: {}, matchingService: {}, matchingInputResolver: {} } as unknown as ApiModuleDependencies);
+  const composed = composeApiModulesBeforePublication({ sessionService: { readSession: () => baseActor }, permissionService: dependencies([]).permissionService, verificationService: {}, authorizationService: {}, administrationService: {}, auditLog: {}, sourceRegistryService: {}, intakeService: {}, jobService: {}, propertyService: {}, listingService: {}, contactService: {}, clientRequirementService: {}, matchingService: {}, matchingInputResolver: {} } as unknown as ApiModuleDependencies);
   assert.ok(composed.permission instanceof PermissionApi); assert.ok("identity" in composed); assert.ok("verification" in composed); assert.equal("publication" in composed, false); assert.equal("proposal" in composed, false);
 });
