@@ -1,6 +1,8 @@
 import type {
+  CreatePublicationCoordinationRequest,
   CreatePublicationApplicationCommand,
   ModifyPublicationApplicationCommand,
+  PublishPublicationCoordinationRequest,
   PublicationExecutionContext,
 } from "./publication-application-contracts.js";
 
@@ -18,6 +20,18 @@ export interface ModifyPublicationInterfaceRequest {
 }
 
 export type PublicationInterfaceRequest = CreatePublicationInterfaceRequest | ModifyPublicationInterfaceRequest;
+
+export interface CoordinateCreatePublicationInterfaceRequest extends CreatePublicationCoordinationRequest {
+  readonly operation: "COORDINATE_CREATE_PUBLICATION";
+}
+
+export interface CoordinatePublishPublicationInterfaceRequest extends PublishPublicationCoordinationRequest {
+  readonly operation: "COORDINATE_PUBLISH_PUBLICATION";
+}
+
+export type PublicationOuterRequest = PublicationInterfaceRequest
+  | CoordinateCreatePublicationInterfaceRequest
+  | CoordinatePublishPublicationInterfaceRequest;
 
 export interface PublicationInterfaceSuccessResponse {
   readonly operationResult: "SUCCEEDED";

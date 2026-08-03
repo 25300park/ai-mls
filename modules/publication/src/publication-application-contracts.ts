@@ -1,8 +1,9 @@
-import type { PublicationIdentity } from "./publication-contracts.js";
+import type { PublicationBinding, PublicationIdentity, PublicationLifecycleState } from "./publication-contracts.js";
 import type {
   BeginActiveOperationCommand,
   BeginInitialExecutionCommand,
   BeginWithdrawnRepublishCommand,
+  AttemptInput,
   CreatePublicationCommand,
   RequestWithdrawalCommand,
   ResolveExecutionCommand,
@@ -39,6 +40,40 @@ export interface CreatePublicationApplicationCommand {
   readonly input: CreatePublicationCommand;
 }
 
+export interface CreatePublicationCoordinationRequest {
+  readonly context: PublicationExecutionContext;
+  readonly command: {
+    readonly kind: "CREATE_PUBLICATION";
+    readonly input: Omit<CreatePublicationApplicationCommand["input"], "prerequisites"> & {
+      readonly prerequisites: Omit<CreatePublicationApplicationCommand["input"]["prerequisites"], "effectiveApproval">;
+    };
+  };
+}
+
+export interface PublishPublicationCoordinationRequest {
+  readonly context: PublicationExecutionContext;
+  readonly identity: PublicationIdentity;
+  readonly command: CreatePublicationApplicationCommand["input"]["command"];
+  readonly attempt: AttemptInput;
+  readonly expectedAggregateVersion: number;
+}
+
+export interface PublicationCoordinationSuccessResult {
+  readonly ok: true;
+  readonly publicationId: string;
+  readonly aggregateVersion: number;
+  readonly lifecycleState: PublicationLifecycleState;
+  readonly connectorOutcome: "CONFIRMED";
+  readonly replayed: boolean;
+}
+
+export type PublicationCoordinationResult = PublicationCoordinationSuccessResult | PublicationApplicationErrorResult;
+
+export interface PublicationCoordinationPort {
+  create(request: CreatePublicationCoordinationRequest): PublicationApplicationResult;
+  publish(request: PublishPublicationCoordinationRequest): PublicationCoordinationResult;
+}
+
 export interface ModifyPublicationApplicationCommand {
   readonly kind: "MODIFY_PUBLICATION";
   readonly identity: PublicationIdentity;
@@ -71,3 +106,11 @@ export type PublicationApplicationResult = PublicationApplicationSuccessResult |
 export interface PublicationCommandHandler<Command extends PublicationApplicationCommand = PublicationApplicationCommand> {
   execute(command: Command, context: PublicationExecutionContext): PublicationApplicationResult;
 }
+
+export interface PublicationAuthorizedExecution {
+  readonly actorId: string;
+  readonly binding: PublicationBinding;
+  readonly currentAggregateVersion: number;
+}
+
+export type PublicationAuthorizedPreflight = (execution: PublicationAuthorizedExecution) => void;

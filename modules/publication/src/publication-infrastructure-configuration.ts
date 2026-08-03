@@ -7,6 +7,7 @@ import type {
   PublicationLiveAuthorizationContextResolver,
   PublicationSessionResolver,
 } from "./publication-authorization.js";
+import type { PublicationConnectorDispatcher, PublicationEffectiveApprovalPort } from "./publication-service.js";
 
 export interface PublicationInfrastructureConfiguration {
   readonly clock: PublicationClock;
@@ -14,6 +15,8 @@ export interface PublicationInfrastructureConfiguration {
   readonly authorizationEvaluator?: PublicationAuthorizationEvaluator;
   readonly liveContextResolver?: PublicationLiveAuthorizationContextResolver;
   readonly publicationPolicyVersion?: string;
+  readonly effectiveApprovalPort?: PublicationEffectiveApprovalPort;
+  readonly connectorDispatcher?: PublicationConnectorDispatcher;
 }
 
 export interface PublicationInfrastructureConfigurationInput {
@@ -22,6 +25,8 @@ export interface PublicationInfrastructureConfigurationInput {
   readonly authorizationEvaluator?: PublicationAuthorizationEvaluator;
   readonly liveContextResolver?: PublicationLiveAuthorizationContextResolver;
   readonly publicationPolicyVersion?: string;
+  readonly effectiveApprovalPort?: PublicationEffectiveApprovalPort;
+  readonly connectorDispatcher?: PublicationConnectorDispatcher;
 }
 
 export function createPublicationInfrastructureConfiguration(
@@ -33,5 +38,7 @@ export function createPublicationInfrastructureConfiguration(
     ...(input.authorizationEvaluator === undefined ? {} : { authorizationEvaluator: input.authorizationEvaluator }),
     ...(input.liveContextResolver === undefined ? {} : { liveContextResolver: input.liveContextResolver }),
     ...(input.publicationPolicyVersion === undefined ? {} : { publicationPolicyVersion: input.publicationPolicyVersion }),
+    ...(input.effectiveApprovalPort === undefined ? {} : { effectiveApprovalPort: input.effectiveApprovalPort }),
+    ...(input.connectorDispatcher === undefined ? {} : { connectorDispatcher: input.connectorDispatcher }),
   });
 }

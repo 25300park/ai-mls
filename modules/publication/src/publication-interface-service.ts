@@ -1,16 +1,19 @@
 import type {
+  PublicationCoordinationPort,
   PublicationCommandHandler,
 } from "./publication-application-contracts.js";
 import type {
   PublicationInterfaceRequest,
+  PublicationOuterRequest,
   PublicationInterfaceResponse,
 } from "./publication-interface-models.js";
+import { isJsonInterfaceValue } from "./publication-interface-models.js";
 import type { PublicationOutputPort } from "./publication-interface-presenter.js";
 import type { PublicationRequestMapper } from "./publication-request-mapper.js";
 import type { PublicationInterfaceValidator } from "./publication-interface-validation.js";
 
 export interface PublicationInputPort {
-  execute(request: PublicationInterfaceRequest): PublicationInterfaceResponse;
+  execute(request: PublicationOuterRequest): PublicationInterfaceResponse;
 }
 
 export class PublicationInterfaceService implements PublicationInputPort {
@@ -19,14 +22,47 @@ export class PublicationInterfaceService implements PublicationInputPort {
     private readonly mapper: PublicationRequestMapper,
     private readonly presenter: PublicationOutputPort,
     private readonly validator: PublicationInterfaceValidator,
+    private readonly coordination?: PublicationCoordinationPort,
   ) {}
 
-  public execute(request: PublicationInterfaceRequest): PublicationInterfaceResponse {
+  public execute(request: PublicationOuterRequest): PublicationInterfaceResponse {
+    if (!isJsonInterfaceValue(request) || request === null || Array.isArray(request)) {
+      return this.presenter.presentInterfaceFailure("INTERFACE_VALIDATION_FAILED");
+    }
     const validation = this.validator.validate(request);
     if (!validation.valid) return this.presenter.presentInterfaceFailure(validation.failureCode);
+    if (request.operation === "COORDINATE_CREATE_PUBLICATION" || request.operation === "COORDINATE_PUBLISH_PUBLICATION") {
+      return this.executeCoordination(request);
+    }
+    return this.executeApplication(request);
+  }
+
+  private executeApplication(request: PublicationInterfaceRequest): PublicationInterfaceResponse {
     try {
       const mapped = this.mapper.map(request);
       return this.presenter.present(this.application.execute(mapped.command, mapped.context));
+    } catch {
+      return this.presenter.presentInterfaceFailure("INTERFACE_EXECUTION_FAILED");
+    }
+  }
+
+  private executeCoordination(
+    request: Exclude<PublicationOuterRequest, PublicationInterfaceRequest>,
+  ): PublicationInterfaceResponse {
+    if (this.coordination === undefined) return this.presenter.presentInterfaceFailure("INTERFACE_EXECUTION_FAILED");
+    try {
+      const result = request.operation === "COORDINATE_CREATE_PUBLICATION"
+        ? this.coordination.create({ context: request.context, command: request.command })
+        : this.coordination.publish({
+          context: request.context,
+          identity: request.identity,
+          command: request.command,
+          attempt: request.attempt,
+          expectedAggregateVersion: request.expectedAggregateVersion,
+        });
+      return result.ok
+        ? Object.freeze({ operationResult: "SUCCEEDED" as const, publicationId: result.publicationId, version: result.aggregateVersion, replayed: result.replayed })
+        : this.presenter.present(result);
     } catch {
       return this.presenter.presentInterfaceFailure("INTERFACE_EXECUTION_FAILED");
     }

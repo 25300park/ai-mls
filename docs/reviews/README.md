@@ -94,5 +94,6 @@
 | [Phase 13-14 Node HTTP Server](PHASE13_14_NODE_HTTP_SERVER_FOUNDATION_IMPLEMENTATION_REPORT.md) | loopback listener, request/response와 shutdown evidence | DRAFT |
 | [Phase 13-15 End-to-End Architecture Verification](PHASE13_15_END_TO_END_ARCHITECTURE_VERIFICATION_REPORT.md) | full-stack dependency, regression, diagnostics와 FEAT-015 final assessment | DRAFT |
 | [F15-TASK-005 Authorization Implementation](F15_TASK_005_AUTHORIZATION_IMPLEMENTATION_REPORT.md) | session-derived Actor, SoD, live revalidation 및 immutable authorization evidence | DRAFT |
+| [F15-TASK-006 Publication Coordination Implementation](F15_TASK_006_PUBLICATION_COORDINATION_IMPLEMENTATION_REPORT.md) | 별도 create/publish, live Approval, exact connector dispatch 및 confirmed activation | DRAFT |
 
 전체 review document와 current lifecycle status의 authoritative registry는 [Master Index](../00_MASTER_INDEX.md)와 [Freeze Document Registry](../freeze/FREEZE_DOCUMENT_REGISTRY.md)다. Phase 14/15/16은 각각 legacy `R1`/`R2`/`F1`을 대체한다.

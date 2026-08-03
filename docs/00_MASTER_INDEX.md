@@ -200,6 +200,7 @@
 |---|---|---|---|
 | DOC-REVIEW-074 | [Phase 13-15 End-to-End Architecture Verification](reviews/PHASE13_15_END_TO_END_ARCHITECTURE_VERIFICATION_REPORT.md) | FEAT-015 전체 계층, dependency, regression, diagnostics와 final assessment evidence | AVAILABLE |
 | DOC-REVIEW-075 | [F15-TASK-005 Authorization Implementation](reviews/F15_TASK_005_AUTHORIZATION_IMPLEMENTATION_REPORT.md) | session-derived Actor, SoD, live revalidation 및 immutable authorization evidence | AVAILABLE |
+| DOC-REVIEW-076 | [F15-TASK-006 Publication Coordination Implementation](reviews/F15_TASK_006_PUBLICATION_COORDINATION_IMPLEMENTATION_REPORT.md) | 별도 create/publish, live Approval, exact connector dispatch 및 confirmed activation | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -829,6 +830,7 @@
 | DOC-REVIEW-073 | Phase 12 Architecture Remediation Completion Report | [PHASE12_ARCHITECTURE_REMEDIATION_COMPLETION.md](reviews/PHASE12_ARCHITECTURE_REMEDIATION_COMPLETION.md) |
 | DOC-REVIEW-074 | Phase 13-15 End-to-End Architecture Verification Report | [PHASE13_15_END_TO_END_ARCHITECTURE_VERIFICATION_REPORT.md](reviews/PHASE13_15_END_TO_END_ARCHITECTURE_VERIFICATION_REPORT.md) |
 | DOC-REVIEW-075 | F15-TASK-005 Authorization Implementation Report | [F15_TASK_005_AUTHORIZATION_IMPLEMENTATION_REPORT.md](reviews/F15_TASK_005_AUTHORIZATION_IMPLEMENTATION_REPORT.md) |
+| DOC-REVIEW-076 | F15-TASK-006 Publication Coordination Implementation Report | [F15_TASK_006_PUBLICATION_COORDINATION_IMPLEMENTATION_REPORT.md](reviews/F15_TASK_006_PUBLICATION_COORDINATION_IMPLEMENTATION_REPORT.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books

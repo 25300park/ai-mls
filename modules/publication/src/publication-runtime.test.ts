@@ -15,7 +15,7 @@ import { createPublicationRuntimeServiceRegistry } from "./publication-runtime-r
 import { PublicationRuntime, bootstrapPublicationRuntime } from "./publication-runtime.js";
 
 const timestamp = "2026-07-27T17:00:00.000Z";
-const serviceNames = ["inputPort", "unitOfWork", "repository", "idempotency", "audit", "clock", "authorization", "authorizationEvidence"] as const;
+const serviceNames = ["inputPort", "unitOfWork", "repository", "idempotency", "audit", "clock", "authorization", "authorizationEvidence", "coordination", "connectorDispatcher"] as const;
 const identity = { publicationId: "publication-runtime-1", tenantScopeId: "team-a" } as const;
 
 function createRequest() {
@@ -112,6 +112,8 @@ test("PHASE13-7 immutable registry preserves explicit deterministic service orde
   assert.equal(registry.idempotency, infrastructure.idempotency);
   assert.equal(registry.audit, infrastructure.audit);
   assert.equal(registry.clock, infrastructure.clock);
+  assert.equal(registry.coordination, infrastructure.coordination);
+  assert.equal(registry.connectorDispatcher, infrastructure.connectorDispatcher);
   assert.equal(Object.isFrozen(registry), true);
   assert.equal(Object.isFrozen(registry.serviceNames), true);
   assert.throws(() => {

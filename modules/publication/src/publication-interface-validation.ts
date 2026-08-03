@@ -36,6 +36,14 @@ export class StructuralPublicationInterfaceValidator implements PublicationInter
       && validExecutionContext(request["context"])
       && (request["operation"] === "CREATE_PUBLICATION"
         ? hasOnlyKeys(request, ["operation", "context", "input"]) && validCreateInput(request["input"])
+        : request["operation"] === "COORDINATE_CREATE_PUBLICATION"
+          ? hasOnlyKeys(request, ["operation", "context", "command"]) && validCoordinationCreateCommand(request["command"])
+          : request["operation"] === "COORDINATE_PUBLISH_PUBLICATION"
+            ? hasOnlyKeys(request, ["operation", "context", "identity", "command", "attempt", "expectedAggregateVersion"])
+              && validIdentity(request["identity"])
+              && validCommandContext(request["command"])
+              && validAttempt(request["attempt"])
+              && positiveInteger(request["expectedAggregateVersion"])
         : request["operation"] === "MODIFY_PUBLICATION"
           && hasOnlyKeys(request, ["operation", "context", "identity", "input"])
           && validIdentity(request["identity"])
@@ -44,6 +52,28 @@ export class StructuralPublicationInterfaceValidator implements PublicationInter
       ? immutableInterfaceValue({ valid: true as const })
       : immutableInterfaceValue({ valid: false as const, failureCode: "INTERFACE_REQUEST_INVALID" as const });
   }
+}
+
+function validCoordinationCreateCommand(value: unknown): boolean {
+  return isRecord(value)
+    && hasOnlyKeys(value, ["kind", "input"])
+    && value["kind"] === "CREATE_PUBLICATION"
+    && isRecord(value["input"])
+    && hasOnlyKeys(value["input"], ["identity", "binding", "prerequisites", "classification", "command", "predecessorPublicationId"])
+    && validIdentity(value["input"]["identity"])
+    && validBinding(value["input"]["binding"])
+    && validCoordinationPrerequisites(value["input"]["prerequisites"])
+    && nonBlankString(value["input"]["classification"])
+    && validCommandContext(value["input"]["command"])
+    && (!("predecessorPublicationId" in value["input"]) || validIdentifier(value["input"]["predecessorPublicationId"]));
+}
+
+function validCoordinationPrerequisites(value: unknown): boolean {
+  return isRecord(value)
+    && hasOnlyKeys(value, ["immutableSnapshot", "exactTargetChannel", "provenancePresent"])
+    && value["immutableSnapshot"] === true
+    && value["exactTargetChannel"] === true
+    && value["provenancePresent"] === true;
 }
 
 function validCreateInput(value: unknown): boolean {

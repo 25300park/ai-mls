@@ -14,7 +14,9 @@ export type PublicationRuntimeServiceName =
   | "audit"
   | "clock"
   | "authorization"
-  | "authorizationEvidence";
+  | "authorizationEvidence"
+  | "coordination"
+  | "connectorDispatcher";
 
 export type PublicationRuntimeFailureCode =
   | "RUNTIME_STARTUP_FAILED"

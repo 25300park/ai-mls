@@ -24,6 +24,12 @@ import { StructuralPublicationInterfaceValidator } from "./publication-interface
 import { DefaultPublicationRequestMapper } from "./publication-request-mapper.js";
 import { InMemoryPublicationUnitOfWork } from "./publication-unit-of-work.js";
 import type { PublicationRepository } from "./publication-repository.js";
+import {
+  PublicationCoordinationService,
+  unavailablePublicationConnectorDispatcher,
+  unavailablePublicationEffectiveApprovalPort,
+  type PublicationConnectorDispatcher,
+} from "./publication-service.js";
 
 export interface PublicationInfrastructure {
   readonly configuration: PublicationInfrastructureConfiguration;
@@ -35,6 +41,8 @@ export interface PublicationInfrastructure {
   readonly clock: PublicationClock;
   readonly authorization: PublicationAuthorizationGuard;
   readonly authorizationEvidence: PublicationAuthorizationEvidenceStore;
+  readonly coordination: PublicationCoordinationService;
+  readonly connectorDispatcher: PublicationConnectorDispatcher;
 }
 
 export function createPublicationInfrastructure(
@@ -63,11 +71,22 @@ export function createPublicationInfrastructure(
     new CreatePublicationHandler(dependencies),
     new ModifyPublicationHandler(dependencies),
   );
+  const connectorDispatcher = configuration.connectorDispatcher ?? unavailablePublicationConnectorDispatcher;
+  const coordination = new PublicationCoordinationService({
+    application,
+    repository: unitOfWork.repository,
+    effectiveApproval: configuration.effectiveApprovalPort ?? unavailablePublicationEffectiveApprovalPort,
+    connector: connectorDispatcher,
+    unitOfWork,
+    audit: unitOfWork.audit,
+    clock: configuration.clock,
+  });
   const inputPort = new PublicationInterfaceService(
     application,
     new DefaultPublicationRequestMapper(),
     new DeterministicPublicationPresenter(),
     new StructuralPublicationInterfaceValidator(),
+    coordination,
   );
 
   return Object.freeze({
@@ -80,5 +99,7 @@ export function createPublicationInfrastructure(
     clock: configuration.clock,
     authorization,
     authorizationEvidence,
+    coordination,
+    connectorDispatcher,
   });
 }

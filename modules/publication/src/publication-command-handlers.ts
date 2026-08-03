@@ -6,6 +6,7 @@ import type {
   PublicationApplicationCommand,
   PublicationApplicationResult,
   PublicationApplicationSuccessResult,
+  PublicationAuthorizedPreflight,
   PublicationCommandHandler,
   PublicationExecutionContext,
   PublicationModificationCommand,
@@ -35,13 +36,17 @@ export class CreatePublicationHandler implements PublicationCommandHandler<Creat
   public constructor(private readonly dependencies: PublicationApplicationDependencies) {}
 
   public execute(command: CreatePublicationApplicationCommand, context: PublicationExecutionContext): PublicationApplicationResult {
+    return this.executeAuthorized(command, context);
+  }
+
+  public executeAuthorized(command: CreatePublicationApplicationCommand, context: PublicationExecutionContext, preflight?: PublicationAuthorizedPreflight): PublicationApplicationResult {
     const identity = command.input.identity;
     return executeModificationBoundary(this.dependencies, command, identity, context, (transaction, authorizedCommand) => {
       if (authorizedCommand.kind !== "CREATE_PUBLICATION") throw new Error("APPLICATION_COMMAND_INVALID");
       const aggregate = PublicationAggregate.create(authorizedCommand.input);
       transaction.repository.save(aggregate.snapshot);
       return aggregate.snapshot;
-    });
+    }, preflight);
   }
 }
 
@@ -49,6 +54,10 @@ export class ModifyPublicationHandler implements PublicationCommandHandler<Modif
   public constructor(private readonly dependencies: PublicationApplicationDependencies) {}
 
   public execute(command: ModifyPublicationApplicationCommand, context: PublicationExecutionContext): PublicationApplicationResult {
+    return this.executeAuthorized(command, context);
+  }
+
+  public executeAuthorized(command: ModifyPublicationApplicationCommand, context: PublicationExecutionContext, preflight?: PublicationAuthorizedPreflight): PublicationApplicationResult {
     return executeModificationBoundary(this.dependencies, command, command.identity, context, (transaction, authorizedCommand) => {
       if (authorizedCommand.kind !== "MODIFY_PUBLICATION") throw new Error("APPLICATION_COMMAND_INVALID");
       const snapshot = transaction.repository.find(authorizedCommand.identity);
@@ -57,7 +66,7 @@ export class ModifyPublicationHandler implements PublicationCommandHandler<Modif
       const updated = executeDomainBehaviour(aggregate, authorizedCommand.input).snapshot;
       transaction.repository.update(snapshot.aggregateVersion, updated);
       return updated;
-    });
+    }, preflight);
   }
 }
 
@@ -67,6 +76,7 @@ function executeModificationBoundary(
   identity: PublicationIdentity,
   context: PublicationExecutionContext,
   executeDomain: (transaction: PublicationTransaction, authorizedCommand: PublicationApplicationCommand) => PublicationSnapshot,
+  preflight?: PublicationAuthorizedPreflight,
 ): PublicationApplicationResult {
   let transaction: PublicationTransaction | undefined;
   let currentVersion = applicationCommand.kind === "MODIFY_PUBLICATION" ? applicationCommand.input.expectedAggregateVersion : 0;
@@ -109,6 +119,11 @@ function executeModificationBoundary(
     const authorizedContext = immutableDomain({ ...context, actorId: authorization.actor.principalId });
     auditContext = authorizedContext;
     const authorizedCommand = withAuthoritativeActor(applicationCommand, authorization.actor.principalId);
+    preflight?.(immutableDomain({
+      actorId: authorization.actor.principalId,
+      binding: authorizationBinding(authorizedCommand, current),
+      currentAggregateVersion: current?.aggregateVersion ?? 0,
+    }));
     const replay = findReplay(dependencies, authorizedCommand, identity, authorizedContext);
     if (replay !== undefined) return replay;
 

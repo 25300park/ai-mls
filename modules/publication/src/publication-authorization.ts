@@ -365,7 +365,7 @@ export class PublicationAuthorizationGuard {
   private evidence(request: PublicationAuthorizationRequest, session: SessionContext | undefined, live: PublicationLiveAuthorizationContext | undefined, decision: "ALLOW" | "DENY", reasonCode: string, checkedAt: string, policyVersion: string): PublicationAuthorizationEvidence {
     const reference = (id: string | undefined, version: number | undefined): string => id === undefined ? "UNAVAILABLE" : `${id}@${String(version ?? 0)}`;
     return immutable({
-      decisionId: JSON.stringify([request.aggregateId, request.correlationId, request.commandType, session?.principalId ?? "anonymous", decision, reasonCode, checkedAt]),
+      decisionId: JSON.stringify([request.aggregateId, request.expectedAggregateVersion, request.correlationId, request.commandType, session?.principalId ?? "anonymous", decision, reasonCode, checkedAt]),
       commandType: request.commandType,
       actorId: session?.principalId ?? "anonymous",
       tenantId: request.tenantId,

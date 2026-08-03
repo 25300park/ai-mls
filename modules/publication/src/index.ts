@@ -76,3 +76,5 @@ export * from "./publication-node-http-request-reader.js";
 export * from "./publication-node-http-response-writer.js";
 export * from "./publication-node-http-server.js";
 export * from "./publication-authorization.js";
+export * from "./publication-service.js";
+export * from "./publication-infrastructure-effective-approval-adapter.js";
