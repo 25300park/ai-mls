@@ -15,7 +15,7 @@ import { createPublicationRuntimeServiceRegistry } from "./publication-runtime-r
 import { PublicationRuntime, bootstrapPublicationRuntime } from "./publication-runtime.js";
 
 const timestamp = "2026-07-27T17:00:00.000Z";
-const serviceNames = ["inputPort", "unitOfWork", "repository", "idempotency", "audit", "clock", "authorization", "authorizationEvidence", "coordination", "lifecycle", "reconciliation", "connectorDispatcher"] as const;
+const serviceNames = ["inputPort", "unitOfWork", "repository", "idempotency", "audit", "clock", "authorization", "authorizationEvidence", "coordination", "lifecycle", "reconciliation", "connectorDispatcher", "eventJournal", "eventCoordinator", "eventReplay", "eventGovernanceContextStore", "eventSourceContextResolver"] as const;
 const identity = { publicationId: "publication-runtime-1", tenantScopeId: "team-a" } as const;
 
 function createRequest() {
@@ -115,6 +115,11 @@ test("PHASE13-7 immutable registry preserves explicit deterministic service orde
   assert.equal(registry.coordination, infrastructure.coordination);
   assert.equal(registry.reconciliation, infrastructure.reconciliation);
   assert.equal(registry.connectorDispatcher, infrastructure.connectorDispatcher);
+  assert.equal(registry.eventJournal, infrastructure.eventJournal);
+  assert.equal(registry.eventCoordinator, infrastructure.eventCoordinator);
+  assert.equal(registry.eventReplay, infrastructure.eventReplay);
+  assert.equal(registry.eventGovernanceContextStore, infrastructure.eventGovernanceContextStore);
+  assert.equal(registry.eventSourceContextResolver, infrastructure.eventSourceContextResolver);
   assert.equal(Object.isFrozen(registry), true);
   assert.equal(Object.isFrozen(registry.serviceNames), true);
   assert.throws(() => {

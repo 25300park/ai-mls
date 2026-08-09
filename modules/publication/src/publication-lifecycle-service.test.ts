@@ -44,8 +44,9 @@ function lifecycleInfrastructure(options: {
   readonly liveStatus?: "VERIFICATION_STALE" | "PERMISSION_STALE" | "SOD_CONFLICT";
   readonly omitAuthentication?: boolean;
   readonly authorizationReason?: "CAPABILITY_DENIED" | "REAUTHENTICATION_REQUIRED" | "REASON_REQUIRED";
+  readonly eventSourceVersion?: number;
 } = {}) {
-  const base = createTestPublicationAuthorizationConfiguration(new FixedClock(occurredAt));
+  const base = createTestPublicationAuthorizationConfiguration(new FixedClock(occurredAt), "team-a", options.eventSourceVersion ?? 2);
   const configuration = options.omitAuthentication === true ? { clock: new FixedClock(occurredAt) } : {
     ...base,
     ...(options.authorizationReason === undefined ? {} : {
@@ -131,14 +132,40 @@ function createActive(infrastructure: ReturnType<typeof lifecycleInfrastructure>
   return infrastructure.repository.find(publicationIdentity)!;
 }
 
+function seedActive(infrastructure: ReturnType<typeof lifecycleInfrastructure>, suffix: string) {
+  const ready = PublicationAggregate.create({
+    identity,
+    binding,
+    prerequisites: { immutableSnapshot: true, effectiveApproval: true, exactTargetChannel: true, provenancePresent: true },
+    classification: "CONFIDENTIAL_BUSINESS",
+    command: { ...command(), correlationId: `correlation-seed-active-${suffix}` },
+  });
+  const pending = ready.beginInitialExecution({
+    type: "BEGIN_INITIAL_EXECUTION",
+    expectedAggregateVersion: ready.snapshot.aggregateVersion,
+    attempt: { id: `attempt-seed-${suffix}`, commandId: `command-seed-${suffix}`, operation: "INITIAL_PUBLISH", occurredAt, evidenceRefs: [] },
+    command: { ...command(), correlationId: `correlation-seed-pending-${suffix}` },
+  });
+  const active = pending.resolveExecution({
+    type: "RESOLVE_EXECUTION",
+    expectedAggregateVersion: pending.snapshot.aggregateVersion,
+    outcome: "EFFECT_CONFIRMED",
+    evidenceRefs: [`evidence-seed-${suffix}`],
+    externalObjectReference: `external-seed-${suffix}`,
+    command: { ...command(), correlationId: `correlation-seed-confirmed-${suffix}` },
+  }).snapshot;
+  infrastructure.repository.save(active);
+  return active;
+}
+
 function operationContext(key: string) {
   const execution = context(key);
   return { execution, domain: { ...command(), correlationId: execution.correlationId } };
 }
 
 test("F15-TASK-007 coordinates non-material correction with authorization, persistence, audit and idempotent replay", () => {
-  const infrastructure = lifecycleInfrastructure();
-  const active = createActive(infrastructure, "correction");
+  const infrastructure = lifecycleInfrastructure({ eventSourceVersion: 3 });
+  const active = seedActive(infrastructure, "correction");
   const { execution, domain } = operationContext("correction");
   const request = {
     context: execution, identity,
@@ -180,8 +207,9 @@ test("F15-TASK-007 coordinates withdrawal request and confirmed resolution with 
   assert.equal(resolved.ok, true);
   assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "WITHDRAWN");
   assert.deepEqual(infrastructure.repository.readHistory(identity).map(({ lifecycleState }) => lifecycleState).slice(-2), ["WITHDRAWAL_PENDING", "WITHDRAWN"]);
-  assert.deepEqual(infrastructure.audit.list(identity).slice(-2).map(({ command, result }) => ({ command, result })), [
+  assert.deepEqual(infrastructure.audit.list(identity).slice(-3).map(({ command, result }) => ({ command, result })), [
     { command: "REQUEST_WITHDRAWAL", result: "COMPLETED" },
+    { command: "APPEND_CANONICAL_EVENT", result: "COMPLETED" },
     { command: "RESOLVE_WITHDRAWAL", result: "COMPLETED" },
   ]);
 });

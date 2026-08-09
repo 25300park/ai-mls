@@ -1,12 +1,14 @@
 import type { PublicationPersistenceRecord } from "./publication-persistence-model.js";
 import type { PublicationAuditRecord } from "./publication-audit-store.js";
 import type { IdempotencyRecord } from "./publication-idempotency-store.js";
+import type { PublicationEventEnvelope } from "./publication-event-contracts.js";
 
 export class InMemoryPersistenceState {
   public records = new Map<string, PublicationPersistenceRecord>();
   public histories = new Map<string, readonly PublicationPersistenceRecord[]>();
   public idempotency = new Map<string, IdempotencyRecord>();
   public audits = new Map<string, PublicationAuditRecord>();
+  public events = new Map<string, PublicationEventEnvelope>();
   private scopeRevisions = new Map<string, number>();
 
   public clone(): InMemoryPersistenceState {
@@ -15,6 +17,7 @@ export class InMemoryPersistenceState {
     copy.histories = structuredClone(this.histories);
     copy.idempotency = structuredClone(this.idempotency);
     copy.audits = structuredClone(this.audits);
+    copy.events = structuredClone(this.events);
     copy.scopeRevisions = structuredClone(this.scopeRevisions);
     return copy;
   }
@@ -54,6 +57,13 @@ export class InMemoryPersistenceState {
     }
     for (const [entryKey, record] of source.audits) {
       if (record.tenantScopeId === tenantScopeId && record.aggregateId === aggregateId) this.audits.set(entryKey, structuredClone(record));
+    }
+
+    for (const [entryKey, event] of this.events) {
+      if (event.tenantId === tenantScopeId && event.aggregateId === aggregateId) this.events.delete(entryKey);
+    }
+    for (const [entryKey, event] of source.events) {
+      if (event.tenantId === tenantScopeId && event.aggregateId === aggregateId) this.events.set(entryKey, structuredClone(event));
     }
     this.scopeRevisions.set(key, source.scopeRevision(tenantScopeId, aggregateId));
   }

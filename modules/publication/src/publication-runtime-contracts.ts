@@ -18,7 +18,12 @@ export type PublicationRuntimeServiceName =
   | "coordination"
   | "lifecycle"
   | "reconciliation"
-  | "connectorDispatcher";
+  | "connectorDispatcher"
+  | "eventJournal"
+  | "eventCoordinator"
+  | "eventReplay"
+  | "eventGovernanceContextStore"
+  | "eventSourceContextResolver";
 
 export type PublicationRuntimeFailureCode =
   | "RUNTIME_STARTUP_FAILED"

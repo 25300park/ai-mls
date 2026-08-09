@@ -3,6 +3,7 @@ import { PublicationDomainError } from "./publication-domain-error.js";
 import { PublicationPersistenceError } from "./publication-persistence-error.js";
 import { PublicationAuthorizationError } from "./publication-authorization.js";
 import type { PublicationApplicationErrorResult } from "./publication-application-contracts.js";
+import { PublicationEventError, safePublicationEventErrorCode } from "./publication-event-error.js";
 
 export class PublicationApplicationError extends Error {
   public constructor(
@@ -21,6 +22,7 @@ export function mapPublicationApplicationError(error: unknown, commitFailed = fa
     return failure(error.code, category, error.message);
   }
   if (error instanceof PublicationApplicationError) return failure(error.code, error.category, error.message);
+  if (error instanceof PublicationEventError) return failure(safePublicationEventErrorCode(error), "INFRASTRUCTURE", "Canonical Event evidence could not be committed.");
   if (error instanceof PublicationDomainError) {
     if (error.code === "PUBLICATION_VERSION_CONFLICT") return failure(error.code, "CONFLICT", "Publication version conflict.");
     return failure(error.code, error.category === "VALIDATION" ? "VALIDATION" : "DOMAIN_REJECTION", "Publication command was rejected.");

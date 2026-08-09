@@ -32,6 +32,12 @@ import {
   unavailablePublicationEffectiveApprovalPort,
   type PublicationConnectorDispatcher,
 } from "./publication-service.js";
+import { PublicationEventCoordinator } from "./publication-event-coordinator.js";
+import type { PublicationEventJournal } from "./publication-event-journal.js";
+import { denyPublicationEventReplayAuthority, PublicationEventReplayService } from "./publication-event-replay-service.js";
+import { InMemoryPublicationConnectorDispatchEvidenceStore, type PublicationConnectorDispatchEvidenceStore } from "./publication-connector-dispatch-evidence-store.js";
+import { InMemoryPublicationGovernanceContextStore, type PublicationGovernanceContextStore } from "./publication-governance-context.js";
+import { StoredPublicationEventSourceContextResolver, type PublicationEventSourceContextResolver } from "./publication-event-source-context.js";
 
 export interface PublicationInfrastructure {
   readonly configuration: PublicationInfrastructureConfiguration;
@@ -47,6 +53,12 @@ export interface PublicationInfrastructure {
   readonly lifecycle: PublicationLifecycleService;
   readonly reconciliation: PublicationReconciliationService;
   readonly connectorDispatcher: PublicationConnectorDispatcher;
+  readonly eventJournal: PublicationEventJournal;
+  readonly eventCoordinator: PublicationEventCoordinator;
+  readonly eventReplay: PublicationEventReplayService;
+  readonly dispatchEvidence: PublicationConnectorDispatchEvidenceStore;
+  readonly eventGovernanceContextStore: PublicationGovernanceContextStore;
+  readonly eventSourceContextResolver: PublicationEventSourceContextResolver;
 }
 
 export function createPublicationInfrastructure(
@@ -63,6 +75,19 @@ export function createPublicationInfrastructure(
     clock: configuration.clock,
     ...(configuration.publicationPolicyVersion === undefined ? {} : { publicationPolicyVersion: configuration.publicationPolicyVersion }),
   });
+  const eventGovernanceContextStore = configuration.eventGovernanceContextStore ?? new InMemoryPublicationGovernanceContextStore();
+  const eventSourceContextResolver = new StoredPublicationEventSourceContextResolver(eventGovernanceContextStore, configuration.clock);
+  const eventCoordinator = new PublicationEventCoordinator(configuration.clock, eventSourceContextResolver);
+  const dispatchEvidence = new InMemoryPublicationConnectorDispatchEvidenceStore();
+  const eventReplay = new PublicationEventReplayService({
+    repository: unitOfWork.repository,
+    journal: unitOfWork.eventJournal,
+    unitOfWork,
+    audit: unitOfWork.audit,
+    clock: configuration.clock,
+    authority: denyPublicationEventReplayAuthority,
+    sourceContextResolver: eventSourceContextResolver,
+  });
   const dependencies: PublicationApplicationDependencies = {
     unitOfWork,
     repository: unitOfWork.repository,
@@ -70,6 +95,7 @@ export function createPublicationInfrastructure(
     audit: unitOfWork.audit,
     clock: configuration.clock,
     authorization,
+    eventCoordinator,
   };
   const application = new PublicationApplicationService(
     new CreatePublicationHandler(dependencies),
@@ -84,6 +110,8 @@ export function createPublicationInfrastructure(
     unitOfWork,
     audit: unitOfWork.audit,
     clock: configuration.clock,
+    eventCoordinator,
+    dispatchEvidence,
   });
   const lifecycle = new PublicationLifecycleService({
     application,
@@ -123,5 +151,11 @@ export function createPublicationInfrastructure(
     lifecycle,
     reconciliation,
     connectorDispatcher,
+    eventJournal: unitOfWork.eventJournal,
+    eventCoordinator,
+    eventReplay,
+    dispatchEvidence,
+    eventGovernanceContextStore,
+    eventSourceContextResolver,
   });
 }

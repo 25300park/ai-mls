@@ -10,6 +10,7 @@ import { createPublicationInfrastructure } from "./publication-infrastructure.js
 import { Api013EffectiveApprovalAdapter } from "./publication-infrastructure-effective-approval-adapter.js";
 import { createTestPublicationAuthorizationConfiguration, createTestPublicationSession } from "./publication-authorization-test-support.test.js";
 import type { PublicationConnectorDispatchResult } from "./publication-service.js";
+import { PublicationEventError } from "./publication-event-error.js";
 
 const timestamp = "2026-08-03T12:00:00.000Z";
 const identity = { publicationId: "publication-coordination-1", tenantScopeId: "team-a" } as const;
@@ -154,7 +155,102 @@ test("F15-TASK-006 coordinates create, live Approval, connector confirmation and
     { result: "COMPLETED", version: 1, actorId: "executor-independent" },
     { result: "COMPLETED", version: 2, actorId: "executor-independent" },
     { result: "COMPLETED", version: 3, actorId: "executor-independent" },
+    { result: "COMPLETED", version: 3, actorId: "executor-independent" },
   ]);
+});
+
+test("F15-TASK-010R connector response survives Event append failure without redispatch and preserves the safe Event code", () => {
+  const { infrastructure, dispatchCount } = coordinationInfrastructure();
+  const coordinated = request(context("event-append-retry"));
+  const created = infrastructure.coordination.create({ context: coordinated.context, command: coordinated.create });
+  assert.equal(created.ok, true);
+  const dependencies = (infrastructure.coordination as unknown as {
+    dependencies: { eventCoordinator: { appendAcceptedTransition(...input: readonly unknown[]): readonly unknown[] } };
+  }).dependencies;
+  const workingCoordinator = dependencies.eventCoordinator;
+  Object.assign(dependencies, {
+    eventCoordinator: {
+      appendAcceptedTransition(): never {
+        throw new PublicationEventError("EVENT_APPEND_FAILED", "simulated canonical Event append failure", {
+          eventId: "evt_safe_failure",
+          eventType: "EVT-003",
+          eventSequence: 1,
+          correlationId: coordinated.context.correlationId,
+        });
+      },
+    },
+  });
+  const publishRequest = {
+    context: coordinated.context,
+    identity,
+    command: coordinated.create.input.command,
+    attempt: coordinated.attempt,
+    expectedAggregateVersion: created.ok ? created.aggregateVersion : 1,
+  };
+
+  const failed = infrastructure.coordination.publish(publishRequest);
+
+  assert.equal(failed.ok, false);
+  assert.equal(!failed.ok && failed.error.code, "EVENT_APPEND_FAILED");
+  assert.equal(dispatchCount(), 1);
+  assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "EXECUTION_PENDING");
+  assert.equal(infrastructure.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).length, 0);
+  assert.equal(infrastructure.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: `${coordinated.context.idempotencyKey}:activation` }), undefined);
+  const failureAudit = infrastructure.audit.list(identity).find((record) => record.failureReason === "EVENT_APPEND_FAILED");
+  assert.deepEqual(failureAudit === undefined ? undefined : {
+    eventId: failureAudit.eventId,
+    eventType: failureAudit.eventType,
+    eventSequence: failureAudit.eventSequence,
+    safeReasonCode: failureAudit.safeReasonCode,
+  }, { eventId: "evt_safe_failure", eventType: "EVT-003", eventSequence: 1, safeReasonCode: "EVENT_APPEND_FAILED" });
+
+  const attemptConflict = infrastructure.coordination.publish({
+    ...publishRequest,
+    attempt: { ...publishRequest.attempt, id: `${publishRequest.attempt.id}-conflict` },
+  });
+  assert.deepEqual(attemptConflict, {
+    ok: false,
+    error: {
+      code: "DISPATCH_EVIDENCE_IDENTITY_CONFLICT",
+      category: "CONFLICT",
+      message: "Publication connector dispatch identity conflicts with prior evidence.",
+    },
+  });
+  assert.equal(dispatchCount(), 1);
+
+  const effectiveApproval = (dependencies as unknown as { effectiveApproval: unknown }).effectiveApproval;
+  Object.assign(dependencies, { effectiveApproval: { check: () => approvalDecision("approval-decision-changed") } });
+  const fingerprintConflict = infrastructure.coordination.publish(publishRequest);
+  assert.deepEqual(fingerprintConflict, {
+    ok: false,
+    error: {
+      code: "DISPATCH_EVIDENCE_IDENTITY_CONFLICT",
+      category: "CONFLICT",
+      message: "Publication connector dispatch identity conflicts with prior evidence.",
+    },
+  });
+  assert.equal(dispatchCount(), 1);
+
+  Object.assign(dependencies, { eventCoordinator: workingCoordinator, effectiveApproval });
+  const recovered = infrastructure.coordination.publish(publishRequest);
+  assert.equal(recovered.ok, true);
+  assert.equal(dispatchCount(), 1);
+  assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "ACTIVE");
+  assert.deepEqual(infrastructure.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).map((item) => item.eventType), ["EVT-003"]);
+  assert.notEqual(infrastructure.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: `${coordinated.context.idempotencyKey}:activation` }), undefined);
+});
+
+test("F15-TASK-010R unknown connector-outcome persistence failure remains sanitized", () => {
+  const { infrastructure } = coordinationInfrastructure();
+  const coordinated = request(context("unknown-event-failure"));
+  const created = infrastructure.coordination.create({ context: coordinated.context, command: coordinated.create });
+  assert.equal(created.ok, true);
+  const dependencies = (infrastructure.coordination as unknown as { dependencies: { eventCoordinator: unknown } }).dependencies;
+  Object.assign(dependencies, { eventCoordinator: { appendAcceptedTransition(): never { throw new Error("sensitive journal internals"); } } });
+  const result = infrastructure.coordination.publish({ context: coordinated.context, identity, command: coordinated.create.input.command, attempt: coordinated.attempt, expectedAggregateVersion: created.ok ? created.aggregateVersion : 1 });
+
+  assert.deepEqual(result, { ok: false, error: { code: "CONNECTOR_OUTCOME_PERSISTENCE_FAILED", category: "INFRASTRUCTURE", message: "Publication connector outcome could not be recorded." } });
+  assert.equal(JSON.stringify(result).includes("sensitive journal internals"), false);
 });
 
 function coordinationInfrastructure(
@@ -227,7 +323,7 @@ test("F15-TASK-006 API-013 adapter supplies the canonical effective Approval con
           effective: true,
           approvalId: input.approvalId,
           approvalVersion: input.approvalVersion,
-          checkedAt: timestamp,
+          checkedAt: canonicalRequests.length % 2 === 0 ? "2026-08-03T12:00:01.000Z" : timestamp,
           effectiveScope: Object.freeze({ targetId: input.targetId, channelId: input.channelId, fieldScope: input.fieldScope, mediaScope: input.mediaScope, audience: input.audience, language: input.language }),
           expiresAt: "2030-08-03T12:00:00.000Z",
           reasonCodes: Object.freeze(["APPROVAL_EFFECTIVE"]),
@@ -284,6 +380,22 @@ test("F15-TASK-006 API-013 adapter supplies the canonical effective Approval con
     channelPolicyVersion: binding.channelPolicyVersion,
     consumerDuty: "EXECUTION",
   });
+  const approvalInput = {
+    ...binding,
+    actorId: "executor-independent",
+    sessionId: "executor-independent",
+    correlationId: "correlation-api-013-stable-reference",
+    tenantScopeId: "team-a",
+    purpose: "PUBLICATION_EXECUTION" as const,
+    consumerDuty: "EXECUTION" as const,
+  };
+  const firstDecision = adapter.check(approvalInput);
+  const secondDecision = adapter.check(approvalInput);
+  assert.equal(firstDecision.effective, true);
+  assert.equal(secondDecision.effective, true);
+  if (!firstDecision.effective || !secondDecision.effective) throw new Error("API-013 decision unexpectedly ineffective.");
+  assert.notEqual(firstDecision.checkedAt, secondDecision.checkedAt);
+  assert.equal(firstDecision.decisionReference, secondDecision.decisionReference);
 });
 
 for (const prerequisite of ["verification", "permission"] as const) {
@@ -427,7 +539,7 @@ test("F15-TASK-006 identical replay does not duplicate connector dispatch or per
   assert.deepEqual(second, { ...first, replayed: true });
   assert.equal(dispatchCount(), 1);
   assert.equal(infrastructure.repository.readHistory(identity).length, 3);
-  assert.equal(infrastructure.audit.list(identity).length, 3);
+  assert.equal(infrastructure.audit.list(identity).length, 4);
 });
 
 test("F15-TASK-006 conflicting idempotency fingerprint is rejected without redispatch", () => {

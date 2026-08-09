@@ -8,6 +8,7 @@ import type {
   PublicationSessionResolver,
 } from "./publication-authorization.js";
 import type { PublicationConnectorDispatcher, PublicationEffectiveApprovalPort } from "./publication-service.js";
+import type { PublicationGovernanceContextStore } from "./publication-governance-context.js";
 
 export interface PublicationInfrastructureConfiguration {
   readonly clock: PublicationClock;
@@ -17,6 +18,7 @@ export interface PublicationInfrastructureConfiguration {
   readonly publicationPolicyVersion?: string;
   readonly effectiveApprovalPort?: PublicationEffectiveApprovalPort;
   readonly connectorDispatcher?: PublicationConnectorDispatcher;
+  readonly eventGovernanceContextStore?: PublicationGovernanceContextStore;
 }
 
 export interface PublicationInfrastructureConfigurationInput {
@@ -27,6 +29,7 @@ export interface PublicationInfrastructureConfigurationInput {
   readonly publicationPolicyVersion?: string;
   readonly effectiveApprovalPort?: PublicationEffectiveApprovalPort;
   readonly connectorDispatcher?: PublicationConnectorDispatcher;
+  readonly eventGovernanceContextStore?: PublicationGovernanceContextStore;
 }
 
 export function createPublicationInfrastructureConfiguration(
@@ -40,5 +43,6 @@ export function createPublicationInfrastructureConfiguration(
     ...(input.publicationPolicyVersion === undefined ? {} : { publicationPolicyVersion: input.publicationPolicyVersion }),
     ...(input.effectiveApprovalPort === undefined ? {} : { effectiveApprovalPort: input.effectiveApprovalPort }),
     ...(input.connectorDispatcher === undefined ? {} : { connectorDispatcher: input.connectorDispatcher }),
+    ...(input.eventGovernanceContextStore === undefined ? {} : { eventGovernanceContextStore: input.eventGovernanceContextStore }),
   });
 }

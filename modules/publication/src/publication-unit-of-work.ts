@@ -3,6 +3,8 @@ import { InMemoryPublicationAuditStore, type PublicationAuditStore } from "./pub
 import { InMemoryIdempotencyStore, type PublicationIdempotencyStore } from "./publication-idempotency-store.js";
 import { InMemoryPersistenceState } from "./in-memory-persistence-state.js";
 import { InMemoryPublicationRepository } from "./in-memory-publication-repository.js";
+import { InMemoryPublicationEventJournal } from "./in-memory-publication-event-journal.js";
+import type { PublicationEventJournal } from "./publication-event-journal.js";
 import { persistenceError } from "./publication-persistence-error.js";
 import type { PublicationRepository } from "./publication-repository.js";
 
@@ -10,6 +12,7 @@ export interface PublicationTransaction {
   readonly repository: PublicationRepository;
   readonly idempotency: PublicationIdempotencyStore;
   readonly audit: PublicationAuditStore;
+  readonly eventJournal: PublicationEventJournal;
   commit(): void;
   rollback(): void;
 }
@@ -25,6 +28,7 @@ export class InMemoryPublicationUnitOfWork implements PublicationUnitOfWork {
   public readonly repository = new InMemoryPublicationRepository(this.state);
   public readonly idempotency = new InMemoryIdempotencyStore(this.state);
   public readonly audit = new InMemoryPublicationAuditStore(this.state);
+  public readonly eventJournal = new InMemoryPublicationEventJournal(this.state);
 
   public begin(identity: PublicationIdentity): PublicationTransaction {
     if (this.active) throw persistenceError("TRANSACTION_ALREADY_ACTIVE", "A logical transaction is already active.");
@@ -58,6 +62,7 @@ export class InMemoryPublicationUnitOfWork implements PublicationUnitOfWork {
       repository: new InMemoryPublicationRepository(staged, identity, ensureActive),
       idempotency: new InMemoryIdempotencyStore(staged, identity, ensureActive),
       audit: new InMemoryPublicationAuditStore(staged, identity, ensureActive),
+      eventJournal: new InMemoryPublicationEventJournal(staged, identity, ensureActive),
       commit: (): void => { finish(true); },
       rollback: (): void => { finish(false); },
     };

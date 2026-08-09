@@ -19,6 +19,7 @@ import type { PublicationIdempotencyStore } from "./publication-idempotency-stor
 import { persistenceError } from "./publication-persistence-error.js";
 import type { PublicationRepository } from "./publication-repository.js";
 import { InMemoryPublicationUnitOfWork, type PublicationTransaction, type PublicationUnitOfWork } from "./publication-unit-of-work.js";
+import { PublicationEventCoordinator } from "./publication-event-coordinator.js";
 
 const applicationTime = "2026-07-27T12:00:00.000Z";
 const identity = { publicationId: "publication-application-1", tenantScopeId: "team-a" } as const;
@@ -92,6 +93,7 @@ type TestUnitOfWork = PublicationUnitOfWork & {
   readonly repository: PublicationRepository;
   readonly idempotency: PublicationIdempotencyStore;
   readonly audit: PublicationAuditStore;
+  readonly eventJournal: InMemoryPublicationUnitOfWork["eventJournal"];
 };
 
 function application(
@@ -105,6 +107,7 @@ function application(
     audit: unitOfWork.audit,
     clock: new FixedClock(applicationTime),
     authorization,
+    eventCoordinator: new PublicationEventCoordinator(new FixedClock(applicationTime)),
   };
   const create = new CreatePublicationHandler(dependencies);
   const modify = new ModifyPublicationHandler(dependencies);
@@ -178,6 +181,7 @@ test("F15-TASK-005 authentication failure stops before transaction, Domain, pers
     repository: backing.repository,
     idempotency: backing.idempotency,
     audit: backing.audit,
+    eventJournal: backing.eventJournal,
     begin: (scope) => {
       beginCount += 1;
       return backing.begin(scope);
@@ -322,6 +326,7 @@ test("F15-TASK-004 failure-path repository lookup cannot replace the original sa
     repository: failingRepository,
     idempotency: conflictingIdempotency,
     audit: backing.audit,
+    eventJournal: backing.eventJournal,
     begin(): never { throw new Error("transaction must not begin"); },
   };
   const execution = context("safe-original-error");
@@ -342,6 +347,7 @@ test("F15-TASK-004 commit failure rolls back state and appends only failure audi
     repository: backing.repository,
     idempotency: backing.idempotency,
     audit: backing.audit,
+    eventJournal: backing.eventJournal,
     begin(target): PublicationTransaction {
       const transaction = backing.begin(target);
       return {
@@ -370,6 +376,7 @@ test("F15-TASK-004 commit-time optimistic conflict remains a deterministic versi
     repository: backing.repository,
     idempotency: backing.idempotency,
     audit: backing.audit,
+    eventJournal: backing.eventJournal,
     begin(target): PublicationTransaction {
       const transaction = backing.begin(target);
       return {
@@ -401,6 +408,7 @@ test("F15-TASK-004 committed audit evidence recovers replay when post-commit ide
     repository: backing.repository,
     idempotency: unavailableIdempotency,
     audit: backing.audit,
+    eventJournal: backing.eventJournal,
     begin: backing.begin.bind(backing),
   };
   const execution = context("post-commit-idempotency");
@@ -428,6 +436,7 @@ test("F15-TASK-004 committed audit evidence wins a post-commit idempotency race 
     repository: backing.repository,
     idempotency: racingIdempotency,
     audit: backing.audit,
+    eventJournal: backing.eventJournal,
     begin: backing.begin.bind(backing),
   };
   const execution = context("post-commit-race", "sha256:committed-command");
@@ -454,6 +463,7 @@ test("F15-TASK-004 audit replay rejects an idempotency key reused by a different
     repository: backing.repository,
     idempotency: unavailableIdempotency,
     audit: backing.audit,
+    eventJournal: backing.eventJournal,
     begin: backing.begin.bind(backing),
   };
   const execution = context("cross-command-key");
@@ -477,6 +487,7 @@ test("F15-TASK-004 rollback removes staged repository and success audit changes 
     repository: backing.repository,
     idempotency: backing.idempotency,
     audit: backing.audit,
+    eventJournal: backing.eventJournal,
     begin(target): PublicationTransaction {
       const transaction = backing.begin(target);
       return {

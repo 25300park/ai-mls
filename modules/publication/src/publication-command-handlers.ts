@@ -23,6 +23,8 @@ import type { PublicationIdempotencyStore } from "./publication-idempotency-stor
 import { persistenceError } from "./publication-persistence-error.js";
 import type { PublicationRepository } from "./publication-repository.js";
 import type { PublicationTransaction, PublicationUnitOfWork } from "./publication-unit-of-work.js";
+import type { PublicationEventCoordinator } from "./publication-event-coordinator.js";
+import { PublicationEventError } from "./publication-event-error.js";
 
 export interface PublicationApplicationDependencies {
   readonly unitOfWork: PublicationUnitOfWork;
@@ -31,6 +33,7 @@ export interface PublicationApplicationDependencies {
   readonly audit: PublicationAuditStore;
   readonly clock: PublicationClock;
   readonly authorization: PublicationAuthorizationGuard;
+  readonly eventCoordinator: PublicationEventCoordinator;
 }
 
 export class CreatePublicationHandler implements PublicationCommandHandler<CreatePublicationApplicationCommand> {
@@ -46,7 +49,7 @@ export class CreatePublicationHandler implements PublicationCommandHandler<Creat
       if (authorizedCommand.kind !== "CREATE_PUBLICATION") throw new Error("APPLICATION_COMMAND_INVALID");
       const aggregate = PublicationAggregate.create(authorizedCommand.input);
       transaction.repository.save(aggregate.snapshot);
-      return aggregate.snapshot;
+      return { snapshot: aggregate.snapshot, previous: undefined };
     }, preflight);
   }
 }
@@ -66,7 +69,7 @@ export class ModifyPublicationHandler implements PublicationCommandHandler<Modif
       const aggregate = PublicationAggregate.rehydrate(snapshot);
       const updated = executeDomainBehaviour(aggregate, authorizedCommand.input).snapshot;
       transaction.repository.update(snapshot.aggregateVersion, updated);
-      return updated;
+      return { snapshot: updated, previous: snapshot };
     }, preflight, auditDetails);
   }
 }
@@ -76,7 +79,7 @@ function executeModificationBoundary(
   applicationCommand: PublicationApplicationCommand,
   identity: PublicationIdentity,
   context: PublicationExecutionContext,
-  executeDomain: (transaction: PublicationTransaction, authorizedCommand: PublicationApplicationCommand) => PublicationSnapshot,
+  executeDomain: (transaction: PublicationTransaction, authorizedCommand: PublicationApplicationCommand) => { readonly snapshot: PublicationSnapshot; readonly previous: PublicationSnapshot | undefined },
   preflight?: PublicationAuthorizedPreflight,
   auditDetails?: PublicationApplicationAuditDetails,
 ): PublicationApplicationResult {
@@ -138,8 +141,10 @@ function executeModificationBoundary(
     if (replay !== undefined) return replay;
 
     transaction = dependencies.unitOfWork.begin(identity);
-    const snapshot = executeDomain(transaction, authorizedCommand);
+    const execution = executeDomain(transaction, authorizedCommand);
+    const snapshot = execution.snapshot;
     currentVersion = snapshot.aggregateVersion;
+    dependencies.eventCoordinator.appendAcceptedTransition(transaction, execution.previous, snapshot, authorizedCommand);
     const auditTimestamp = dependencies.clock.now();
     transaction.audit.append({
       id: auditId(identity, authorizedContext, commandName(authorizedCommand), authorizedContext.intentFingerprint, "completed"),
@@ -158,22 +163,18 @@ function executeModificationBoundary(
         evidenceRefs: auditDetails.evidenceRefs,
       }),
     });
+    const result = success(identity.publicationId, snapshot.aggregateVersion, false);
+    transaction.idempotency.record({
+      tenantScopeId: identity.tenantScopeId,
+      aggregateId: identity.publicationId,
+      commandKey: authorizedContext.idempotencyKey,
+      fingerprint: authorizedContext.intentFingerprint,
+      resultReference: result.resultReference,
+      recordedAt: auditTimestamp,
+    });
     committing = true;
     transaction.commit();
     committing = false;
-    const result = success(identity.publicationId, snapshot.aggregateVersion, false);
-    try {
-      dependencies.idempotency.record({
-        tenantScopeId: identity.tenantScopeId,
-        aggregateId: identity.publicationId,
-        commandKey: authorizedContext.idempotencyKey,
-        fingerprint: authorizedContext.intentFingerprint,
-        resultReference: result.resultReference,
-        recordedAt: dependencies.clock.now(),
-      });
-    } catch {
-      // The committed audit record is the deterministic replay fallback when the post-commit store is unavailable.
-    }
     return result;
   } catch (error) {
     if (transaction !== undefined) {
@@ -359,6 +360,13 @@ function appendFailureAudit(
       version,
       result: "FAILED",
       failureReason: mapped.error.code,
+      ...(error instanceof PublicationEventError && error.evidence !== undefined ? {
+        correlationId: error.evidence.correlationId,
+        eventId: error.evidence.eventId,
+        eventType: error.evidence.eventType,
+        eventSequence: error.evidence.eventSequence,
+        safeReasonCode: error.code,
+      } : {}),
     });
   } catch { /* The original deterministic result remains authoritative if failure evidence cannot be appended. */ }
 }

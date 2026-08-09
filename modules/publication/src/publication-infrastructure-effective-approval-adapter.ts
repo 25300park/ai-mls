@@ -75,7 +75,7 @@ export class Api013EffectiveApprovalAdapter implements PublicationEffectiveAppro
       if (!decision.effective) return Object.freeze({ effective: false, reasonCodes: Object.freeze([...decision.reasonCodes]) });
       return Object.freeze({
         effective: true,
-        decisionReference: `API-013:${decision.approvalId}@${String(decision.approvalVersion)}:${decision.checkedAt}`,
+        decisionReference: `API-013:${decision.approvalId}@${String(decision.approvalVersion)}`,
         approvalId: decision.approvalId,
         approvalVersion: decision.approvalVersion,
         checkedAt: decision.checkedAt,

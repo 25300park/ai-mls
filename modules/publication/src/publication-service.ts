@@ -14,6 +14,10 @@ import type { PublicationClock } from "./publication-clock.js";
 import { immutableDomain, type PublicationBinding, type PublicationIdentity } from "./publication-contracts.js";
 import type { PublicationRepository } from "./publication-repository.js";
 import type { PublicationUnitOfWork } from "./publication-unit-of-work.js";
+import type { PublicationEventCoordinator } from "./publication-event-coordinator.js";
+import { PublicationEventError, safePublicationEventErrorCode } from "./publication-event-error.js";
+import type { PublicationConnectorDispatchEvidenceStore } from "./publication-connector-dispatch-evidence-store.js";
+import { createHash } from "node:crypto";
 
 export interface PublicationEffectiveApprovalCheckInput extends PublicationBinding {
   readonly actorId: string;
@@ -76,6 +80,8 @@ export interface PublicationCoordinationDependencies {
   readonly unitOfWork: PublicationUnitOfWork;
   readonly audit: PublicationAuditStore;
   readonly clock: PublicationClock;
+  readonly eventCoordinator: PublicationEventCoordinator;
+  readonly dispatchEvidence: PublicationConnectorDispatchEvidenceStore;
 }
 
 export class PublicationCoordinationService {
@@ -140,27 +146,36 @@ export class PublicationCoordinationService {
     if (priorAttempt?.outcome === "NO_EFFECT") return connectorFailure("CONNECTOR_REJECTED");
     if (priorAttempt?.outcome === "UNKNOWN") return connectorFailure("CONNECTOR_OUTCOME_UNKNOWN");
 
-    let dispatch: PublicationConnectorDispatchResult;
-    try {
-      dispatch = normalizeConnectorResult(this.dependencies.connector.dispatch({
-        publicationId: identity.publicationId,
-        tenantScopeId: identity.tenantScopeId,
-        commandId: request.attempt.commandId,
-        attemptId: request.attempt.id,
-        targetId: current.binding.targetId,
-        targetVersion: current.binding.targetVersion,
-        channelId: current.binding.channelId,
-        channelPolicyVersion: current.binding.channelPolicyVersion,
-        representationId: current.binding.representationId,
-        representationVersion: current.binding.representationVersion,
-        representationChecksum: current.binding.representationChecksum,
-        approvalDecisionReference,
-      }), request.attempt.id);
-    } catch {
-      dispatch = immutableDomain({
-        outcome: "UNKNOWN" as const,
-        evidenceRefs: [`connector-observation:${request.attempt.id}:unavailable`],
-      });
+    const dispatchInput = immutableDomain({
+      publicationId: identity.publicationId,
+      tenantScopeId: identity.tenantScopeId,
+      commandId: request.attempt.commandId,
+      attemptId: request.attempt.id,
+      targetId: current.binding.targetId,
+      targetVersion: current.binding.targetVersion,
+      channelId: current.binding.channelId,
+      channelPolicyVersion: current.binding.channelPolicyVersion,
+      representationId: current.binding.representationId,
+      representationVersion: current.binding.representationVersion,
+      representationChecksum: current.binding.representationChecksum,
+      approvalDecisionReference,
+    });
+    const dispatchFingerprint = `sha256:${createHash("sha256").update(JSON.stringify(dispatchInput)).digest("hex")}`;
+    const priorDispatch = this.dependencies.dispatchEvidence.find(identity, request.attempt.commandId);
+    if (priorDispatch !== undefined && (priorDispatch.attemptId !== request.attempt.id || priorDispatch.dispatchFingerprint !== dispatchFingerprint)) {
+      return dispatchEvidenceConflict();
+    }
+    let dispatch = priorDispatch?.result;
+    if (dispatch === undefined) {
+      try {
+        dispatch = normalizeConnectorResult(this.dependencies.connector.dispatch(dispatchInput), request.attempt.id);
+      } catch {
+        dispatch = immutableDomain({
+          outcome: "UNKNOWN" as const,
+          evidenceRefs: [`connector-observation:${request.attempt.id}:unavailable`],
+        });
+      }
+      this.dependencies.dispatchEvidence.record({ ...identity, commandId: request.attempt.commandId, attemptId: request.attempt.id, dispatchFingerprint, result: dispatch });
     }
 
     const resolveResult = this.recordConnectorOutcome(identity, request, dispatch, authorizedActorId);
@@ -189,7 +204,7 @@ export class PublicationCoordinationService {
       transaction = this.dependencies.unitOfWork.begin(identity);
       const snapshot = transaction.repository.find(identity);
       if (snapshot === undefined) throw new PublicationApplicationError("PUBLICATION_NOT_FOUND", "NOT_FOUND", "Publication was not found.");
-      const updated = PublicationAggregate.rehydrate(snapshot).resolveExecution({
+      const domainCommand = {
         type: "RESOLVE_EXECUTION",
         expectedAggregateVersion: snapshot.aggregateVersion,
         outcome: dispatch.outcome === "CONFIRMED" ? "EFFECT_CONFIRMED" : dispatch.outcome === "REJECTED" ? "NO_EFFECT_CONFIRMED" : "UNKNOWN",
@@ -197,8 +212,14 @@ export class PublicationCoordinationService {
         ...(dispatch.externalObjectReference === undefined ? {} : { externalObjectReference: dispatch.externalObjectReference }),
         ...(dispatch.outcome === "UNKNOWN" ? { reconciliationCaseId: `${identity.publicationId}:reconciliation:${request.attempt.id}` } : {}),
         command: { ...request.command, actorId },
-      }).snapshot;
+      } as const;
+      const updated = PublicationAggregate.rehydrate(snapshot).resolveExecution(domainCommand).snapshot;
       transaction.repository.update(snapshot.aggregateVersion, updated);
+      this.dependencies.eventCoordinator.appendAcceptedTransition(transaction, snapshot, updated, {
+        kind: "MODIFY_PUBLICATION",
+        identity,
+        input: domainCommand,
+      });
       const activationContext = stageContext(request.context, "activation");
       transaction.audit.append({
         id: JSON.stringify([identity.tenantScopeId, identity.publicationId, activationContext.idempotencyKey, activationContext.intentFingerprint, "RESOLVE_EXECUTION", updated.aggregateVersion]),
@@ -210,14 +231,25 @@ export class PublicationCoordinationService {
         version: updated.aggregateVersion,
         result: "COMPLETED",
       });
+      const resultReference = `${identity.publicationId}@${String(updated.aggregateVersion)}`;
+      transaction.idempotency.record({
+        tenantScopeId: identity.tenantScopeId,
+        aggregateId: identity.publicationId,
+        commandKey: activationContext.idempotencyKey,
+        fingerprint: activationContext.intentFingerprint,
+        resultReference,
+        recordedAt: this.dependencies.clock.now(),
+      });
       transaction.commit();
-      return immutableDomain({ ok: true as const, publicationId: identity.publicationId, aggregateVersion: updated.aggregateVersion, resultReference: `${identity.publicationId}@${String(updated.aggregateVersion)}`, replayed: false });
+      return immutableDomain({ ok: true as const, publicationId: identity.publicationId, aggregateVersion: updated.aggregateVersion, resultReference, replayed: false });
     } catch (error) {
       try { transaction?.rollback(); } catch { /* The transaction may already be closed by a commit conflict. */ }
       try {
         const currentVersion = this.dependencies.repository.find(identity)?.aggregateVersion ?? request.expectedAggregateVersion;
+        const eventFailure = error instanceof PublicationEventError ? error : undefined;
+        const safeReason = eventFailure === undefined ? `CONNECTOR_OUTCOME_PERSISTENCE_FAILED:${dispatch.outcome}` : safePublicationEventErrorCode(eventFailure);
         this.dependencies.audit.append({
-          id: JSON.stringify([identity.tenantScopeId, identity.publicationId, request.attempt.id, request.attempt.commandId, "CONNECTOR_OUTCOME_PERSISTENCE_FAILED", dispatch.outcome]),
+          id: JSON.stringify([identity.tenantScopeId, identity.publicationId, request.attempt.id, request.attempt.commandId, safeReason, dispatch.outcome]),
           tenantScopeId: identity.tenantScopeId,
           aggregateId: identity.publicationId,
           command: "RECORD_CONNECTOR_OUTCOME",
@@ -225,7 +257,14 @@ export class PublicationCoordinationService {
           timestamp: this.dependencies.clock.now(),
           version: currentVersion,
           result: "FAILED",
-          failureReason: `CONNECTOR_OUTCOME_PERSISTENCE_FAILED:${dispatch.outcome}`,
+          failureReason: safeReason,
+          ...(eventFailure?.evidence === undefined ? {} : {
+            correlationId: eventFailure.evidence.correlationId,
+            eventId: eventFailure.evidence.eventId,
+            eventType: eventFailure.evidence.eventType,
+            eventSequence: eventFailure.evidence.eventSequence,
+            safeReasonCode: safePublicationEventErrorCode(eventFailure),
+          }),
         });
       } catch {
         // Failure evidence is best effort and must never replace the safe application error.
@@ -233,7 +272,7 @@ export class PublicationCoordinationService {
       return Object.freeze({
         ok: false as const,
         error: Object.freeze({
-          code: error instanceof PublicationApplicationError ? error.code : "CONNECTOR_OUTCOME_PERSISTENCE_FAILED",
+          code: error instanceof PublicationApplicationError ? error.code : error instanceof PublicationEventError ? safePublicationEventErrorCode(error) : "CONNECTOR_OUTCOME_PERSISTENCE_FAILED",
           category: error instanceof PublicationApplicationError ? error.category : "INFRASTRUCTURE" as const,
           message: "Publication connector outcome could not be recorded.",
         }),
@@ -293,6 +332,17 @@ function connectorFailure(code: "CONNECTOR_REJECTED" | "CONNECTOR_OUTCOME_UNKNOW
       code,
       category: "DOMAIN_REJECTION" as const,
       message: "Publication external effect was not confirmed.",
+    }),
+  });
+}
+
+function dispatchEvidenceConflict(): PublicationApplicationErrorResult {
+  return Object.freeze({
+    ok: false as const,
+    error: Object.freeze({
+      code: "DISPATCH_EVIDENCE_IDENTITY_CONFLICT",
+      category: "CONFLICT" as const,
+      message: "Publication connector dispatch identity conflicts with prior evidence.",
     }),
   });
 }

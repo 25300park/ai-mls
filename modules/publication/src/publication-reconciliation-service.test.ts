@@ -46,8 +46,9 @@ function infrastructure(options: {
   readonly liveStatus?: "VERIFICATION_STALE" | "PERMISSION_STALE" | "SOD_CONFLICT";
   readonly authorizationReason?: "CAPABILITY_DENIED" | "REAUTHENTICATION_REQUIRED" | "REASON_REQUIRED";
   readonly onDispatch?: () => void;
+  readonly eventSourceVersion?: number;
 } = {}) {
-  const base = createTestPublicationAuthorizationConfiguration(new FixedClock(occurredAt));
+  const base = createTestPublicationAuthorizationConfiguration(new FixedClock(occurredAt), "team-a", options.eventSourceVersion ?? 2);
   return createPublicationInfrastructure({
     ...base,
     ...(options.authorizationReason !== undefined ? {
@@ -176,11 +177,12 @@ test("F15-TASK-008 resolves unknown execution to confirmed success with immutabl
   assert.equal(app.audit.list(identity).at(-1)?.actorId, "executor-independent");
   assert.equal(app.audit.list(identity).at(-1)?.correlationId, "correlation-confirmed");
   assert.equal(app.audit.list(identity).at(-1)?.checkedAt, occurredAt);
+  assert.deepEqual(app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).map((event) => event.eventType), ["EVT-006", "EVT-003"]);
 });
 
 test("F15-TASK-008 recovers unknown correction to the prior active state without redispatch", () => {
   let dispatchCount = 0;
-  const app = infrastructure({ onDispatch: () => { dispatchCount += 1; } });
+  const app = infrastructure({ onDispatch: () => { dispatchCount += 1; }, eventSourceVersion: 3 });
   const snapshot = activeCorrectionUnknown("case-recovered");
   app.repository.save(snapshot);
   const recovery = request(snapshot, "recovered", { input: {

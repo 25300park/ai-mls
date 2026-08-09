@@ -161,20 +161,16 @@ export class PublicationReconciliationService implements PublicationReconciliati
         throw persistenceError("PUBLICATION_VERSION_CONFLICT", "Publication persistence scope changed during recovery coordination.");
       }
       transaction.audit.append(recoveryAudit(request, authorized.actorId, current.aggregateVersion, decision, checkedAt));
-      transaction.commit();
       const resultReference = JSON.stringify([request.identity.publicationId, current.aggregateVersion]);
-      try {
-        this.dependencies.idempotency.record({
-          tenantScopeId: request.identity.tenantScopeId,
-          aggregateId: request.identity.publicationId,
-          commandKey: request.context.idempotencyKey,
-          fingerprint: request.context.intentFingerprint,
-          resultReference,
-          recordedAt: checkedAt,
-        });
-      } catch {
-        // The committed recovery audit is the deterministic replay fallback.
-      }
+      transaction.idempotency.record({
+        tenantScopeId: request.identity.tenantScopeId,
+        aggregateId: request.identity.publicationId,
+        commandKey: request.context.idempotencyKey,
+        fingerprint: request.context.intentFingerprint,
+        resultReference,
+        recordedAt: checkedAt,
+      });
+      transaction.commit();
       return immutableDomain({
         ok: true as const,
         publicationId: request.identity.publicationId,

@@ -26,7 +26,7 @@ export function createTestPublicationSession(principalId = "actor-application", 
   });
 }
 
-export function createTestPublicationAuthorizationConfiguration(clock?: PublicationClock, teamId = "team-a"): PublicationInfrastructureConfigurationInput {
+export function createTestPublicationAuthorizationConfiguration(clock?: PublicationClock, teamId = "team-a", eventSourceVersion = 2): PublicationInfrastructureConfigurationInput {
   return {
     ...(clock === undefined ? {} : { clock }),
     sessionResolver: { resolve: (sessionId) => createTestPublicationSession(sessionId, sessionId, teamId) },
@@ -41,6 +41,25 @@ export function createTestPublicationAuthorizationConfiguration(clock?: Publicat
     },
     liveContextResolver: { resolve: (binding, scope) => createTestLiveAuthorizationContext(binding, scope.tenantId, teamId) },
     publicationPolicyVersion: "publication-policy-v1",
+    eventGovernanceContextStore: {
+      findCurrentByPublicationId(publicationId, tenantId, purpose) {
+        return Object.freeze({
+          governanceContextId: `governance-context:${tenantId}:${publicationId}:${String(eventSourceVersion)}`,
+          publicationId,
+          tenantId,
+          classification: "RESTRICTED_SECURITY" as const,
+          privacyScope: "privacy-scope:publication-approved-fields",
+          consentOrLegalBasis: "legal-basis-reference:publication-test",
+          audienceRestriction: "AUD_PUBLIC",
+          purpose,
+          sourceVersion: eventSourceVersion,
+          effectiveFrom: "2020-01-01T00:00:00.000Z",
+          effectiveUntil: "2099-01-01T00:00:00.000Z",
+          status: "ACTIVE" as const,
+        });
+      },
+      findById: () => undefined,
+    },
   };
 }
 

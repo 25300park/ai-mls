@@ -17,6 +17,11 @@ export const publicationRuntimeServiceNames: readonly PublicationRuntimeServiceN
   "lifecycle",
   "reconciliation",
   "connectorDispatcher",
+  "eventJournal",
+  "eventCoordinator",
+  "eventReplay",
+  "eventGovernanceContextStore",
+  "eventSourceContextResolver",
 ]);
 
 export interface PublicationRuntimeServiceRegistry {
@@ -33,6 +38,11 @@ export interface PublicationRuntimeServiceRegistry {
   readonly lifecycle: PublicationInfrastructure["lifecycle"];
   readonly reconciliation: PublicationInfrastructure["reconciliation"];
   readonly connectorDispatcher: PublicationInfrastructure["connectorDispatcher"];
+  readonly eventJournal: PublicationInfrastructure["eventJournal"];
+  readonly eventCoordinator: PublicationInfrastructure["eventCoordinator"];
+  readonly eventReplay: PublicationInfrastructure["eventReplay"];
+  readonly eventGovernanceContextStore: PublicationInfrastructure["eventGovernanceContextStore"];
+  readonly eventSourceContextResolver: PublicationInfrastructure["eventSourceContextResolver"];
 }
 
 export function createPublicationRuntimeServiceRegistry(
@@ -53,6 +63,11 @@ export function createPublicationRuntimeServiceRegistry(
     lifecycle: infrastructure.lifecycle,
     reconciliation: infrastructure.reconciliation,
     connectorDispatcher: infrastructure.connectorDispatcher,
+    eventJournal: infrastructure.eventJournal,
+    eventCoordinator: infrastructure.eventCoordinator,
+    eventReplay: infrastructure.eventReplay,
+    eventGovernanceContextStore: infrastructure.eventGovernanceContextStore,
+    eventSourceContextResolver: infrastructure.eventSourceContextResolver,
   });
 }
 
@@ -71,6 +86,7 @@ export function validatePublicationRuntimeInfrastructure(
     || !hasMethods(value["repository"], ["save", "update", "find", "exists", "checkVersion", "readHistory"])
     || !hasMethods(value["idempotency"], ["record", "find"])
     || !hasMethods(value["audit"], ["append", "list"])
+    || !hasMethods(value["eventJournal"], ["append", "appendAll", "findByEventId", "listByAggregate", "getLastSequence"])
     || !hasMethods(value["clock"], ["now"])) {
     throw new PublicationRuntimeError("RUNTIME_DEPENDENCY_MISSING", "A mandatory runtime port is unavailable.");
   }
@@ -79,7 +95,8 @@ export function validatePublicationRuntimeInfrastructure(
     || !hasMethods(value["coordination"], ["create", "publish"])
     || !hasMethods(value["lifecycle"], ["correctPublication", "republishPublication", "requestWithdrawal", "resolveWithdrawal", "suspendPublication", "resumePublication", "supersedePublication", "terminatePublication", "execute"])
     || !hasMethods(value["reconciliation"], ["reconcile", "recover", "execute"])
-    || !hasMethods(value["connectorDispatcher"], ["dispatch"])) {
+    || !hasMethods(value["connectorDispatcher"], ["dispatch"])
+    || !hasMethods(value["eventReplay"], ["replay"])) {
     throw new PublicationRuntimeError("RUNTIME_DEPENDENCY_MISSING", "A mandatory runtime authorization port is unavailable.");
   }
   const configuration = value["configuration"];
@@ -88,7 +105,11 @@ export function validatePublicationRuntimeInfrastructure(
     || configuration["clock"] !== value["clock"]
     || unitOfWork["repository"] !== value["repository"]
     || unitOfWork["idempotency"] !== value["idempotency"]
-    || unitOfWork["audit"] !== value["audit"]) {
+    || unitOfWork["audit"] !== value["audit"]
+    || unitOfWork["eventJournal"] !== value["eventJournal"]
+    || !hasMethods(value["eventCoordinator"], ["appendAcceptedTransition"])
+    || !hasMethods(value["eventGovernanceContextStore"], ["findCurrentByPublicationId", "findById"])
+    || !hasMethods(value["eventSourceContextResolver"], ["resolve"])) {
     throw new PublicationRuntimeError(
       "RUNTIME_CONFIGURATION_INCONSISTENT",
       "Runtime infrastructure configuration is inconsistent.",

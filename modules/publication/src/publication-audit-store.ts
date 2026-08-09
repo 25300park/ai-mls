@@ -17,6 +17,10 @@ export interface PublicationAuditRecord {
   readonly correlationId?: string;
   readonly checkedAt?: string;
   readonly evidenceRefs?: readonly string[];
+  readonly eventId?: string;
+  readonly eventType?: string;
+  readonly eventSequence?: number;
+  readonly safeReasonCode?: string;
 }
 
 export interface PublicationAuditStore {
@@ -37,8 +41,9 @@ export class InMemoryPublicationAuditStore implements PublicationAuditStore {
     if ((input.result === "FAILED") !== (input.failureReason !== undefined && input.failureReason.trim().length > 0)) {
       throw persistenceError("AUDIT_RECORD_INVALID", "Audit failure evidence is inconsistent with its result.");
     }
-    const recoveryValues = [input.decision, input.reason, input.correlationId, input.checkedAt];
-    const hasRecoveryEvidence = recoveryValues.some((value) => value !== undefined) || input.evidenceRefs !== undefined;
+    const recoveryValues = [input.decision, input.reason, input.checkedAt];
+    const hasCanonicalEventEvidence = input.eventId !== undefined || input.eventType !== undefined || input.eventSequence !== undefined || input.safeReasonCode !== undefined;
+    const hasRecoveryEvidence = !hasCanonicalEventEvidence && (recoveryValues.some((value) => value !== undefined) || input.evidenceRefs !== undefined);
     const requiresRecoveryEvidence = input.command === "RESOLVE_RECONCILIATION" && input.result === "COMPLETED";
     const validRecoveryEvidence = recoveryValues.every((value) => typeof value === "string" && value.trim().length > 0)
       && recoveryDecisions.has(input.decision ?? "")
@@ -49,6 +54,14 @@ export class InMemoryPublicationAuditStore implements PublicationAuditStore {
     if ((requiresRecoveryEvidence || hasRecoveryEvidence) && !validRecoveryEvidence) {
       throw persistenceError("AUDIT_RECORD_INVALID", "Recovery audit evidence is incomplete or invalid.");
     }
+    const eventValues = [input.eventId, input.eventType, input.eventSequence, input.safeReasonCode];
+    const hasEventEvidence = eventValues.some((value) => value !== undefined);
+    const validEventEvidence = typeof input.eventId === "string" && input.eventId.trim().length > 0
+      && typeof input.eventType === "string" && /^EVT-\d{3}$/u.test(input.eventType)
+      && Number.isSafeInteger(input.eventSequence) && (input.eventSequence ?? 0) > 0
+      && typeof input.correlationId === "string" && input.correlationId.trim().length > 0
+      && typeof input.safeReasonCode === "string" && input.safeReasonCode.trim().length > 0;
+    if (hasEventEvidence && !validEventEvidence) throw persistenceError("AUDIT_RECORD_INVALID", "Canonical Event audit evidence is incomplete or invalid.");
     if (this.state.audits.has(input.id)) throw persistenceError("AUDIT_RECORD_DUPLICATE", "Audit record already exists.");
     const record = immutableDomain(input);
     this.state.audits.set(input.id, record);
