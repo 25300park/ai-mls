@@ -3,7 +3,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { createPublicationEventEnvelope, verifyPublicationEventIntegrity } from "./publication-event-contracts.js";
+import { createPublicationEventEnvelope, createPublicationEventProjectionProvenance, validatePublicationEventEnvelope, verifyPublicationEventIntegrity } from "./publication-event-contracts.js";
 import { PublicationEventError } from "./publication-event-error.js";
 import { InMemoryPublicationGovernanceContextStore, type PublicationGovernanceContext, type PublicationGovernanceContextStore } from "./publication-governance-context.js";
 import { InMemoryPublicationEventJournal } from "./in-memory-publication-event-journal.js";
@@ -11,6 +11,7 @@ import { FixedClock } from "./publication-clock.js";
 import { createTestPublicationAuthorizationConfiguration, createTestPublicationAuthorizationGuard } from "./publication-authorization-test-support.test.js";
 import { createPublicationInfrastructure } from "./publication-infrastructure.js";
 import { createPublication } from "./publication-factory.js";
+import { PublicationAggregate } from "./publication-aggregate.js";
 import { PublicationEventReplayService } from "./publication-event-replay-service.js";
 import { mapAcceptedPublicationTransition } from "./publication-event-mapper.js";
 import { ModifyPublicationHandler } from "./publication-command-handlers.js";
@@ -55,8 +56,11 @@ const sourceContextResolver: PublicationEventSourceContextResolver = Object.free
 function event(overrides: Record<string, unknown> = {}) {
   const aggregateId = typeof overrides["aggregateId"] === "string" ? overrides["aggregateId"] : source.aggregateId;
   const aggregateVersion = typeof overrides["aggregateVersion"] === "number" ? overrides["aggregateVersion"] : source.aggregateVersion;
+  const eventType = typeof overrides["eventType"] === "string" ? overrides["eventType"] : "EVT-003";
+  const requiresProjectionProvenance = eventType === "EVT-003" || eventType === "EVT-007" || eventType === "EVT-008" || eventType === "EVT-009";
   return createPublicationEventEnvelope({
     source: { ...source, aggregateId, aggregateVersion },
+    ...(requiresProjectionProvenance ? { projectionProvenance: createPublicationEventProjectionProvenance(eventSourceSnapshot(aggregateId, aggregateVersion)) } : {}),
     eventType: "EVT-003",
     aggregateId,
     aggregateVersion,
@@ -100,7 +104,120 @@ test("F15-TASK-010 creates a deterministic deeply immutable canonical Event enve
   assert.equal(first.privacyScope, source.privacyScope);
   assert.equal(first.consentOrLegalBasis, source.consentOrLegalBasis);
   assert.equal(first.audienceRestriction, source.audienceRestriction);
+  assert.equal(first.eventSchemaVersion, "v2");
+  assert.equal(first.eventContractVersion, "v2");
   assert.doesNotThrow(() => JSON.stringify(first));
+});
+
+test("F15-TASK-011A EVT-003 carries exact immutable projection provenance without collapsing versions", () => {
+  const activated = event({
+    eventSequence: 9,
+    publicationVersion: 999,
+    targetReference: "caller-target@999",
+    channelReference: "caller-channel",
+  }) as ReturnType<typeof event> & {
+    readonly publicationVersion?: number;
+    readonly targetReference?: string;
+    readonly channelReference?: string;
+  };
+
+  assert.equal(activated.publicationVersion, 1);
+  assert.equal(activated.targetReference, "target-1@5");
+  assert.equal(activated.channelReference, "channel-1");
+  assert.notEqual(activated.aggregateVersion, activated.publicationVersion);
+  assert.notEqual(activated.eventSequence, activated.publicationVersion);
+});
+
+test("F15-TASK-011A projection provenance participates in integrity and missing provenance fails closed", () => {
+  for (const [field, value] of [
+    ["publicationVersion", 7],
+    ["targetReference", "target-other@1"],
+    ["channelReference", "channel-other"],
+  ] as const) {
+    const changed = structuredClone(event()) as unknown as Record<string, unknown>;
+    changed[field] = value;
+    assert.equal(verifyPublicationEventIntegrity(changed), false, field);
+  }
+
+  for (const field of ["publicationVersion", "targetReference", "channelReference"] as const) {
+    const incomplete = structuredClone(event()) as unknown as Record<string, unknown>;
+    delete incomplete[field];
+    assert.throws(
+      () => validatePublicationEventEnvelope(incomplete as never),
+      matches("EVENT_PROJECTION_PROVENANCE_INCOMPLETE"),
+      field,
+    );
+  }
+});
+
+test("F15-TASK-011A rejects unbranded caller provenance and omits provenance from technical Events", () => {
+  assert.throws(
+    () => createPublicationEventEnvelope({
+      ...eventInputForTechnicalEvent(),
+      eventType: "EVT-003",
+      projectionProvenance: {
+        publicationVersion: 999,
+        targetReference: "caller-target@999",
+        channelReference: "caller-channel",
+      } as never,
+      payload: event().payload,
+    }),
+    matches("EVENT_PROJECTION_PROVENANCE_INCOMPLETE"),
+  );
+
+  const replayCompleted = createPublicationEventEnvelope(eventInputForTechnicalEvent());
+  assert.equal(replayCompleted.eventType, "EVT-012");
+  assert.equal("publicationVersion" in replayCompleted, false);
+  assert.equal("targetReference" in replayCompleted, false);
+  assert.equal("channelReference" in replayCompleted, false);
+
+  const suspended = event({
+    eventType: "EVT-004",
+    payload: { publicationId: source.aggregateId, suspensionStatus: "SUSPENDED", reasonCode: "POLICY_HOLD" },
+  });
+  assert.equal("publicationVersion" in suspended, false);
+  assert.equal("targetReference" in suspended, false);
+  assert.equal("channelReference" in suspended, false);
+});
+
+test("F15-TASK-011A rejects branded projection provenance minted for another accepted snapshot", () => {
+  const foreign = createPublication({
+    identity: { publicationId: "publication-foreign", tenantScopeId: source.tenantId },
+    binding: publicationBinding,
+    prerequisites: { immutableSnapshot: true, effectiveApproval: true, exactTargetChannel: true, provenancePresent: true },
+    classification: source.classification,
+    command: domain("foreign-event-source-create"),
+  }).beginInitialExecution({
+    type: "BEGIN_INITIAL_EXECUTION",
+    expectedAggregateVersion: 1,
+    attempt: deliveryAttempt("foreign-event-source", "INITIAL_PUBLISH"),
+    command: domain("foreign-event-source-begin"),
+  }).snapshot;
+
+  assert.throws(
+    () => event({ projectionProvenance: createPublicationEventProjectionProvenance(foreign) }),
+    matches("EVENT_PROJECTION_PROVENANCE_INCOMPLETE"),
+  );
+});
+
+test("F15-TASK-011A EVT-009 preserves material-change binding provenance as closed Event data", () => {
+  const materialChange = event({
+    eventType: "EVT-009",
+    payload: {
+      publicationId: source.aggregateId,
+      representationId: "representation-1",
+      representationVersion: 2,
+      dispositionReference: "material-change-1",
+    },
+  });
+
+  assert.equal(materialChange.publicationVersion, 1);
+  assert.equal(materialChange.targetReference, "target-1@5");
+  assert.equal(materialChange.channelReference, "channel-1");
+  assert.deepEqual(
+    Object.keys(materialChange.payload).sort(),
+    ["dispositionReference", "publicationId", "representationId", "representationVersion"],
+  );
 });
 
 test("F15-TASK-010R Event envelope fails closed on missing or widened governance context", () => {
@@ -161,6 +278,9 @@ test("F15-TASK-010 coordinator retry reuses the canonical occurrence identity an
   });
   const command = {
     kind: "MODIFY_PUBLICATION",
+    publicationVersion: 999,
+    targetReference: "caller-target@999",
+    channelReference: "caller-channel",
     identity,
     input: {
       type: "RESOLVE_EXECUTION",
@@ -183,6 +303,9 @@ test("F15-TASK-010 coordinator retry reuses the canonical occurrence identity an
   assert.equal(appended[0]?.eventId, replayed[0]?.eventId);
   assert.equal(appended[0]?.eventSequence, replayed[0]?.eventSequence);
   assert.equal(appended[0]?.recordedAt, replayed[0]?.recordedAt);
+  assert.equal(appended[0]?.publicationVersion, current.snapshot.publicationVersion);
+  assert.equal(appended[0]?.targetReference, `${current.snapshot.binding.targetId}@${String(current.snapshot.binding.targetVersion)}`);
+  assert.equal(appended[0]?.channelReference, current.snapshot.binding.channelId);
   assert.equal(unitOfWork.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).length, 1);
   assert.deepEqual(
     unitOfWork.audit.list(identity).map((record) => record.safeReasonCode),
@@ -297,8 +420,8 @@ test("F15-TASK-010 journal rejects identity conflict, sequence gap, out-of-order
 });
 
 test("F15-TASK-010 validates versions, source restrictions, payload closure and integrity", () => {
-  assert.throws(() => event({ eventSchemaVersion: "v2" }), matches("EVENT_SCHEMA_VERSION_UNSUPPORTED"));
-  assert.throws(() => event({ eventContractVersion: "v2" }), matches("EVENT_CONTRACT_VERSION_UNSUPPORTED"));
+  assert.throws(() => event({ eventSchemaVersion: "v1" }), matches("EVENT_SCHEMA_VERSION_UNSUPPORTED"));
+  assert.throws(() => event({ eventContractVersion: "v1" }), matches("EVENT_CONTRACT_VERSION_UNSUPPORTED"));
   assert.throws(() => event({ tenantId: "team-b", source }), matches("EVENT_TENANT_MISMATCH"));
   assert.throws(() => event({ classification: "PUBLIC_APPROVED", source }), matches("EVENT_CLASSIFICATION_VIOLATION"));
   assert.throws(() => event({ purpose: "PUBLIC_DISCLOSURE", source }), matches("EVENT_PURPOSE_VIOLATION"));
@@ -377,13 +500,22 @@ test("F15-TASK-010 confirmed withdrawal, republish and reconciliation map exact 
     type: "RESOLVE_WITHDRAWAL", expectedAggregateVersion: 4, outcome: "CONFIRMED", evidenceRefs: ["evidence-withdrawn"], command: domain("withdraw-confirm"),
   });
   assert.equal(withdrawalResult.operationResult, "SUCCEEDED", JSON.stringify(withdrawalResult));
+  const republishedBinding = { ...publicationBinding, approvalId: "approval-2", approvalVersion: 1 } as const;
   assert.equal(executeModify(infrastructure, lifecycleIdentity, "republish-begin", {
-    type: "BEGIN_WITHDRAWN_REPUBLISH", expectedAggregateVersion: 5, nextBinding: { ...publicationBinding, approvalId: "approval-2", approvalVersion: 1 }, attempt: deliveryAttempt("republish", "REPUBLISH"), command: domain("republish-begin"),
+    type: "BEGIN_WITHDRAWN_REPUBLISH", expectedAggregateVersion: 5, nextBinding: republishedBinding, attempt: deliveryAttempt("republish", "REPUBLISH"), command: domain("republish-begin"),
   }).operationResult, "SUCCEEDED");
   assert.equal(executeModify(infrastructure, lifecycleIdentity, "republish-confirm", {
     type: "RESOLVE_EXECUTION", expectedAggregateVersion: 6, outcome: "EFFECT_CONFIRMED", evidenceRefs: ["evidence-republished"], externalObjectReference: "external-2", command: domain("republish-confirm"),
   }).operationResult, "SUCCEEDED");
-  assert.deepEqual(infrastructure.eventJournal.listByAggregate("team-a", lifecycleIdentity.publicationId).map((item) => item.eventType), ["EVT-007", "EVT-008"]);
+  const lifecycleEvents = infrastructure.eventJournal.listByAggregate("team-a", lifecycleIdentity.publicationId);
+  assert.deepEqual(lifecycleEvents.map((item) => item.eventType), ["EVT-007", "EVT-008"]);
+  assert.deepEqual(
+    lifecycleEvents.map(({ eventType, publicationVersion, targetReference, channelReference }) => ({ eventType, publicationVersion, targetReference, channelReference })),
+    [
+      { eventType: "EVT-007", publicationVersion: 2, targetReference: "target-1@5", channelReference: "channel-1" },
+      { eventType: "EVT-008", publicationVersion: 3, targetReference: "target-1@5", channelReference: "channel-1" },
+    ],
+  );
 
   const reconciliationIdentity = { publicationId: "publication-event-reconciliation", tenantScopeId: "team-a" } as const;
   const unknown = createPublication({
@@ -441,11 +573,17 @@ test("F15-TASK-010 authorized replay preserves occurrences, performs no business
       consumed += 1;
       assert.equal(replayed.eventId, originalEvents[consumed - 1]?.eventId);
       assert.equal(replayed.eventSequence, originalEvents[consumed - 1]?.eventSequence);
+      assert.equal(replayed.publicationVersion, originalEvents[consumed - 1]?.publicationVersion);
+      assert.equal(replayed.targetReference, originalEvents[consumed - 1]?.targetReference);
+      assert.equal(replayed.channelReference, originalEvents[consumed - 1]?.channelReference);
     },
   });
   assert.equal(result.validatedEventCount, 1);
   assert.equal(result.replayed, false);
   assert.equal(result.completionEvent.eventType, "EVT-012");
+  assert.equal("publicationVersion" in result.completionEvent, false);
+  assert.equal("targetReference" in result.completionEvent, false);
+  assert.equal("channelReference" in result.completionEvent, false);
   assert.equal(consumed, 1);
   assert.deepEqual(infrastructure.repository.find(replayIdentity), before);
   assert.deepEqual(infrastructure.eventJournal.listByAggregate("team-a", replayIdentity.publicationId).map((item) => item.eventType), ["EVT-003", "EVT-012"]);
@@ -560,6 +698,51 @@ const publicationBinding = {
 
 function domain(suffix: string) {
   return { actorId: "executor-independent", authorityContext: "PUBLICATION_EXECUTION", reason: `Approved ${suffix}`, correlationId: `correlation-${suffix}`, occurredAt: "2026-08-09T00:00:00.000Z" } as const;
+}
+
+function eventSourceSnapshot(aggregateId: string = source.aggregateId, aggregateVersion: number = source.aggregateVersion) {
+  const snapshot = createPublication({
+    identity: { publicationId: source.aggregateId, tenantScopeId: source.tenantId },
+    binding: publicationBinding,
+    prerequisites: { immutableSnapshot: true, effectiveApproval: true, exactTargetChannel: true, provenancePresent: true },
+    classification: source.classification,
+    command: domain("event-source-create"),
+  }).beginInitialExecution({
+    type: "BEGIN_INITIAL_EXECUTION",
+    expectedAggregateVersion: 1,
+    attempt: deliveryAttempt("event-source", "INITIAL_PUBLISH"),
+    command: domain("event-source-begin"),
+  }).snapshot;
+  return PublicationAggregate.rehydrate({
+    ...snapshot,
+    publicationId: aggregateId,
+    aggregateId,
+    aggregateVersion,
+  }).snapshot;
+}
+
+function eventInputForTechnicalEvent() {
+  return {
+    source: { ...source, purpose: "RECOVERY_VALIDATION" as const },
+    eventType: "EVT-012" as const,
+    aggregateId: source.aggregateId,
+    aggregateVersion: source.aggregateVersion,
+    eventSequence: 1,
+    occurredAt: "2026-08-09T00:00:00.000Z",
+    recordedAt: "2026-08-09T00:00:01.000Z",
+    correlationId: "correlation-replay-complete",
+    causationId: "command-replay-complete",
+    commandId: "command-replay-complete",
+    actorReference: "actor-replay",
+    tenantId: source.tenantId,
+    classification: source.classification,
+    privacyScope: source.privacyScope,
+    consentOrLegalBasis: source.consentOrLegalBasis,
+    audienceRestriction: source.audienceRestriction,
+    governanceSourceVersion: source.governanceSourceVersion,
+    purpose: "RECOVERY_VALIDATION" as const,
+    payload: { publicationId: source.aggregateId, replayVersion: 1, replayedFromSequence: 1, replayedToSequence: 1, validatedEventCount: 1 },
+  };
 }
 
 function deliveryAttempt(suffix: string, operation: "INITIAL_PUBLISH" | "REPUBLISH" | "WITHDRAWAL") {

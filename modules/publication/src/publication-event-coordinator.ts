@@ -2,7 +2,7 @@ import type { PublicationApplicationCommand } from "./publication-application-co
 import type { PublicationAuditStore } from "./publication-audit-store.js";
 import type { PublicationClock } from "./publication-clock.js";
 import { immutableDomain, type PublicationSnapshot } from "./publication-contracts.js";
-import { createPublicationEventEnvelope, type PublicationEventEnvelope } from "./publication-event-contracts.js";
+import { createPublicationEventEnvelope, createPublicationEventProjectionProvenance, type PublicationEventEnvelope } from "./publication-event-contracts.js";
 import { eventError, PublicationEventError } from "./publication-event-error.js";
 import type { PublicationEventJournal } from "./publication-event-journal.js";
 import { mapAcceptedPublicationTransition } from "./publication-event-mapper.js";
@@ -50,6 +50,9 @@ export class PublicationEventCoordinator {
         governanceSourceVersion: governance.sourceVersion,
         purpose: governance.purpose,
       },
+      ...(candidate.eventType === "EVT-003" || candidate.eventType === "EVT-007" || candidate.eventType === "EVT-008" || candidate.eventType === "EVT-009"
+        ? { projectionProvenance: createPublicationEventProjectionProvenance(current) }
+        : {}),
       eventType: candidate.eventType,
       aggregateId: current.aggregateId,
       aggregateVersion: current.aggregateVersion,
