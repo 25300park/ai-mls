@@ -23,6 +23,7 @@ import { persistenceError } from "./publication-persistence-error.js";
 import type { PublicationRepository } from "./publication-repository.js";
 import { requireEffectivePublicationApproval, type PublicationEffectiveApprovalPort } from "./publication-service.js";
 import type { PublicationUnitOfWork } from "./publication-unit-of-work.js";
+import type { PublicationOperationsObserver } from "./publication-operations-contracts.js";
 
 export interface PublicationReconciliationDependencies {
   readonly application: PublicationApplicationService;
@@ -33,6 +34,7 @@ export interface PublicationReconciliationDependencies {
   readonly idempotency: PublicationIdempotencyStore;
   readonly audit: PublicationAuditStore;
   readonly clock: PublicationClock;
+  readonly operations?: PublicationOperationsObserver;
 }
 
 interface AuthorizedRecovery {
@@ -56,6 +58,19 @@ export class PublicationReconciliationService implements PublicationReconciliati
   }
 
   private coordinate(request: PublicationReconciliationRequest): PublicationReconciliationResult {
+    const result = this.coordinateCanonical(request);
+    safelyObserve(this.dependencies.operations, {
+      component: "RECONCILIATION",
+      result: result.ok ? "COMPLETED" : "FAILED",
+      ...(result.ok ? {} : { failureCode: result.error.code }),
+      sourceReference: request.input.caseId,
+      correlationId: request.context.correlationId,
+      actorOrServiceReference: "reconciliation-service",
+    });
+    return result;
+  }
+
+  private coordinateCanonical(request: PublicationReconciliationRequest): PublicationReconciliationResult {
     try {
       validateRequest(request);
       const replayCandidate = findRecoveryRecord(this.dependencies, request.identity, request.context);
@@ -184,6 +199,10 @@ export class PublicationReconciliationService implements PublicationReconciliati
       throw error;
     }
   }
+}
+
+function safelyObserve(observer: PublicationOperationsObserver | undefined, observation: Parameters<PublicationOperationsObserver["observe"]>[0]): void {
+  try { observer?.observe(observation); } catch { /* Observability cannot alter reconciliation semantics. */ }
 }
 
 function validateRequest(request: PublicationReconciliationRequest): void {

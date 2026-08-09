@@ -7,6 +7,7 @@ import type { PublicationEventJournal } from "./publication-event-journal.js";
 import type { PublicationRepository } from "./publication-repository.js";
 import type { PublicationUnitOfWork } from "./publication-unit-of-work.js";
 import { resolvePublicationEventSourceContext, type PublicationEventSourceContextResolver } from "./publication-event-source-context.js";
+import type { PublicationOperationsObserver } from "./publication-operations-contracts.js";
 
 export interface PublicationEventReplayAuthority {
   authorize(input: { readonly identity: PublicationIdentity; readonly actorId: string; readonly purpose: string; readonly correlationId: string }): boolean;
@@ -40,6 +41,7 @@ export class PublicationEventReplayService {
     readonly clock: PublicationClock;
     readonly authority: PublicationEventReplayAuthority;
     readonly sourceContextResolver?: PublicationEventSourceContextResolver;
+    readonly operations?: PublicationOperationsObserver;
   }) {}
 
   public replay(request: PublicationEventReplayRequest, consumer: PublicationEventReplayConsumer): PublicationEventReplayResult {
@@ -64,6 +66,7 @@ export class PublicationEventReplayService {
       const priorCompletion = events.find((event) => event.eventType === "EVT-012" && event.payload["replayVersion"] === request.replayVersion);
       if (priorCompletion !== undefined) {
         if (priorCompletion.commandId !== request.commandId || priorCompletion.correlationId !== request.correlationId || priorCompletion.actorReference !== request.actorId) throw eventError("EVENT_IDENTITY_CONFLICT", "Replay version is already bound to a different canonical occurrence.");
+        safelyObserve(this.dependencies.operations, request, "COMPLETED");
         return immutableDomain({ validatedEventCount: Number(priorCompletion.payload["validatedEventCount"]), completionEvent: priorCompletion, replayed: true });
       }
       for (const event of events) {
@@ -105,6 +108,7 @@ export class PublicationEventReplayService {
       transaction.eventJournal.append(completion);
       transaction.audit.append(replayAudit(completion, request.actorId));
       transaction.commit();
+      safelyObserve(this.dependencies.operations, request, "COMPLETED");
       return immutableDomain({ validatedEventCount: events.length, completionEvent: completion, replayed: false });
       } catch (error) {
         try { transaction.rollback(); } catch { /* Transaction may already be closed. */ }
@@ -112,9 +116,14 @@ export class PublicationEventReplayService {
       }
     } catch (error) {
       appendReplayFailure(this.dependencies.audit, request, version, error);
+      safelyObserve(this.dependencies.operations, request, "FAILED", error instanceof PublicationEventError ? error.code : "INTERNAL_EVENT_JOURNAL_ERROR");
       throw error;
     }
   }
+}
+
+function safelyObserve(observer: PublicationOperationsObserver | undefined, request: PublicationEventReplayRequest, result: "COMPLETED" | "FAILED", failureCode?: string): void {
+  try { observer?.observe({ component: "EVENT_JOURNAL", result, ...(failureCode === undefined ? {} : { failureCode }), sourceReference: `${request.publicationId}:replay:${String(request.replayVersion)}`, correlationId: request.correlationId, actorOrServiceReference: request.actorId }); } catch { /* Observability cannot alter replay authorization or validation. */ }
 }
 
 function validateEventAgainstCurrentGovernance(

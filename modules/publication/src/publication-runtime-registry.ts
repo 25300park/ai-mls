@@ -1,4 +1,4 @@
-import type { PublicationInfrastructure } from "./publication-infrastructure.js";
+import { hasConsistentPublicationOperationsInfrastructure, type PublicationInfrastructure } from "./publication-infrastructure.js";
 import {
   PublicationRuntimeError,
   type PublicationRuntimeServiceName,
@@ -26,6 +26,13 @@ export const publicationRuntimeServiceNames: readonly PublicationRuntimeServiceN
   "listingProjectionConsumer",
   "listingProjectionRebuild",
   "listingProjectionRead",
+  "operationsEvidence",
+  "operationsMetrics",
+  "operationsStatus",
+  "operationsRead",
+  "operationsRetry",
+  "operationsProjectionRead",
+  "operationsControl",
 ]);
 
 export interface PublicationRuntimeServiceRegistry {
@@ -51,6 +58,13 @@ export interface PublicationRuntimeServiceRegistry {
   readonly listingProjectionConsumer: PublicationInfrastructure["listingProjectionConsumer"];
   readonly listingProjectionRebuild: PublicationInfrastructure["listingProjectionRebuild"];
   readonly listingProjectionRead: PublicationInfrastructure["listingProjectionRead"];
+  readonly operationsEvidence: PublicationInfrastructure["operationsEvidence"];
+  readonly operationsMetrics: PublicationInfrastructure["operationsMetrics"];
+  readonly operationsStatus: PublicationInfrastructure["operationsStatus"];
+  readonly operationsRead: PublicationInfrastructure["operationsRead"];
+  readonly operationsRetry: PublicationInfrastructure["operationsRetry"];
+  readonly operationsProjectionRead: PublicationInfrastructure["operationsProjectionRead"];
+  readonly operationsControl: PublicationInfrastructure["operationsControl"];
 }
 
 export function createPublicationRuntimeServiceRegistry(
@@ -80,6 +94,13 @@ export function createPublicationRuntimeServiceRegistry(
     listingProjectionConsumer: infrastructure.listingProjectionConsumer,
     listingProjectionRebuild: infrastructure.listingProjectionRebuild,
     listingProjectionRead: infrastructure.listingProjectionRead,
+    operationsEvidence: infrastructure.operationsEvidence,
+    operationsMetrics: infrastructure.operationsMetrics,
+    operationsStatus: infrastructure.operationsStatus,
+    operationsRead: infrastructure.operationsRead,
+    operationsRetry: infrastructure.operationsRetry,
+    operationsProjectionRead: infrastructure.operationsProjectionRead,
+    operationsControl: infrastructure.operationsControl,
   });
 }
 
@@ -112,7 +133,14 @@ export function validatePublicationRuntimeInfrastructure(
     || !hasMethods(value["listingProjectionStore"], ["getServing", "save", "compareAndSwapServingGeneration"])
     || !hasMethods(value["listingProjectionConsumer"], ["consume"])
     || !hasMethods(value["listingProjectionRebuild"], ["rebuild"])
-    || !hasMethods(value["listingProjectionRead"], ["getServing"])) {
+    || !hasMethods(value["listingProjectionRead"], ["getServing"])
+    || !hasMethods(value["operationsEvidence"], ["append", "list"])
+    || !hasMethods(value["operationsMetrics"], ["increment", "snapshot"])
+    || !hasMethods(value["operationsStatus"], ["observe", "getComponentStatus"])
+    || !hasMethods(value["operationsRead"], ["getSystemOperationalStatus", "getComponentStatus", "getOperationalMetrics", "getJournalOperationalStatus"])
+    || !hasMethods(value["operationsRetry"], ["decide"])
+    || !hasMethods(value["operationsProjectionRead"], ["getProjectionOperationalStatus"])
+    || !hasMethods(value["operationsControl"], ["requestProjectionRebuild"])) {
     throw new PublicationRuntimeError("RUNTIME_DEPENDENCY_MISSING", "A mandatory runtime authorization port is unavailable.");
   }
   const configuration = value["configuration"];
@@ -123,13 +151,15 @@ export function validatePublicationRuntimeInfrastructure(
     || unitOfWork["idempotency"] !== value["idempotency"]
     || unitOfWork["audit"] !== value["audit"]
     || unitOfWork["eventJournal"] !== value["eventJournal"]
-    || !hasMethods(value["eventCoordinator"], ["appendAcceptedTransition"])
+    || !hasMethods(value["eventCoordinator"], ["appendAcceptedTransition", "observeCommitted"])
     || !hasMethods(value["eventGovernanceContextStore"], ["findCurrentByPublicationId", "findById"])
     || !hasMethods(value["eventSourceContextResolver"], ["resolve"])
     || !isRecord(value["listingProjectionConsumer"])
     || !isRecord(value["listingProjectionRebuild"])
     || value["listingProjectionConsumer"]["journalIdentity"] !== value["eventJournal"]
-    || value["listingProjectionRebuild"]["journalIdentity"] !== value["eventJournal"]) {
+    || value["listingProjectionRebuild"]["journalIdentity"] !== value["eventJournal"]
+    || value["operationsStatus"] !== value["operationsRead"]
+    || !hasConsistentPublicationOperationsInfrastructure(value)) {
     throw new PublicationRuntimeError(
       "RUNTIME_CONFIGURATION_INCONSISTENT",
       "Runtime infrastructure configuration is inconsistent.",

@@ -526,6 +526,8 @@ test("F15-TASK-006 contains connector exceptions as unknown without claiming ACT
   assert.equal(!result.ok && result.error.code, "CONNECTOR_OUTCOME_UNKNOWN");
   assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "RECONCILIATION_REQUIRED");
   assert.equal(JSON.stringify(result).includes("restricted provider failure detail"), false);
+  assert.equal(infrastructure.operationsMetrics.snapshot().connectorFailures, 1);
+  assert.equal(infrastructure.operationsEvidence.list({ component: "CONNECTOR_ATTEMPT" }).filter(({ result }) => result === "FAILED").length, 1);
 });
 
 test("F15-TASK-006 identical replay does not duplicate connector dispatch or persistence", () => {

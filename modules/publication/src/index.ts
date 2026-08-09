@@ -96,3 +96,7 @@ export * from "./listing-projection-store.js";
 export * from "./in-memory-listing-projection-store.js";
 export * from "./listing-projection.js";
 export * from "./listing-projection-rebuild.js";
+export * from "./publication-operations-contracts.js";
+export * from "./publication-operations-error.js";
+export * from "./in-memory-publication-operations.js";
+export * from "./publication-observability.js";

@@ -27,7 +27,14 @@ export type PublicationRuntimeServiceName =
   | "listingProjectionStore"
   | "listingProjectionConsumer"
   | "listingProjectionRebuild"
-  | "listingProjectionRead";
+  | "listingProjectionRead"
+  | "operationsEvidence"
+  | "operationsMetrics"
+  | "operationsStatus"
+  | "operationsRead"
+  | "operationsRetry"
+  | "operationsProjectionRead"
+  | "operationsControl";
 
 export type PublicationRuntimeFailureCode =
   | "RUNTIME_STARTUP_FAILED"

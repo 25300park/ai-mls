@@ -41,6 +41,9 @@ import { StoredPublicationEventSourceContextResolver, type PublicationEventSourc
 import { InMemoryListingProjectionAuditStore, InMemoryListingProjectionStore } from "./in-memory-listing-projection-store.js";
 import { ListingProjectionConsumer, ListingProjectionReadService } from "./listing-projection.js";
 import { denyListingProjectionRebuildAuthority, ListingProjectionRebuildCoordinator } from "./listing-projection-rebuild.js";
+import { InMemoryPublicationOperationalEvidenceStore, InMemoryPublicationOperationalMetrics } from "./in-memory-publication-operations.js";
+import { PublicationOperationsProjectionReadService, PublicationOperationsRebuildControl, PublicationOperationsRetryPolicy, PublicationOperationsStatusService, type PublicationOperationsProjectionReadPort, type PublicationOperationsReadPort, type PublicationOperationsStatusPort } from "./publication-observability.js";
+import type { PublicationOperationalEvidenceStore, PublicationOperationalMetrics, PublicationOperationsRetryDecision, PublicationOperationsRetryRequest } from "./publication-operations-contracts.js";
 
 export interface PublicationInfrastructure {
   readonly configuration: PublicationInfrastructureConfiguration;
@@ -67,6 +70,20 @@ export interface PublicationInfrastructure {
   readonly listingProjectionConsumer: ListingProjectionConsumer;
   readonly listingProjectionRebuild: ListingProjectionRebuildCoordinator;
   readonly listingProjectionRead: ListingProjectionReadService;
+  readonly operationsEvidence: PublicationOperationalEvidenceStore;
+  readonly operationsMetrics: PublicationOperationalMetrics;
+  readonly operationsStatus: PublicationOperationsStatusPort;
+  readonly operationsRead: PublicationOperationsReadPort;
+  readonly operationsRetry: { decide(request: PublicationOperationsRetryRequest): PublicationOperationsRetryDecision };
+  readonly operationsProjectionRead: PublicationOperationsProjectionReadPort;
+  readonly operationsControl: PublicationOperationsRebuildControl;
+  readonly hasConsistentOperationsDependencies: (candidate: unknown) => boolean;
+}
+
+export function hasConsistentPublicationOperationsInfrastructure(value: unknown): boolean {
+  if (value === null || typeof value !== "object") return false;
+  const candidate = value as Partial<PublicationInfrastructure>;
+  return candidate.hasConsistentOperationsDependencies?.(candidate) === true;
 }
 
 export function createPublicationInfrastructure(
@@ -74,6 +91,17 @@ export function createPublicationInfrastructure(
 ): PublicationInfrastructure {
   const configuration = createPublicationInfrastructureConfiguration(configurationInput);
   const unitOfWork = new InMemoryPublicationUnitOfWork();
+  const operationsEvidence = new InMemoryPublicationOperationalEvidenceStore();
+  const operationsMetrics = new InMemoryPublicationOperationalMetrics();
+  const operationsStatus = new PublicationOperationsStatusService(operationsEvidence, operationsMetrics, configuration.clock);
+  const operationsRetry = new PublicationOperationsRetryPolicy(
+    operationsEvidence,
+    operationsMetrics,
+    configuration.clock,
+    configuration.operationsRetryAuthority,
+    operationsStatus,
+    configuration.operationsRetryStateResolver,
+  );
   const authorizationEvidence = new InMemoryPublicationAuthorizationEvidenceStore();
   const authorization = new PublicationAuthorizationGuard({
     ...(configuration.sessionResolver === undefined ? {} : { sessionResolver: configuration.sessionResolver }),
@@ -85,7 +113,7 @@ export function createPublicationInfrastructure(
   });
   const eventGovernanceContextStore = configuration.eventGovernanceContextStore ?? new InMemoryPublicationGovernanceContextStore();
   const eventSourceContextResolver = new StoredPublicationEventSourceContextResolver(eventGovernanceContextStore, configuration.clock);
-  const eventCoordinator = new PublicationEventCoordinator(configuration.clock, eventSourceContextResolver);
+  const eventCoordinator = new PublicationEventCoordinator(configuration.clock, eventSourceContextResolver, operationsStatus);
   const dispatchEvidence = new InMemoryPublicationConnectorDispatchEvidenceStore();
   const eventReplay = new PublicationEventReplayService({
     repository: unitOfWork.repository,
@@ -95,6 +123,7 @@ export function createPublicationInfrastructure(
     clock: configuration.clock,
     authority: denyPublicationEventReplayAuthority,
     sourceContextResolver: eventSourceContextResolver,
+    operations: operationsStatus,
   });
   const listingProjectionStore = new InMemoryListingProjectionStore();
   const listingProjectionAudit = new InMemoryListingProjectionAuditStore();
@@ -103,6 +132,7 @@ export function createPublicationInfrastructure(
     store: listingProjectionStore,
     audit: listingProjectionAudit,
     clock: configuration.clock,
+    operations: operationsStatus,
   });
   const listingProjectionRebuild = new ListingProjectionRebuildCoordinator({
     journal: unitOfWork.eventJournal,
@@ -110,8 +140,29 @@ export function createPublicationInfrastructure(
     audit: listingProjectionAudit,
     clock: configuration.clock,
     authority: configuration.listingProjectionRebuildAuthority ?? denyListingProjectionRebuildAuthority,
+    operations: operationsStatus,
   });
   const listingProjectionRead = new ListingProjectionReadService(listingProjectionStore);
+  const operationsProjectionRead = new PublicationOperationsProjectionReadService(listingProjectionStore, listingProjectionAudit);
+  const operationsControl = new PublicationOperationsRebuildControl({
+    ...(configuration.sessionResolver === undefined ? {} : { sessionResolver: configuration.sessionResolver }),
+    ...(configuration.operationsRebuildAuthority === undefined ? {} : { authority: configuration.operationsRebuildAuthority }),
+    rebuild: listingProjectionRebuild,
+    status: operationsStatus,
+    clock: configuration.clock,
+  });
+  const hasConsistentOperationsDependencies = (candidateValue: unknown): boolean => {
+    if (candidateValue === null || typeof candidateValue !== "object") return false;
+    const candidate = candidateValue as Partial<PublicationInfrastructure>;
+    return candidate.operationsStatus === operationsStatus
+      && candidate.operationsRead === operationsStatus
+      && candidate.operationsEvidence === operationsEvidence
+      && candidate.operationsMetrics === operationsMetrics
+      && candidate.operationsProjectionRead === operationsProjectionRead
+      && candidate.listingProjectionStore === listingProjectionStore
+      && candidate.operationsControl === operationsControl
+      && candidate.listingProjectionRebuild === listingProjectionRebuild;
+  };
   const dependencies: PublicationApplicationDependencies = {
     unitOfWork,
     repository: unitOfWork.repository,
@@ -136,6 +187,7 @@ export function createPublicationInfrastructure(
     clock: configuration.clock,
     eventCoordinator,
     dispatchEvidence,
+    operations: operationsStatus,
   });
   const lifecycle = new PublicationLifecycleService({
     application,
@@ -150,6 +202,7 @@ export function createPublicationInfrastructure(
     idempotency: unitOfWork.idempotency,
     audit: unitOfWork.audit,
     clock: configuration.clock,
+    operations: operationsStatus,
   });
   const inputPort = new PublicationInterfaceService(
     application,
@@ -186,5 +239,13 @@ export function createPublicationInfrastructure(
     listingProjectionConsumer,
     listingProjectionRebuild,
     listingProjectionRead,
+    operationsEvidence,
+    operationsMetrics,
+    operationsStatus,
+    operationsRead: operationsStatus,
+    operationsRetry,
+    operationsProjectionRead,
+    operationsControl,
+    hasConsistentOperationsDependencies,
   });
 }

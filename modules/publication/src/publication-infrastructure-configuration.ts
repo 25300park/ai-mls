@@ -10,6 +10,7 @@ import type {
 import type { PublicationConnectorDispatcher, PublicationEffectiveApprovalPort } from "./publication-service.js";
 import type { PublicationGovernanceContextStore } from "./publication-governance-context.js";
 import type { ListingProjectionRebuildAuthority } from "./listing-projection-rebuild.js";
+import type { PublicationOperationsRebuildAuthority, PublicationOperationsRetryAuthority, PublicationOperationsRetryStateResolver } from "./publication-operations-contracts.js";
 
 export interface PublicationInfrastructureConfiguration {
   readonly clock: PublicationClock;
@@ -21,6 +22,9 @@ export interface PublicationInfrastructureConfiguration {
   readonly connectorDispatcher?: PublicationConnectorDispatcher;
   readonly eventGovernanceContextStore?: PublicationGovernanceContextStore;
   readonly listingProjectionRebuildAuthority?: ListingProjectionRebuildAuthority;
+  readonly operationsRetryAuthority?: PublicationOperationsRetryAuthority;
+  readonly operationsRetryStateResolver?: PublicationOperationsRetryStateResolver;
+  readonly operationsRebuildAuthority?: PublicationOperationsRebuildAuthority;
 }
 
 export interface PublicationInfrastructureConfigurationInput {
@@ -33,6 +37,9 @@ export interface PublicationInfrastructureConfigurationInput {
   readonly connectorDispatcher?: PublicationConnectorDispatcher;
   readonly eventGovernanceContextStore?: PublicationGovernanceContextStore;
   readonly listingProjectionRebuildAuthority?: ListingProjectionRebuildAuthority;
+  readonly operationsRetryAuthority?: PublicationOperationsRetryAuthority;
+  readonly operationsRetryStateResolver?: PublicationOperationsRetryStateResolver;
+  readonly operationsRebuildAuthority?: PublicationOperationsRebuildAuthority;
 }
 
 export function createPublicationInfrastructureConfiguration(
@@ -48,5 +55,8 @@ export function createPublicationInfrastructureConfiguration(
     ...(input.connectorDispatcher === undefined ? {} : { connectorDispatcher: input.connectorDispatcher }),
     ...(input.eventGovernanceContextStore === undefined ? {} : { eventGovernanceContextStore: input.eventGovernanceContextStore }),
     ...(input.listingProjectionRebuildAuthority === undefined ? {} : { listingProjectionRebuildAuthority: input.listingProjectionRebuildAuthority }),
+    ...(input.operationsRetryAuthority === undefined ? {} : { operationsRetryAuthority: input.operationsRetryAuthority }),
+    ...(input.operationsRetryStateResolver === undefined ? {} : { operationsRetryStateResolver: input.operationsRetryStateResolver }),
+    ...(input.operationsRebuildAuthority === undefined ? {} : { operationsRebuildAuthority: input.operationsRebuildAuthority }),
   });
 }

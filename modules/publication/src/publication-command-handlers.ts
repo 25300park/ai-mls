@@ -144,7 +144,7 @@ function executeModificationBoundary(
     const execution = executeDomain(transaction, authorizedCommand);
     const snapshot = execution.snapshot;
     currentVersion = snapshot.aggregateVersion;
-    dependencies.eventCoordinator.appendAcceptedTransition(transaction, execution.previous, snapshot, authorizedCommand);
+    const events = dependencies.eventCoordinator.appendAcceptedTransition(transaction, execution.previous, snapshot, authorizedCommand);
     const auditTimestamp = dependencies.clock.now();
     transaction.audit.append({
       id: auditId(identity, authorizedContext, commandName(authorizedCommand), authorizedContext.intentFingerprint, "completed"),
@@ -175,6 +175,7 @@ function executeModificationBoundary(
     committing = true;
     transaction.commit();
     committing = false;
+    dependencies.eventCoordinator.observeCommitted(events, authorizedContext.actorId);
     return result;
   } catch (error) {
     if (transaction !== undefined) {

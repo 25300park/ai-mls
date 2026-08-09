@@ -6,6 +6,7 @@ import { LISTING_PROJECTION_DEFINITION_VERSION, LISTING_PROJECTION_SCHEMA_VERSIO
 import { ListingProjectionError, projectionError } from "./listing-projection-error.js";
 import { ListingProjectionConsumer } from "./listing-projection.js";
 import type { ListingProjectionAuditStore, ListingProjectionStore } from "./listing-projection-store.js";
+import type { PublicationOperationsObserver } from "./publication-operations-contracts.js";
 
 export interface ListingProjectionRebuildRequest {
   readonly tenantId: string;
@@ -43,6 +44,7 @@ export class ListingProjectionRebuildCoordinator {
     readonly audit: ListingProjectionAuditStore;
     readonly clock: PublicationClock;
     readonly authority: ListingProjectionRebuildAuthority;
+    readonly operations?: PublicationOperationsObserver;
   }) {
     this.journalIdentity = dependencies.journal;
   }
@@ -62,13 +64,14 @@ export class ListingProjectionRebuildCoordinator {
     let archivedPrior = false;
     const identity = { tenantId: request.tenantId, publicationId: request.publicationId };
     try {
+      safelyObserve(this.dependencies.operations, { component: "PROJECTION_REBUILD", result: "COMPLETED", operationType: "REBUILD_REQUESTED", sourceReference: `${request.generationId}:request`, correlationId: request.correlationId, actorOrServiceReference: request.actorOrServiceReference });
       this.appendAudit(request, "REBUILD_REQUESTED", "COMPLETED", "PROJECTION_REBUILD_REQUESTED");
       this.dependencies.store.createGeneration({ projectionType: LISTING_PROJECTION_TYPE, ...identity, generationId: request.generationId, lifecycle: "REBUILDING", projectionDefinitionVersion: LISTING_PROJECTION_DEFINITION_VERSION, projectionSchemaVersion: LISTING_PROJECTION_SCHEMA_VERSION, createdAt: this.dependencies.clock.now(), updatedAt: this.dependencies.clock.now(), complete: false });
       created = true;
       this.appendAudit(request, "REBUILD_STARTED", "COMPLETED", "PROJECTION_REBUILD_STARTED");
       const events = this.dependencies.journal.listByAggregate(request.tenantId, request.publicationId).filter((event) => event.eventSequence >= request.sourceFromSequence);
       if (events.length === 0 || events[0]?.eventSequence !== request.sourceFromSequence) throw projectionError("PROJECTION_GENERATION_INCOMPLETE", "Projection rebuild source stream is incomplete.");
-      const consumer = new ListingProjectionConsumer({ journal: this.dependencies.journal, store: this.dependencies.store, audit: this.dependencies.audit, clock: this.dependencies.clock });
+      const consumer = new ListingProjectionConsumer({ journal: this.dependencies.journal, store: this.dependencies.store, audit: this.dependencies.audit, clock: this.dependencies.clock, ...(this.dependencies.operations === undefined ? {} : { operations: this.dependencies.operations }) });
       for (const event of events) consumer.consume(request.tenantId, event.eventId, request.generationId);
       const record = this.dependencies.store.getByGeneration({ tenantId: request.tenantId, publicationId: request.publicationId }, request.generationId);
       const last = events.at(-1);
@@ -88,9 +91,11 @@ export class ListingProjectionRebuildCoordinator {
         this.appendAudit({ ...request, generationId: priorGenerationId }, "GENERATION_ARCHIVED", "COMPLETED", "PROJECTION_GENERATION_ARCHIVED", priorRecord);
       }
       const result = immutableProjection({ generationId: request.generationId, record: serving, replayed: false });
+      safelyObserve(this.dependencies.operations, { component: "PROJECTION_REBUILD", result: "COMPLETED", operationType: "REBUILD_COMPLETED", sourceReference: request.generationId, correlationId: request.correlationId, actorOrServiceReference: request.actorOrServiceReference });
       this.idempotency.set(idempotencyKey, immutableProjection({ fingerprint, result }));
       return result;
     } catch (error) {
+      safelyObserve(this.dependencies.operations, { component: "PROJECTION_REBUILD", result: "FAILED", operationType: "REBUILD_FAILED", failureCode: error instanceof ListingProjectionError ? error.code : "PROJECTION_REBUILD_FAILED", sourceReference: request.generationId, correlationId: request.correlationId, actorOrServiceReference: request.actorOrServiceReference });
       if (cutover) {
         try {
           if (archivedPrior && request.expectedServingGenerationId !== undefined) {
@@ -111,6 +116,10 @@ export class ListingProjectionRebuildCoordinator {
   private appendAudit(request: ListingProjectionRebuildRequest, operation: ListingProjectionAuditRecord["operation"], result: ListingProjectionAuditRecord["result"], safeReasonCode: string, record?: ListingProjectionRecord): void {
     this.dependencies.audit.append({ auditId: JSON.stringify([request.tenantId, request.publicationId, request.generationId, operation, request.idempotencyKey, safeReasonCode]), projectionId: `PRJ-002:${request.tenantId}:${request.publicationId}`, projectionType: LISTING_PROJECTION_TYPE, tenantId: request.tenantId, publicationId: request.publicationId, generationId: request.generationId, ...(record === undefined ? {} : { eventId: record.lastEventId, eventSequence: record.lastEventSequence, sourceAggregateVersion: record.aggregateVersion, publicationVersion: record.publicationVersion, projectionRecordVersion: record.projectionRecordVersion }), operation, result, safeReasonCode, actorOrServiceReference: request.actorOrServiceReference, correlationId: request.correlationId, recordedAt: this.dependencies.clock.now() });
   }
+}
+
+function safelyObserve(observer: PublicationOperationsObserver | undefined, observation: Parameters<PublicationOperationsObserver["observe"]>[0]): void {
+  try { observer?.observe(observation); } catch { /* Observability cannot alter rebuild rollback semantics. */ }
 }
 
 function validateRequest(request: ListingProjectionRebuildRequest): void {

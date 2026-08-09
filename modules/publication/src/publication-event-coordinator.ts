@@ -7,6 +7,7 @@ import { eventError, PublicationEventError } from "./publication-event-error.js"
 import type { PublicationEventJournal } from "./publication-event-journal.js";
 import { mapAcceptedPublicationTransition } from "./publication-event-mapper.js";
 import { resolvePublicationEventSourceContext, type PublicationEventSourceContextResolver } from "./publication-event-source-context.js";
+import type { PublicationOperationsObserver } from "./publication-operations-contracts.js";
 
 export interface PublicationEventEmissionTransaction {
   readonly eventJournal: PublicationEventJournal;
@@ -17,6 +18,7 @@ export class PublicationEventCoordinator {
   public constructor(
     private readonly clock: PublicationClock,
     private readonly sourceContextResolver?: PublicationEventSourceContextResolver,
+    private readonly operations?: PublicationOperationsObserver,
   ) {}
 
   public appendAcceptedTransition(
@@ -79,6 +81,7 @@ export class PublicationEventCoordinator {
       results = transaction.eventJournal.appendAll(envelopes);
     } catch (error) {
       const first = envelopes[0];
+      safelyObserve(this.operations, { component: "EVENT_JOURNAL", result: "FAILED", failureCode: error instanceof PublicationEventError ? error.code : "EVENT_JOURNAL_UNAVAILABLE", sourceReference: first?.eventId ?? current.aggregateId, correlationId: domain.correlationId, actorOrServiceReference: domain.actorId });
       if (error instanceof PublicationEventError && first !== undefined) throw eventError(error.code, "Canonical Event append was rejected.", eventEvidence(first));
       throw error;
     }
@@ -101,6 +104,14 @@ export class PublicationEventCoordinator {
     }
     return immutableDomain(results.map((result) => result.event));
   }
+
+  public observeCommitted(events: readonly PublicationEventEnvelope[], actorOrServiceReference: string): void {
+    for (const event of events) safelyObserve(this.operations, { component: "EVENT_JOURNAL", result: "COMPLETED", sourceReference: event.eventId, correlationId: event.correlationId, actorOrServiceReference });
+  }
+}
+
+function safelyObserve(observer: PublicationOperationsObserver | undefined, observation: Parameters<PublicationOperationsObserver["observe"]>[0]): void {
+  try { observer?.observe(observation); } catch { /* Observability cannot alter canonical Event persistence semantics. */ }
 }
 
 function eventEvidence(event: PublicationEventEnvelope): Readonly<{ eventId: string; eventType: string; eventSequence: number; correlationId: string }> {

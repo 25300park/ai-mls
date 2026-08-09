@@ -18,6 +18,7 @@ import type { PublicationEventCoordinator } from "./publication-event-coordinato
 import { PublicationEventError, safePublicationEventErrorCode } from "./publication-event-error.js";
 import type { PublicationConnectorDispatchEvidenceStore } from "./publication-connector-dispatch-evidence-store.js";
 import { createHash } from "node:crypto";
+import type { PublicationOperationsObserver } from "./publication-operations-contracts.js";
 
 export interface PublicationEffectiveApprovalCheckInput extends PublicationBinding {
   readonly actorId: string;
@@ -82,6 +83,7 @@ export interface PublicationCoordinationDependencies {
   readonly clock: PublicationClock;
   readonly eventCoordinator: PublicationEventCoordinator;
   readonly dispatchEvidence: PublicationConnectorDispatchEvidenceStore;
+  readonly operations?: PublicationOperationsObserver;
 }
 
 export class PublicationCoordinationService {
@@ -177,6 +179,7 @@ export class PublicationCoordinationService {
       }
       this.dependencies.dispatchEvidence.record({ ...identity, commandId: request.attempt.commandId, attemptId: request.attempt.id, dispatchFingerprint, result: dispatch });
     }
+    safelyObserve(this.dependencies.operations, { component: "CONNECTOR_ATTEMPT", result: dispatch.outcome === "CONFIRMED" ? "COMPLETED" : "FAILED", ...(dispatch.outcome === "CONFIRMED" ? {} : { failureCode: dispatch.outcome === "REJECTED" ? "CONNECTOR_REJECTED" : "CONNECTOR_OUTCOME_UNKNOWN" }), sourceReference: request.attempt.id, correlationId: request.command.correlationId, actorOrServiceReference: authorizedActorId });
 
     const resolveResult = this.recordConnectorOutcome(identity, request, dispatch, authorizedActorId);
     if (!resolveResult.ok) return resolveResult;
@@ -215,7 +218,7 @@ export class PublicationCoordinationService {
       } as const;
       const updated = PublicationAggregate.rehydrate(snapshot).resolveExecution(domainCommand).snapshot;
       transaction.repository.update(snapshot.aggregateVersion, updated);
-      this.dependencies.eventCoordinator.appendAcceptedTransition(transaction, snapshot, updated, {
+      const events = this.dependencies.eventCoordinator.appendAcceptedTransition(transaction, snapshot, updated, {
         kind: "MODIFY_PUBLICATION",
         identity,
         input: domainCommand,
@@ -241,6 +244,7 @@ export class PublicationCoordinationService {
         recordedAt: this.dependencies.clock.now(),
       });
       transaction.commit();
+      this.dependencies.eventCoordinator.observeCommitted(events, actorId);
       return immutableDomain({ ok: true as const, publicationId: identity.publicationId, aggregateVersion: updated.aggregateVersion, resultReference, replayed: false });
     } catch (error) {
       try { transaction?.rollback(); } catch { /* The transaction may already be closed by a commit conflict. */ }
@@ -280,6 +284,10 @@ export class PublicationCoordinationService {
     }
   }
 
+}
+
+function safelyObserve(observer: PublicationOperationsObserver | undefined, observation: Parameters<PublicationOperationsObserver["observe"]>[0]): void {
+  try { observer?.observe(observation); } catch { /* Observability cannot alter connector coordination semantics. */ }
 }
 
 export function requireEffectivePublicationApproval(

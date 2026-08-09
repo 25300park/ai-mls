@@ -4,6 +4,7 @@ import type { PublicationEventJournal } from "./publication-event-journal.js";
 import { LISTING_PROJECTION_DEFINITION_VERSION, LISTING_PROJECTION_SCHEMA_VERSION, LISTING_PROJECTION_TYPE, immutableProjection, type ListingProjectionAuditRecord, type ListingProjectionEventDisposition, type ListingProjectionGeneration, type ListingProjectionIdentity, type ListingProjectionRecord, type ListingProjectionView } from "./listing-projection-contracts.js";
 import { ListingProjectionError, projectionError, type ListingProjectionErrorCode } from "./listing-projection-error.js";
 import type { ListingProjectionAuditStore, ListingProjectionStore } from "./listing-projection-store.js";
+import type { PublicationOperationsObserver } from "./publication-operations-contracts.js";
 
 export interface ListingProjectionApplyResult {
   readonly status: "APPLIED" | "DUPLICATE_IGNORED" | "NO_STATE_CHANGE" | "CONTROL_APPLIED";
@@ -24,6 +25,7 @@ export class ListingProjectionConsumer {
     readonly store: ListingProjectionStore;
     readonly audit: ListingProjectionAuditStore;
     readonly clock: PublicationClock;
+    readonly operations?: PublicationOperationsObserver;
   }) {
     this.journalIdentity = dependencies.journal;
   }
@@ -73,11 +75,13 @@ export class ListingProjectionConsumer {
         });
         this.dependencies.store.compareAndSwapServingGeneration(identity, undefined, actualGenerationId);
       }
+      safelyObserve(this.dependencies.operations, { component: "LISTING_PROJECTION", result: "COMPLETED", sourceReference: event.eventId, correlationId: event.correlationId, actorOrServiceReference: event.actorReference });
       return immutableProjection({ status: disposition === "APPLY" ? "APPLIED" as const : disposition === "CONTROL" ? "CONTROL_APPLIED" as const : "NO_STATE_CHANGE" as const, record: saved });
     } catch (error) {
       const isProjectionFailure = error instanceof ListingProjectionError;
       const mapped = isProjectionFailure ? error : projectionError(mapEventFailure(error), "Projection Event validation failed.");
       if (isProjectionFailure) this.markStale(existing, event, mapped.code);
+      safelyObserve(this.dependencies.operations, { component: "LISTING_PROJECTION", result: "FAILED", failureCode: mapped.code, sourceReference: event.eventId, correlationId: event.correlationId, actorOrServiceReference: event.actorReference });
       if (generation.created) {
         try { this.dependencies.store.deleteGeneration(identity, actualGenerationId); } catch { /* Preserve the canonical apply failure. */ }
       }
@@ -169,6 +173,10 @@ export class ListingProjectionConsumer {
   private auditRecord(operation: ListingProjectionAuditRecord["operation"], result: ListingProjectionAuditRecord["result"], safeReasonCode: string, event: PublicationEventEnvelope, record: ListingProjectionRecord | undefined, actor: string): ListingProjectionAuditRecord {
     return { auditId: JSON.stringify([event.tenantId, event.aggregateId, record?.generationId ?? "UNAVAILABLE", operation, event.eventId, safeReasonCode]), projectionId: `PRJ-002:${event.tenantId}:${event.aggregateId}`, projectionType: LISTING_PROJECTION_TYPE, publicationId: event.aggregateId, tenantId: event.tenantId, generationId: record?.generationId ?? "UNAVAILABLE", eventId: event.eventId, eventSequence: event.eventSequence, sourceAggregateVersion: event.aggregateVersion, ...(event.publicationVersion === undefined ? {} : { publicationVersion: event.publicationVersion }), ...(record === undefined ? {} : { projectionRecordVersion: record.projectionRecordVersion }), operation, result, safeReasonCode, actorOrServiceReference: actor, correlationId: event.correlationId, recordedAt: this.dependencies.clock.now() };
   }
+}
+
+function safelyObserve(observer: PublicationOperationsObserver | undefined, observation: Parameters<PublicationOperationsObserver["observe"]>[0]): void {
+  try { observer?.observe(observation); } catch { /* Observability cannot alter Projection application semantics. */ }
 }
 
 export class ListingProjectionReadService {
