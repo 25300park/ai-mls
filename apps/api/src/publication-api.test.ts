@@ -25,7 +25,7 @@ const binding: PublicationBinding = Object.freeze({
 type InfrastructureOptions = Readonly<{
   session?: SessionContext | null;
   omitSessionResolver?: boolean;
-  authorization?: (action: string) => AuthorizationDecision;
+  authorization?: (action: string, resourceVersion?: number) => AuthorizationDecision;
   liveTransform?: (live: NonNullable<ReturnType<NonNullable<PublicationInfrastructureConfigurationInput["liveContextResolver"]>["resolve"]>>) => NonNullable<ReturnType<NonNullable<PublicationInfrastructureConfigurationInput["liveContextResolver"]>["resolve"]>>;
   connectorOutcome?: "CONFIRMED" | "REJECTED" | "UNKNOWN";
   publicationPolicyVersion?: string;
@@ -47,7 +47,7 @@ function infrastructure(options: InfrastructureOptions = {}) {
   return createPublicationInfrastructure({
     ...(options.omitSessionResolver === true ? withoutSessionResolver : base),
     ...(options.omitSessionResolver === true ? {} : { sessionResolver: { resolve: () => resolvedSession } }),
-    authorizationEvaluator: { evaluate: ({ action }) => options.authorization?.(action) ?? allow() },
+    authorizationEvaluator: { evaluate: ({ action, resource }) => options.authorization?.(action, resource.version) ?? allow() },
     ...(options.publicationPolicyVersion === undefined ? {} : { publicationPolicyVersion: options.publicationPolicyVersion }),
     ...(options.liveTransform === undefined ? {} : {
       liveContextResolver: {
@@ -596,6 +596,33 @@ test("F15-TASK-009 query path cannot invoke commands and leaves Publication, aud
   assert.deepEqual(app.repository.find(identity), before);
   assert.equal(app.repository.readHistory(identity).length, historyCount);
   assert.equal(app.audit.list(identity).length, auditCount);
+});
+
+test("F15-TASK-011 API-014 reads PRJ-002 through the Projection query boundary without Aggregate lookup", () => {
+  const evaluatedVersions: (number | undefined)[] = [];
+  const app = infrastructure({ authorization: (_action, version) => { evaluatedVersions.push(version); return allow(); } });
+  const api = new PublicationApi(app);
+  createActive(api, "listing-projection-query");
+  const activation = app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId)
+    .find(({ eventType }) => eventType === "EVT-003");
+  assert.notEqual(activation, undefined);
+  if (activation === undefined) throw new Error("test setup failed");
+  app.listingProjectionConsumer.consume(identity.tenantScopeId, activation.eventId);
+  evaluatedVersions.length = 0;
+  const queryOnly = new PublicationApi({
+    ...app,
+    repository: { ...app.repository, find: () => { throw new Error("Aggregate Repository must not serve PRJ-002 queries"); } },
+  });
+
+  const response = queryOnly.executeQuery(query("GET_LISTING_PROJECTION"));
+
+  assert.equal(response.success, true, JSON.stringify(response));
+  assert.equal(response.success && response.result.provenance.source, "LISTING_PROJECTION");
+  assert.equal(response.success && response.result.sourceVersion, activation.aggregateVersion);
+  assert.equal(response.success && "projectionType" in response.result.view && response.result.view.projectionType, "PRJ-002");
+  assert.equal(response.success && response.result.view.publicationId, identity.publicationId);
+  assert.equal(response.success && Object.isFrozen(response.result.view), true);
+  assert.deepEqual(evaluatedVersions, [undefined, activation.aggregateVersion]);
 });
 
 test("F15-TASK-009 view visibility never bypasses command-time authorization revalidation", () => {

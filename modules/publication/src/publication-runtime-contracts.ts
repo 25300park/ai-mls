@@ -23,7 +23,11 @@ export type PublicationRuntimeServiceName =
   | "eventCoordinator"
   | "eventReplay"
   | "eventGovernanceContextStore"
-  | "eventSourceContextResolver";
+  | "eventSourceContextResolver"
+  | "listingProjectionStore"
+  | "listingProjectionConsumer"
+  | "listingProjectionRebuild"
+  | "listingProjectionRead";
 
 export type PublicationRuntimeFailureCode =
   | "RUNTIME_STARTUP_FAILED"

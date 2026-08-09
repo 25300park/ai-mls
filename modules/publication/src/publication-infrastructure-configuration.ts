@@ -9,6 +9,7 @@ import type {
 } from "./publication-authorization.js";
 import type { PublicationConnectorDispatcher, PublicationEffectiveApprovalPort } from "./publication-service.js";
 import type { PublicationGovernanceContextStore } from "./publication-governance-context.js";
+import type { ListingProjectionRebuildAuthority } from "./listing-projection-rebuild.js";
 
 export interface PublicationInfrastructureConfiguration {
   readonly clock: PublicationClock;
@@ -19,6 +20,7 @@ export interface PublicationInfrastructureConfiguration {
   readonly effectiveApprovalPort?: PublicationEffectiveApprovalPort;
   readonly connectorDispatcher?: PublicationConnectorDispatcher;
   readonly eventGovernanceContextStore?: PublicationGovernanceContextStore;
+  readonly listingProjectionRebuildAuthority?: ListingProjectionRebuildAuthority;
 }
 
 export interface PublicationInfrastructureConfigurationInput {
@@ -30,6 +32,7 @@ export interface PublicationInfrastructureConfigurationInput {
   readonly effectiveApprovalPort?: PublicationEffectiveApprovalPort;
   readonly connectorDispatcher?: PublicationConnectorDispatcher;
   readonly eventGovernanceContextStore?: PublicationGovernanceContextStore;
+  readonly listingProjectionRebuildAuthority?: ListingProjectionRebuildAuthority;
 }
 
 export function createPublicationInfrastructureConfiguration(
@@ -44,5 +47,6 @@ export function createPublicationInfrastructureConfiguration(
     ...(input.effectiveApprovalPort === undefined ? {} : { effectiveApprovalPort: input.effectiveApprovalPort }),
     ...(input.connectorDispatcher === undefined ? {} : { connectorDispatcher: input.connectorDispatcher }),
     ...(input.eventGovernanceContextStore === undefined ? {} : { eventGovernanceContextStore: input.eventGovernanceContextStore }),
+    ...(input.listingProjectionRebuildAuthority === undefined ? {} : { listingProjectionRebuildAuthority: input.listingProjectionRebuildAuthority }),
   });
 }

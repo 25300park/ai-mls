@@ -153,6 +153,27 @@ export class PublicationApiQueryService {
       const session = this.resolveSession(request);
       const identity = identityOf(request);
       this.authorizeRead(request, session, undefined);
+      if (request.operation === "GET_LISTING_PROJECTION") {
+        const view = this.infrastructure.listingProjectionRead.getServing({
+          tenantId: request.tenantId,
+          publicationId: request.publicationId,
+        });
+        if (view === undefined) throw new PublicationApiError("NOT_FOUND");
+        this.authorizeRead(request, session, undefined, view.sourceAggregateVersion);
+        return immutableApiValue({
+          requestId: request.requestId,
+          success: true as const,
+          operation: request.operation,
+          result: {
+            view,
+            sourceVersion: view.sourceAggregateVersion,
+            generatedAt: this.infrastructure.clock.now(),
+            stale: view.stale,
+            provenance: { source: "LISTING_PROJECTION" as const },
+          },
+          metadata: { correlationId: request.correlationId },
+        });
+      }
       const snapshot = this.infrastructure.repository.find(identity);
       if (snapshot === undefined) throw new PublicationApiError("NOT_FOUND");
       this.authorizeRead(request, session, snapshot);
@@ -206,12 +227,17 @@ export class PublicationApiQueryService {
     return session;
   }
 
-  private authorizeRead(request: PublicationQueryRequest, session: SessionContext, snapshot: PublicationSnapshot | undefined): void {
+  private authorizeRead(
+    request: PublicationQueryRequest,
+    session: SessionContext,
+    snapshot: PublicationSnapshot | undefined,
+    resourceVersion?: number,
+  ): void {
     if (request.purpose !== "PUBLICATION_EXECUTION" || session.teamId === undefined
       || request.teamId !== session.teamId || request.tenantId !== session.teamId) {
       throw new PublicationApiError("NOT_FOUND");
     }
-    const decision = this.evaluate(session, request, snapshot, readAction(request.operation));
+    const decision = this.evaluate(session, request, snapshot, readAction(request.operation), resourceVersion);
     if (decision.effect !== "ALLOW") throw new PublicationApiError("NOT_FOUND");
   }
 
@@ -220,9 +246,11 @@ export class PublicationApiQueryService {
     request: PublicationQueryRequest,
     snapshot: PublicationSnapshot | undefined,
     action: string,
+    resourceVersion?: number,
   ): AuthorizationDecision {
     const evaluator = this.infrastructure.configuration.authorizationEvaluator;
     if (evaluator === undefined) throw new PublicationApiError("NOT_FOUND");
+    const version = resourceVersion ?? snapshot?.aggregateVersion;
     try {
       return evaluator.evaluate({
         session,
@@ -230,7 +258,7 @@ export class PublicationApiQueryService {
         resource: {
           type: "Publication",
           id: request.publicationId,
-          ...(snapshot === undefined ? {} : { version: snapshot.aggregateVersion }),
+          ...(version === undefined ? {} : { version }),
           teamId: request.teamId,
         },
         purpose: request.purpose,
@@ -261,6 +289,7 @@ export class PublicationApiQueryService {
       case "GET_PUBLICATION_REVALIDATION_VIEW": return createPublicationRevalidationView(dependencies);
       case "GET_PUBLICATION_RECOVERY_VIEW": return createPublicationRecoveryView(dependencies);
       case "GET_PUBLICATION_AUDIT_VIEW": return createPublicationAuditHistoryView(dependencies);
+      case "GET_LISTING_PROJECTION": throw new PublicationApiError("INTERNAL_API_ERROR");
     }
   }
 }
@@ -295,6 +324,7 @@ function assertInfrastructure(infrastructure: PublicationInfrastructure): void {
     infrastructure.repository,
     infrastructure.audit,
     infrastructure.idempotency,
+    infrastructure.listingProjectionRead,
   ];
   if (required.some((dependency) => dependency === undefined)) throw new TypeError("Publication API dependencies are incomplete.");
 }

@@ -3,6 +3,7 @@ import type {
   PublicationSuspensionStatus,
 } from "../../../modules/publication/src/publication-contracts.js";
 import type { PublicationViewContract } from "./publication-view-contracts.js";
+import type { ListingProjectionView } from "../../../modules/publication/src/listing-projection-contracts.js";
 
 export const PUBLICATION_API_COMMAND_OPERATIONS = Object.freeze([
   "CREATE_PUBLICATION",
@@ -25,6 +26,7 @@ export const PUBLICATION_API_QUERY_OPERATIONS = Object.freeze([
   "GET_PUBLICATION_REVALIDATION_VIEW",
   "GET_PUBLICATION_RECOVERY_VIEW",
   "GET_PUBLICATION_AUDIT_VIEW",
+  "GET_LISTING_PROJECTION",
 ] as const);
 
 export type PublicationApiCommandOperation = typeof PUBLICATION_API_COMMAND_OPERATIONS[number];
@@ -67,12 +69,12 @@ export interface PublicationApiCommandResult {
 }
 
 export interface PublicationApiQueryResult {
-  readonly view: PublicationViewContract;
+  readonly view: PublicationViewContract | ListingProjectionView;
   readonly sourceVersion: number;
   readonly generatedAt: string;
   readonly stale: boolean;
   readonly provenance: Readonly<{
-    readonly source: "CANONICAL_PUBLICATION";
+    readonly source: "CANONICAL_PUBLICATION" | "LISTING_PROJECTION";
     readonly historyKind?: "PUBLICATION_AUDIT_HISTORY";
   }>;
 }

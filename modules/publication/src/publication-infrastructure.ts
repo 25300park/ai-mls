@@ -38,6 +38,9 @@ import { denyPublicationEventReplayAuthority, PublicationEventReplayService } fr
 import { InMemoryPublicationConnectorDispatchEvidenceStore, type PublicationConnectorDispatchEvidenceStore } from "./publication-connector-dispatch-evidence-store.js";
 import { InMemoryPublicationGovernanceContextStore, type PublicationGovernanceContextStore } from "./publication-governance-context.js";
 import { StoredPublicationEventSourceContextResolver, type PublicationEventSourceContextResolver } from "./publication-event-source-context.js";
+import { InMemoryListingProjectionAuditStore, InMemoryListingProjectionStore } from "./in-memory-listing-projection-store.js";
+import { ListingProjectionConsumer, ListingProjectionReadService } from "./listing-projection.js";
+import { denyListingProjectionRebuildAuthority, ListingProjectionRebuildCoordinator } from "./listing-projection-rebuild.js";
 
 export interface PublicationInfrastructure {
   readonly configuration: PublicationInfrastructureConfiguration;
@@ -59,6 +62,11 @@ export interface PublicationInfrastructure {
   readonly dispatchEvidence: PublicationConnectorDispatchEvidenceStore;
   readonly eventGovernanceContextStore: PublicationGovernanceContextStore;
   readonly eventSourceContextResolver: PublicationEventSourceContextResolver;
+  readonly listingProjectionStore: InMemoryListingProjectionStore;
+  readonly listingProjectionAudit: InMemoryListingProjectionAuditStore;
+  readonly listingProjectionConsumer: ListingProjectionConsumer;
+  readonly listingProjectionRebuild: ListingProjectionRebuildCoordinator;
+  readonly listingProjectionRead: ListingProjectionReadService;
 }
 
 export function createPublicationInfrastructure(
@@ -88,6 +96,22 @@ export function createPublicationInfrastructure(
     authority: denyPublicationEventReplayAuthority,
     sourceContextResolver: eventSourceContextResolver,
   });
+  const listingProjectionStore = new InMemoryListingProjectionStore();
+  const listingProjectionAudit = new InMemoryListingProjectionAuditStore();
+  const listingProjectionConsumer = new ListingProjectionConsumer({
+    journal: unitOfWork.eventJournal,
+    store: listingProjectionStore,
+    audit: listingProjectionAudit,
+    clock: configuration.clock,
+  });
+  const listingProjectionRebuild = new ListingProjectionRebuildCoordinator({
+    journal: unitOfWork.eventJournal,
+    store: listingProjectionStore,
+    audit: listingProjectionAudit,
+    clock: configuration.clock,
+    authority: configuration.listingProjectionRebuildAuthority ?? denyListingProjectionRebuildAuthority,
+  });
+  const listingProjectionRead = new ListingProjectionReadService(listingProjectionStore);
   const dependencies: PublicationApplicationDependencies = {
     unitOfWork,
     repository: unitOfWork.repository,
@@ -157,5 +181,10 @@ export function createPublicationInfrastructure(
     dispatchEvidence,
     eventGovernanceContextStore,
     eventSourceContextResolver,
+    listingProjectionStore,
+    listingProjectionAudit,
+    listingProjectionConsumer,
+    listingProjectionRebuild,
+    listingProjectionRead,
   });
 }

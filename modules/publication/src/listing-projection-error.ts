@@ -1,0 +1,33 @@
+export type ListingProjectionErrorCode =
+  | "PROJECTION_EVENT_UNSUPPORTED"
+  | "PROJECTION_EVENT_DUPLICATE_CONFLICT"
+  | "PROJECTION_SEQUENCE_GAP"
+  | "PROJECTION_EVENT_OUT_OF_ORDER"
+  | "PROJECTION_SOURCE_VERSION_DRIFT"
+  | "PROJECTION_PUBLICATION_VERSION_DRIFT"
+  | "PROJECTION_PROVENANCE_INCOMPLETE"
+  | "PROJECTION_PROVENANCE_CONFLICT"
+  | "PROJECTION_SCHEMA_VERSION_DRIFT"
+  | "PROJECTION_DEFINITION_VERSION_DRIFT"
+  | "PROJECTION_CLASSIFICATION_VIOLATION"
+  | "PROJECTION_PURPOSE_VIOLATION"
+  | "PROJECTION_TENANT_MISMATCH"
+  | "PROJECTION_STALE"
+  | "PROJECTION_RECORD_VERSION_CONFLICT"
+  | "PROJECTION_REBUILD_UNAUTHORIZED"
+  | "PROJECTION_REBUILD_FAILED"
+  | "PROJECTION_GENERATION_INCOMPLETE"
+  | "PROJECTION_GENERATION_CONFLICT"
+  | "PROJECTION_CUTOVER_FAILED"
+  | "INTERNAL_PROJECTION_ERROR";
+
+export class ListingProjectionError extends Error {
+  public constructor(public readonly code: ListingProjectionErrorCode, message: string) {
+    super(message);
+    this.name = "ListingProjectionError";
+  }
+}
+
+export function projectionError(code: ListingProjectionErrorCode, message: string): ListingProjectionError {
+  return new ListingProjectionError(code, message);
+}

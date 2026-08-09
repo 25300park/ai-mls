@@ -180,6 +180,9 @@ test("PHASE13-6 infrastructure source depends only on approved in-process contra
     "./publication-event-source-context.js",
     "./publication-governance-context.js",
     "./publication-connector-dispatch-evidence-store.js",
+    "./listing-projection-rebuild.js",
+    "./in-memory-listing-projection-store.js",
+    "./listing-projection.js",
   ]);
   const files = ["publication-infrastructure-configuration.ts", "publication-infrastructure.ts"];
 

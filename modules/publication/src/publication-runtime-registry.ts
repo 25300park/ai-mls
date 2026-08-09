@@ -22,6 +22,10 @@ export const publicationRuntimeServiceNames: readonly PublicationRuntimeServiceN
   "eventReplay",
   "eventGovernanceContextStore",
   "eventSourceContextResolver",
+  "listingProjectionStore",
+  "listingProjectionConsumer",
+  "listingProjectionRebuild",
+  "listingProjectionRead",
 ]);
 
 export interface PublicationRuntimeServiceRegistry {
@@ -43,6 +47,10 @@ export interface PublicationRuntimeServiceRegistry {
   readonly eventReplay: PublicationInfrastructure["eventReplay"];
   readonly eventGovernanceContextStore: PublicationInfrastructure["eventGovernanceContextStore"];
   readonly eventSourceContextResolver: PublicationInfrastructure["eventSourceContextResolver"];
+  readonly listingProjectionStore: PublicationInfrastructure["listingProjectionStore"];
+  readonly listingProjectionConsumer: PublicationInfrastructure["listingProjectionConsumer"];
+  readonly listingProjectionRebuild: PublicationInfrastructure["listingProjectionRebuild"];
+  readonly listingProjectionRead: PublicationInfrastructure["listingProjectionRead"];
 }
 
 export function createPublicationRuntimeServiceRegistry(
@@ -68,6 +76,10 @@ export function createPublicationRuntimeServiceRegistry(
     eventReplay: infrastructure.eventReplay,
     eventGovernanceContextStore: infrastructure.eventGovernanceContextStore,
     eventSourceContextResolver: infrastructure.eventSourceContextResolver,
+    listingProjectionStore: infrastructure.listingProjectionStore,
+    listingProjectionConsumer: infrastructure.listingProjectionConsumer,
+    listingProjectionRebuild: infrastructure.listingProjectionRebuild,
+    listingProjectionRead: infrastructure.listingProjectionRead,
   });
 }
 
@@ -96,7 +108,11 @@ export function validatePublicationRuntimeInfrastructure(
     || !hasMethods(value["lifecycle"], ["correctPublication", "republishPublication", "requestWithdrawal", "resolveWithdrawal", "suspendPublication", "resumePublication", "supersedePublication", "terminatePublication", "execute"])
     || !hasMethods(value["reconciliation"], ["reconcile", "recover", "execute"])
     || !hasMethods(value["connectorDispatcher"], ["dispatch"])
-    || !hasMethods(value["eventReplay"], ["replay"])) {
+    || !hasMethods(value["eventReplay"], ["replay"])
+    || !hasMethods(value["listingProjectionStore"], ["getServing", "save", "compareAndSwapServingGeneration"])
+    || !hasMethods(value["listingProjectionConsumer"], ["consume"])
+    || !hasMethods(value["listingProjectionRebuild"], ["rebuild"])
+    || !hasMethods(value["listingProjectionRead"], ["getServing"])) {
     throw new PublicationRuntimeError("RUNTIME_DEPENDENCY_MISSING", "A mandatory runtime authorization port is unavailable.");
   }
   const configuration = value["configuration"];
@@ -109,7 +125,11 @@ export function validatePublicationRuntimeInfrastructure(
     || unitOfWork["eventJournal"] !== value["eventJournal"]
     || !hasMethods(value["eventCoordinator"], ["appendAcceptedTransition"])
     || !hasMethods(value["eventGovernanceContextStore"], ["findCurrentByPublicationId", "findById"])
-    || !hasMethods(value["eventSourceContextResolver"], ["resolve"])) {
+    || !hasMethods(value["eventSourceContextResolver"], ["resolve"])
+    || !isRecord(value["listingProjectionConsumer"])
+    || !isRecord(value["listingProjectionRebuild"])
+    || value["listingProjectionConsumer"]["journalIdentity"] !== value["eventJournal"]
+    || value["listingProjectionRebuild"]["journalIdentity"] !== value["eventJournal"]) {
     throw new PublicationRuntimeError(
       "RUNTIME_CONFIGURATION_INCONSISTENT",
       "Runtime infrastructure configuration is inconsistent.",
