@@ -255,6 +255,70 @@ test("FCR-001 API-014 rejects caller-authored authoritative reconciliation evide
   assert.equal(app.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: request.idempotencyKey }), undefined);
 });
 
+test("FCR-007 API-014 rejects omitted reconciliation resolution without trusting caller metadata", () => {
+  const callerInputs = [
+    { category: "MANUAL_REVIEW_REQUIRED" },
+    { evidenceRefs: ["caller-evidence-reference"] },
+    { category: "MANUAL_REVIEW_REQUIRED", evidenceRefs: ["caller-evidence-reference"] },
+  ] as const;
+
+  for (const [index, callerInput] of callerInputs.entries()) {
+    for (const operation of ["RESOLVE_RECONCILIATION", "RECOVER_PUBLICATION"] as const) {
+      const app = infrastructure();
+      const caseId = `case-fcr-007-${operation}-${String(index)}`;
+      const snapshot = unresolvedSnapshot(caseId);
+      app.repository.save(snapshot);
+      const api = new PublicationApi(app);
+      const request = command(operation, {
+        input: {
+          expectedAggregateVersion: snapshot.aggregateVersion,
+          caseId,
+          ...callerInput,
+        },
+        occurredAt: now,
+      }, {
+        idempotencyKey: `idempotency-fcr-007-${operation}-${String(index)}`,
+        intentFingerprint: `sha256:fcr-007-${operation}-${String(index)}`,
+      });
+      const auditCount = app.audit.list(identity).length;
+      const eventCount = app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).length;
+
+      const first = api.executeCommand(request);
+      const replay = api.executeCommand(request);
+
+      assert.equal(first.success, false);
+      assert.equal(!first.success && first.error.code, "VALIDATION_ERROR");
+      assert.deepEqual(replay, first);
+      assert.deepEqual(app.repository.find(identity), snapshot);
+      assert.equal(app.audit.list(identity).length, auditCount);
+      assert.equal(app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).length, eventCount);
+      assert.equal(app.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: request.idempotencyKey }), undefined);
+      assert.equal(JSON.stringify(app.audit.list(identity)).includes("caller-evidence-reference"), false);
+    }
+  }
+});
+
+test("FCR-008 API-014 rejects contradictory MFA Session without trusted side effects", () => {
+  const session = Object.freeze({
+    ...createTestPublicationSession("executor-independent", "session-contradictory"),
+    assurance: "SINGLE_FACTOR" as const,
+    isMfaVerified: true,
+  });
+  const app = infrastructure({ session });
+  const request = createCommand("contradictory-mfa", { sessionId: session.id });
+
+  const first = new PublicationApi(app).executeCommand(request);
+  const replay = new PublicationApi(app).executeCommand(request);
+
+  assert.equal(first.success, false);
+  assert.equal(!first.success && first.error.code, "AUTHENTICATION_REQUIRED");
+  assert.deepEqual(replay, first);
+  assert.equal(app.repository.find(identity), undefined);
+  assert.equal(app.audit.list(identity).length, 0);
+  assert.equal(app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).length, 0);
+  assert.equal(app.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: request.idempotencyKey }), undefined);
+});
+
 test("F15-TASK-009 API-014 rejects missing, expired and revoked Sessions without Publication mutation", () => {
   const states = [null, "EXPIRED", "REVOKED"] as const;
   for (const state of states) {
@@ -493,6 +557,7 @@ test("F15-TASK-009 UI-033 exposes bounded unresolved recovery context without ra
   assert.equal(response.success, true);
   assert.equal(response.success && "screenId" in response.result.view && response.result.view.screenId, "UI-033");
   assert.equal(response.success && "manualReviewRequired" in response.result.view && response.result.view.manualReviewRequired, true);
+  assert.deepEqual(response.success && "availableActions" in response.result.view ? response.result.view.availableActions : ["unexpected"], []);
   assert.equal(JSON.stringify(response).includes("raw-provider-secret-must-not-leak"), false);
   assert.deepEqual(app.repository.find(identity), before);
 });

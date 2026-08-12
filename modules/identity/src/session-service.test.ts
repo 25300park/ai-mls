@@ -101,6 +101,26 @@ test("TEST-026 creates a bounded session without auditing credential evidence", 
   assert.equal(JSON.stringify(events).includes("credential-reference-1"), false);
 });
 
+test("FCR-008 rejects contradictory authentication assurance before creating a Session", () => {
+  const { service, auditLog } = createFixture({
+    principalId: "user-agent-contradictory",
+    principalType: "HUMAN",
+    roles: ["AGT"],
+    teamId: "team-a",
+    assurance: "SINGLE_FACTOR",
+    isMfaVerified: true,
+    status: "ACTIVE",
+  });
+
+  assert.throws(
+    () => service.createSession({ evidence, correlationId: "correlation-fcr-008" }),
+    (error: unknown) => error instanceof AuthenticationError
+      && error.code === "INVALID_CREDENTIAL"
+      && error.publicMessage === "Authentication failed.",
+  );
+  assert.equal(auditLog.query({ requesterId: "user-security-1", purpose: "TEST", correlationId: "correlation-fcr-008" }).some(({ decision }) => decision === "ALLOW"), false);
+});
+
 test("TEST-046 expires stale sessions fail closed", () => {
   const { service, advance } = createFixture();
   const session = service.createSession({

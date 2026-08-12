@@ -269,14 +269,14 @@ export function derivePublicationActions(dependencies: PublicationViewDependenci
 }
 
 function candidateActions(snapshot: PublicationSnapshot): readonly PublicationApiCommandOperation[] {
-  if (snapshot.reconciliationCases.some(({ status }) => status === "OPEN")) return ["RESOLVE_RECONCILIATION", "RECOVER_PUBLICATION"];
+  if (snapshot.reconciliationCases.some(({ status }) => status === "OPEN")) return [];
   const suspension = snapshot.suspensionStatus === "NOT_SUSPENDED" ? ["SUSPEND_PUBLICATION"] as const : ["RESUME_PUBLICATION"] as const;
   const candidates = ((): readonly PublicationApiCommandOperation[] => { switch (snapshot.lifecycleState) {
     case "READY": return ["PUBLISH_PUBLICATION", ...suspension, "TERMINATE_PUBLICATION"];
     case "ACTIVE": return ["CORRECT_PUBLICATION", "REQUEST_WITHDRAWAL", "REPUBLISH_PUBLICATION", ...suspension, "SUPERSEDE_PUBLICATION"];
     case "WITHDRAWAL_PENDING": return ["RESOLVE_WITHDRAWAL", ...suspension];
     case "WITHDRAWN": return ["REPUBLISH_PUBLICATION", ...suspension];
-    case "RECONCILIATION_REQUIRED": return ["RESOLVE_RECONCILIATION", "RECOVER_PUBLICATION", ...suspension];
+    case "RECONCILIATION_REQUIRED": return suspension;
     case "EXECUTION_PENDING": return suspension;
     case "SUPERSEDED":
     case "TERMINATED": return [];

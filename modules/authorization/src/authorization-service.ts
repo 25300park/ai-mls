@@ -4,7 +4,7 @@ import type {
   DataClassification,
   RoleCode,
 } from "../../../packages/security-contracts/src/index.js";
-import type { SessionContext } from "../../identity/src/session-service.js";
+import { hasVerifiedMfaAssurance, type SessionContext } from "../../identity/src/session-service.js";
 
 export interface RoleAssignment {
   readonly id: string;
@@ -372,7 +372,7 @@ export class AuthorizationService {
       );
     }
 
-    if (privilegedActions.has(request.action) && !request.session.isMfaVerified) {
+    if (privilegedActions.has(request.action) && !hasVerifiedMfaAssurance(request.session)) {
       return this.#complete(
         request,
         "DENY",

@@ -42,6 +42,18 @@ export interface SessionContext {
   readonly refreshReference: string;
 }
 
+type AuthenticationAssurance = Pick<SessionContext, "assurance" | "isMfaVerified">;
+
+export function isAuthenticationAssuranceConsistent(context: AuthenticationAssurance): boolean {
+  return context.isMfaVerified !== true || context.assurance === "MFA";
+}
+
+export function hasVerifiedMfaAssurance(context: AuthenticationAssurance): boolean {
+  return isAuthenticationAssuranceConsistent(context)
+    && context.assurance === "MFA"
+    && context.isMfaVerified === true;
+}
+
 interface SessionServiceDependencies {
   readonly authenticationAdapter: AuthenticationAdapter;
   readonly auditSink: AuditSink;
@@ -120,7 +132,7 @@ export class SessionService {
 
   public createSession(request: CreateSessionRequest): SessionContext {
     const identity = this.#authenticationAdapter.verify(request.evidence);
-    if (identity?.status !== "ACTIVE") {
+    if (identity?.status !== "ACTIVE" || !isAuthenticationAssuranceConsistent(identity)) {
       this.#auditSink.append({
         eventType: "LOGIN",
         principal: { id: "anonymous", type: "HUMAN", roles: [] },

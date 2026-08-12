@@ -1,5 +1,9 @@
 import type { AuthorizationDecision, AuthorizationRequest } from "../../authorization/src/authorization-service.js";
-import type { SessionContext } from "../../identity/src/session-service.js";
+import {
+  hasVerifiedMfaAssurance,
+  isAuthenticationAssuranceConsistent,
+  type SessionContext,
+} from "../../identity/src/session-service.js";
 import type { PublicationModificationCommand } from "./publication-application-contracts.js";
 import type { PublicationBinding } from "./publication-contracts.js";
 
@@ -214,6 +218,12 @@ export class PublicationAuthorizationGuard {
   public authorize(request: PublicationAuthorizationRequest): PublicationAuthorizationSuccess {
     const checkedAt = this.dependencies.clock.now();
     const session = this.resolveSession(request, checkedAt);
+    if (!isAuthenticationAssuranceConsistent(session)) {
+      this.deny(request, session, undefined, "AUTHENTICATION_REQUIRED", checkedAt);
+    }
+    if (!hasVerifiedMfaAssurance(session)) {
+      this.deny(request, session, undefined, "MFA_REQUIRED", checkedAt);
+    }
     if (request.purpose !== "PUBLICATION_EXECUTION" || session.teamId === undefined
       || (request.teamId !== undefined && request.teamId !== session.teamId)) {
       this.deny(request, session, undefined, "PURPOSE_SCOPE_DENIED", checkedAt);

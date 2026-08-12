@@ -387,6 +387,12 @@ function requireCommon(request: PlainRecord): void {
 
 function validatePayload(operation: PublicationApiCommandOperation, payload: PlainRecord): void {
   requireString(payload["occurredAt"]);
+  if (operation === "RESOLVE_RECONCILIATION" || operation === "RECOVER_PUBLICATION") {
+    // API callers cannot supply authoritative reconciliation outcomes or
+    // evidence. Resolution remains available only through the trusted
+    // internal reconciliation port backed by durable evidence.
+    throw new PublicationApiError("VALIDATION_ERROR");
+  }
   if (operation === "CREATE_PUBLICATION") {
     assertExactKeys(requireRecord(payload["binding"]), bindingKeys);
     assertExactKeys(requireRecord(payload["prerequisites"]), ["immutableSnapshot", "exactTargetChannel", "provenancePresent"]);
@@ -399,18 +405,7 @@ function validatePayload(operation: PublicationApiCommandOperation, payload: Pla
     return;
   }
   const commandInput = requireRecord(payload["input"]);
-  if (
-    (operation === "RESOLVE_RECONCILIATION" || operation === "RECOVER_PUBLICATION")
-    && commandInput["resolution"] !== undefined
-  ) {
-    // Reconciliation outcomes are authoritative facts. API callers may not
-    // manufacture the outcome or its evidence; trusted internal coordination
-    // must resolve those values from durable evidence.
-    throw new PublicationApiError("VALIDATION_ERROR");
-  }
-  const commandType = operation === "RESOLVE_RECONCILIATION" || operation === "RECOVER_PUBLICATION"
-    ? "RECONCILIATION_INPUT"
-    : requireString(commandInput["type"]);
+  const commandType = requireString(commandInput["type"]);
   assertOperationCommandMatch(operation, commandType, commandInput);
   const allowed = operationInputKeys(operation, commandType);
   assertExactKeys(commandInput, allowed);

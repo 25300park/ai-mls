@@ -1,5 +1,7 @@
 export {
   AuthenticationError,
+  hasVerifiedMfaAssurance,
+  isAuthenticationAssuranceConsistent,
   SessionService,
   type AuthenticatedIdentity,
   type AuthenticationAdapter,

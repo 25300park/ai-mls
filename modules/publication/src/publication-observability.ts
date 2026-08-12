@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { hasVerifiedMfaAssurance } from "../../identity/src/session-service.js";
 import type { PublicationClock } from "./publication-clock.js";
 import type { PublicationSessionResolver } from "./publication-authorization.js";
 import type { ListingProjectionAuditStore, ListingProjectionStore } from "./listing-projection-store.js";
@@ -85,7 +86,7 @@ export class PublicationOperationsRebuildControl {
       throw operationsError("OPERATIONS_UNAUTHORIZED", "Operational authentication is required.");
     }
     if (session.teamId !== request.tenantId) throw operationsError("OPERATIONS_FORBIDDEN", "Operational scope is not authorized.");
-    if (!session.isMfaVerified) throw operationsError("OPERATIONS_FORBIDDEN", "Operational step-up authentication is required.");
+    if (!hasVerifiedMfaAssurance(session)) throw operationsError("OPERATIONS_FORBIDDEN", "Operational step-up authentication is required.");
     let authorized = false;
     try {
       authorized = this.dependencies.authority?.authorize({ session, tenantId: request.tenantId, publicationId: request.publicationId, reason: request.reason, action: "projection.rebuild", purpose: "PROJECTION_REBUILD", correlationId: request.correlationId }) === true;

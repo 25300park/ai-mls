@@ -226,6 +226,7 @@ test("FCR-002 production retry adapter blocks stale Session, Approval, Verificat
   const staleCases = [
     { name: "expired-session", configuration: { ...base, sessionResolver: { resolve: () => activeSession({ id: "session-operations", principalId: "session-operations", teamId: "team-operations", expiresAt: "2026-08-10T02:00:00.000Z" }) } } },
     { name: "revoked-session", configuration: { ...base, sessionResolver: { resolve: () => activeSession({ id: "session-operations", principalId: "session-operations", teamId: "team-operations", state: "REVOKED" }) } } },
+    { name: "contradictory-mfa-session", configuration: { ...base, sessionResolver: { resolve: () => activeSession({ id: "session-operations", principalId: "session-operations", teamId: "team-operations", assurance: "SINGLE_FACTOR", isMfaVerified: true }) } } },
     { name: "approval", configuration: { ...base, liveContextResolver: transformLive(base, (live) => ({ ...live, approval: { ...live.approval, status: "REVOKED" as const } })) } },
     { name: "verification", configuration: { ...base, liveContextResolver: transformLive(base, (live) => ({ ...live, verification: { ...live.verification, status: "EXPIRED" } })) } },
     { name: "permission", configuration: { ...base, liveContextResolver: transformLive(base, (live) => ({ ...live, permission: { ...live.permission, status: "REVOKED" } })) } },
@@ -319,6 +320,7 @@ test("F15-TASK-012 rebuild control fails closed for caller identity, missing/ina
     ["expired-session", activeSession({ id: "expired-session", state: "EXPIRED" })],
     ["revoked-session", activeSession({ id: "revoked-session", state: "REVOKED" })],
     ["no-mfa-session", activeSession({ id: "no-mfa-session", isMfaVerified: false })],
+    ["contradictory-mfa-session", activeSession({ id: "contradictory-mfa-session", assurance: "SINGLE_FACTOR", isMfaVerified: true })],
     ["wrong-team-session", activeSession({ id: "wrong-team-session", teamId: "team-other" })],
     ["sod-session", activeSession({ id: "sod-session", roles: ["OPS", "PUA"] })],
     ["denied-session", activeSession({ id: "denied-session", roles: ["PUA"] })],
@@ -333,6 +335,7 @@ test("F15-TASK-012 rebuild control fails closed for caller identity, missing/ina
     assert.throws(() => infrastructure.operationsControl.requestProjectionRebuild(rebuildControlRequest(sessionId)), operationsErrorCode("OPERATIONS_UNAUTHORIZED"));
   }
   assert.throws(() => infrastructure.operationsControl.requestProjectionRebuild(rebuildControlRequest("no-mfa-session")), operationsErrorCode("OPERATIONS_FORBIDDEN"));
+  assert.throws(() => infrastructure.operationsControl.requestProjectionRebuild(rebuildControlRequest("contradictory-mfa-session")), operationsErrorCode("OPERATIONS_FORBIDDEN"));
   assert.throws(() => infrastructure.operationsControl.requestProjectionRebuild(rebuildControlRequest("wrong-team-session")), operationsErrorCode("OPERATIONS_FORBIDDEN"));
   assert.throws(() => infrastructure.operationsControl.requestProjectionRebuild(rebuildControlRequest("sod-session")), operationsErrorCode("OPERATIONS_FORBIDDEN"));
   assert.throws(() => infrastructure.operationsControl.requestProjectionRebuild(rebuildControlRequest("denied-session")), operationsErrorCode("OPERATIONS_FORBIDDEN"));

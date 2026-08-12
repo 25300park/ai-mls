@@ -190,6 +190,40 @@ test("TEST-047 requires MFA and reason for privileged actions", () => {
   assert.equal(noReason.reasonCode, "REASON_REQUIRED");
 });
 
+test("FCR-008 privileged authorization requires internally consistent MFA assurance", () => {
+  const adminAssignment = assignment({
+    principalId: "user-admin-consistency",
+    role: "ADM",
+    resourceTypes: ["RoleAssignment"],
+    purposes: ["ACCESS_GOVERNANCE"],
+  });
+  const { service } = createService([adminAssignment]);
+  const request = {
+    action: "admin.role.propose",
+    resource: { type: "RoleAssignment", id: "assignment-consistency", teamId: "team-a" },
+    purpose: "ACCESS_GOVERNANCE",
+    reason: "Approved governance change",
+    correlationId: "correlation-fcr-008-authorization",
+  } as const;
+
+  const contradictory = service.evaluate({
+    ...request,
+    session: session({ principalId: "user-admin-consistency", roles: ["ADM"], assurance: "SINGLE_FACTOR", isMfaVerified: true }),
+  });
+  const missingVerification = service.evaluate({
+    ...request,
+    session: session({ principalId: "user-admin-consistency", roles: ["ADM"], assurance: "MFA", isMfaVerified: false }),
+  });
+  const valid = service.evaluate({
+    ...request,
+    session: session({ principalId: "user-admin-consistency", roles: ["ADM"], assurance: "MFA", isMfaVerified: true }),
+  });
+
+  assert.equal(contradictory.reasonCode, "REAUTHENTICATION_REQUIRED");
+  assert.equal(missingVerification.reasonCode, "REAUTHENTICATION_REQUIRED");
+  assert.equal(valid.effect, "ALLOW");
+});
+
 test("TEST-047 manager and administrator roles do not inherit publication approval", () => {
   const assignments = [
     assignment({
