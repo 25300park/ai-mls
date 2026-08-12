@@ -401,19 +401,24 @@ test("F15-TASK-008 fails closed for authorization, live prerequisites and invali
   if (!bogus.ok) assert.equal(bogus.error.code, "RECOVERY_REQUEST_INVALID");
 });
 
-test("F15-TASK-008 is registered once and executes through the composed outer boundary", () => {
+test("F15-TASK-008 is registered once as a trusted internal port and caller evidence is rejected at the outer boundary", () => {
   const app = infrastructure();
   const snapshot = initialUnknown("case-composed");
   app.repository.save(snapshot);
   const graph = composePublicationApplication({ runtimeOptions: { infrastructureFactory: () => app } });
   assert.equal(graph.runtime.services.reconciliation, app.reconciliation);
 
-  const result = graph.runtime.execute({
+  const external = graph.runtime.execute({
     operation: "COORDINATE_PUBLICATION_RECONCILIATION",
     ...request(snapshot, "composed"),
   });
 
-  assert.equal(result.operationResult, "SUCCEEDED", JSON.stringify(result));
+  assert.deepEqual(external, { operationResult: "FAILED", failureCode: "INTERFACE_REQUEST_INVALID" });
+  assert.equal(app.repository.find(identity)?.lifecycleState, "RECONCILIATION_REQUIRED");
+  assert.equal(app.audit.list(identity).some(({ decision }) => decision === "CONFIRMED"), false);
+
+  const result = app.reconciliation.execute(request(snapshot, "trusted-internal"));
+  assert.equal(result.ok, true, JSON.stringify(result));
   assert.equal(app.repository.find(identity)?.lifecycleState, "ACTIVE");
   assert.equal(app.audit.list(identity).at(-1)?.decision, "CONFIRMED");
 });

@@ -11,6 +11,7 @@ import type {
 import type { PublicationLiveAuthorizationContext } from "../../../modules/publication/src/publication-authorization.js";
 import type { DomainCommandContext, PublicationBinding, PublicationIdentity, PublicationSnapshot } from "../../../modules/publication/src/publication-contracts.js";
 import type { PublicationInfrastructure } from "../../../modules/publication/src/publication-infrastructure.js";
+import type { ListingProjectionView } from "../../../modules/publication/src/listing-projection-contracts.js";
 import {
   PUBLICATION_API_COMMAND_OPERATIONS,
   PUBLICATION_API_QUERY_OPERATIONS,
@@ -159,7 +160,7 @@ export class PublicationApiQueryService {
           publicationId: request.publicationId,
         });
         if (view === undefined) throw new PublicationApiError("NOT_FOUND");
-        this.authorizeRead(request, session, undefined, view.sourceAggregateVersion);
+        this.authorizeRead(request, session, undefined, view.sourceAggregateVersion, view);
         return immutableApiValue({
           requestId: request.requestId,
           success: true as const,
@@ -232,12 +233,13 @@ export class PublicationApiQueryService {
     session: SessionContext,
     snapshot: PublicationSnapshot | undefined,
     resourceVersion?: number,
+    projection?: ListingProjectionView,
   ): void {
     if (request.purpose !== "PUBLICATION_EXECUTION" || session.teamId === undefined
       || request.teamId !== session.teamId || request.tenantId !== session.teamId) {
       throw new PublicationApiError("NOT_FOUND");
     }
-    const decision = this.evaluate(session, request, snapshot, readAction(request.operation), resourceVersion);
+    const decision = this.evaluate(session, request, snapshot, readAction(request.operation), resourceVersion, projection);
     if (decision.effect !== "ALLOW") throw new PublicationApiError("NOT_FOUND");
   }
 
@@ -247,6 +249,7 @@ export class PublicationApiQueryService {
     snapshot: PublicationSnapshot | undefined,
     action: string,
     resourceVersion?: number,
+    projection?: ListingProjectionView,
   ): AuthorizationDecision {
     const evaluator = this.infrastructure.configuration.authorizationEvaluator;
     if (evaluator === undefined) throw new PublicationApiError("NOT_FOUND");
@@ -256,10 +259,17 @@ export class PublicationApiQueryService {
         session,
         action,
         resource: {
-          type: "Publication",
+          type: projection === undefined ? "Publication" : "ListingProjection",
           id: request.publicationId,
           ...(version === undefined ? {} : { version }),
           teamId: request.teamId,
+          ...(projection === undefined ? {} : {
+            classification: projection.sourceClassification,
+            privacyScope: projection.privacyScope,
+            purpose: projection.purpose,
+            consentOrLegalBasis: projection.consentOrLegalBasis,
+            audienceRestriction: projection.audienceRestriction,
+          }),
         },
         purpose: request.purpose,
         reason: "API-014 bounded view eligibility evaluation",
@@ -352,6 +362,9 @@ function validateCommandRequest(input: unknown): PublicationCommandRequest {
 function validateQueryRequest(input: unknown): PublicationQueryRequest {
   assertSafeJson(input);
   const request = requireRecord(immutableApiValue(input));
+  if (["classification", "privacyScope", "consentOrLegalBasis", "audienceRestriction"].some((key) => Object.hasOwn(request, key))) {
+    throw new PublicationApiError("NOT_FOUND");
+  }
   assertExactKeys(request, queryRootKeys);
   const operation = request["operation"];
   if (typeof operation !== "string" || !PUBLICATION_API_QUERY_OPERATIONS.includes(operation as PublicationApiQueryOperation)) {
@@ -386,6 +399,15 @@ function validatePayload(operation: PublicationApiCommandOperation, payload: Pla
     return;
   }
   const commandInput = requireRecord(payload["input"]);
+  if (
+    (operation === "RESOLVE_RECONCILIATION" || operation === "RECOVER_PUBLICATION")
+    && commandInput["resolution"] !== undefined
+  ) {
+    // Reconciliation outcomes are authoritative facts. API callers may not
+    // manufacture the outcome or its evidence; trusted internal coordination
+    // must resolve those values from durable evidence.
+    throw new PublicationApiError("VALIDATION_ERROR");
+  }
   const commandType = operation === "RESOLVE_RECONCILIATION" || operation === "RECOVER_PUBLICATION"
     ? "RECONCILIATION_INPUT"
     : requireString(commandInput["type"]);

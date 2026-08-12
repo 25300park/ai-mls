@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createPublicationEventEnvelope, createPublicationEventProjectionProvenance, type PublicationEventEnvelope } from "./publication-event-contracts.js";
+import { PublicationEventCoordinator } from "./publication-event-coordinator.js";
 import type { PublicationEventJournal } from "./publication-event-journal.js";
 import { InMemoryPublicationEventJournal } from "./in-memory-publication-event-journal.js";
 import { FixedClock } from "./publication-clock.js";
@@ -43,6 +44,11 @@ test("F15-TASK-011 EVT-003 creates an immutable exact PRJ-002 record without mut
     effectiveVersion: 1,
     targetReference: "target-1@5",
     channelReference: "channel-1",
+    sourceClassification: "CONFIDENTIAL_BUSINESS",
+    privacyScope: "privacy:approved-publication",
+    purpose: "PUBLICATION_EXECUTION",
+    consentOrLegalBasis: "permission:public-publication",
+    audienceRestriction: "PUBLIC_APPROVED",
     sourceAggregateVersion: 2,
     publicationVersion: 1,
     lastEventSequence: 1,
@@ -55,6 +61,8 @@ test("F15-TASK-011 EVT-003 creates an immutable exact PRJ-002 record without mut
   assert.equal(record?.sourceClassification, "CONFIDENTIAL_BUSINESS");
   assert.equal(record?.privacyScope, "privacy:approved-publication");
   assert.equal(record?.purpose, "PUBLICATION_EXECUTION");
+  assert.equal(record?.consentOrLegalBasis, "permission:public-publication");
+  assert.equal(record?.audienceRestriction, "PUBLIC_APPROVED");
   assert.equal(record?.tenantId, tenantId);
   assert.equal(record?.aggregateVersion, 2);
   assert.equal(record?.lastEventSequence, 1);
@@ -283,6 +291,7 @@ test("F15-TASK-011 rebuild uses an isolated generation, deterministic Journal re
   const coordinator = new ListingProjectionRebuildCoordinator({
     journal: setup.journal, store: setup.store, audit: setup.audit, clock,
     authority: { authorize: (request) => request.purpose === "PROJECTION_REBUILD" },
+    ...rebuildEventDependencies(),
   });
   const request = rebuildRequest("rebuild-key-1", "generation-b", beforeServing);
   const result = coordinator.rebuild(request);
@@ -292,21 +301,33 @@ test("F15-TASK-011 rebuild uses an isolated generation, deterministic Journal re
   assert.equal(setup.store.getServingGeneration({ tenantId, publicationId })?.generationId, "generation-b");
   assert.equal(setup.store.getGeneration({ tenantId, publicationId }, beforeServing!)?.lifecycle, "ARCHIVED");
   assert.notEqual(beforeServing, "generation-b");
-  assert.deepEqual(setup.journal.listByAggregate(tenantId, publicationId), eventsBefore);
+  const rebuildEvents = setup.journal.listByAggregate(tenantId, publicationId).slice(eventsBefore.length);
+  assert.deepEqual(rebuildEvents.map(({ eventType }) => eventType), ["EVT-010", "EVT-011"]);
+  assert.deepEqual(rebuildEvents.map(({ purpose }) => purpose), ["RECOVERY_VALIDATION", "RECOVERY_VALIDATION"]);
+  assert.deepEqual(rebuildEvents.map(({ classification }) => classification), ["CONFIDENTIAL_BUSINESS", "CONFIDENTIAL_BUSINESS"]);
+  assert.equal(rebuildEvents[0]?.payload["rebuildGeneration"], request.generationId);
+  assert.equal(rebuildEvents[1]?.payload["validationStatus"], "VALIDATED");
+  assert.equal(setup.journal.listByAggregate(tenantId, publicationId).filter(({ eventType }) => eventType === "EVT-010").length, 1);
+  assert.equal(setup.journal.listByAggregate(tenantId, publicationId).filter(({ eventType }) => eventType === "EVT-011").length, 1);
   assert.deepEqual(sourceSnapshot(2, 1), aggregateBefore);
   assert.equal(result.record.lifecycle, "ACTIVE");
   assert.equal(result.record.publicationVersion, 1);
   assert.equal(setup.audit.list({ tenantId, publicationId }).some(({ operation }) => operation === "GENERATION_CUTOVER"), true);
   assert.equal(setup.audit.list({ tenantId, publicationId }).some(({ operation }) => operation === "GENERATION_ARCHIVED"), true);
   const second = coordinator.rebuild(rebuildRequest("rebuild-key-2", "generation-c", "generation-b"));
-  const { generationId: firstGeneration, generatedAt: firstGeneratedAt, updatedAt: firstUpdatedAt, ...firstSemantic } = result.record;
-  const { generationId: secondGeneration, generatedAt: secondGeneratedAt, updatedAt: secondUpdatedAt, ...secondSemantic } = second.record;
+  const volatileKeys = new Set(["generationId", "generatedAt", "updatedAt", "lastEventId", "lastEventType", "lastEventSequence", "lastEventIntegrity", "projectionRecordVersion", "appliedEvents"]);
+  const firstSemantic = Object.fromEntries(Object.entries(result.record).filter(([key]) => !volatileKeys.has(key)));
+  const secondSemantic = Object.fromEntries(Object.entries(second.record).filter(([key]) => !volatileKeys.has(key)));
   assert.deepEqual(secondSemantic, firstSemantic);
-  assert.notEqual(firstGeneration, secondGeneration);
-  assert.equal(typeof firstGeneratedAt, "string");
-  assert.equal(typeof firstUpdatedAt, "string");
-  assert.equal(typeof secondGeneratedAt, "string");
-  assert.equal(typeof secondUpdatedAt, "string");
+  assert.deepEqual(
+    [second.record.sourceClassification, second.record.privacyScope, second.record.purpose, second.record.consentOrLegalBasis, second.record.audienceRestriction],
+    [result.record.sourceClassification, result.record.privacyScope, result.record.purpose, result.record.consentOrLegalBasis, result.record.audienceRestriction],
+  );
+  assert.notEqual(result.record.generationId, second.record.generationId);
+  assert.equal(typeof result.record.generatedAt, "string");
+  assert.equal(typeof result.record.updatedAt, "string");
+  assert.equal(typeof second.record.generatedAt, "string");
+  assert.equal(typeof second.record.updatedAt, "string");
   assert.throws(() => coordinator.rebuild({ ...request, generationId: "generation-c" }), projectionError("PROJECTION_REBUILD_FAILED"));
 });
 
@@ -314,20 +335,55 @@ test("F15-TASK-011 failed or unauthorized rebuild never replaces the serving gen
   const setup = projectionSetup();
   appendAndConsume(setup, canonicalEvent("EVT-003", 1, 2, 1));
   const serving = setup.store.getServingGeneration({ tenantId, publicationId })?.generationId;
-  const denied = new ListingProjectionRebuildCoordinator({ journal: setup.journal, store: setup.store, audit: setup.audit, clock, authority: { authorize: () => false } });
+  const denied = new ListingProjectionRebuildCoordinator({ journal: setup.journal, store: setup.store, audit: setup.audit, clock, authority: { authorize: () => false }, ...rebuildEventDependencies() });
   assert.throws(() => denied.rebuild(rebuildRequest("denied", "generation-denied", serving)), projectionError("PROJECTION_REBUILD_UNAUTHORIZED"));
   assert.equal(setup.store.getServingGeneration({ tenantId, publicationId })?.generationId, serving);
 
-  const empty = new ListingProjectionRebuildCoordinator({ journal: new InMemoryPublicationEventJournal(), store: setup.store, audit: setup.audit, clock, authority: { authorize: () => true } });
+  const empty = new ListingProjectionRebuildCoordinator({ journal: new InMemoryPublicationEventJournal(), store: setup.store, audit: setup.audit, clock, authority: { authorize: () => true }, ...rebuildEventDependencies() });
   assert.throws(() => empty.rebuild(rebuildRequest("empty", "generation-failed", serving)), projectionError("PROJECTION_REBUILD_FAILED"));
   assert.equal(setup.store.getServingGeneration({ tenantId, publicationId })?.generationId, serving);
-  assert.equal(setup.store.getGeneration({ tenantId, publicationId }, "generation-failed")?.lifecycle, "FAILED");
+  assert.equal(setup.store.getGeneration({ tenantId, publicationId }, "generation-failed"), undefined);
+
+  const casConflict = new ListingProjectionRebuildCoordinator({ journal: setup.journal, store: setup.store, audit: setup.audit, clock, authority: { authorize: () => true }, ...rebuildEventDependencies() });
+  assert.throws(() => casConflict.rebuild(rebuildRequest("cas-conflict", "generation-cas-conflict", "not-serving")), projectionError("PROJECTION_GENERATION_CONFLICT"));
+  assert.equal(setup.store.getServingGeneration({ tenantId, publicationId })?.generationId, serving);
+  assert.equal(setup.journal.listByAggregate(tenantId, publicationId).some(({ eventType, payload }) => eventType === "EVT-011" && payload["rebuildGeneration"] === "generation-cas-conflict"), false);
 
   for (const forbiddenPurpose of ["PUBLISH", "APPROVE", "WITHDRAW", "REPUBLISH"] as const) {
     assert.throws(
       () => denied.rebuild({ ...rebuildRequest(`forbidden-${forbiddenPurpose}`, `generation-${forbiddenPurpose}`, serving), purpose: forbiddenPurpose } as never),
       projectionError("PROJECTION_REBUILD_UNAUTHORIZED"),
     );
+  }
+});
+
+test("FCR-005 rebuild Event append failures cannot fabricate success or alter serving generation", () => {
+  for (const rejectedType of ["EVT-010", "EVT-011"] as const) {
+    const setup = initializedProjection();
+    const serving = setup.store.getServingGeneration({ tenantId, publicationId })?.generationId;
+    const journal = journalRejecting(setup.journal, rejectedType);
+    let obsoleteCompensationCalls = 0;
+    if (rejectedType === "EVT-011") {
+      setup.store.compareAndSwapServingGeneration = () => {
+        obsoleteCompensationCalls += 1;
+        throw new Error("simulated unavailable compensation CAS");
+      };
+    }
+    const coordinator = new ListingProjectionRebuildCoordinator({
+      journal,
+      store: setup.store,
+      audit: setup.audit,
+      clock,
+      authority: { authorize: () => true },
+      ...rebuildEventDependencies(),
+    });
+    const generationId = `generation-reject-${rejectedType}`;
+
+    assert.throws(() => coordinator.rebuild(rebuildRequest(`reject-${rejectedType}`, generationId, serving)), projectionError("PROJECTION_REBUILD_FAILED"));
+    assert.equal(setup.store.getServingGeneration({ tenantId, publicationId })?.generationId, serving);
+    assert.equal(setup.journal.listByAggregate(tenantId, publicationId).some(({ eventType, payload }) => eventType === "EVT-011" && payload["rebuildGeneration"] === generationId), false);
+    assert.notEqual(setup.store.getGeneration({ tenantId, publicationId }, generationId)?.lifecycle, "ACTIVE");
+    assert.equal(obsoleteCompensationCalls, 0);
   }
 });
 
@@ -343,6 +399,7 @@ test("F15-TASK-011 post-cutover evidence failure restores the prior serving gene
   };
   const coordinator = new ListingProjectionRebuildCoordinator({
     journal: setup.journal, store: setup.store, audit: failingAudit, clock, authority: { authorize: () => true },
+    ...rebuildEventDependencies(),
   });
   assert.throws(() => coordinator.rebuild(rebuildRequest("cutover-audit-failure", "generation-audit-failure", serving)), projectionError("PROJECTION_REBUILD_FAILED"));
   assert.equal(setup.store.getServingGeneration({ tenantId, publicationId })?.generationId, serving);
@@ -362,7 +419,7 @@ test("F15-TASK-011 first cutover failure clears a serving pointer that had no pr
     },
     list: (identity) => audit.list(identity),
   };
-  const coordinator = new ListingProjectionRebuildCoordinator({ journal, store, audit: failingAudit, clock, authority: { authorize: () => true } });
+  const coordinator = new ListingProjectionRebuildCoordinator({ journal, store, audit: failingAudit, clock, authority: { authorize: () => true }, ...rebuildEventDependencies() });
   assert.throws(() => coordinator.rebuild(rebuildRequest("first-cutover-failure", "generation-first-failure", undefined)), projectionError("PROJECTION_REBUILD_FAILED"));
   assert.equal(store.getServingGeneration({ tenantId, publicationId }), undefined);
   assert.equal(store.getGeneration({ tenantId, publicationId }, "generation-first-failure")?.lifecycle, "FAILED");
@@ -379,7 +436,7 @@ test("F15-TASK-011 rebuild audit failures are sanitized and cannot create an unt
     },
     list: (identity) => audit.list(identity),
   };
-  const coordinator = new ListingProjectionRebuildCoordinator({ journal, store, audit: failingAudit, clock, authority: { authorize: () => true } });
+  const coordinator = new ListingProjectionRebuildCoordinator({ journal, store, audit: failingAudit, clock, authority: { authorize: () => true }, ...rebuildEventDependencies() });
 
   assert.throws(() => coordinator.rebuild(rebuildRequest("request-audit-failure", "generation-request-audit-failure", undefined)), projectionError("PROJECTION_REBUILD_FAILED"));
   assert.equal(store.getGeneration({ tenantId, publicationId }, "generation-request-audit-failure"), undefined);
@@ -484,6 +541,27 @@ function journalReturning(event: PublicationEventEnvelope): PublicationEventJour
   return { findByEventId: () => event, listByAggregate: () => [event], getLastSequence: () => event.eventSequence, append: () => ({ status: "APPENDED", event }), appendAll: () => [{ status: "APPENDED", event }] };
 }
 
+function journalRejecting(delegate: PublicationEventJournal, rejectedType: "EVT-010" | "EVT-011"): PublicationEventJournal {
+  return {
+    prepareAppend(event) {
+      if (event.eventType === rejectedType) throw new Error("simulated canonical Event Journal preparation failure");
+      if (delegate.prepareAppend === undefined) throw new Error("delegate preparation unavailable");
+      return delegate.prepareAppend.call(delegate, event);
+    },
+    append(event) {
+      if (event.eventType === rejectedType) throw new Error("simulated canonical Event Journal failure");
+      return delegate.append(event);
+    },
+    appendAll(events) {
+      if (events.some(({ eventType }) => eventType === rejectedType)) throw new Error("simulated canonical Event Journal failure");
+      return delegate.appendAll(events);
+    },
+    findByEventId: (eventTenant, eventId) => delegate.findByEventId(eventTenant, eventId),
+    listByAggregate: (eventTenant, aggregateId) => delegate.listByAggregate(eventTenant, aggregateId),
+    getLastSequence: (eventTenant, aggregateId) => delegate.getLastSequence(eventTenant, aggregateId),
+  };
+}
+
 function generation(generationId: string, lifecycle: "BUILDING" | "ACTIVE", generationPublicationId = publicationId) {
   return { projectionType: "PRJ-002" as const, tenantId, publicationId: generationPublicationId, generationId, lifecycle, projectionDefinitionVersion: "v0.1" as const, projectionSchemaVersion: "v1" as const, createdAt: clock.now(), updatedAt: clock.now(), complete: lifecycle === "ACTIVE" };
 }
@@ -512,6 +590,8 @@ function seedGeneration(
     sourceClassification: record.sourceClassification,
     privacyScope: record.privacyScope,
     purpose: record.purpose,
+    consentOrLegalBasis: record.consentOrLegalBasis,
+    audienceRestriction: record.audienceRestriction,
     targetReference: record.targetReference,
     channelReference: record.channelReference,
     updatedAt: clock.now(),
@@ -520,6 +600,23 @@ function seedGeneration(
 
 function rebuildRequest(idempotencyKey: string, generationId: string, expectedServingGenerationId: string | undefined) {
   return { tenantId, publicationId, projectionId: "PRJ-002" as const, generationId, ...(expectedServingGenerationId === undefined ? {} : { expectedServingGenerationId }), actorOrServiceReference: "service-projection-rebuild", purpose: "PROJECTION_REBUILD" as const, reason: "Approved deterministic rebuild", correlationId: `correlation-${idempotencyKey}`, idempotencyKey, sourceFromSequence: 1 };
+}
+
+function rebuildEventDependencies() {
+  return {
+    eventCoordinator: new PublicationEventCoordinator(clock, {
+      resolve: (request) => Object.freeze({
+        publicationId: request.publicationId,
+        tenantId: request.tenantId,
+        classification: request.classification,
+        privacyScope: defaultEventSecurity.privacyScope,
+        consentOrLegalBasis: defaultEventSecurity.consentOrLegalBasis,
+        audienceRestriction: defaultEventSecurity.audienceRestriction,
+        purpose: request.purpose,
+        sourceVersion: request.sourceVersion,
+      }),
+    }),
+  };
 }
 
 function projectionError(code: string): (error: unknown) => boolean { return (error) => error instanceof ListingProjectionError && error.code === code; }

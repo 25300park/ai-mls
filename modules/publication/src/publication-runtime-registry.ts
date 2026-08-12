@@ -130,7 +130,7 @@ export function validatePublicationRuntimeInfrastructure(
     || !hasMethods(value["reconciliation"], ["reconcile", "recover", "execute"])
     || !hasMethods(value["connectorDispatcher"], ["dispatch"])
     || !hasMethods(value["eventReplay"], ["replay"])
-    || !hasMethods(value["listingProjectionStore"], ["getServing", "save", "compareAndSwapServingGeneration"])
+    || !hasMethods(value["listingProjectionStore"], ["getServing", "save", "compareAndSwapServingGeneration", "validateServingGenerationCutover", "commitServingGenerationCutover"])
     || !hasMethods(value["listingProjectionConsumer"], ["consume"])
     || !hasMethods(value["listingProjectionRebuild"], ["rebuild"])
     || !hasMethods(value["listingProjectionRead"], ["getServing"])

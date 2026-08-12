@@ -29,6 +29,12 @@ const modificationTypes = [
   "SET_SUSPENSION",
 ] as const satisfies readonly PublicationModificationCommand["type"][];
 
+const externallyProhibitedResolutionTypes: readonly PublicationModificationCommand["type"][] = Object.freeze([
+  "RESOLVE_EXECUTION",
+  "RESOLVE_WITHDRAWAL",
+  "RESOLVE_RECONCILIATION",
+]);
+
 export class StructuralPublicationInterfaceValidator implements PublicationInterfaceValidator {
   public validate(request: unknown): PublicationInterfaceValidationResult {
     const valid = isRecord(request)
@@ -49,29 +55,17 @@ export class StructuralPublicationInterfaceValidator implements PublicationInter
               && validIdentity(request["identity"])
               && validLifecycleAction(request["action"], request["input"])
           : request["operation"] === "COORDINATE_PUBLICATION_RECONCILIATION"
-            ? hasOnlyKeys(request, ["operation", "context", "identity", "input"])
-              && validIdentity(request["identity"])
-              && validReconciliationInput(request["input"])
+            ? false
         : request["operation"] === "MODIFY_PUBLICATION"
           && hasOnlyKeys(request, ["operation", "context", "identity", "input"])
           && validIdentity(request["identity"])
+          && isRecord(request["input"])
+          && !externallyProhibitedResolutionTypes.includes(request["input"]["type"] as PublicationModificationCommand["type"])
           && validModificationInput(request["input"]));
     return valid
       ? immutableInterfaceValue({ valid: true as const })
       : immutableInterfaceValue({ valid: false as const, failureCode: "INTERFACE_REQUEST_INVALID" as const });
   }
-}
-
-function validReconciliationInput(value: unknown): boolean {
-  return isRecord(value)
-    && hasOnlyKeys(value, ["expectedAggregateVersion", "caseId", "category", "resolution", "evidenceRefs", "externalObjectReference", "command"])
-    && positiveInteger(value["expectedAggregateVersion"])
-    && validIdentifier(value["caseId"])
-    && nonBlankString(value["category"])
-    && (!Object.prototype.hasOwnProperty.call(value, "resolution") || nonBlankString(value["resolution"]))
-    && stringArray(value["evidenceRefs"])
-    && optionalIdentifier(value, "externalObjectReference")
-    && validCommandContext(value["command"]);
 }
 
 function validLifecycleAction(action: unknown, input: unknown): boolean {

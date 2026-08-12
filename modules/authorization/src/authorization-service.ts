@@ -1,6 +1,7 @@
 import type {
   AuditSink,
   Clock,
+  DataClassification,
   RoleCode,
 } from "../../../packages/security-contracts/src/index.js";
 import type { SessionContext } from "../../identity/src/session-service.js";
@@ -23,6 +24,11 @@ export interface AuthorizationResource {
   readonly version?: number;
   readonly teamId?: string;
   readonly createdBy?: string;
+  readonly classification?: DataClassification;
+  readonly privacyScope?: string;
+  readonly purpose?: string;
+  readonly consentOrLegalBasis?: string;
+  readonly audienceRestriction?: string;
 }
 
 export interface AuthorizationRequest {
@@ -332,9 +338,13 @@ export class AuthorizationService {
       return this.#complete(request, "DENY", "NO_ACTIVE_ASSIGNMENT", obligations, []);
     }
 
+    const restrictionScope = projectionRestrictionScope(request);
+    if (restrictionScope === undefined) {
+      return this.#complete(request, "DENY", "SCOPE_DENIED", obligations, activeAssignments);
+    }
     const scopedAssignments = activeAssignments.filter(
       (item) =>
-        item.resourceTypes.includes(request.resource.type) &&
+        item.resourceTypes.includes(restrictionScope.resourceType) &&
         item.purposes.includes(request.purpose) &&
         (request.resource.teamId === undefined ||
           item.teamIds.includes(request.resource.teamId)),
@@ -450,4 +460,63 @@ export class AuthorizationService {
     });
     return decision;
   }
+}
+
+function projectionRestrictionScope(
+  request: AuthorizationRequest,
+): Readonly<{ resourceType: string }> | undefined {
+  const resource = request.resource;
+  const restrictionValues = [
+    resource.classification,
+    resource.privacyScope,
+    resource.purpose,
+    resource.consentOrLegalBasis,
+    resource.audienceRestriction,
+  ];
+  if (restrictionValues.every((value) => value === undefined)) {
+    return Object.freeze({ resourceType: resource.type });
+  }
+  if (
+    resource.classification === undefined
+    || !nonBlank(resource.privacyScope)
+    || !nonBlank(resource.purpose)
+    || resource.purpose !== request.purpose
+    || !nonBlank(resource.consentOrLegalBasis)
+    || !nonBlank(resource.audienceRestriction)
+  ) {
+    return undefined;
+  }
+  return Object.freeze({ resourceType: projectionRestrictionResourceType(resource) });
+}
+
+/**
+ * Produces the exact assignment scope for a restricted Projection read.
+ * Every inherited restriction participates in the identity so that a broad
+ * classification grant cannot silently authorize a different privacy,
+ * purpose, legal-basis, or audience boundary.
+ */
+export function projectionRestrictionResourceType(
+  resource: Pick<AuthorizationResource, "type" | "classification" | "privacyScope" | "purpose" | "consentOrLegalBasis" | "audienceRestriction">,
+): string {
+  if (
+    resource.classification === undefined
+    || !nonBlank(resource.privacyScope)
+    || !nonBlank(resource.purpose)
+    || !nonBlank(resource.consentOrLegalBasis)
+    || !nonBlank(resource.audienceRestriction)
+  ) {
+    throw new TypeError("A complete Projection restriction scope is required.");
+  }
+  const dimensions = [
+    resource.classification,
+    resource.privacyScope,
+    resource.purpose,
+    resource.consentOrLegalBasis,
+    resource.audienceRestriction,
+  ].map((value) => encodeURIComponent(value));
+  return `${resource.type}:RESTRICTION:${dimensions.join(":")}`;
+}
+
+function nonBlank(value: string | undefined): value is string {
+  return value !== undefined && value.trim().length > 0;
 }

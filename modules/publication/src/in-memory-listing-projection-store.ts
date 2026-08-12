@@ -72,7 +72,7 @@ export class InMemoryListingProjectionStore implements ListingProjectionStore {
     return generation === undefined ? undefined : immutableProjection(generation);
   }
 
-  public markGeneration(identity: ListingProjectionIdentity, generationId: string, update: Partial<Pick<ListingProjectionGeneration, "lifecycle" | "complete" | "finalEventSequence" | "sourceAggregateVersion" | "publicationVersion" | "sourceClassification" | "privacyScope" | "purpose" | "targetReference" | "channelReference" | "updatedAt">>): ListingProjectionGeneration {
+  public markGeneration(identity: ListingProjectionIdentity, generationId: string, update: Partial<Pick<ListingProjectionGeneration, "lifecycle" | "complete" | "finalEventSequence" | "sourceAggregateVersion" | "publicationVersion" | "sourceClassification" | "privacyScope" | "purpose" | "consentOrLegalBasis" | "audienceRestriction" | "targetReference" | "channelReference" | "updatedAt">>): ListingProjectionGeneration {
     const existing = this.generations.get(generationKey(identity.tenantId, generationId));
     if (existing === undefined) throw projectionError("PROJECTION_GENERATION_INCOMPLETE", "Projection generation is unavailable.");
     if (existing.publicationId !== identity.publicationId) throw projectionError("PROJECTION_PROVENANCE_CONFLICT", "Projection generation belongs to another Publication.");
@@ -94,6 +94,36 @@ export class InMemoryListingProjectionStore implements ListingProjectionStore {
       this.serving.delete(key);
       return undefined;
     }
+    this.validateCutoverCandidate(identity, expectedGenerationId, candidateGenerationId);
+    if (current === candidateGenerationId) return candidateGenerationId;
+    this.serving.set(key, candidateGenerationId);
+    return candidateGenerationId;
+  }
+
+  public commitServingGenerationCutover(identity: ListingProjectionIdentity, expectedGenerationId: string | undefined, candidateGenerationId: string, appendCompletionEvidence: () => void, updatedAt: string): string {
+    const key = servingKey(identity);
+    const current = this.serving.get(key);
+    this.validateCutoverCandidate(identity, expectedGenerationId, candidateGenerationId);
+    if (current === candidateGenerationId) return candidateGenerationId;
+    // Synchronous evidence append occurs only after every CAS/candidate check and
+    // before the infallible in-memory pointer update. If evidence fails, neither
+    // the serving pointer nor the prior generation lifecycle is changed.
+    appendCompletionEvidence();
+    if (expectedGenerationId !== undefined && expectedGenerationId !== candidateGenerationId) {
+      const priorKey = generationKey(identity.tenantId, expectedGenerationId);
+      const prior = this.generations.get(priorKey);
+      if (prior !== undefined) this.generations.set(priorKey, immutableProjection({ ...prior, lifecycle: "ARCHIVED", updatedAt }));
+    }
+    this.serving.set(key, candidateGenerationId);
+    return candidateGenerationId;
+  }
+
+  public validateServingGenerationCutover(identity: ListingProjectionIdentity, expectedGenerationId: string | undefined, candidateGenerationId: string): void {
+    this.validateCutoverCandidate(identity, expectedGenerationId, candidateGenerationId);
+  }
+
+  private validateCutoverCandidate(identity: ListingProjectionIdentity, expectedGenerationId: string | undefined, candidateGenerationId: string): void {
+    const current = this.serving.get(servingKey(identity));
     const candidate = this.generations.get(generationKey(identity.tenantId, candidateGenerationId));
     if (candidate?.lifecycle !== "ACTIVE" || !candidate.complete) throw projectionError("PROJECTION_GENERATION_INCOMPLETE", "Candidate Projection generation is incomplete.");
     if (candidate.publicationId !== identity.publicationId) throw projectionError("PROJECTION_PROVENANCE_CONFLICT", "Candidate Projection generation belongs to another Publication.");
@@ -110,14 +140,14 @@ export class InMemoryListingProjectionStore implements ListingProjectionStore {
       || candidate.sourceClassification !== record.sourceClassification
       || candidate.privacyScope !== record.privacyScope
       || candidate.purpose !== record.purpose
+      || candidate.consentOrLegalBasis !== record.consentOrLegalBasis
+      || candidate.audienceRestriction !== record.audienceRestriction
       || candidate.targetReference !== record.targetReference
       || candidate.channelReference !== record.channelReference) {
       throw projectionError("PROJECTION_GENERATION_INCOMPLETE", "Candidate Projection generation does not match validated source progress.");
     }
-    if (current === candidateGenerationId) return candidateGenerationId;
+    if (current === candidateGenerationId) return;
     if (current !== expectedGenerationId) throw projectionError("PROJECTION_GENERATION_CONFLICT", "Serving Projection generation changed concurrently.");
-    this.serving.set(key, candidateGenerationId);
-    return candidateGenerationId;
   }
 
   private assertGenerationTenant(tenantId: string, generationId: string, required = true): void {
@@ -146,6 +176,37 @@ export class InMemoryListingProjectionAuditStore implements ListingProjectionAud
     const snapshot = immutableProjection(record);
     this.records.set(record.auditId, snapshot);
     return immutableProjection(snapshot);
+  }
+
+  public prepareAppend(record: ListingProjectionAuditRecord): Readonly<{ record: ListingProjectionAuditRecord; commit(): ListingProjectionAuditRecord }> {
+    const prepared = this.prepareAppendAll([record]);
+    return Object.freeze({ record: prepared.records[0]!, commit: () => prepared.commit()[0]! });
+  }
+
+  public prepareAppendAll(records: readonly ListingProjectionAuditRecord[]): Readonly<{ records: readonly ListingProjectionAuditRecord[]; commit(): readonly ListingProjectionAuditRecord[] }> {
+    const staged = structuredClone(this.records);
+    const snapshots: ListingProjectionAuditRecord[] = [];
+    for (const record of records) {
+      const existing = staged.get(record.auditId);
+      if (existing !== undefined && JSON.stringify(existing) !== JSON.stringify(record)) {
+        throw projectionError("PROJECTION_EVENT_DUPLICATE_CONFLICT", "Projection audit identity already exists.");
+      }
+      const snapshot = immutableProjection(existing ?? record);
+      staged.set(record.auditId, snapshot);
+      snapshots.push(snapshot);
+    }
+    let committed = false;
+    return Object.freeze({
+      records: immutableProjection(snapshots),
+      commit: () => {
+        if (!committed) {
+          this.records.clear();
+          for (const [key, value] of staged) this.records.set(key, value);
+          committed = true;
+        }
+        return immutableProjection(snapshots);
+      },
+    });
   }
 
   public list(identity: ListingProjectionIdentity): readonly ListingProjectionAuditRecord[] {

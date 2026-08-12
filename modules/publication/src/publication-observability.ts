@@ -19,6 +19,7 @@ import {
   type PublicationOperationsRetryAuthority,
   type PublicationOperationsRetryDecision,
   type PublicationOperationsRetryRequest,
+  type PublicationOperationsRetryState,
   type PublicationOperationsRetryStateResolver,
   type PublicationOperationsRebuildAuthority,
   type PublicationOperationsRebuildRequest,
@@ -260,7 +261,7 @@ export class PublicationOperationsRetryPolicy {
       throw operationsError("OPERATIONS_RETRY_NOT_ALLOWED", "Retry state is unavailable.");
     }
     const stateFingerprint = retryStateFingerprint(state);
-    const authorityCurrent = !request.requiresAuthorityRevalidation || this.isAuthorityCurrent(request);
+    const authorityCurrent = state?.authorityRevalidationRequired !== true || this.isAuthorityCurrent(request, state);
     if (state?.priorFingerprint !== undefined && state.priorFingerprint !== request.fingerprint) {
       throw operationsError("OPERATIONS_RECOVERY_CONFLICT", "Retry fingerprint conflicts with current technical state.");
     }
@@ -309,9 +310,20 @@ export class PublicationOperationsRetryPolicy {
     return result;
   }
 
-  private isAuthorityCurrent(request: PublicationOperationsRetryRequest): boolean {
+  private isAuthorityCurrent(
+    request: PublicationOperationsRetryRequest,
+    state: PublicationOperationsRetryState,
+  ): boolean {
+    if (state.authorizationRequest === undefined) return false;
     try {
-      return this.authority?.revalidate(request) === true;
+      return this.authority?.revalidate(Object.freeze({
+        tenantId: request.tenantId,
+        operationIdentity: request.operationIdentity,
+        idempotencyKey: request.idempotencyKey,
+        correlationId: request.correlationId,
+        actorOrServiceReference: request.actorOrServiceReference,
+        authorizationRequest: state.authorizationRequest,
+      })) === true;
     } catch {
       return false;
     }
@@ -323,7 +335,6 @@ function retryPolicyFingerprint(request: PublicationOperationsRetryRequest): str
     failureCode: normalizeFailureCode(request.failureCode),
     maximumAttempts: request.maximumAttempts,
     idempotencySafe: request.idempotencySafe,
-    requiresAuthorityRevalidation: request.requiresAuthorityRevalidation,
   })).digest("hex");
 }
 
@@ -332,6 +343,7 @@ function retryStateFingerprint(state: ReturnType<PublicationOperationsRetryState
     priorFingerprint: state.priorFingerprint ?? null,
     externalEffectCompleted: state.externalEffectCompleted,
     subsystemStatus: state.subsystemStatus,
+    authorityRevalidationRequired: state.authorityRevalidationRequired,
   })).digest("hex");
 }
 

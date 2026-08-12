@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-009 |
-| 문서 버전 | v2.3 |
+| 문서 버전 | v2.4 |
 | 상태 | IN REVIEW |
 | 소유 역할 | Architecture Owner |
 
@@ -95,5 +95,13 @@
 | [Phase 13-15 End-to-End Architecture Verification](PHASE13_15_END_TO_END_ARCHITECTURE_VERIFICATION_REPORT.md) | full-stack dependency, regression, diagnostics와 FEAT-015 final assessment | DRAFT |
 | [F15-TASK-005 Authorization Implementation](F15_TASK_005_AUTHORIZATION_IMPLEMENTATION_REPORT.md) | session-derived Actor, SoD, live revalidation 및 immutable authorization evidence | DRAFT |
 | [F15-TASK-006 Publication Coordination Implementation](F15_TASK_006_PUBLICATION_COORDINATION_IMPLEMENTATION_REPORT.md) | 별도 create/publish, live Approval, exact connector dispatch 및 confirmed activation | DRAFT |
+| [F15-TASK-007 Publication Lifecycle Implementation](F15_TASK_007_PUBLICATION_LIFECYCLE_IMPLEMENTATION_REPORT.md) | correction, withdrawal, republish, suspension과 terminal transition evidence | DRAFT |
+| [F15-TASK-008 Reconciliation Implementation](F15_TASK_008_RECONCILIATION_IMPLEMENTATION_REPORT.md) | reconciliation/recovery authority, persistence와 immutable audit evidence | DRAFT |
+| [F15-TASK-009 API and UI Contracts Implementation](F15_TASK_009_API_AND_UI_CONTRACTS_IMPLEMENTATION_REPORT.md) | API-014 command/query와 bounded role-aware view evidence | DRAFT |
+| [F15-TASK-010 Domain Event Journal Implementation](F15_TASK_010_DOMAIN_EVENT_JOURNAL_IMPLEMENTATION_REPORT.md) | canonical Event Journal, Governance Context와 replay evidence | DRAFT |
+| [F15-TASK-011A Event Provenance Amendment](F15_TASK_011A_EVENT_PROVENANCE_AMENDMENT_REPORT.md) | Event v2 immutable Projection provenance supporting evidence | DRAFT |
+| [F15-TASK-011 Listing Projection Implementation](F15_TASK_011_LISTING_PROJECTION_IMPLEMENTATION_REPORT.md) | PRJ-002 Event-derived serving view, drift와 rebuild evidence | DRAFT |
+| [F15-TASK-012 Operations Observability Implementation](F15_TASK_012_OPERATIONS_OBSERVABILITY_IMPLEMENTATION_REPORT.md) | non-authoritative Operations, observability와 retry evidence | DRAFT |
+| [FEAT-015 Final Closure Remediation](FEAT015_FINAL_CLOSURE_REMEDIATION_REPORT.md) | FCR-001–006 remediation, full verification와 independent review evidence | DRAFT |
 
 전체 review document와 current lifecycle status의 authoritative registry는 [Master Index](../00_MASTER_INDEX.md)와 [Freeze Document Registry](../freeze/FREEZE_DOCUMENT_REGISTRY.md)다. Phase 14/15/16은 각각 legacy `R1`/`R2`/`F1`을 대체한다.

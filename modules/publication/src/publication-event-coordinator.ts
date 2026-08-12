@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { PublicationApplicationCommand } from "./publication-application-contracts.js";
 import type { PublicationAuditStore } from "./publication-audit-store.js";
 import type { PublicationClock } from "./publication-clock.js";
@@ -6,12 +8,22 @@ import { createPublicationEventEnvelope, createPublicationEventProjectionProvena
 import { eventError, PublicationEventError } from "./publication-event-error.js";
 import type { PublicationEventJournal } from "./publication-event-journal.js";
 import { mapAcceptedPublicationTransition } from "./publication-event-mapper.js";
-import { resolvePublicationEventSourceContext, type PublicationEventSourceContextResolver } from "./publication-event-source-context.js";
+import { resolvePublicationEventSourceContext, resolvePublicationTechnicalEventSourceContext, type PublicationEventSourceContextResolver } from "./publication-event-source-context.js";
 import type { PublicationOperationsObserver } from "./publication-operations-contracts.js";
 
 export interface PublicationEventEmissionTransaction {
   readonly eventJournal: PublicationEventJournal;
   readonly audit: PublicationAuditStore;
+}
+
+export interface PublicationProjectionRebuildEventInput {
+  readonly eventType: "EVT-010" | "EVT-011";
+  readonly generationId: string;
+  readonly projectionId: "PRJ-002";
+  readonly actorOrServiceReference: string;
+  readonly correlationId: string;
+  readonly idempotencyKey: string;
+  readonly validationStatus?: "VALIDATED";
 }
 
 export class PublicationEventCoordinator {
@@ -107,6 +119,61 @@ export class PublicationEventCoordinator {
 
   public observeCommitted(events: readonly PublicationEventEnvelope[], actorOrServiceReference: string): void {
     for (const event of events) safelyObserve(this.operations, { component: "EVENT_JOURNAL", result: "COMPLETED", sourceReference: event.eventId, correlationId: event.correlationId, actorOrServiceReference });
+  }
+
+  public appendProjectionRebuildEvent(
+    eventJournal: PublicationEventJournal,
+    sourceEvent: PublicationEventEnvelope,
+    input: PublicationProjectionRebuildEventInput,
+  ): PublicationEventEnvelope {
+    const event = this.createProjectionRebuildEvent(eventJournal, sourceEvent, input);
+    const result = eventJournal.append(event);
+    return immutableDomain(result.event);
+  }
+
+  public createProjectionRebuildEvent(
+    eventJournal: PublicationEventJournal,
+    sourceEvent: PublicationEventEnvelope,
+    input: PublicationProjectionRebuildEventInput,
+  ): PublicationEventEnvelope {
+    const governance = resolvePublicationTechnicalEventSourceContext(this.sourceContextResolver, sourceEvent);
+    const commandId = `projection-rebuild:${createHash("sha256").update(input.idempotencyKey).digest("hex")}:${input.eventType}`;
+    const committed = eventJournal.listByAggregate(sourceEvent.tenantId, sourceEvent.aggregateId);
+    const existing = committed.find((event) => event.eventType === input.eventType && event.commandId === commandId);
+    const event = createPublicationEventEnvelope({
+      source: {
+        tenantId: sourceEvent.tenantId,
+        aggregateId: sourceEvent.aggregateId,
+        aggregateVersion: sourceEvent.aggregateVersion,
+        classification: governance.classification,
+        privacyScope: governance.privacyScope,
+        consentOrLegalBasis: governance.consentOrLegalBasis,
+        audienceRestriction: governance.audienceRestriction,
+        governanceSourceVersion: governance.sourceVersion,
+        purpose: governance.purpose,
+      },
+      eventType: input.eventType,
+      aggregateId: sourceEvent.aggregateId,
+      aggregateVersion: sourceEvent.aggregateVersion,
+      eventSequence: existing?.eventSequence ?? eventJournal.getLastSequence(sourceEvent.tenantId, sourceEvent.aggregateId) + 1,
+      occurredAt: existing?.occurredAt ?? this.clock.now(),
+      recordedAt: existing?.recordedAt ?? this.clock.now(),
+      correlationId: input.correlationId,
+      causationId: commandId,
+      commandId,
+      actorReference: input.actorOrServiceReference,
+      tenantId: sourceEvent.tenantId,
+      classification: governance.classification,
+      privacyScope: governance.privacyScope,
+      consentOrLegalBasis: governance.consentOrLegalBasis,
+      audienceRestriction: governance.audienceRestriction,
+      governanceSourceVersion: governance.sourceVersion,
+      purpose: governance.purpose,
+      payload: input.eventType === "EVT-010"
+        ? { publicationId: sourceEvent.aggregateId, projectionId: input.projectionId, rebuildGeneration: input.generationId, sourceAggregateVersion: sourceEvent.aggregateVersion }
+        : { publicationId: sourceEvent.aggregateId, projectionId: input.projectionId, rebuildGeneration: input.generationId, sourceAggregateVersion: sourceEvent.aggregateVersion, validationStatus: input.validationStatus ?? "VALIDATED" },
+    });
+    return immutableDomain(event);
   }
 }
 

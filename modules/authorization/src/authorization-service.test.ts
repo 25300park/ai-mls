@@ -5,6 +5,7 @@ import { AuditLog } from "../../audit/src/audit-log.js";
 import type { SessionContext } from "../../identity/src/session-service.js";
 import {
   AuthorizationService,
+  projectionRestrictionResourceType,
   type RoleAssignment,
 } from "./authorization-service.js";
 
@@ -99,6 +100,54 @@ test("TEST-009 enforces team, resource and purpose scope", () => {
   assert.equal(allowed.effect, "ALLOW");
   assert.equal(denied.effect, "DENY");
   assert.equal(denied.reasonCode, "SCOPE_DENIED");
+});
+
+test("FCR-003 production authorization requires exact classified Projection assignment and privacy context", () => {
+  const base = assignment({
+    principalId: "projection-reader",
+    role: "OPS",
+    resourceTypes: ["ListingProjection"],
+    purposes: ["PUBLICATION_EXECUTION"],
+  });
+  const projectionSession = session({ principalId: "projection-reader", roles: ["OPS"], teamId: "team-a" });
+  const requestResource = {
+    type: "ListingProjection",
+    id: "publication-restricted",
+    teamId: "team-a",
+    classification: "RESTRICTED_SECURITY" as const,
+    privacyScope: "privacy:approved-publication",
+    purpose: "PUBLICATION_EXECUTION",
+    consentOrLegalBasis: "permission:public-publication",
+    audienceRestriction: "AUD_PUBLIC",
+  };
+  const exact = assignment({
+    id: "assignment-projection-restricted",
+    principalId: "projection-reader",
+    role: "OPS",
+    resourceTypes: [projectionRestrictionResourceType(requestResource)],
+    purposes: ["PUBLICATION_EXECUTION"],
+  });
+  const request = {
+    session: projectionSession,
+    action: "resource.view",
+    resource: requestResource,
+    purpose: "PUBLICATION_EXECUTION",
+    correlationId: "correlation-projection-restricted",
+  };
+
+  assert.equal(createService([base]).service.evaluate(request).reasonCode, "SCOPE_DENIED");
+  assert.equal(createService([exact]).service.evaluate(request).effect, "ALLOW");
+  for (const resource of [
+    { ...request.resource, purpose: "AUDIT_EXPLORATION" },
+    { ...request.resource, privacyScope: "" },
+    { ...request.resource, privacyScope: "privacy:different" },
+    { ...request.resource, consentOrLegalBasis: "" },
+    { ...request.resource, consentOrLegalBasis: "permission:different" },
+    { ...request.resource, audienceRestriction: "" },
+    { ...request.resource, audienceRestriction: "AUD_INTERNAL" },
+  ]) {
+    assert.equal(createService([exact]).service.evaluate({ ...request, resource }).effect, "DENY");
+  }
 });
 
 test("TEST-047 requires MFA and reason for privileged actions", () => {

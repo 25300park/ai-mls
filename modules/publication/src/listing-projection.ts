@@ -69,6 +69,8 @@ export class ListingProjectionConsumer {
           sourceClassification: saved.sourceClassification,
           privacyScope: saved.privacyScope,
           purpose: saved.purpose,
+          consentOrLegalBasis: saved.consentOrLegalBasis,
+          audienceRestriction: saved.audienceRestriction,
           targetReference: saved.targetReference,
           channelReference: saved.channelReference,
           updatedAt: this.dependencies.clock.now(),
@@ -110,6 +112,7 @@ export class ListingProjectionConsumer {
     if (event.publicationVersion !== undefined && event.publicationVersion < existing.publicationVersion) throw projectionError("PROJECTION_PUBLICATION_VERSION_DRIFT", "Projection Publication version regressed.");
     if (event.classification !== existing.sourceClassification) throw projectionError("PROJECTION_CLASSIFICATION_VIOLATION", "Projection source classification drifted.");
     if (event.privacyScope !== existing.privacyScope) throw projectionError("PROJECTION_PURPOSE_VIOLATION", "Projection privacy boundary expanded.");
+    if (event.consentOrLegalBasis !== existing.consentOrLegalBasis || event.audienceRestriction !== existing.audienceRestriction) throw projectionError("PROJECTION_PURPOSE_VIOLATION", "Projection consent or audience boundary changed.");
     const disposition = eventDispositions[event.eventType];
     if (event.purpose !== existing.purpose && (disposition === "APPLY" || event.purpose !== "RECOVERY_VALIDATION")) throw projectionError("PROJECTION_PURPOSE_VIOLATION", "Projection purpose boundary expanded.");
     if ((event.eventType === "EVT-007" || event.eventType === "EVT-008" || event.eventType === "EVT-009")
@@ -138,6 +141,7 @@ export class ListingProjectionConsumer {
       targetReference: event.targetReference ?? existing?.targetReference ?? "",
       channelReference: event.channelReference ?? existing?.channelReference ?? "",
       sourceClassification: event.classification, privacyScope: event.privacyScope, purpose: existing?.purpose ?? event.purpose,
+      consentOrLegalBasis: event.consentOrLegalBasis, audienceRestriction: event.audienceRestriction,
       projectionDefinitionVersion: LISTING_PROJECTION_DEFINITION_VERSION, projectionSchemaVersion: LISTING_PROJECTION_SCHEMA_VERSION,
       projectionRecordVersion: (existing?.projectionRecordVersion ?? 0) + 1, generationId,
       generatedAt: existing?.generatedAt ?? now, updatedAt: now,
@@ -185,7 +189,7 @@ export class ListingProjectionReadService {
   public getServing(identity: ListingProjectionIdentity): ListingProjectionView | undefined {
     const record = this.store.getServing(identity);
     if (record === undefined) return undefined;
-    return immutableProjection({ projectionId: record.projectionId, projectionType: record.projectionType, publicationId: record.publicationId, lifecycle: record.lifecycle, suspensionStatus: record.suspensionStatus, ...(record.effectiveVersion === undefined ? {} : { effectiveVersion: record.effectiveVersion }), targetReference: record.targetReference, channelReference: record.channelReference, sourceAggregateVersion: record.aggregateVersion, publicationVersion: record.publicationVersion, lastEventSequence: record.lastEventSequence, projectionRecordVersion: record.projectionRecordVersion, projectionGeneration: record.generationId, stale: record.stale, ...(record.staleReason === undefined ? {} : { staleReason: record.staleReason }), provenance: { eventId: record.lastEventId, eventType: record.lastEventType, eventContractVersion: record.eventContractVersion } });
+    return immutableProjection({ projectionId: record.projectionId, projectionType: record.projectionType, publicationId: record.publicationId, lifecycle: record.lifecycle, suspensionStatus: record.suspensionStatus, ...(record.effectiveVersion === undefined ? {} : { effectiveVersion: record.effectiveVersion }), targetReference: record.targetReference, channelReference: record.channelReference, sourceClassification: record.sourceClassification, privacyScope: record.privacyScope, purpose: record.purpose, consentOrLegalBasis: record.consentOrLegalBasis, audienceRestriction: record.audienceRestriction, sourceAggregateVersion: record.aggregateVersion, publicationVersion: record.publicationVersion, lastEventSequence: record.lastEventSequence, projectionRecordVersion: record.projectionRecordVersion, projectionGeneration: record.generationId, stale: record.stale, ...(record.staleReason === undefined ? {} : { staleReason: record.staleReason }), provenance: { eventId: record.lastEventId, eventType: record.lastEventType, eventContractVersion: record.eventContractVersion } });
   }
 }
 

@@ -24,6 +24,9 @@ import {
   classifyOperationalFailure,
 } from "./publication-observability.js";
 import type { PublicationOperationsObservation } from "./publication-operations-contracts.js";
+import { createTestPublicationAuthorizationConfiguration } from "./publication-authorization-test-support.test.js";
+import type { PublicationInfrastructureConfigurationInput } from "./publication-infrastructure-configuration.js";
+import type { PublicationLiveAuthorizationContext } from "./publication-authorization.js";
 
 const timestamp = "2026-08-10T03:00:00.000Z";
 class FixedPublicationClock implements PublicationClock { public constructor(private readonly value: string) {} public now(): string { return this.value; } }
@@ -168,7 +171,7 @@ test("F15-TASK-012 retry policy is decision-only, bounded, idempotency-aware and
   let subsystemStatus: "HEALTHY" | "FAILED" = "HEALTHY";
   const currentState = createPublicationInfrastructure({
     clock: new FixedPublicationClock(timestamp),
-    operationsRetryStateResolver: { resolve: () => ({ externalEffectCompleted, subsystemStatus }) },
+    operationsRetryStateResolver: { resolve: () => ({ externalEffectCompleted, subsystemStatus, authorityRevalidationRequired: false }) },
   });
   const completionRequest = retryRequest({ idempotencyKey: "retry-current-completion" });
   assert.equal(currentState.operationsRetry.decide(completionRequest).decision, "ELIGIBLE");
@@ -179,6 +182,69 @@ test("F15-TASK-012 retry policy is decision-only, bounded, idempotency-aware and
   assert.equal(currentState.operationsRetry.decide(failureRequest).decision, "ELIGIBLE");
   subsystemStatus = "FAILED";
   assert.equal(currentState.operationsRetry.decide(failureRequest).decision, "NOT_ALLOWED");
+});
+
+test("FCR-002 retry authority requirement is derived from trusted state and ignores caller flags", () => {
+  let authorityChecks = 0;
+  let receivedAuthorityRequest: unknown;
+  const authoritative = createPublicationInfrastructure({
+    clock: new FixedPublicationClock(timestamp),
+    operationsRetryAuthority: { revalidate: (request) => { authorityChecks += 1; receivedAuthorityRequest = request; return false; } },
+    operationsRetryStateResolver: {
+      resolve: () => ({ externalEffectCompleted: false, subsystemStatus: "DEGRADED" as const, authorityRevalidationRequired: true, authorizationRequest: retryAuthorizationRequest() }),
+    },
+  });
+  assert.equal(authoritative.operationsRetry.decide(retryRequest({
+    idempotencyKey: "retry-server-authoritative",
+    requiresAuthorityRevalidation: false,
+  })).decision, "STALE_AUTHORITY");
+  assert.equal(authorityChecks, 1);
+  assert.equal(Object.hasOwn(receivedAuthorityRequest as object, "requiresAuthorityRevalidation"), false);
+  assert.equal((receivedAuthorityRequest as { authorizationRequest: { commandType: string } }).authorizationRequest.commandType, "RESOLVE_EXECUTION");
+
+  const technical = createPublicationInfrastructure({
+    clock: new FixedPublicationClock(timestamp),
+    operationsRetryStateResolver: {
+      resolve: () => ({ externalEffectCompleted: false, subsystemStatus: "DEGRADED" as const, authorityRevalidationRequired: false }),
+    },
+  });
+  assert.equal(technical.operationsRetry.decide(retryRequest({
+    operationIdentity: "projection:technical-retry",
+    idempotencyKey: "retry-server-technical",
+    requiresAuthorityRevalidation: true,
+  })).decision, "ELIGIBLE");
+});
+
+test("FCR-002 production retry adapter blocks stale Session, Approval, Verification, Permission, SoD, binding, policy and version", () => {
+  const base = createTestPublicationAuthorizationConfiguration(new FixedPublicationClock(timestamp), "team-operations");
+  const allowed = createPublicationInfrastructure({
+    ...base,
+    operationsRetryStateResolver: { resolve: () => ({ externalEffectCompleted: false, subsystemStatus: "DEGRADED" as const, authorityRevalidationRequired: true, authorizationRequest: retryAuthorizationRequest() }) },
+  });
+  assert.equal(allowed.operationsRetry.decide(retryRequest({ idempotencyKey: "retry-live-complete" })).decision, "ELIGIBLE");
+
+  const staleCases = [
+    { name: "expired-session", configuration: { ...base, sessionResolver: { resolve: () => activeSession({ id: "session-operations", principalId: "session-operations", teamId: "team-operations", expiresAt: "2026-08-10T02:00:00.000Z" }) } } },
+    { name: "revoked-session", configuration: { ...base, sessionResolver: { resolve: () => activeSession({ id: "session-operations", principalId: "session-operations", teamId: "team-operations", state: "REVOKED" }) } } },
+    { name: "approval", configuration: { ...base, liveContextResolver: transformLive(base, (live) => ({ ...live, approval: { ...live.approval, status: "REVOKED" as const } })) } },
+    { name: "verification", configuration: { ...base, liveContextResolver: transformLive(base, (live) => ({ ...live, verification: { ...live.verification, status: "EXPIRED" } })) } },
+    { name: "permission", configuration: { ...base, liveContextResolver: transformLive(base, (live) => ({ ...live, permission: { ...live.permission, status: "REVOKED" } })) } },
+    { name: "sod", configuration: { ...base, liveContextResolver: transformLive(base, (live) => ({ ...live, approval: { ...live.approval, decisionActorId: "session-operations" } })) } },
+    { name: "binding", configuration: { ...base, liveContextResolver: transformLive(base, (live) => ({ ...live, target: { ...live.target, channelId: "other-channel" } })) } },
+    { name: "policy", configuration: { ...base, liveContextResolver: transformLive(base, (live) => ({ ...live, policyVersion: "stale-policy" })) } },
+  ];
+  for (const { name, configuration } of staleCases) {
+    const infrastructure = createPublicationInfrastructure({
+      ...configuration,
+      operationsRetryStateResolver: { resolve: () => ({ externalEffectCompleted: false, subsystemStatus: "DEGRADED" as const, authorityRevalidationRequired: true, authorizationRequest: retryAuthorizationRequest() }) },
+    });
+    assert.equal(infrastructure.operationsRetry.decide(retryRequest({ operationIdentity: `dispatch:${name}`, idempotencyKey: `retry-${name}` })).decision, "STALE_AUTHORITY", name);
+  }
+  const versionConflict = createPublicationInfrastructure({
+    ...base,
+    operationsRetryStateResolver: { resolve: () => ({ externalEffectCompleted: false, subsystemStatus: "DEGRADED" as const, authorityRevalidationRequired: true, authorizationRequest: { ...retryAuthorizationRequest(), currentAggregateVersion: 3 } }) },
+  });
+  assert.equal(versionConflict.operationsRetry.decide(retryRequest({ operationIdentity: "dispatch:version", idempotencyKey: "retry-version" })).decision, "STALE_AUTHORITY");
 });
 
 test("F15-TASK-012 exposes non-authoritative internal ports and registers exact shared Runtime and Composition instances", () => {
@@ -213,6 +279,12 @@ test("F15-TASK-012 observes PRJ-002 and invokes only the existing authorized reb
     sessionResolver: { resolve: (sessionId) => sessionId === session.id ? session : undefined },
     operationsRebuildAuthority: { authorize: ({ session: resolved, action, purpose }) => { authorityActor = resolved.principalId; return resolved.roles.includes("OPS") && action === "projection.rebuild" && purpose === "PROJECTION_REBUILD"; } },
     listingProjectionRebuildAuthority: { authorize: (request) => { rebuildActor = request.actorOrServiceReference; return true; } },
+    eventGovernanceContextStore: {
+      findCurrentByPublicationId(publicationId, tenantId, purpose) {
+        return Object.freeze({ governanceContextId: `governance:${publicationId}:${purpose}`, publicationId, tenantId, classification: "CONFIDENTIAL_BUSINESS" as const, privacyScope: "privacy:approved-publication", consentOrLegalBasis: "permission:public-publication", audienceRestriction: "PUBLIC_APPROVED", purpose, sourceVersion: 1, effectiveFrom: "2020-01-01T00:00:00.000Z", effectiveUntil: "2099-01-01T00:00:00.000Z", status: "ACTIVE" as const });
+      },
+      findById: () => undefined,
+    },
   });
   const event = activatedEvent();
   infrastructure.eventJournal.append(event);
@@ -388,7 +460,36 @@ function retryRequest(overrides: Partial<Parameters<ReturnType<typeof createPubl
 }
 
 function retryStateResolver() {
-  return { resolve: ({ operationIdentity }: { readonly operationIdentity: string }) => ({ externalEffectCompleted: operationIdentity === "dispatch:completed", subsystemStatus: "DEGRADED" as const }) };
+  return { resolve: ({ operationIdentity }: { readonly operationIdentity: string }) => ({ externalEffectCompleted: operationIdentity === "dispatch:completed", subsystemStatus: "DEGRADED" as const, authorityRevalidationRequired: true, authorizationRequest: retryAuthorizationRequest() }) };
+}
+
+function retryAuthorizationRequest() {
+  return Object.freeze({
+    sessionId: "session-operations",
+    commandType: "RESOLVE_EXECUTION" as const,
+    actorIdClaim: "caller-ignored",
+    tenantId: "team-operations",
+    teamId: "team-operations",
+    purpose: "PUBLICATION_EXECUTION",
+    aggregateId: "publication-operations-1",
+    expectedAggregateVersion: 2,
+    reason: "Approved retry revalidation",
+    correlationId: "correlation-retry-authority",
+    binding: projectionBinding,
+    currentAggregateVersion: 2,
+  });
+}
+
+function transformLive(
+  base: PublicationInfrastructureConfigurationInput,
+  transform: (live: PublicationLiveAuthorizationContext) => PublicationLiveAuthorizationContext,
+) {
+  return {
+    resolve(binding: PublicationBinding, scope: Readonly<{ tenantId: string; teamId?: string }>) {
+      const live = base.liveContextResolver?.resolve(binding, scope);
+      return live === undefined ? undefined : Object.freeze(transform(live));
+    },
+  };
 }
 
 function operationsErrorCode(code: string): (error: unknown) => boolean { return (error) => error instanceof PublicationOperationsError && error.code === code; }

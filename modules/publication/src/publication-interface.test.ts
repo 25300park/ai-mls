@@ -217,6 +217,59 @@ test("PHASE13-5 structural validation fails before the application boundary", ()
   assert.deepEqual(response, { operationResult: "FAILED", failureCode: "INTERFACE_REQUEST_INVALID" });
 });
 
+test("FCR-001 external Interface rejects caller-authored execution confirmation before Application", () => {
+  let executions = 0;
+  const inputPort = service({
+    ok: true,
+    publicationId: "publication-interface-1",
+    aggregateVersion: 3,
+    resultReference: "unreachable",
+    replayed: false,
+  }, () => { executions += 1; });
+  const response = inputPort.execute(createPublicationInterfaceRequest({
+    operation: "MODIFY_PUBLICATION",
+    context: { ...executionContext, idempotencyKey: "idempotency-external-confirmation", intentFingerprint: "sha256:external-confirmation" },
+    identity: { publicationId: "publication-interface-1", tenantScopeId: "team-a" },
+    input: {
+      type: "RESOLVE_EXECUTION",
+      expectedAggregateVersion: 2,
+      outcome: "EFFECT_CONFIRMED",
+      evidenceRefs: ["caller-authored-evidence"],
+      externalObjectReference: "caller-authored-object",
+      command: domainContext,
+    },
+  }));
+
+  assert.deepEqual(response, { operationResult: "FAILED", failureCode: "INTERFACE_REQUEST_INVALID" });
+  assert.equal(executions, 0);
+});
+
+test("FCR-001 external Interface rejects caller-authored reconciliation evidence before coordination", () => {
+  const inputPort = new PublicationInterfaceService(
+    { execute: () => { throw new Error("Application boundary must not execute."); } },
+    new DefaultPublicationRequestMapper(),
+    new DeterministicPublicationPresenter(),
+    new StructuralPublicationInterfaceValidator(),
+  );
+
+  const response = inputPort.execute({
+    operation: "COORDINATE_PUBLICATION_RECONCILIATION",
+    context: { ...executionContext, idempotencyKey: "idempotency-external-reconciliation" },
+    identity: { publicationId: "publication-interface-1", tenantScopeId: "team-a" },
+    input: {
+      expectedAggregateVersion: 2,
+      caseId: "case-caller-authored",
+      category: "PARTIAL_COMPLETION",
+      resolution: "EFFECT_CONFIRMED",
+      evidenceRefs: ["caller-authored-evidence"],
+      externalObjectReference: "caller-authored-object",
+      command: domainContext,
+    },
+  });
+
+  assert.deepEqual(response, { operationResult: "FAILED", failureCode: "INTERFACE_REQUEST_INVALID" });
+});
+
 test("PHASE13-5 structural validation rejects incomplete create and operation-specific commands", () => {
   const validator = new StructuralPublicationInterfaceValidator();
   const completeCreate = createRequest();

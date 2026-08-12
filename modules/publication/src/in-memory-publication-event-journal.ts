@@ -15,6 +15,24 @@ export class InMemoryPublicationEventJournal implements PublicationEventJournal 
     return this.appendAll([event])[0]!;
   }
 
+  public prepareAppend(event: PublicationEventEnvelope): Readonly<{ event: PublicationEventEnvelope; commit(): PublicationEventAppendResult }> {
+    this.assertUsable();
+    const staged = structuredClone(this.state.events);
+    const result = this.appendTo(staged, event);
+    let committed = false;
+    return Object.freeze({
+      event: immutableDomain(result.event),
+      commit: () => {
+        if (!committed) {
+          this.state.events = staged;
+          if (result.status === "APPENDED") this.state.markScopeChanged(result.event.tenantId, result.event.aggregateId);
+          committed = true;
+        }
+        return immutableDomain(result);
+      },
+    });
+  }
+
   public appendAll(events: readonly PublicationEventEnvelope[]): readonly PublicationEventAppendResult[] {
     this.assertUsable();
     const staged = structuredClone(this.state.events);

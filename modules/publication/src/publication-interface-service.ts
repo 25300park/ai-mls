@@ -2,10 +2,10 @@ import type {
   PublicationCoordinationPort,
   PublicationCommandHandler,
   PublicationLifecyclePort,
-  PublicationReconciliationPort,
 } from "./publication-application-contracts.js";
 import type {
   PublicationInterfaceRequest,
+  CoordinatePublicationReconciliationInterfaceRequest,
   PublicationOuterRequest,
   PublicationInterfaceResponse,
 } from "./publication-interface-models.js";
@@ -26,20 +26,22 @@ export class PublicationInterfaceService implements PublicationInputPort {
     private readonly validator: PublicationInterfaceValidator,
     private readonly coordination?: PublicationCoordinationPort,
     private readonly lifecycle?: PublicationLifecyclePort,
-    private readonly reconciliation?: PublicationReconciliationPort,
   ) {}
 
   public execute(request: PublicationOuterRequest): PublicationInterfaceResponse {
     if (!isJsonInterfaceValue(request) || request === null || Array.isArray(request)) {
       return this.presenter.presentInterfaceFailure("INTERFACE_VALIDATION_FAILED");
     }
+    // Reconciliation outcomes and their evidence are authoritative facts. The
+    // public Interface must never accept them from a caller; trusted recovery
+    // coordination invokes the injected internal port directly.
+    if (request.operation === "COORDINATE_PUBLICATION_RECONCILIATION") {
+      return this.presenter.presentInterfaceFailure("INTERFACE_REQUEST_INVALID");
+    }
     const validation = this.validator.validate(request);
     if (!validation.valid) return this.presenter.presentInterfaceFailure(validation.failureCode);
     if (request.operation === "COORDINATE_CREATE_PUBLICATION" || request.operation === "COORDINATE_PUBLISH_PUBLICATION"
       || request.operation === "COORDINATE_PUBLICATION_LIFECYCLE") {
-      return this.executeCoordination(request);
-    }
-    if (request.operation === "COORDINATE_PUBLICATION_RECONCILIATION") {
       return this.executeCoordination(request);
     }
     return this.executeApplication(request);
@@ -55,20 +57,8 @@ export class PublicationInterfaceService implements PublicationInputPort {
   }
 
   private executeCoordination(
-    request: Exclude<PublicationOuterRequest, PublicationInterfaceRequest>,
+    request: Exclude<PublicationOuterRequest, PublicationInterfaceRequest | CoordinatePublicationReconciliationInterfaceRequest>,
   ): PublicationInterfaceResponse {
-    if (request.operation === "COORDINATE_PUBLICATION_RECONCILIATION") {
-      if (this.reconciliation === undefined) return this.presenter.presentInterfaceFailure("INTERFACE_EXECUTION_FAILED");
-      try {
-        return this.presenter.present(this.reconciliation.execute({
-          context: request.context,
-          identity: request.identity,
-          input: request.input,
-        }));
-      } catch {
-        return this.presenter.presentInterfaceFailure("INTERFACE_EXECUTION_FAILED");
-      }
-    }
     if (request.operation === "COORDINATE_PUBLICATION_LIFECYCLE") {
       if (this.lifecycle === undefined) return this.presenter.presentInterfaceFailure("INTERFACE_EXECUTION_FAILED");
       try {

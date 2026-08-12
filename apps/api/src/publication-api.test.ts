@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { AuthorizationDecision } from "../../../modules/authorization/src/authorization-service.js";
+import { AuditLog } from "../../../modules/audit/src/audit-log.js";
+import { AuthorizationService, projectionRestrictionResourceType, type AuthorizationDecision, type AuthorizationResource, type RoleAssignment } from "../../../modules/authorization/src/authorization-service.js";
 import type { SessionContext } from "../../../modules/identity/src/session-service.js";
 import { PublicationAggregate } from "../../../modules/publication/src/publication-aggregate.js";
 import { createTestPublicationAuthorizationConfiguration, createTestPublicationSession } from "../../../modules/publication/src/publication-authorization-test-support.test.js";
@@ -25,7 +26,7 @@ const binding: PublicationBinding = Object.freeze({
 type InfrastructureOptions = Readonly<{
   session?: SessionContext | null;
   omitSessionResolver?: boolean;
-  authorization?: (action: string, resourceVersion?: number) => AuthorizationDecision;
+  authorization?: (action: string, resourceVersion?: number, resource?: AuthorizationResource) => AuthorizationDecision;
   liveTransform?: (live: NonNullable<ReturnType<NonNullable<PublicationInfrastructureConfigurationInput["liveContextResolver"]>["resolve"]>>) => NonNullable<ReturnType<NonNullable<PublicationInfrastructureConfigurationInput["liveContextResolver"]>["resolve"]>>;
   connectorOutcome?: "CONFIRMED" | "REJECTED" | "UNKNOWN";
   publicationPolicyVersion?: string;
@@ -47,7 +48,7 @@ function infrastructure(options: InfrastructureOptions = {}) {
   return createPublicationInfrastructure({
     ...(options.omitSessionResolver === true ? withoutSessionResolver : base),
     ...(options.omitSessionResolver === true ? {} : { sessionResolver: { resolve: () => resolvedSession } }),
-    authorizationEvaluator: { evaluate: ({ action, resource }) => options.authorization?.(action, resource.version) ?? allow() },
+    authorizationEvaluator: { evaluate: ({ action, resource }) => options.authorization?.(action, resource.version, resource) ?? allow() },
     ...(options.publicationPolicyVersion === undefined ? {} : { publicationPolicyVersion: options.publicationPolicyVersion }),
     ...(options.liveTransform === undefined ? {} : {
       liveContextResolver: {
@@ -224,12 +225,12 @@ test("F15-TASK-009 API-014 lifecycle command delegates to F15-TASK-007", () => {
   assert.equal(app.repository.find(identity)?.suspensionStatus, "SUSPENDED_SECURITY");
 });
 
-test("F15-TASK-009 API-014 reconciliation command delegates to F15-TASK-008", () => {
+test("FCR-001 API-014 rejects caller-authored authoritative reconciliation evidence", () => {
   const app = infrastructure();
   const snapshot = unresolvedSnapshot();
   app.repository.save(snapshot);
   const api = new PublicationApi(app);
-  const response = api.executeCommand(command("RESOLVE_RECONCILIATION", {
+  const request = command("RESOLVE_RECONCILIATION", {
     input: {
       expectedAggregateVersion: snapshot.aggregateVersion,
       caseId: "case-api-1",
@@ -239,10 +240,19 @@ test("F15-TASK-009 API-014 reconciliation command delegates to F15-TASK-008", ()
       externalObjectReference: "external-listing-1",
     },
     occurredAt: now,
-  }));
-  assert.equal(response.success, true, JSON.stringify(response));
-  assert.equal(response.success && response.result.reconciliationStatus, "CONFIRMED");
-  assert.equal(app.repository.find(identity)?.reconciliationCases.at(-1)?.status, "RESOLVED");
+  });
+  const auditCount = app.audit.list(identity).length;
+  const eventCount = app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).length;
+
+  const response = api.executeCommand(request);
+
+  assert.equal(response.success, false);
+  assert.equal(!response.success && response.error.code, "VALIDATION_ERROR");
+  assert.deepEqual(app.repository.find(identity), snapshot);
+  assert.equal(app.repository.find(identity)?.reconciliationCases.at(-1)?.status, "OPEN");
+  assert.equal(app.audit.list(identity).length, auditCount);
+  assert.equal(app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).length, eventCount);
+  assert.equal(app.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: request.idempotencyKey }), undefined);
 });
 
 test("F15-TASK-009 API-014 rejects missing, expired and revoked Sessions without Publication mutation", () => {
@@ -551,6 +561,10 @@ test("F15-TASK-009 inaccessible cross-tenant, cross-team, wrong-purpose and unau
   const denied = deniedApi.executeQuery(query("GET_PUBLICATION"));
   assert.equal(denied.success, false);
   assert.equal(!denied.success && denied.error.code, "NOT_FOUND");
+
+  const callerOverride = api.executeQuery({ ...query("GET_LISTING_PROJECTION"), classification: "PUBLIC", privacyScope: "caller-selected" });
+  assert.equal(callerOverride.success, false);
+  assert.equal(!callerOverride.success && callerOverride.error.code, "NOT_FOUND");
 });
 
 test("F15-TASK-009 query path rejects missing, expired and revoked Sessions before reading Publication state", () => {
@@ -623,6 +637,138 @@ test("F15-TASK-011 API-014 reads PRJ-002 through the Projection query boundary w
   assert.equal(response.success && response.result.view.publicationId, identity.publicationId);
   assert.equal(response.success && Object.isFrozen(response.result.view), true);
   assert.deepEqual(evaluatedVersions, [undefined, activation.aggregateVersion]);
+});
+
+test("FCR-003 API-014 authorizes PRJ-002 reads with exact Event-derived security context", () => {
+  const evaluated: AuthorizationResource[] = [];
+  const app = infrastructure({ authorization: (_action, _version, resource) => {
+    if (resource !== undefined) evaluated.push(resource);
+    if (resource?.classification === undefined) return allow();
+    return resource.classification === "RESTRICTED_SECURITY"
+      && resource.privacyScope === "privacy-scope:publication-approved-fields"
+      && resource.purpose === "PUBLICATION_EXECUTION"
+      && resource.consentOrLegalBasis === "legal-basis-reference:publication-test"
+      && resource.audienceRestriction === "AUD_PUBLIC"
+      ? allow()
+      : deny("PROJECTION_RESTRICTION_MISSING");
+  } });
+  const api = new PublicationApi(app);
+  createActive(api, "listing-projection-security");
+  const activation = app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId)
+    .find(({ eventType }) => eventType === "EVT-003");
+  if (activation === undefined) throw new Error("test setup failed");
+  app.listingProjectionConsumer.consume(identity.tenantScopeId, activation.eventId);
+  evaluated.length = 0;
+
+  const response = api.executeQuery(query("GET_LISTING_PROJECTION"));
+
+  assert.equal(response.success, true, JSON.stringify({ response, evaluated }));
+  assert.equal(evaluated.some((resource) => resource.classification === "RESTRICTED_SECURITY"), true);
+  assert.equal(response.success && "sourceClassification" in response.result.view, true);
+  assert.equal(response.success && "privacyScope" in response.result.view, true);
+  assert.equal(response.success && "consentOrLegalBasis" in response.result.view, true);
+  assert.equal(response.success && "audienceRestriction" in response.result.view, true);
+
+  for (const inaccessible of [
+    query("GET_LISTING_PROJECTION", { tenantId: "other-tenant" }),
+    { ...query("GET_LISTING_PROJECTION"), purpose: "AUDIT_EXPLORATION" },
+  ]) {
+    const concealed = api.executeQuery(inaccessible);
+    assert.equal(concealed.success, false);
+    assert.equal(!concealed.success && concealed.error.code, "NOT_FOUND");
+  }
+
+  const denied = new PublicationApi({ ...app, configuration: {
+    ...app.configuration,
+    authorizationEvaluator: { evaluate: () => deny("CLASSIFICATION_DENIED") },
+  } }).executeQuery(query("GET_LISTING_PROJECTION"));
+  assert.equal(denied.success, false);
+  assert.equal(!denied.success && denied.error.code, "NOT_FOUND");
+});
+
+test("FCR-003 API-014 production authorization denies a Projection without exact classification assignment", () => {
+  const base = createTestPublicationAuthorizationConfiguration(new FixedClock(now));
+  const assignment = (resourceTypes: readonly string[]): RoleAssignment => Object.freeze({
+    id: `assignment-${resourceTypes.join("-")}`,
+    principalId: "session-valid",
+    role: "OPS",
+    teamIds: [identity.tenantScopeId],
+    resourceTypes,
+    purposes: ["PUBLICATION_EXECUTION"],
+    effectiveFrom: "2026-08-01T00:00:00.000Z",
+    effectiveUntil: "2027-08-01T00:00:00.000Z",
+    status: "ACTIVE",
+  });
+  const publicationAssignment: RoleAssignment = Object.freeze({
+    ...assignment(["Publication"]),
+    id: "assignment-publication-resource-view",
+  });
+  const withPolicy = (resourceTypes: readonly string[]) => {
+    let auditSequence = 0;
+    return createPublicationInfrastructure({
+      ...base,
+      authorizationEvaluator: new AuthorizationService({
+        assignments: [publicationAssignment, assignment(resourceTypes)],
+        auditSink: new AuditLog({ clock: () => new Date(now), idFactory: () => `audit-${String(++auditSequence)}` }),
+        clock: () => new Date(now),
+        policyVersion: "authorization-projection-v1",
+      }),
+    });
+  };
+  const arrange = (resourceTypes: readonly string[]) => {
+    const seed = infrastructure();
+    const seedApi = new PublicationApi(seed);
+    createActive(seedApi, `production-policy-${resourceTypes.length}`);
+    const app = withPolicy(resourceTypes);
+    const snapshot = seed.repository.find(identity);
+    if (snapshot === undefined) throw new Error("test setup failed");
+    app.repository.save(snapshot);
+    for (const event of seed.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId)) app.eventJournal.append(event);
+    const api = new PublicationApi(app);
+    const activation = app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).find(({ eventType }) => eventType === "EVT-003");
+    if (activation === undefined) throw new Error("test setup failed");
+    app.listingProjectionConsumer.consume(identity.tenantScopeId, activation.eventId);
+    const preflight = app.configuration.authorizationEvaluator?.evaluate({
+      session: createTestPublicationSession("session-valid", "session-valid"),
+      action: "resource.view",
+      resource: { type: "Publication", id: identity.publicationId, teamId: identity.tenantScopeId },
+      purpose: "PUBLICATION_EXECUTION",
+      correlationId: "preflight",
+    });
+    assert.equal(preflight?.effect, "ALLOW");
+    const view = app.listingProjectionRead.getServing({ tenantId: identity.tenantScopeId, publicationId: identity.publicationId });
+    if (view === undefined) throw new Error("projection setup failed");
+    const restricted = app.configuration.authorizationEvaluator?.evaluate({
+      session: createTestPublicationSession("session-valid", "session-valid"),
+      action: "resource.view",
+      resource: { type: "ListingProjection", id: identity.publicationId, version: view.sourceAggregateVersion, teamId: identity.tenantScopeId, classification: view.sourceClassification, privacyScope: view.privacyScope, purpose: view.purpose, consentOrLegalBasis: view.consentOrLegalBasis, audienceRestriction: view.audienceRestriction },
+      purpose: "PUBLICATION_EXECUTION",
+      correlationId: "restricted",
+    });
+    assert.equal(restricted?.effect, resourceTypes.includes(projectionRestrictionResourceType({
+      type: "ListingProjection",
+      classification: view.sourceClassification,
+      privacyScope: view.privacyScope,
+      purpose: view.purpose,
+      consentOrLegalBasis: view.consentOrLegalBasis,
+      audienceRestriction: view.audienceRestriction,
+    })) ? "ALLOW" : "DENY");
+    return api;
+  };
+
+  const denied = arrange(["Publication", "ListingProjection"]).executeQuery(query("GET_LISTING_PROJECTION"));
+  assert.equal(denied.success, false);
+  assert.equal(!denied.success && denied.error.code, "NOT_FOUND");
+
+  const allowed = arrange(["Publication", projectionRestrictionResourceType({
+    type: "ListingProjection",
+    classification: "RESTRICTED_SECURITY",
+    privacyScope: "privacy-scope:publication-approved-fields",
+    purpose: "PUBLICATION_EXECUTION",
+    consentOrLegalBasis: "legal-basis-reference:publication-test",
+    audienceRestriction: "AUD_PUBLIC",
+  })]).executeQuery(query("GET_LISTING_PROJECTION"));
+  assert.equal(allowed.success, true, JSON.stringify(allowed));
 });
 
 test("F15-TASK-009 view visibility never bypasses command-time authorization revalidation", () => {

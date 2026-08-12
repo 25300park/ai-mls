@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-007 |
-| 문서 버전 | v1.2 |
+| 문서 버전 | v1.3 |
 | 상태 | FROZEN |
 | 소유 역할 | Architecture Owner |
 
@@ -34,6 +34,7 @@ Architecture Bible과 운영 문서의 release-level 변경 이력을 관리한�
 | 2026-07-15 | v1.0 | FROZEN | Sprint 0 implementation progress metadata | SP-000/EPIC-001/FEAT-024/DEV-024/IMP-024/TEST-056에 매핑된 repository·tooling placeholder와 execution evidence 생성; normative architecture 변경 없음 | User-authorized Sprint 0; `docs/development/SPRINT0_*` |
 | 2026-07-23 | v1.1 | FROZEN | AO-017 Governance Alignment | Publication Approval Authority를 SP-008/REL-003으로 재배정하고 RC stabilization을 SP-009로 이동; FEAT-015와 Production cutover Sprint는 pending 처리 | AO-017; CR-020; DEC-095; Architecture Owner approval |
 | 2026-07-23 | v1.2 | FROZEN | GOV-001 SP-008 Governance Alignment | AO-018–021을 DEC-096–099와 CR-021–024로 등록하고 TRACE/entity/API/UI/security/test/RTM ownership을 Publication Approval boundary에 맞춰 동기화 | GOV-001; AO-018–021; CR-021–024; DEC-096–099; Architecture Owner authorization |
+| 2026-08-12 | v1.3 | IN REVIEW | FEAT-015 Final Closure Remediation | Publication Event v2를 DEC-113/CR-025/Event Registry v0.2로 정렬하고 FCR-001–006 implementation/trace evidence를 기록 | FEAT-015 Final Closure Remediation Brief; DEC-113; CR-025; AO review pending |
 
 ## 기록 규칙
 

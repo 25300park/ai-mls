@@ -756,12 +756,24 @@ function activePublication(publicationId: string) {
 }
 
 function executeModify(infrastructure: ReturnType<typeof createPublicationInfrastructure>, identity: { readonly publicationId: string; readonly tenantScopeId: string }, suffix: string, input: Record<string, unknown>) {
-  return infrastructure.inputPort.execute({
-    operation: "MODIFY_PUBLICATION",
-    context: { actorId: "forged-body-actor", sessionId: "executor-independent", correlationId: `correlation-${suffix}`, idempotencyKey: `idempotency-${suffix}`, intentFingerprint: `sha256:${suffix}` },
-    identity,
-    input,
-  } as never);
+  const result = new ModifyPublicationHandler({
+    unitOfWork: infrastructure.unitOfWork,
+    repository: infrastructure.repository,
+    idempotency: infrastructure.idempotency,
+    audit: infrastructure.audit,
+    clock: infrastructure.clock,
+    authorization: infrastructure.authorization,
+    eventCoordinator: infrastructure.eventCoordinator,
+  }).execute({ kind: "MODIFY_PUBLICATION", identity, input } as never, {
+    actorId: "non-authoritative-compatibility-actor",
+    sessionId: "executor-independent",
+    correlationId: `correlation-${suffix}`,
+    idempotencyKey: `idempotency-${suffix}`,
+    intentFingerprint: `sha256:${suffix}`,
+  });
+  return result.ok
+    ? { operationResult: "SUCCEEDED" as const }
+    : { operationResult: "FAILED" as const, failureCode: result.error.code };
 }
 
 function matches(code: string) {

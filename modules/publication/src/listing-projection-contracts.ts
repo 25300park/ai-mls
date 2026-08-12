@@ -32,6 +32,8 @@ export interface ListingProjectionRecord extends ListingProjectionIdentity {
   readonly sourceClassification: DataClassification;
   readonly privacyScope: string;
   readonly purpose: PublicationEventPurpose;
+  readonly consentOrLegalBasis: string;
+  readonly audienceRestriction: string;
   readonly projectionDefinitionVersion: string;
   readonly projectionSchemaVersion: string;
   readonly projectionRecordVersion: number;
@@ -59,6 +61,8 @@ export interface ListingProjectionGeneration extends ListingProjectionIdentity {
   readonly sourceClassification?: DataClassification;
   readonly privacyScope?: string;
   readonly purpose?: PublicationEventPurpose;
+  readonly consentOrLegalBasis?: string;
+  readonly audienceRestriction?: string;
   readonly targetReference?: string;
   readonly channelReference?: string;
 }
@@ -95,6 +99,11 @@ export interface ListingProjectionView {
   readonly effectiveVersion?: number;
   readonly targetReference: string;
   readonly channelReference: string;
+  readonly sourceClassification: DataClassification;
+  readonly privacyScope: string;
+  readonly purpose: PublicationEventPurpose;
+  readonly consentOrLegalBasis: string;
+  readonly audienceRestriction: string;
   readonly sourceAggregateVersion: number;
   readonly publicationVersion: number;
   readonly lastEventSequence: number;

@@ -1,3 +1,5 @@
+import type { PublicationAuthorizationRequest } from "./publication-authorization.js";
+
 export const PUBLICATION_OPERATIONS_COMPONENTS = Object.freeze([
   "PUBLICATION_APPLICATION",
   "EVENT_JOURNAL",
@@ -123,11 +125,21 @@ export interface PublicationOperationsRetryRequest {
   readonly attemptNumber: number;
   readonly maximumAttempts: number;
   readonly idempotencySafe: boolean;
-  readonly requiresAuthorityRevalidation: boolean;
+  /** @deprecated Compatibility-only caller claim. It is never authoritative. */
+  readonly requiresAuthorityRevalidation?: boolean;
   readonly idempotencyKey: string;
   readonly fingerprint: string;
   readonly correlationId: string;
   readonly actorOrServiceReference: string;
+}
+
+export interface PublicationOperationsRetryAuthorityRequest {
+  readonly tenantId: string;
+  readonly operationIdentity: string;
+  readonly idempotencyKey: string;
+  readonly correlationId: string;
+  readonly actorOrServiceReference: string;
+  readonly authorizationRequest: PublicationAuthorizationRequest;
 }
 
 export interface PublicationOperationsRetryDecision {
@@ -141,13 +153,15 @@ export interface PublicationOperationsRetryDecision {
 }
 
 export interface PublicationOperationsRetryAuthority {
-  revalidate(request: PublicationOperationsRetryRequest): boolean;
+  revalidate(request: PublicationOperationsRetryAuthorityRequest): boolean;
 }
 
 export interface PublicationOperationsRetryState {
   readonly priorFingerprint?: string;
   readonly externalEffectCompleted: boolean;
   readonly subsystemStatus: PublicationOperationalStatus;
+  readonly authorityRevalidationRequired: boolean;
+  readonly authorizationRequest?: PublicationAuthorizationRequest;
 }
 
 export interface PublicationOperationsRetryStateResolver {

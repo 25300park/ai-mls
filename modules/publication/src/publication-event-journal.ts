@@ -6,6 +6,10 @@ export interface PublicationEventAppendResult {
 }
 
 export interface PublicationEventJournal {
+  prepareAppend?(event: PublicationEventEnvelope): Readonly<{
+    event: PublicationEventEnvelope;
+    commit(): PublicationEventAppendResult;
+  }>;
   append(event: PublicationEventEnvelope): PublicationEventAppendResult;
   appendAll(events: readonly PublicationEventEnvelope[]): readonly PublicationEventAppendResult[];
   findByEventId(tenantId: string, eventId: string): PublicationEventEnvelope | undefined;

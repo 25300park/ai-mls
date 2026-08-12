@@ -1,5 +1,6 @@
 export {
   AuthorizationService,
+  projectionRestrictionResourceType,
   type AuthorizationDecision,
   type AuthorizationRequest,
   type AuthorizationResource,

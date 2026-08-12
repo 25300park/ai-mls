@@ -397,7 +397,7 @@ test("PHASE13-8 repeated dispatch returns deterministic isolated response envelo
   assert.equal(Object.isFrozen(first.error), true);
 });
 
-test("PHASE13-8 completes an in-process Publication workflow through the Transport boundary", () => {
+test("FCR-001 Transport rejects caller-authored execution confirmation without false success evidence", () => {
   const runtime = readyRuntime();
   const transport = createInProcessPublicationTransport(runtime);
   const createResult = transport.execute(createEnvelope("workflow-create"));
@@ -422,6 +422,8 @@ test("PHASE13-8 completes an in-process Publication workflow through the Transpo
     },
     metadata: {},
   }));
+  const auditBefore = runtime.services.audit.list(identity).length;
+  const eventCountBefore = runtime.services.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).length;
   const resolveResult = transport.execute(createPublicationTransportRequestEnvelope({
     requestId: "workflow-resolve",
     operation: "MODIFY_PUBLICATION",
@@ -440,11 +442,13 @@ test("PHASE13-8 completes an in-process Publication workflow through the Transpo
     metadata: {},
   }));
 
-  assert.deepEqual([createResult.status, beginResult.status, resolveResult.status], ["SUCCESS", "SUCCESS", "SUCCESS"]);
-  assert.equal(resolveResult.success, true);
-  if (!resolveResult.success) throw new Error("Success response expected.");
-  assert.deepEqual(resolveResult.data, { publicationId: identity.publicationId, version: 3, replayed: false });
-  assert.equal(runtime.services.repository.find(identity)?.lifecycleState, "ACTIVE");
+  assert.deepEqual([createResult.status, beginResult.status, resolveResult.status], ["SUCCESS", "SUCCESS", "VALIDATION_ERROR"]);
+  assert.equal(resolveResult.success, false);
+  assert.equal(runtime.services.repository.find(identity)?.lifecycleState, "EXECUTION_PENDING");
+  assert.equal(runtime.services.repository.find(identity)?.aggregateVersion, 2);
+  assert.equal(runtime.services.audit.list(identity).length, auditBefore);
+  assert.equal(runtime.services.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).length, eventCountBefore);
+  assert.equal(runtime.services.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: "idempotency-transport-resolve" }), undefined);
 });
 
 test("PHASE13-8 Transport production modules preserve dependency direction and forbidden framework absence", () => {

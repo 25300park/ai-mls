@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-020 |
-| 문서 버전 | v1.3 |
+| 문서 버전 | v1.4 |
 | 상태 | IN REVIEW |
 | 소유 역할 | Architecture Owner |
 | 기준일 | 2026-07-24 |
@@ -175,6 +175,7 @@ Publication Approval Authority artifacts를 SP-008/REL-003으로 재배정하고
 | DEC-110 | Withdrawal Architecture | v1.0 | APPROVED | `APPROVE_RECOMMENDED_WITHDRAWAL_MODEL` | dedicated Withdrawal authorization, Command, Attempt and Evidence-confirmed non-exposure | DEC-100–109 | AO-033 | [DT-110](00_DECISION_TRACE_MATRIX.md#decision-trace-records) | TRACE-015/017/019 / REQ-CONST-002–007/009/010/012/013 | Architecture v1.1 | 2026-07-24 | ACTIVE | None |
 | DEC-111 | Republish Architecture | v1.0 | APPROVED | `APPROVE_RECOMMENDED_REPUBLISH_MODEL` | same-intent new Approval/authorization/Command/Attempt with governed external-object strategy | DEC-100–110 | AO-034 | [DT-111](00_DECISION_TRACE_MATRIX.md#decision-trace-records) | TRACE-014/015/019 / REQ-CONST-002–007/009/010/012/013 | Architecture v1.1 | 2026-07-24 | ACTIVE; refines DEC-100/101/104 | None |
 | DEC-112 | Projection Consistency | v1.0 | APPROVED | `APPROVE_RECOMMENDED_PROJECTION_MODEL` | provider-neutral derived read models, drift detection, replay and rebuild | DEC-100–111 | AO-035 | [DT-112](00_DECISION_TRACE_MATRIX.md#decision-trace-records) | TRACE-015/017/018/020/023/024 / REQ-CONST-002/005–010/012/013 | Architecture v1.1 | 2026-07-24 | ACTIVE; physical queue/store remain OPEN DECISION | None |
+| DEC-113 | FEAT-015 Publication Event Contract v2 | v1.0 | APPROVED | `APPROVE_PUBLICATION_EVENT_CONTRACT_V2` | `EVT-003`–`EVT-012`의 current in-memory write/read/replay contract를 v2로 정렬한다. v2는 `EVT-003/007/008/009`의 immutable `publicationVersion`, `targetReference`, `channelReference` Projection provenance를 보존하며 Event의 기존 authority-free semantics를 변경하거나 business authority를 생성하지 않는다. | DEC-100–112 | FEAT-015 Final Closure Remediation / FCR-004 | [Canonical Event Registry](00_EVENT_REGISTRY.md) | TRACE-015 / F15-TASK-010/011/011A | Architecture v1.1 FEAT-015 implementation baseline | 2026-08-12 | ACTIVE; F15-TASK-011A is motivating implementation evidence; current in-memory FEAT-015 runtime is v2-only | None |
 
 ### Scoped refinement rule
 

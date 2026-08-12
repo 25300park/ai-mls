@@ -7,6 +7,7 @@ import { createPublicationInProcessExecutable } from "./publication-executable-b
 import { createPublicationApplicationHost } from "./publication-host-bootstrap.js";
 import { FixedClock } from "./publication-clock.js";
 import { createTestPublicationAuthorizationConfiguration } from "./publication-authorization-test-support.test.js";
+import { createPublicationInfrastructure, type PublicationInfrastructure } from "./publication-infrastructure.js";
 import {
   createPublicationHttpRequest,
   createPublicationHttpResponse,
@@ -494,6 +495,67 @@ test("PHASE13-13 completes the full HTTP-shaped in-process execution path", asyn
   assert.equal(response.requestId, "http-e2e");
   assert.equal(isDeeplyFrozen(response), true);
   assert.equal(containsNonPlainObject(response), false);
+  assert.equal(executable.stop().state, "STOPPED");
+});
+
+test("FCR-001 HTTP path rejects caller-authored execution confirmation without false success evidence", async () => {
+  let infrastructure: PublicationInfrastructure | undefined;
+  const executable = createPublicationInProcessExecutable(undefined, () => createPublicationApplicationHost({
+    compositionOptions: { runtimeOptions: {
+      infrastructureConfiguration: createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)),
+      infrastructureFactory: (configuration) => {
+        infrastructure = createPublicationInfrastructure(configuration);
+        return infrastructure;
+      },
+    } },
+  }));
+  executable.start();
+  const adapter = createInProcessPublicationHttpAdapter(executable);
+  const created = await adapter.handle(validHttpRequest("http-fcr-create"));
+  assert.equal(created.statusCode, 200);
+  if (infrastructure === undefined) throw new Error("HTTP test infrastructure was not composed.");
+  const identity = { tenantScopeId: "team-a", publicationId: "publication-http-fcr-create" };
+  const auditBefore = infrastructure.audit.list(identity).length;
+  const eventCountBefore = infrastructure.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).length;
+
+  const rejected = await adapter.handle({
+    method: "POST",
+    path: "/publications/commands/modify",
+    headers: { "x-session-id": "actor-http" },
+    query: {},
+    pathParameters: {},
+    requestId: "http-fcr-resolve",
+    body: {
+      context: {
+        actorId: "caller-authored",
+        correlationId: "correlation-http-fcr-resolve",
+        idempotencyKey: "idempotency-http-fcr-resolve",
+        intentFingerprint: "sha256:http-fcr-resolve",
+      },
+      identity,
+      input: {
+        type: "RESOLVE_EXECUTION",
+        expectedAggregateVersion: 1,
+        outcome: "EFFECT_CONFIRMED",
+        evidenceRefs: ["caller-evidence"],
+        externalObjectReference: "caller-external-reference",
+        command: {
+          actorId: "caller-authored",
+          authorityContext: "PUBLICATION_EXECUTION",
+          reason: "Caller-authored confirmation must be rejected",
+          correlationId: "correlation-http-fcr-resolve",
+          occurredAt: timestamp,
+        },
+      },
+    },
+  });
+
+  assert.equal(rejected.statusCode, 400);
+  assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "READY");
+  assert.equal(infrastructure.repository.find(identity)?.aggregateVersion, 1);
+  assert.equal(infrastructure.audit.list(identity).length, auditBefore);
+  assert.equal(infrastructure.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).length, eventCountBefore);
+  assert.equal(infrastructure.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: "idempotency-http-fcr-resolve" }), undefined);
   assert.equal(executable.stop().state, "STOPPED");
 });
 

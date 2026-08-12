@@ -94,14 +94,6 @@ export function createPublicationInfrastructure(
   const operationsEvidence = new InMemoryPublicationOperationalEvidenceStore();
   const operationsMetrics = new InMemoryPublicationOperationalMetrics();
   const operationsStatus = new PublicationOperationsStatusService(operationsEvidence, operationsMetrics, configuration.clock);
-  const operationsRetry = new PublicationOperationsRetryPolicy(
-    operationsEvidence,
-    operationsMetrics,
-    configuration.clock,
-    configuration.operationsRetryAuthority,
-    operationsStatus,
-    configuration.operationsRetryStateResolver,
-  );
   const authorizationEvidence = new InMemoryPublicationAuthorizationEvidenceStore();
   const authorization = new PublicationAuthorizationGuard({
     ...(configuration.sessionResolver === undefined ? {} : { sessionResolver: configuration.sessionResolver }),
@@ -111,6 +103,23 @@ export function createPublicationInfrastructure(
     clock: configuration.clock,
     ...(configuration.publicationPolicyVersion === undefined ? {} : { publicationPolicyVersion: configuration.publicationPolicyVersion }),
   });
+  const operationsRetry = new PublicationOperationsRetryPolicy(
+    operationsEvidence,
+    operationsMetrics,
+    configuration.clock,
+    configuration.operationsRetryAuthority ?? {
+      revalidate(request): boolean {
+        try {
+          authorization.authorize(request.authorizationRequest);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+    },
+    operationsStatus,
+    configuration.operationsRetryStateResolver,
+  );
   const eventGovernanceContextStore = configuration.eventGovernanceContextStore ?? new InMemoryPublicationGovernanceContextStore();
   const eventSourceContextResolver = new StoredPublicationEventSourceContextResolver(eventGovernanceContextStore, configuration.clock);
   const eventCoordinator = new PublicationEventCoordinator(configuration.clock, eventSourceContextResolver, operationsStatus);
@@ -140,6 +149,7 @@ export function createPublicationInfrastructure(
     audit: listingProjectionAudit,
     clock: configuration.clock,
     authority: configuration.listingProjectionRebuildAuthority ?? denyListingProjectionRebuildAuthority,
+    eventCoordinator,
     operations: operationsStatus,
   });
   const listingProjectionRead = new ListingProjectionReadService(listingProjectionStore);
@@ -211,7 +221,6 @@ export function createPublicationInfrastructure(
     new StructuralPublicationInterfaceValidator(),
     coordination,
     lifecycle,
-    reconciliation,
   );
 
   return Object.freeze({
