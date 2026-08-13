@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-001 |
-| 문서 버전 | v2.5 |
+| 문서 버전 | v2.6 |
 | 상태 | IN REVIEW |
 | 소유 역할 | Architecture Owner |
 | 기준일 | 2026-07-24 |
@@ -215,6 +215,7 @@
 | DOC-REVIEW-088 | [FEAT-015 Final Closure](reviews/FEAT015_FINAL_CLOSURE_REPORT.md) | Architecture Owner-approved FEAT-015 closure evidence | AVAILABLE |
 | DOC-REVIEW-089 | [POST-F15 Console Foundation](reviews/POST_F15_CONSOLE_FOUNDATION_IMPLEMENTATION_REPORT.md) | read-only Admin Console implementation, browser acceptance 및 validation evidence | AVAILABLE |
 | DOC-REVIEW-090 | [F16 Phase 4 Canonical Scope Alignment](reviews/F16_PHASE_4_CANONICAL_SCOPE_ALIGNMENT_REPORT.md) | FEAT-016 partial baseline, ownership, approval, persistence 및 gap alignment evidence | AVAILABLE |
+| DOC-REVIEW-091 | [F16 Phase 5 API-015 Closed Contracts](reviews/F16_PHASE_5_API_015_CLOSED_CONTRACTS_IMPLEMENTATION_REPORT.md) | API-015 closed contract, security boundary, validation 및 verification evidence | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -860,6 +861,7 @@
 | DOC-REVIEW-088 | FEAT-015 Final Closure Report | [FEAT015_FINAL_CLOSURE_REPORT.md](reviews/FEAT015_FINAL_CLOSURE_REPORT.md) |
 | DOC-REVIEW-089 | POST-F15 Console Foundation Implementation Report | [POST_F15_CONSOLE_FOUNDATION_IMPLEMENTATION_REPORT.md](reviews/POST_F15_CONSOLE_FOUNDATION_IMPLEMENTATION_REPORT.md) |
 | DOC-REVIEW-090 | F16 Phase 4 Canonical Scope Alignment Report | [F16_PHASE_4_CANONICAL_SCOPE_ALIGNMENT_REPORT.md](reviews/F16_PHASE_4_CANONICAL_SCOPE_ALIGNMENT_REPORT.md) |
+| DOC-REVIEW-091 | F16 Phase 5 API-015 Closed Contracts Implementation Report | [F16_PHASE_5_API_015_CLOSED_CONTRACTS_IMPLEMENTATION_REPORT.md](reviews/F16_PHASE_5_API_015_CLOSED_CONTRACTS_IMPLEMENTATION_REPORT.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books

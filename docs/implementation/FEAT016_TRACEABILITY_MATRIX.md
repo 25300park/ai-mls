@@ -3,11 +3,12 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-DEV-017 |
-| 버전 | v0.1 |
+| 버전 | v0.2 |
 | 상태 | DRAFT |
 | 범위 | `EPIC-008` / `FEAT-016` / `DEV-016` / `IMP-016` |
 | 기준 | Architecture Bible v1.1 + `DEC-114` / `CR-026` |
 | Execution status | `PARTIALLY_IMPLEMENTED_BASELINE` |
+| Phase 5 status | `CONTRACT_LAYER_RESOLVED` |
 
 ## 1. Status reconciliation
 
@@ -22,9 +23,9 @@ Frozen Feature/Developer/Implementation Registry의 primary row `PLANNED`는 log
 
 | Requirement | Decision | Workflow | Entity / Scope | API / UI | Security | Tests | Status |
 |---|---|---|---|---|---|---|---|
-| `REQ-CONST-006` | `DEC-076/078/082/114` | `WF-012`, cross-cutting `WF-001–012` | Decision History, administration change evidence | `API-015/016`; `UI-006/036` | `SEC-021/022/026` | `TEST-005/034/053` | PARTIAL BASELINE |
-| `REQ-CONST-007` | `DEC-114`; ADR-007 | `WF-001–012` | proposal, approval/rejection, activation, revocation, denial, privileged read evidence | `API-015/016`; `UI-006/036` | `SEC-007/021–023` | `TEST-005/034/037/048/053` | PARTIAL BASELINE |
-| `REQ-CONST-010` | `DEC-053/114`; ADR-003 | `WF-001–012` | User, Role, Role Assignment, Team/scope, governed policy state | `API-002/015/016`; `UI-006/036` | `SEC-001–010/033` | `TEST-005/034/048/053` | PARTIAL BASELINE |
+| `REQ-CONST-006` | `DEC-076/078/082/114` | `WF-012`, cross-cutting `WF-001–012` | Decision History, administration change evidence | `API-015/016`; `UI-006/036` | `SEC-021/022/026` | `TEST-005/034/053`; Phase 5 closed contract and architecture tests | PARTIALLY_VERIFIED |
+| `REQ-CONST-007` | `DEC-114`; ADR-007 | `WF-001–012` | proposal, approval/rejection, activation, revocation, denial, privileged read evidence | `API-015/016`; `UI-006/036` | `SEC-007/021–023` | `TEST-005/034/037/048/053`; Phase 5 Session/SoD/MFA/error tests | PARTIALLY_VERIFIED |
+| `REQ-CONST-010` | `DEC-053/114`; ADR-003 | `WF-001–012` | User, Role, Role Assignment, Team/scope, governed policy state | `API-002/015/016`; `UI-006/036` | `SEC-001–010/033` | `TEST-005/034/048/053`; Phase 5 operation/read DTO tests | PARTIALLY_VERIFIED |
 
 Canonical chain:
 
@@ -102,7 +103,15 @@ Physical database, ORM and migration framework remain `DEFERRED`; this alignment
 - FEAT-016 AI capability is `NONE`; AI cannot approve, activate, revoke, grant, expand scope or bypass MFA/SoD.
 - SNS, crawler, external website, rbs-homes, email, messaging, AI provider and connector execution are outside FEAT-016.
 
-## 9. Gap status after alignment
+## 9. Phase 5 API-015 contract evidence
+
+`apps/api/src/administration-api-contracts.ts`와 `administration-api-validation.ts`가 API-015의 closed command/query surface, Session-derived Actor, human/MFA precondition, two-person proposal evidence, expected version, idempotency fingerprint, safe error/concealment 및 immutable read DTO를 구현한다.
+
+직접 evidence는 `administration-api-contracts.test.ts`와 `administration-api-architecture.test.ts`이며 focused API-015 및 기존 Administration 회귀 30/30, 전체 627/627, lint/typecheck/build/verify, Architecture checksum 153/153, Gitleaks 0, production audit 0 및 independent review Critical/Important/Minor 0/0/0을 통과했다. 상세 결과는 [F16 Phase 5 API-015 Closed Contracts Implementation Report](../reviews/F16_PHASE_5_API_015_CLOSED_CONTRACTS_IMPLEMENTATION_REPORT.md)에 기록한다.
+
+이 evidence는 contract layer만 검증한다. live authority, durable state/idempotency, atomic audit, Runtime/HTTP 및 UI-006/UI-036는 구현됐다고 표시하지 않는다.
+
+## 10. Gap status after Phase 5
 
 | Gap | Status | Evidence / next gate |
 |---|---|---|
@@ -111,17 +120,17 @@ Physical database, ORM and migration framework remain `DEFERRED`; this alignment
 | `F16-GAP-011` approval/delegation ambiguity | RESOLVED | mandatory two-person and explicit-delegation invariant |
 | `F16-GAP-003` live authority | OPEN IMPLEMENTATION GAP | mandatory live resolver integration |
 | `F16-GAP-004` durable state | OPEN IMPLEMENTATION GAP | repository/UoW; physical adapter deferred |
-| `F16-GAP-005` complete API-015 | OPEN IMPLEMENTATION GAP | next Phase closed contracts |
+| `F16-GAP-005` complete API-015 | CONTRACT_LAYER_RESOLVED | closed command/query schemas, immutable results/views, safe errors and architecture boundary verified in Phase 5 |
 | `F16-GAP-006` idempotency | OPEN IMPLEMENTATION GAP | application/persistence implementation |
 | `F16-GAP-007` atomic audit | OPEN IMPLEMENTATION GAP | Unit of Work implementation |
 | `F16-GAP-008` Runtime/HTTP | OPEN IMPLEMENTATION GAP | later approved interface/runtime phase |
 | `F16-GAP-009` UI-006/UI-036 | OPEN IMPLEMENTATION GAP | read integration then separately approved controlled writes |
 | `F16-GAP-010` full tests | OPEN IMPLEMENTATION GAP | direct/integration/security/UAT acceptance |
 
-## 10. Next boundary
+## 11. Next boundary
 
-The next eligible brief after Phase 4 acceptance is:
+The next eligible brief after Phase 5 acceptance is:
 
-`F16-PHASE-5 — API-015 Closed Contracts`
+`F16-PHASE-6 — Administration Repository / UoW Ports`
 
-Phase 4 changes governance and traceability only. FEAT-016 production implementation remains not started in this phase.
+Phase 5 implements and verifies only the API-015 contract layer. FEAT-016 remains incomplete, and Phase 6 has not started.
