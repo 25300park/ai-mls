@@ -10,6 +10,7 @@
   },
   "scripts": {
     "build": "tsc -b tsconfig.build.json --clean && tsc -b tsconfig.build.json",
+    "console:dev": "pnpm run build && node dist/apps/admin-console/src/main.js --runtime=development --development-session --port=4173",
     "lint": "eslint \"apps/**/*.ts\" \"modules/**/*.ts\" \"packages/**/*.ts\" --max-warnings 0",
     "test": "pnpm run build && node scripts/run-compiled-tests.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
