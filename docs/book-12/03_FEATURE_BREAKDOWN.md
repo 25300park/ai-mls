@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-ROADMAP-004 |
-| 문서 버전 | v1.1 |
+| 문서 버전 | v1.2 |
 | 상태 | FROZEN |
 | 소유 역할 | Product Owner / Development Owner |
 | 기준일 | 2026-07-15 |
@@ -19,7 +19,7 @@ Feature는 하나의 primary `DEV-*`를 구현 가능한 acceptance slice로 계
 | FEAT-001 | EPIC-002 | Identity and session boundary | DEV-001 | WF-001–012 | User, Role, User Action, Audit Event | API-001/002 | UI-001/006/035/036 | N/A | TEST-026/046 |
 | FEAT-002 | EPIC-002 | Authentication contract adapter | DEV-002 | WF-001–012 | User, Role, Team | API-001 | UI-001 | N/A | TEST-026/046 |
 | FEAT-003 | EPIC-002 | Authorization/session enforcement | DEV-003 | WF-001–012 | User, Role, Team, Approval History | API-002 | UI-001–037 | N/A | TEST-009/026/046/047 |
-| FEAT-004 | EPIC-003 | Source registry contract | DEV-004 | WF-001 | Source Registry, Collector, Raw Source | API-003 | UI-009/010 | N/A | TEST-014/027/036 |
+| FEAT-004 | EPIC-003 | Source registry access and intake handoff | DEV-004 | WF-001 | approved Source Registry read dependency, Collector, Raw Source; non-authoritative source candidate | API-003 | UI-009/010 | N/A | TEST-014/027/036 |
 | FEAT-005 | EPIC-003 | Intake processing contract | DEV-005 | WF-001–003 | Intake, Raw Source, Candidate Listing, AI Job | API-004 | UI-011–015 | AI-001/002/007 | TEST-004/015/016/027/039/040 |
 | FEAT-006 | EPIC-004 | Property read/search contract | DEV-006 | WF-002–007 | Property, Property Alias, Candidate Listing | API-005 | UI-008/014/017/018 | AI-002/006/007 | TEST-028/040/044 |
 | FEAT-007 | EPIC-004 | Candidate and duplicate contract | DEV-007 | WF-002–004/006/007 | Candidate Listing, Listing Offer, Duplicate Group, Decision History | API-006 | UI-012/015–018 | AI-001–003/007 | TEST-007/010/017/028/039–041 |
@@ -44,3 +44,16 @@ Feature는 하나의 primary `DEV-*`를 구현 가능한 acceptance slice로 계
 ## Coverage
 
 EPIC-001–010, FEAT-001–024와 DEV-001–024는 orphan 없이 연결된다. Canonical ID 의미는 각 source registry를 따른다.
+
+## Post-freeze FEAT-016 scope overlay
+
+`DEC-114`와 `CR-026`은 frozen planning row의 ID를 바꾸지 않고 FEAT-016 execution evidence와 ownership을 다음처럼 명확히 한다.
+
+- Execution status: `PARTIALLY_IMPLEMENTED_BASELINE`; SP-001 Role Assignment subset은 유효한 역사적 baseline이고 FEAT-016 전체는 incomplete다.
+- Owned administration scope: User/identity administration reference, Role, Role Assignment, Team/organizational scope, Policy administration, Source Registry governance state, Publication Target governance state와 Decision History/administration evidence.
+- Source Registry ownership은 governance proposal lifecycle, policy/review/approval/administrative status transition뿐이며 ingestion, crawler, parser 또는 connector execution을 포함하지 않는다. FEAT-004/API-003은 approved policy read와 non-authoritative candidate submission handoff만 소유하며 policy decision 또는 activation authority를 갖지 않는다.
+- Publication Target ownership은 governance policy/proposal/review/approval/administrative status뿐이며 Publication Aggregate/lifecycle/execution, connector dispatch, reconciliation, Event Journal 또는 PRJ-002 mutation을 포함하지 않는다.
+- Retention Policy/Legal Hold business authority는 Privacy/Data Governance/Legal/Security에 유지되며 core FEAT-016 scope가 아니다.
+- AI capability는 `N/A`; AI/service/connector/job은 administration approval 또는 authority activation을 수행하지 않는다.
+
+상세 trace와 implementation gap은 [FEAT-016 Implementation Traceability](../implementation/FEAT016_TRACEABILITY_MATRIX.md)를 따른다.

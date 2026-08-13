@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-001 |
-| 문서 버전 | v2.4 |
+| 문서 버전 | v2.5 |
 | 상태 | IN REVIEW |
 | 소유 역할 | Architecture Owner |
 | 기준일 | 2026-07-24 |
@@ -209,6 +209,12 @@
 | DOC-REVIEW-082 | [F15-TASK-011 Listing Projection Implementation](reviews/F15_TASK_011_LISTING_PROJECTION_IMPLEMENTATION_REPORT.md) | PRJ-002 Event-derived serving view, drift 및 rebuild evidence | AVAILABLE |
 | DOC-REVIEW-083 | [F15-TASK-012 Operations Observability Implementation](reviews/F15_TASK_012_OPERATIONS_OBSERVABILITY_IMPLEMENTATION_REPORT.md) | non-authoritative Operations, observability 및 retry control evidence | AVAILABLE |
 | DOC-REVIEW-084 | [FEAT-015 Final Closure Remediation](reviews/FEAT015_FINAL_CLOSURE_REMEDIATION_REPORT.md) | FCR-001–006 remediation, verification 및 independent review evidence | AVAILABLE |
+| DOC-REVIEW-085 | [FEAT-015 Fresh Final Validation](reviews/FEAT015_FINAL_VALIDATION_REPORT.md) | remediation 필요성을 확정한 historical blocked validation evidence | AVAILABLE |
+| DOC-REVIEW-086 | [FEAT-015 Closure Remediation 2](reviews/FEAT015_FINAL_CLOSURE_REMEDIATION_2_REPORT.md) | FCR-007/008 remediation 및 검증 evidence | AVAILABLE |
+| DOC-REVIEW-087 | [FEAT-015 Final Validation 3](reviews/FEAT015_FINAL_VALIDATION_3_REPORT.md) | fresh closure validation 및 zero-finding evidence | AVAILABLE |
+| DOC-REVIEW-088 | [FEAT-015 Final Closure](reviews/FEAT015_FINAL_CLOSURE_REPORT.md) | Architecture Owner-approved FEAT-015 closure evidence | AVAILABLE |
+| DOC-REVIEW-089 | [POST-F15 Console Foundation](reviews/POST_F15_CONSOLE_FOUNDATION_IMPLEMENTATION_REPORT.md) | read-only Admin Console implementation, browser acceptance 및 validation evidence | AVAILABLE |
+| DOC-REVIEW-090 | [F16 Phase 4 Canonical Scope Alignment](reviews/F16_PHASE_4_CANONICAL_SCOPE_ALIGNMENT_REPORT.md) | FEAT-016 partial baseline, ownership, approval, persistence 및 gap alignment evidence | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -449,6 +455,7 @@
 | DOC-DEV-014 | [Documentation Rules](book-11/13_DOCUMENTATION_RULES.md) | implementation-linked documentation/version/link upkeep | AVAILABLE |
 | DOC-DEV-015 | [Code Generation Policy](book-11/14_CODE_GENERATION_POLICY.md) | Codex/AI-assisted coding, human review와 ownership | AVAILABLE |
 | DOC-DEV-016 | [Developer Registry](book-11/15_DEVELOPER_REGISTRY.md) | DEV-001–024 complete cross-phase logical work packages | AVAILABLE |
+| DOC-DEV-017 | [FEAT-016 Implementation Traceability](implementation/FEAT016_TRACEABILITY_MATRIX.md) | FEAT-016 partial baseline, administration ownership, remaining gaps와 implementation gates | AVAILABLE |
 | DOC-REVIEW-019 | [Phase 12 Completion](reviews/PHASE12_COMPLETION.md) | Developer Bible completion evidence와 Phase 13 gate | AVAILABLE |
 
 ## Book 12 — Master Development Roadmap (Phase 13)
@@ -847,6 +854,12 @@
 | DOC-REVIEW-082 | F15-TASK-011 Listing Projection Implementation Report | [F15_TASK_011_LISTING_PROJECTION_IMPLEMENTATION_REPORT.md](reviews/F15_TASK_011_LISTING_PROJECTION_IMPLEMENTATION_REPORT.md) |
 | DOC-REVIEW-083 | F15-TASK-012 Operations Observability Implementation Report | [F15_TASK_012_OPERATIONS_OBSERVABILITY_IMPLEMENTATION_REPORT.md](reviews/F15_TASK_012_OPERATIONS_OBSERVABILITY_IMPLEMENTATION_REPORT.md) |
 | DOC-REVIEW-084 | FEAT-015 Final Closure Remediation Report | [FEAT015_FINAL_CLOSURE_REMEDIATION_REPORT.md](reviews/FEAT015_FINAL_CLOSURE_REMEDIATION_REPORT.md) |
+| DOC-REVIEW-085 | FEAT-015 Fresh Final Validation Report | [FEAT015_FINAL_VALIDATION_REPORT.md](reviews/FEAT015_FINAL_VALIDATION_REPORT.md) |
+| DOC-REVIEW-086 | FEAT-015 Final Closure Remediation 2 Report | [FEAT015_FINAL_CLOSURE_REMEDIATION_2_REPORT.md](reviews/FEAT015_FINAL_CLOSURE_REMEDIATION_2_REPORT.md) |
+| DOC-REVIEW-087 | FEAT-015 Final Validation 3 Report | [FEAT015_FINAL_VALIDATION_3_REPORT.md](reviews/FEAT015_FINAL_VALIDATION_3_REPORT.md) |
+| DOC-REVIEW-088 | FEAT-015 Final Closure Report | [FEAT015_FINAL_CLOSURE_REPORT.md](reviews/FEAT015_FINAL_CLOSURE_REPORT.md) |
+| DOC-REVIEW-089 | POST-F15 Console Foundation Implementation Report | [POST_F15_CONSOLE_FOUNDATION_IMPLEMENTATION_REPORT.md](reviews/POST_F15_CONSOLE_FOUNDATION_IMPLEMENTATION_REPORT.md) |
+| DOC-REVIEW-090 | F16 Phase 4 Canonical Scope Alignment Report | [F16_PHASE_4_CANONICAL_SCOPE_ALIGNMENT_REPORT.md](reviews/F16_PHASE_4_CANONICAL_SCOPE_ALIGNMENT_REPORT.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books

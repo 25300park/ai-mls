@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-044 |
-| 문서 버전 | v0.1 |
+| 문서 버전 | v0.2 |
 | 상태 | IN REVIEW |
 | 소유 역할 | Architecture Owner |
 | 기준일 | 2026-07-24 |
@@ -25,7 +25,7 @@
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | API-001 | Authentication and Session | Public Business/Security | Command + Query | User, Session | API/contract independent | identity owner; session policy | create/refresh/revoke command key where retryable | WF-001~012 | DR, RTM, WR, SR, TR | TEST-001, TEST-009, TEST-046~048 | VERIFIED |
 | API-002 | Authorization Decision | Internal Security Query | Query | Role, Team, Assignment | API/contract + policy version | Security Owner; session-derived actor | read-safe; decision correlation prevents stale reuse | WF-001~012 | DR, RTM, WR, SR, TR | TEST-005, TEST-009, TEST-022, TEST-047 | VERIFIED |
-| API-003 | Source Registry | Public Business | Command + Query | Source Registry | API/contract + source-policy version | Source Policy Owner | proposal command key; reads safe | WF-001 | DR, RTM, WR, SR, TR | TEST-014, TEST-027, TEST-036 | VERIFIED |
+| API-003 | Source Registry Access | Public Business | Command + Query | approved Source Registry read dependency; source candidate submission handoff | API/contract + source-policy version | scoped Collector/Source submitter; no policy decision authority | submission key; reads safe | WF-001 | DR, RTM, WR, SR, TR | TEST-014, TEST-027, TEST-036 | PARTIALLY_VERIFIED |
 | API-004 | Manual/Source Intake | Public Business Command | Command + Query status | Intake, Raw Source, Candidate Listing | API/contract + aggregate version | scoped Collector/Reviewer | required for create/request; same key/different intent conflicts | WF-001~003 | DR, RTM, WR, SR, TR | TEST-004, TEST-015, TEST-027 | VERIFIED |
 | API-005 | Property Master Access | Public Business | Query + governed proposal command | Property hierarchy | API/contract + aggregate version | Property Data Steward | proposal command key; reads safe | WF-002/003/004/006 | DR, RTM, WR, SR, TR | TEST-017, TEST-028 | VERIFIED |
 | API-006 | Candidate, Offer and Duplicate | Public Business Command | Command + Query | Candidate Listing, Listing Offer, Duplicate Group | API/contract + aggregate/revision version | Listing Owner/Human Reviewer | required for revisions/decisions | WF-002/003/004/006/007 | DR, RTM, WR, SR, TR | TEST-010, TEST-017, TEST-028 | VERIFIED |
@@ -37,13 +37,15 @@
 | API-012 | Permission | Restricted Business Command | Command + Query | Permission | API/contract + aggregate version | Permission Reviewer; SoD | required for request/decide/revoke | WF-007~011 | DR, RTM, WR, SR, TR | TEST-003, TEST-012, TEST-020~024 | VERIFIED |
 | API-013 | Proposal and Publication Approval | Restricted Business Command | Command + Query | Client Proposal, Publication Approval, Snapshot | API/contract + approval/snapshot version | Senior Agent or independent PUA by operation | required for every mutation; exact intent conflict denied | WF-008/009 | DR, RTM, WR, PR, SR, TR | TEST-021, TEST-022, TEST-033, TEST-047 | VERIFIED |
 | API-014 | Publication External Effect | Public Business Command/Canonical Read | Command + Query | Publication, Delivery Attempt, Reconciliation Case | API/contract + aggregate/publication/effective versions | Publication Owner/Reconciler; dynamic SoD | required for every effect command; command/attempt/external-effect identities separated | WF-010~012 | DR, RTM, WR, PR, SR, PJR, ER, TR | TEST-023~025, TEST-033, TEST-049, TEST-051 | PARTIALLY_VERIFIED |
-| API-015 | Administration | Restricted Administration | Command + Query | User, Role, Source/Target Policy | API/contract + policy/resource version | Administration/Security Owner | required for governed mutations | WF-001~012 | DR, RTM, WR, PR, SR, TR | TEST-005, TEST-034, TEST-048, TEST-053 | VERIFIED |
+| API-015 | Administration | Restricted Administration | Command + Query | User identity administration reference, Role, Role Assignment, Team/scope, Policy, Source Registry governance proposal/review/approval/status, Publication Target governance state, Decision History reference | API/contract + policy/resource version | current Session-derived Administration/Security/exact policy owner; independent human approver for activation | required for every governed mutation; same key/different intent conflicts | WF-001~012 | DR, RTM, WR, PR, SR, TR | TEST-005, TEST-034, TEST-037, TEST-048, TEST-053 | PARTIALLY_VERIFIED |
 | API-016 | Audit and History | Restricted Query/Export | Query + export command | Audit/Decision/Status/Approval History | API/contract + export contract version | Security/Governance Owner | reads safe; export request key required | WF-001~012 | DR, RTM, WR, PR, SR, TR | TEST-004~006, TEST-022, TEST-049 | VERIFIED |
 | API-017 | Background Jobs | Internal Operation | Command + Query status | AI Job, Retention Job, domain job refs | API/contract + job/input schema versions | Domain/Operations Owner; worker lease only | mandatory; successor job for non-safe retry | WF-003/006/010~012 | DR, RTM, WR, SR, ER, TR | TEST-016, TEST-024, TEST-025, TEST-035 | PARTIALLY_VERIFIED |
 | API-018 | Connector Boundary | Integration/Internal Operation | Technical Command + Query health/status | Connector Instance, Delivery Attempt reference | API/connector contract + attempt version | scoped service principal; no business approval | mandatory for invocation/report/checkpoint | WF-001~004/009~012 | DR, RTM, WR, PR, SR, ER, TR | TEST-008, TEST-023, TEST-036, TEST-037 | PARTIALLY_VERIFIED |
 | API-019 | External Integration Lifecycle | Integration API | Technical Command + Query | Integration Contract, external mapping/evidence | API/integration/provider contract versions | Integration + affected domain owners | mandatory for mapping/reconcile/suspend operations | WF-001~012 | DR, RTM, WR, PR, SR, PJR, ER, TR | TEST-008, TEST-036, TEST-037, TEST-052 | PARTIALLY_VERIFIED |
 
 `DR` = [Decision Register](00_DECISION_REGISTER.md), `RTM` = [Canonical RTM](00_CANONICAL_TRACEABILITY_MATRIX.md), `WR` = [Workflow Registry](00_WORKFLOW_REGISTRY.md), `PR` = [Publication Registry](00_PUBLICATION_REGISTRY.md), `SR` = [Canonical Security Registry](00_SECURITY_REGISTRY.md), `PJR` = [Canonical Projection Registry](00_PROJECTION_REGISTRY.md), `ER` = [Canonical Event Registry](00_EVENT_REGISTRY.md), `TR` = [Test Registry](book-10/15_TEST_REGISTRY.md). [Book 8 Security Registry](book-8/15_SECURITY_REGISTRY.md)는 frozen supporting source다.
+
+API-003은 approved Source Registry를 소비하고 non-authoritative source candidate를 administration boundary로 제출하는 intake-facing handoff다. Source policy proposal lifecycle, review, approval, activation과 administrative status decision authority는 API-015가 독점한다. API-015의 canonical completion boundary는 정렬됐지만 full operation contract와 runtime은 미완료이므로 status는 `PARTIALLY_VERIFIED`다.
 
 ## 3. API-014 canonical contract alignment
 

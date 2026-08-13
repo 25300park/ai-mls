@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-ROADMAP-016 |
-| 문서 버전 | v1.2 |
+| 문서 버전 | v1.3 |
 | 상태 | FROZEN |
 | 소유 역할 | Development Owner / Architecture Owner |
 | 기준일 | 2026-07-15 |
@@ -25,7 +25,7 @@
 | IMP-001 | EPIC-002 | FEAT-001 | DEV-001 | WF-001–012 | User, Role, User Action, Audit Event | API-001/002 | UI-001/006/035/036 | N/A — identity | TEST-026/046 | SP-001 | REL-001 | Security/Development Owner | PLANNED |
 | IMP-002 | EPIC-002 | FEAT-002 | DEV-002 | WF-001–012 | User, Role, Team | API-001 | UI-001 | N/A — identity | TEST-026/046 | SP-001 | REL-001 | API/Security Owner | PLANNED |
 | IMP-003 | EPIC-002 | FEAT-003 | DEV-003 | WF-001–012 | User, Role, Team, Approval History | API-002 | UI-001–037 | N/A — authority | TEST-009/026/046/047 | SP-001 | REL-001 | Security Owner | PLANNED |
-| IMP-004 | EPIC-003 | FEAT-004 | DEV-004 | WF-001 | Source Registry, Collector, Raw Source | API-003 | UI-009/010 | N/A — source | TEST-014/027/036 | SP-002 | REL-001 | Source/API Owner | PLANNED |
+| IMP-004 | EPIC-003 | FEAT-004 | DEV-004 | WF-001 | approved Source Registry read dependency, Collector, Raw Source; non-authoritative source candidate | API-003 | UI-009/010 | N/A — no policy decision authority | TEST-014/027/036 | SP-002 | REL-001 | Source/API Owner | PLANNED |
 | IMP-005 | EPIC-003 | FEAT-005 | DEV-005 | WF-001–003 | Intake, Raw Source, Candidate Listing, AI Job | API-004 | UI-011–015 | AI-001/002/007 | TEST-004/015/016/027/039/040 | SP-002 | REL-001 | Intake/API Owner | PLANNED |
 | IMP-006 | EPIC-004 | FEAT-006 | DEV-006 | WF-002–007 | Property, Property Alias, Candidate Listing | API-005 | UI-008/014/017/018 | AI-002/006/007 | TEST-028/040/044 | SP-003 | REL-001 | Property/API Owner | PLANNED |
 | IMP-007 | EPIC-004 | FEAT-007 | DEV-007 | WF-002–004/006/007 | Candidate Listing, Listing Offer, Duplicate Group, Decision History | API-006 | UI-012/015–018 | AI-001–003/007 | TEST-007/010/017/028/039–041 | SP-003 | REL-001 | Listing/API Owner | PLANNED |
@@ -75,3 +75,4 @@ new implementation plan은 duplicate check 후 next ID를 발급한다. split/re
 |---|---|---|---|---|---|
 | IMP-024 | SP-000 | DONE | None | [Sprint 0 Completion](../development/SPRINT0_COMPLETION.md), [Sprint 0 Task Status](../development/SPRINT0_TASK_STATUS.md) | 2026-07-15 |
 | IMP-014 | SP-008 | COMPLETED_ACCEPTED_FROZEN | None | GOV-001 `c7ad5b0a2ad6bd243abe81cd3c00c3599a29ad1b`; SP-008 `0c9f2a519a3ea21d6f0de8d7b6e8c5a1ed64373a`; [SP-008 Test Evidence](../development/SP008_TEST_EVIDENCE.md), [SP-008 Completion](../reviews/SP-008_COMPLETION.md) | 2026-07-23 |
+| IMP-016 | SP-001 partial baseline | IN_PROGRESS | DEC-114/CR-026 governance alignment only; no production change | [SP-001 Completion](../reviews/SP-001_COMPLETION.md), [FEAT-016 Traceability](../implementation/FEAT016_TRACEABILITY_MATRIX.md); Role Assignment subset implemented, remaining API-015 operation families open | 2026-08-13 |

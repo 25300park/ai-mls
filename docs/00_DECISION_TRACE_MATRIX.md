@@ -1,9 +1,9 @@
-# Decision Trace Matrix — AO-023–AO-035
+# Decision Trace Matrix — Canonical Architecture Decisions
 
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-038 |
-| 문서 버전 | v0.1 |
+| 문서 버전 | v0.2 |
 | 상태 | IN REVIEW |
 | 소유 역할 | Architecture Owner / Quality Owner |
 | 기준일 | 2026-07-24 |
@@ -11,7 +11,7 @@
 
 ## Purpose
 
-DEC-100–DEC-112를 FEAT-015, API, Workflow, Security, Test와 RTM에 연결한다. 이 matrix는 기존 Registry의 의미나 ID를 변경하지 않으며 현재 존재하는 canonical Registry만 참조한다.
+DEC-100–DEC-112와 DEC-114를 Feature, API, Workflow, Security, Test와 RTM에 연결한다. 이 matrix는 기존 Registry ID를 변경하지 않으며 현재 존재하는 canonical Registry만 참조한다.
 
 ## Registry sources
 
@@ -43,6 +43,7 @@ DEC-100–DEC-112를 FEAT-015, API, Workflow, Security, Test와 RTM에 연결한
 | DT-110 | DEC-110 / AO-033 | FEAT-015 | API-014/016/018/019 | WF-010–012 | SEC-001/002/010/011/013/015/021–25/027/028/032 | TEST-023–025/033/049/051 | TRACE-015/017/019 | EVT-007 updates PRJ-001/002/004~008 after confirmation | MAPPED |
 | DT-111 | DEC-111 / AO-034 | FEAT-015 | API-013/014/018/019 | WF-009–012 | SEC-001/002/010/011/013–015/021–25/028/032 | TEST-021–025/033/049 | TRACE-014/015/019 | EVT-008 updates Projection only after confirmed effect | MAPPED |
 | DT-112 | DEC-112 / AO-035 | FEAT-015 | API-014/018/019 | WF-010–012 | SEC-001/002/013–15/021–24/028/032 | TEST-023/025/033/049 | TRACE-015/017/018/020/023/024 | PRJ-001~008 and EVT-001~012 registered | MAPPED |
+| DT-114 | DEC-114 / AO-16-01–05 | FEAT-016 | API-015; API-016 evidence query; API-003 candidate handoff | WF-001–012 | SEC-001–010/021–023/026/033 | TEST-005/034/037/048/053 | TRACE-016 | PRJ/Event N/A; FEAT-015 Event Journal and PRJ-002 excluded | MAPPED |
 
 ## RTM alignment
 

@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-020 |
-| 문서 버전 | v1.4 |
+| 문서 버전 | v1.5 |
 | 상태 | IN REVIEW |
 | 소유 역할 | Architecture Owner |
 | 기준일 | 2026-07-24 |
@@ -176,6 +176,7 @@ Publication Approval Authority artifacts를 SP-008/REL-003으로 재배정하고
 | DEC-111 | Republish Architecture | v1.0 | APPROVED | `APPROVE_RECOMMENDED_REPUBLISH_MODEL` | same-intent new Approval/authorization/Command/Attempt with governed external-object strategy | DEC-100–110 | AO-034 | [DT-111](00_DECISION_TRACE_MATRIX.md#decision-trace-records) | TRACE-014/015/019 / REQ-CONST-002–007/009/010/012/013 | Architecture v1.1 | 2026-07-24 | ACTIVE; refines DEC-100/101/104 | None |
 | DEC-112 | Projection Consistency | v1.0 | APPROVED | `APPROVE_RECOMMENDED_PROJECTION_MODEL` | provider-neutral derived read models, drift detection, replay and rebuild | DEC-100–111 | AO-035 | [DT-112](00_DECISION_TRACE_MATRIX.md#decision-trace-records) | TRACE-015/017/018/020/023/024 / REQ-CONST-002/005–010/012/013 | Architecture v1.1 | 2026-07-24 | ACTIVE; physical queue/store remain OPEN DECISION | None |
 | DEC-113 | FEAT-015 Publication Event Contract v2 | v1.0 | APPROVED | `APPROVE_PUBLICATION_EVENT_CONTRACT_V2` | `EVT-003`–`EVT-012`의 current in-memory write/read/replay contract를 v2로 정렬한다. v2는 `EVT-003/007/008/009`의 immutable `publicationVersion`, `targetReference`, `channelReference` Projection provenance를 보존하며 Event의 기존 authority-free semantics를 변경하거나 business authority를 생성하지 않는다. | DEC-100–112 | FEAT-015 Final Closure Remediation / FCR-004 | [Canonical Event Registry](00_EVENT_REGISTRY.md) | TRACE-015 / F15-TASK-010/011/011A | Architecture v1.1 FEAT-015 implementation baseline | 2026-08-12 | ACTIVE; F15-TASK-011A is motivating implementation evidence; current in-memory FEAT-015 runtime is v2-only | None |
+| DEC-114 | FEAT-016 Canonical Administration Scope and Partial Baseline | v1.0 | APPROVED | `APPROVE_FEAT_016_CANONICAL_ALIGNMENT` | FEAT-016은 SP-001 Role Assignment subset을 `PARTIALLY_IMPLEMENTED_BASELINE`으로 보존하고 User/identity administration reference, Role, Role Assignment, Team/scope, Policy, Source Registry governance state, Publication Target governance state와 administration Decision History를 소유한다. API-003은 approved source-policy read와 non-authoritative candidate handoff만 제공하며 Source governance decision은 API-015가 소유한다. Authority를 활성화·확장·변경하는 privileged change는 current Session-derived human actor, live exact-scope authority, MFA, reason, expected version과 `PROPOSER != APPROVER`를 요구하며 proposal 자체는 authority가 아니다. Repository port, Unit of Work, idempotency, optimistic concurrency와 durable production persistence는 필수지만 physical DB/ORM/migration 선택은 deferred다. | DEC-053/076–079/082/084/092 | F16-PHASE-4 / AO-16-01–05 | [DT-114](00_DECISION_TRACE_MATRIX.md#decision-trace-records) | TRACE-016 / REQ-CONST-006/007/010 | Architecture v1.1 FEAT-016 alignment baseline | 2026-08-13 | ACTIVE; FEAT-016 incomplete; API-015 Closed Contracts is next implementation boundary | None |
 
 ### Scoped refinement rule
 

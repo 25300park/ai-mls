@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-DEV-016 |
-| 문서 버전 | v1.1 |
+| 문서 버전 | v1.2 |
 | 상태 | FROZEN |
 | 소유 역할 | Development Reviewer / Architecture Owner |
 | 기준일 | 2026-07-15 |
@@ -33,7 +33,7 @@
 | DEV-001 | Identity and session boundary | REQ-CONST-007/010 | WF-001–012 | User, Role, User Action, Audit Event | API-001/002 | UI-001/006/035/036 | N/A — identity authority | TEST-026/046 | Security/Development Owner | PLANNED |
 | DEV-002 | Authentication API contract adapter | REQ-CONST-007/010 | WF-001–012 | User, Role, Team | API-001 | UI-001 | N/A — identity | TEST-026/046 | API/Security Owner | PLANNED |
 | DEV-003 | Authorization and session enforcement | REQ-CONST-002/007/010/013 | WF-001–012 | User, Role, Team, Approval History | API-002 | UI-001–037 | N/A — authority control | TEST-009/026/046/047 | Security Owner | PLANNED |
-| DEV-004 | Source registry contract | REQ-CONST-005/009 | WF-001 | Source Registry, Collector, Raw Source | API-003 | UI-009/010 | N/A — source governance | TEST-014/027/036 | Source/API Owner | PLANNED |
+| DEV-004 | Source registry access and intake handoff | REQ-CONST-005/009 | WF-001 | approved Source Registry read dependency, Collector, Raw Source; non-authoritative source candidate | API-003 | UI-009/010 | N/A — no policy decision authority | TEST-014/027/036 | Source/API Owner | PLANNED |
 | DEV-005 | Intake processing contract | REQ-CONST-001/005/008/009/011 | WF-001–003 | Intake, Raw Source, Candidate Listing, AI Job | API-004 | UI-011–015 | AI-001/002/007 | TEST-004/015/016/027/039/040 | Intake/API Owner | PLANNED |
 | DEV-006 | Property read/search contract | REQ-CONST-005/010/011 | WF-002–007 | Property, Property Alias, Candidate Listing | API-005 | UI-008/014/017/018 | AI-002/006/007 | TEST-028/040/044 | Property/API Owner | PLANNED |
 | DEV-007 | Candidate and duplicate contract | REQ-CONST-001/002/005/008/011 | WF-002–004/006/007 | Candidate Listing, Listing Offer, Duplicate Group, Decision History | API-006 | UI-012/015–018 | AI-001–003/007 | TEST-007/010/017/028/039–041 | Listing/API Owner | PLANNED |
@@ -72,8 +72,9 @@
 
 ## Post-freeze implementation progress metadata
 
-아래 overlay는 frozen canonical planning row를 변경하지 않는 실행 metadata다. 현재 실행 상태와 evidence는 이 표를 사용하고, `DEV-024`의 범위·trace·owner 정의는 위 frozen row를 따른다.
+아래 overlay는 frozen canonical planning row를 변경하지 않는 실행 metadata다. 현재 실행 상태와 evidence는 이 표를 사용하고, 각 Developer ID의 범위·trace·owner 정의는 위 frozen row와 승인된 후속 Decision을 따른다.
 
 | Developer ID | Sprint | Execution status | Evidence | Updated |
 |---|---|---|---|---|
 | DEV-024 | SP-000 | DONE | [Sprint 0 Completion](../development/SPRINT0_COMPLETION.md), [Sprint 0 Task Status](../development/SPRINT0_TASK_STATUS.md) | 2026-07-15 |
+| DEV-016 | SP-001 partial baseline | IN_PROGRESS | [SP-001 Completion](../reviews/SP-001_COMPLETION.md), [SP-001 Test Evidence](../development/SP001_TEST_EVIDENCE.md), [DEC-114](../00_DECISION_REGISTER.md), [FEAT-016 Traceability](../implementation/FEAT016_TRACEABILITY_MATRIX.md); existing Role Assignment subset preserved, full FEAT-016 incomplete | 2026-08-13 |
