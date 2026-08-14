@@ -72,7 +72,7 @@ function aiFixture(): { readonly service: AdvisoryAiService; readonly reviewer: 
   const audit = new AuditLog({ clock, idFactory: () => `audit-ai-${String(++sequence)}` });
   const reviewer: SessionContext = Object.freeze({ id: "session-air", principalId: "air-1", principalType: "HUMAN", roles: ["AIR"] as const, teamId: "team-a", state: "ACTIVE", assurance: "MFA", isMfaVerified: true, authenticatedAt: "2026-07-19T00:00:00.000Z", expiresAt: "2026-07-19T01:00:00.000Z", absoluteExpiresAt: "2026-07-19T02:00:00.000Z", familyId: "family-air", refreshReference: "refresh-air" });
   const assignment: RoleAssignment = { id: "assignment-air", principalId: "air-1", role: "AIR", teamIds: ["team-a"], resourceTypes: ["AiResult"], purposes: ["LISTING_GOVERNANCE"], effectiveFrom: "2026-07-18T00:00:00.000Z", effectiveUntil: "2026-07-20T00:00:00.000Z", status: "ACTIVE" };
-  const authorizationService = new AuthorizationService({ assignments: [assignment], auditSink: audit, clock, policyVersion: "auth-v1" });
+  const authorizationService = new AuthorizationService({ assignments: [assignment], authoritySource: "STATIC_TEST_COMPATIBILITY", auditSink: audit, clock, policyVersion: "auth-v1" });
   return { reviewer, service: new AdvisoryAiService({ authorizationService, auditSink: audit, clock, idFactory: () => `ai-${String(++sequence)}`, policyVersion: "ai-policy-v1" }) };
 }
 

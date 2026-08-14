@@ -18,7 +18,7 @@ function fixture(): PropertyService {
     { id: "assignment-agent", principalId: "agent-1", role: "AGT", teamIds: ["team-a"], resourceTypes: ["Property"], purposes: ["LISTING_GOVERNANCE"], effectiveFrom: "2026-07-18T00:00:00.000Z", effectiveUntil: "2026-07-20T00:00:00.000Z", status: "ACTIVE" },
     { id: "assignment-steward", principalId: "steward-1", role: "DST", teamIds: ["team-a"], resourceTypes: ["Property", "PropertyAlias"], purposes: ["LISTING_GOVERNANCE"], effectiveFrom: "2026-07-18T00:00:00.000Z", effectiveUntil: "2026-07-20T00:00:00.000Z", status: "ACTIVE" },
   ];
-  const authorizationService = new AuthorizationService({ assignments, auditSink: audit, clock, policyVersion: "auth-v1" });
+  const authorizationService = new AuthorizationService({ assignments, authoritySource: "STATIC_TEST_COMPATIBILITY", auditSink: audit, clock, policyVersion: "auth-v1" });
   return new PropertyService({ authorizationService, auditSink: audit, clock, idFactory: () => `property-${String(++sequence)}`, policyVersion: "property-v1" });
 }
 

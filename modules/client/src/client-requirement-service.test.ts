@@ -16,7 +16,7 @@ function fixture(): { readonly service: ClientRequirementService; readonly audit
     { id: "assignment-client-agent", principalId: "agent-client", role: "AGT", teamIds: ["team-a"], resourceTypes: ["Client", "Requirement"], purposes: ["CLIENT_SERVICE"], effectiveFrom: "2026-07-18T00:00:00.000Z", effectiveUntil: "2026-07-20T00:00:00.000Z", status: "ACTIVE" },
     { id: "assignment-client-service", principalId: "service-client", role: "SVC", teamIds: ["team-a"], resourceTypes: ["Requirement"], purposes: ["CLIENT_SERVICE"], effectiveFrom: "2026-07-18T00:00:00.000Z", effectiveUntil: "2026-07-20T00:00:00.000Z", status: "ACTIVE" },
   ];
-  const authorization = new AuthorizationService({ assignments, auditSink: audit, clock, policyVersion: "authorization-v1" });
+  const authorization = new AuthorizationService({ assignments, authoritySource: "STATIC_TEST_COMPATIBILITY", auditSink: audit, clock, policyVersion: "authorization-v1" });
   return { service: new ClientRequirementService({ authorizationService: authorization, auditSink: audit, clock, idFactory: () => `client-object-${String(++sequence)}`, policyVersion: "client-v1" }), audit };
 }
 function context() { return { actor: actor(), purpose: "CLIENT_SERVICE", correlationId: "correlation-client" } as const; }

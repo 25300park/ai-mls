@@ -46,6 +46,7 @@ function fixture(): { readonly api: AdminAuditApi; readonly session: SessionCont
   }];
   const authorizationService = new AuthorizationService({
     assignments,
+    authoritySource: "STATIC_TEST_COMPATIBILITY",
     auditSink: auditLog,
     clock,
     policyVersion: "authorization-v1",

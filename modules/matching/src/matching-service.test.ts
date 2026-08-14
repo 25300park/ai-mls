@@ -17,7 +17,7 @@ function fixture() {
     { id: "assignment-match-agent", principalId: "agent-match", role: "AGT", teamIds: ["team-a"], resourceTypes: ["MatchRun", "MatchResult"], purposes: ["CLIENT_MATCHING"], effectiveFrom: "2026-07-18T00:00:00.000Z", effectiveUntil: "2026-07-20T00:00:00.000Z", status: "ACTIVE" },
     { id: "assignment-match-service", principalId: "service-match", role: "SVC", teamIds: ["team-a"], resourceTypes: ["MatchRun", "MatchResult"], purposes: ["CLIENT_MATCHING"], effectiveFrom: "2026-07-18T00:00:00.000Z", effectiveUntil: "2026-07-20T00:00:00.000Z", status: "ACTIVE" },
   ];
-  const authorization = new AuthorizationService({ assignments, auditSink: audit, clock, policyVersion: "authorization-v1" });
+  const authorization = new AuthorizationService({ assignments, authoritySource: "STATIC_TEST_COMPATIBILITY", auditSink: audit, clock, policyVersion: "authorization-v1" });
   return { service: new MatchingService({ authorizationService: authorization, auditSink: audit, clock, idFactory: () => `match-object-${String(++sequence)}`, policyVersion: "matching-policy-v1" }), audit };
 }
 function context() { return { actor: actor(), purpose: "CLIENT_MATCHING", correlationId: "correlation-match" } as const; }

@@ -35,6 +35,7 @@ function setup() {
   ]);
   const authorization = new AuthorizationService({
     assignments,
+    authoritySource: "STATIC_TEST_COMPATIBILITY",
     auditSink: audit,
     clock: () => new Date(now),
     policyVersion: "console-development-policy-v1",

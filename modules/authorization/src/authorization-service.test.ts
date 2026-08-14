@@ -56,6 +56,7 @@ function createService(assignments: readonly RoleAssignment[]): {
   return {
     service: new AuthorizationService({
       assignments,
+      authoritySource: "STATIC_TEST_COMPATIBILITY",
       auditSink: auditLog,
       clock,
       policyVersion: "authorization-v1",

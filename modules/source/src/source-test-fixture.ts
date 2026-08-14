@@ -72,6 +72,7 @@ export function sourceFixture(initialSources: readonly SourcePolicy[] = [activeP
       initialSources,
       authorizationService: new AuthorizationService({
         assignments,
+        authoritySource: "STATIC_TEST_COMPATIBILITY",
         auditSink: auditLog,
         clock,
         policyVersion: "authorization-v1",

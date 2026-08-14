@@ -67,7 +67,7 @@ function fixture(verificationOverride: Partial<Verification> = {}) {
   now = new Date("2026-07-19T08:00:00.000Z"); let sequence = 0;
   let currentVerification: Verification = Object.freeze({ ...verification, ...verificationOverride });
   const audit = new AuditLog({ clock, idFactory: () => `audit-permission-${String(++sequence)}` });
-  const authorization = new AuthorizationService({ assignments: [assignment("agent", "AGT"), assignment("requester", "PMR"), assignment("pmr", "PMR"), assignment("reviewer", "REV"), assignment("verifier", "VER"), assignment("manager-pmr", "PMR"), assignment("manager-pmr", "MGR"), assignment("manager", "MGR"), assignment("security", "SEC"), assignment("scheduler", "SVC")], auditSink: audit, clock, policyVersion: "authorization-v1" });
+  const authorization = new AuthorizationService({ assignments: [assignment("agent", "AGT"), assignment("requester", "PMR"), assignment("pmr", "PMR"), assignment("reviewer", "REV"), assignment("verifier", "VER"), assignment("manager-pmr", "PMR"), assignment("manager-pmr", "MGR"), assignment("manager", "MGR"), assignment("security", "SEC"), assignment("scheduler", "SVC")], authoritySource: "STATIC_TEST_COMPATIBILITY", auditSink: audit, clock, policyVersion: "authorization-v1" });
   const service = new PermissionService({ authorizationService: authorization, auditSink: audit, clock, idFactory: () => `permission-object-${String(++sequence)}`, policyVersion: "permission-policy-v1", verificationResolver: (verificationId) => verificationId === currentVerification.id ? currentVerification : undefined });
   return { service, audit, setVerification: (next: Verification): void => { currentVerification = next; } };
 }

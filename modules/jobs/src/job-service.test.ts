@@ -73,6 +73,7 @@ function fixture(): {
       policies,
       authorizationService: new AuthorizationService({
         assignments,
+        authoritySource: "STATIC_TEST_COMPATIBILITY",
         auditSink: auditLog,
         clock,
         policyVersion: "authorization-v1",

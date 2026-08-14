@@ -21,7 +21,7 @@ function fixture() {
   now = new Date("2026-07-19T08:00:00.000Z");
   let sequence = 0;
   const audit = new AuditLog({ clock, idFactory: () => `audit-verification-${String(++sequence)}` });
-  const authorization = new AuthorizationService({ assignments: [assignment("agent", "AGT"), assignment("verifier", "VER"), assignment("manager", "MGR"), assignment("reviewer", "REV"), assignment("senior-agent", "SAG"), assignment("scheduler", "SVC")], auditSink: audit, clock, policyVersion: "authorization-v1" });
+  const authorization = new AuthorizationService({ assignments: [assignment("agent", "AGT"), assignment("verifier", "VER"), assignment("manager", "MGR"), assignment("reviewer", "REV"), assignment("senior-agent", "SAG"), assignment("scheduler", "SVC")], authoritySource: "STATIC_TEST_COMPATIBILITY", auditSink: audit, clock, policyVersion: "authorization-v1" });
   return { service: new VerificationService({ authorizationService: authorization, auditSink: audit, clock, idFactory: () => `verification-object-${String(++sequence)}`, policyVersion: "verification-policy-v1" }), audit };
 }
 

@@ -30,3 +30,8 @@ export {
   type TeamScopePersistenceRecord,
   type TeamScopeReadRepository,
 } from "./administration-persistence.js";
+
+export {
+  AdministrationLiveAssignmentAdapter,
+  createAdministrationBackedAuthorizationService,
+} from "./live-assignment-adapter.js";

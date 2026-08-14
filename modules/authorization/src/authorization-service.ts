@@ -16,11 +16,34 @@ export interface RoleAssignment {
   readonly effectiveFrom: string;
   readonly effectiveUntil: string;
   readonly status: "ACTIVE" | "REVOKED" | "EXPIRED";
+  readonly version?: number;
+  readonly tenantId?: string;
+  readonly subjectPrincipalType?: SessionContext["principalType"];
+}
+
+export interface LiveRoleAssignment extends RoleAssignment {
+  readonly version: number;
+  readonly tenantId: string;
+  readonly subjectPrincipalType: SessionContext["principalType"];
+}
+
+export interface LiveAssignmentResolutionContext {
+  readonly subjectPrincipalId: string;
+  readonly subjectPrincipalType: SessionContext["principalType"];
+  readonly tenantId: string;
+  readonly resourceType: string;
+  readonly teamId?: string;
+  readonly purpose: string;
+}
+
+export interface LiveAssignmentResolver {
+  resolveCurrentAssignments(context: LiveAssignmentResolutionContext): readonly LiveRoleAssignment[];
 }
 
 export interface AuthorizationResource {
   readonly type: string;
   readonly id: string;
+  readonly tenantId?: string;
   readonly version?: number;
   readonly teamId?: string;
   readonly createdBy?: string;
@@ -50,11 +73,27 @@ export interface AuthorizationDecision {
   readonly expiresAt?: string;
 }
 
-interface AuthorizationServiceDependencies {
-  readonly assignments: readonly RoleAssignment[];
+interface AuthorizationServiceBaseDependencies {
   readonly auditSink: AuditSink;
   readonly clock: Clock;
   readonly policyVersion: string;
+}
+
+type AuthorizationServiceDependencies = AuthorizationServiceBaseDependencies & (
+  | {
+      readonly liveAssignmentResolver: LiveAssignmentResolver;
+      readonly assignments?: never;
+      readonly authoritySource?: never;
+    }
+  | {
+      readonly assignments: readonly RoleAssignment[];
+      readonly authoritySource: "STATIC_TEST_COMPATIBILITY";
+      readonly liveAssignmentResolver?: never;
+    }
+);
+
+interface AssignmentResolver {
+  resolveCurrentAssignments(context: LiveAssignmentResolutionContext): readonly RoleAssignment[];
 }
 
 const capabilities: Readonly<Record<RoleCode, readonly string[]>> = {
@@ -251,6 +290,8 @@ const privilegedActions = new Set([
 ]);
 
 const humanAuthorityActions = new Set([
+  "admin.role.approve",
+  "admin.role.revoke",
   "ai.review",
   "duplicate.dispose",
   "intake.review",
@@ -283,6 +324,34 @@ const humanAuthorityActions = new Set([
   "publication.suspension.set",
 ]);
 
+const humanRequiredActions = new Set([
+  ...humanAuthorityActions,
+  "admin.role.propose",
+]);
+
+const publicationApprovalAuthorityActions = new Set([
+  "publication.approve",
+  "publication.approval.claim",
+  "publication.approval.assign",
+  "publication.approval.decide",
+  "publication.approval.revoke",
+]);
+
+const publicationExecutionAuthorityActions = new Set([
+  "publication.deliver",
+  "publication.create",
+  "publication.execution.begin",
+  "publication.execution.resolve",
+  "publication.withdraw.request",
+  "publication.withdraw.resolve",
+  "publication.active-operation.begin",
+  "publication.republish.begin",
+  "publication.reconciliation.resolve",
+  "publication.supersede",
+  "publication.terminate",
+  "publication.suspension.set",
+]);
+
 function immutableDecision(decision: AuthorizationDecision): AuthorizationDecision {
   const snapshot = structuredClone(decision);
   Object.freeze(snapshot.obligations);
@@ -291,15 +360,24 @@ function immutableDecision(decision: AuthorizationDecision): AuthorizationDecisi
 }
 
 export class AuthorizationService {
-  readonly #assignments: readonly RoleAssignment[];
+  readonly #assignmentResolver: AssignmentResolver;
+  readonly #usesLiveAuthority: boolean;
   readonly #auditSink: AuditSink;
   readonly #clock: Clock;
   readonly #policyVersion: string;
 
   public constructor(dependencies: AuthorizationServiceDependencies) {
-    this.#assignments = dependencies.assignments.map((item) =>
-      Object.freeze(structuredClone(item)),
-    );
+    this.#usesLiveAuthority = "liveAssignmentResolver" in dependencies;
+    if ("liveAssignmentResolver" in dependencies) {
+      this.#assignmentResolver = dependencies.liveAssignmentResolver;
+    } else {
+      const compatibilityAssignments = dependencies.assignments.map((item) =>
+        Object.freeze(structuredClone(item)),
+      );
+      this.#assignmentResolver = {
+        resolveCurrentAssignments: (): readonly RoleAssignment[] => compatibilityAssignments,
+      };
+    }
     this.#auditSink = dependencies.auditSink;
     this.#clock = dependencies.clock;
     this.#policyVersion = dependencies.policyVersion;
@@ -321,16 +399,42 @@ export class AuthorizationService {
 
     if (
       request.session.principalType === "SERVICE" &&
-      humanAuthorityActions.has(request.action)
+      humanRequiredActions.has(request.action)
     ) {
       return this.#complete(request, "DENY", "HUMAN_AUTHORITY_REQUIRED", obligations, []);
     }
 
-    const activeAssignments = this.#assignments.filter(
+    let resolvedAssignments: readonly RoleAssignment[];
+    try {
+      const tenantId = request.resource.tenantId;
+      if (this.#usesLiveAuthority && (tenantId === undefined || tenantId.trim().length === 0)) {
+        throw new Error("trusted tenant context is required");
+      }
+      resolvedAssignments = this.#assignmentResolver.resolveCurrentAssignments({
+        subjectPrincipalId: request.session.principalId,
+        subjectPrincipalType: request.session.principalType,
+        tenantId: tenantId ?? "STATIC_TEST_COMPATIBILITY",
+        resourceType: request.resource.type,
+        ...(request.resource.teamId === undefined ? {} : { teamId: request.resource.teamId }),
+        purpose: request.purpose,
+      });
+      assertResolvedAssignments(resolvedAssignments, this.#usesLiveAuthority);
+      if (this.#usesLiveAuthority && resolvedAssignments.some((assignment) =>
+        assignment.tenantId !== tenantId
+        || assignment.subjectPrincipalType !== request.session.principalType
+        || assignment.principalId !== request.session.principalId)) {
+        throw new Error("resolved assignment scope is inconsistent");
+      }
+    } catch {
+      return this.#complete(request, "DENY", "AUTHORITY_RESOLUTION_FAILED", obligations, []);
+    }
+
+    const activeAssignments = resolvedAssignments.filter(
       (item) =>
         item.principalId === request.session.principalId &&
         item.status === "ACTIVE" &&
-        request.session.roles.includes(item.role) &&
+        (!this.#usesLiveAuthority || item.principalId === request.session.principalId) &&
+        (this.#usesLiveAuthority || request.session.roles.includes(item.role)) &&
         now.getTime() >= new Date(item.effectiveFrom).getTime() &&
         now.getTime() < new Date(item.effectiveUntil).getTime(),
     );
@@ -356,6 +460,16 @@ export class AuthorizationService {
         "SCOPE_DENIED",
         obligations,
         activeAssignments,
+      );
+    }
+
+    if (this.#usesLiveAuthority && hasPublicationRoleStackingConflict(scopedAssignments, request.action)) {
+      return this.#complete(
+        request,
+        "DENY",
+        "SEPARATION_OF_DUTIES_DENIED",
+        obligations,
+        scopedAssignments,
       );
     }
 
@@ -459,6 +573,40 @@ export class AuthorizationService {
       },
     });
     return decision;
+  }
+}
+
+function hasPublicationRoleStackingConflict(assignments: readonly RoleAssignment[], action: string): boolean {
+  const roles = new Set(assignments.map(({ role }) => role));
+  if (!roles.has("PUA")) return false;
+  if (publicationExecutionAuthorityActions.has(action)) return roles.has("OPS");
+  if (publicationApprovalAuthorityActions.has(action)) {
+    return (["OPS", "VER", "PMR"] as const).some((role) => roles.has(role));
+  }
+  return false;
+}
+
+export function isCanonicalRoleCode(value: string): value is RoleCode {
+  return Object.hasOwn(capabilities, value);
+}
+
+function assertResolvedAssignments(assignments: readonly RoleAssignment[], requiresVersion: boolean): void {
+  if (!Array.isArray(assignments)) throw new Error("invalid assignment result");
+  for (const assignment of assignments as readonly RoleAssignment[]) {
+    const effectiveFrom = Date.parse(assignment.effectiveFrom);
+    const effectiveUntil = Date.parse(assignment.effectiveUntil);
+    if (
+      assignment.id.trim().length === 0 || assignment.principalId.trim().length === 0
+      || (requiresVersion && (!Number.isSafeInteger(assignment.version) || (assignment.version ?? 0) < 1))
+      || (requiresVersion && (assignment.tenantId?.trim().length ?? 0) === 0)
+      || (requiresVersion && !["HUMAN", "SERVICE", "AI", "CONNECTOR"].includes(assignment.subjectPrincipalType ?? ""))
+      || !isCanonicalRoleCode(assignment.role)
+      || !["ACTIVE", "REVOKED", "EXPIRED"].includes(assignment.status)
+      || !Number.isFinite(effectiveFrom) || !Number.isFinite(effectiveUntil) || effectiveFrom >= effectiveUntil
+      || !Array.isArray(assignment.teamIds) || !Array.isArray(assignment.resourceTypes) || !Array.isArray(assignment.purposes)
+      || assignment.resourceTypes.some((item: string) => item.trim().length === 0)
+      || assignment.purposes.some((item: string) => item.trim().length === 0)
+    ) throw new Error("invalid assignment result");
   }
 }
 

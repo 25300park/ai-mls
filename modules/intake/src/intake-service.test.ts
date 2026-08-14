@@ -39,7 +39,7 @@ function fixture(): {
     purposes: ["SOURCE_INTAKE"], effectiveFrom: "2026-07-18T00:00:00.000Z",
     effectiveUntil: "2026-07-20T00:00:00.000Z", status: "ACTIVE",
   }));
-  const authorization = new AuthorizationService({ assignments, auditSink: audit, clock, policyVersion: "auth-v1" });
+  const authorization = new AuthorizationService({ assignments, authoritySource: "STATIC_TEST_COMPATIBILITY", auditSink: audit, clock, policyVersion: "auth-v1" });
   const source = new SourceRegistryService({
     initialSources: [activePolicy], authorizationService: authorization, auditSink: audit, clock,
     idFactory: () => `source-${String(++sequence)}`, policyVersion: "source-v1",

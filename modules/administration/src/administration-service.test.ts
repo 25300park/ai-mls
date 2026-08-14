@@ -56,6 +56,7 @@ function createFixture(): {
   }));
   const authorizationService = new AuthorizationService({
     assignments: adminAssignments,
+    authoritySource: "STATIC_TEST_COMPATIBILITY",
     auditSink: auditLog,
     clock,
     policyVersion: "authorization-v1",

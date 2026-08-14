@@ -16,7 +16,7 @@ function fixture(): { readonly service: ContactService; readonly audit: AuditLog
   let sequence = 0;
   const audit = new AuditLog({ clock, idFactory: () => `audit-contact-${String(++sequence)}` });
   const assignments: readonly RoleAssignment[] = [{ id: "assignment-contact-agent", principalId: "agent-contact", role: "AGT", teamIds: ["team-a"], resourceTypes: ["Contact", "ContactChannel", "ContactCase"], purposes: ["CLIENT_SERVICE"], effectiveFrom: "2026-07-18T00:00:00.000Z", effectiveUntil: "2026-07-20T00:00:00.000Z", status: "ACTIVE" }];
-  const authorization = new AuthorizationService({ assignments, auditSink: audit, clock, policyVersion: "authorization-v1" });
+  const authorization = new AuthorizationService({ assignments, authoritySource: "STATIC_TEST_COMPATIBILITY", auditSink: audit, clock, policyVersion: "authorization-v1" });
   return { service: new ContactService({ authorizationService: authorization, auditSink: audit, clock, idFactory: () => `contact-object-${String(++sequence)}`, policyVersion: "contact-v1" }), audit };
 }
 

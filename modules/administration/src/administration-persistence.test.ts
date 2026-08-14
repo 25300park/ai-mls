@@ -26,7 +26,7 @@ const evidence = (id: string) => Object.freeze({ type: "AUDIT" as const, id, ver
 function assignment(version = 1, status: RoleAssignmentPersistenceRecord["status"] = "PROPOSED"): RoleAssignmentPersistenceRecord {
   return {
     recordType: "ROLE_ASSIGNMENT", tenantId: "tenant-1", roleAssignmentId: "assignment-1", proposalId: "proposal-1",
-    scope, subjectPrincipalId: "principal-agent-1", subjectPrincipalType: "HUMAN", role: "AGT",
+    scope, subjectPrincipalId: "principal-agent-1", subjectPrincipalType: "HUMAN", roleId: "role-agent-1",
     teamIds: ["team-1"], resourceTypes: ["CandidateListing"], purposes: ["CLIENT_SERVICE"],
     effectiveFrom: "2026-08-14T00:00:00.000Z", effectiveUntil: "2026-09-14T00:00:00.000Z",
     status, version, proposedBy: "principal-admin-1", ...(status === "ACTIVE" ? { approvedBy: "principal-admin-2" } : {}),
@@ -251,7 +251,7 @@ test("F16-PHASE-6 preserves role assignment proposal, proposer, subject and scop
     { proposalId: "proposal-other" },
     { proposedBy: "principal-other" },
     { subjectPrincipalId: "principal-other" },
-    { role: "MGR" as const },
+    { roleId: "role-manager-1" },
     { teamIds: ["team-other"] },
     { resourceTypes: ["Publication"] },
     { purposes: ["ADMINISTRATION"] },
@@ -485,7 +485,7 @@ test("F16-PHASE-6 rehydrates an existing canonical Role without creating proposa
   const roleIdentity = { tenantId: "tenant-1", resourceType: "ROLE" as const, resourceId: "role-existing" };
   const unitOfWork = InMemoryAdministrationUnitOfWork.rehydrate({ roles: [{
     recordType: "ROLE", tenantId: "tenant-1", roleId: "role-existing", scope: roleScope, status: "ACTIVE",
-    version: 4, policyReference: "policy-role-v4", evidenceReferences: [evidence("role-hydration")],
+    roleCode: "AGT", version: 4, policyReference: "policy-role-v4", evidenceReferences: [evidence("role-hydration")],
   }] });
   assert.equal(unitOfWork.roles.find(roleIdentity)?.version, 4);
   assert.deepEqual(unitOfWork.roles.listByScope(roleScope).map(({ roleId }) => roleId), ["role-existing"]);
@@ -498,7 +498,7 @@ test("F16-PHASE-6 rehydrates an existing canonical Role without creating proposa
   assert.equal(unitOfWork.roles.find(roleIdentity)?.version, 4);
 
   transaction = unitOfWork.begin(roleIdentity);
-  transaction.roles.update(4, { recordType: "ROLE", tenantId: "tenant-1", roleId: "role-existing", scope: roleScope, status: "ACTIVE", version: 5, policyReference: "policy-role-v5", evidenceReferences: [evidence("role-hydration"), evidence("role-approved")] });
+  transaction.roles.update(4, { recordType: "ROLE", tenantId: "tenant-1", roleId: "role-existing", roleCode: "AGT", scope: roleScope, status: "ACTIVE", version: 5, policyReference: "policy-role-v5", evidenceReferences: [evidence("role-hydration"), evidence("role-approved")] });
   transaction.proposals.update(1, { ...roleProposal, status: "APPROVED", version: 2 });
   transaction.decisions.append({ ...decision(), decisionId: "decision-role", proposalId: "proposal-role-change", resourceType: "ROLE", resourceId: "role-existing", scope: roleScope, operation: "APPROVE_ROLE_CHANGE", version: 5 });
   transaction.idempotency.record({ ...idempotency(), ...roleIdentity, idempotencyKey: "idem-role-approve", operation: "APPROVE_ROLE_CHANGE", resultReference: "decision-role", resultVersion: 5 });
@@ -507,7 +507,7 @@ test("F16-PHASE-6 rehydrates an existing canonical Role without creating proposa
 });
 
 test("F16-PHASE-6 Role hydration rejects malformed snapshots and isolates caller input", () => {
-  const base = { recordType: "ROLE" as const, tenantId: "tenant-1", roleId: "role-hydrated", scope: { tenantId: "tenant-1", scopeType: "TENANT" as const, scopeId: "tenant-1" }, status: "ACTIVE" as const, version: 1, policyReference: "policy-role", evidenceReferences: [evidence("role-evidence")] };
+  const base = { recordType: "ROLE" as const, tenantId: "tenant-1", roleId: "role-hydrated", roleCode: "AGT" as const, scope: { tenantId: "tenant-1", scopeType: "TENANT" as const, scopeId: "tenant-1" }, status: "ACTIVE" as const, version: 1, policyReference: "policy-role", evidenceReferences: [evidence("role-evidence")] };
   for (const invalid of [
     { ...base, version: 0 }, { ...base, version: -1 }, { ...base, version: 1.5 }, { ...base, roleId: " " },
     { ...base, tenantId: " " }, { ...base, scope: { ...base.scope, tenantId: "tenant-other" } },
@@ -542,7 +542,7 @@ test("F16-PHASE-6 revoke fails closed unless current authoritative state is ACTI
 test("F16-PHASE-6 bounded repositories persist every canonical governance record without generic access", () => {
   const unitOfWork = new InMemoryAdministrationUnitOfWork();
   const records = {
-    role: { recordType: "ROLE", tenantId: "tenant-1", roleId: "role-1", scope, status: "ACTIVE", version: 1, policyReference: "policy-role-1", evidenceReferences: [evidence("evidence-role-1")] } satisfies RolePersistenceRecord,
+    role: { recordType: "ROLE", tenantId: "tenant-1", roleId: "role-1", roleCode: "AGT", scope, status: "ACTIVE", version: 1, policyReference: "policy-role-1", evidenceReferences: [evidence("evidence-role-1")] } satisfies RolePersistenceRecord,
     policy: { recordType: "POLICY", tenantId: "tenant-1", policyId: "policy-1", scope: { tenantId: "tenant-1", scopeType: "POLICY", scopeId: "policy-1" }, status: "PROPOSED", version: 1, policyReference: "policy-version-1", evidenceReferences: [evidence("evidence-policy-1")] } satisfies PolicyPersistenceRecord,
     team: { recordType: "TEAM_SCOPE", tenantId: "tenant-1", teamId: "team-1", scope, status: "PROPOSED", version: 1, organizationId: "organization-1", evidenceReferences: [evidence("evidence-team-1")] } satisfies TeamScopePersistenceRecord,
     source: { recordType: "SOURCE_REGISTRY", tenantId: "tenant-1", sourceRegistryEntryId: "source-1", scope: { tenantId: "tenant-1", scopeType: "SOURCE", scopeId: "source-1" }, status: "DRAFT", version: 1, policyReference: "source-policy-1", evidenceReferences: [evidence("evidence-source-1")] } satisfies SourceGovernancePersistenceRecord,

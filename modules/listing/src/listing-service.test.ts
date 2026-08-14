@@ -18,7 +18,7 @@ function fixture(): ListingService {
     { id: "assignment-agent", principalId: "agent-1", role: "AGT", teamIds: ["team-a"], resourceTypes: ["CandidateListing", "ListingOffer", "DuplicateGroup"], purposes: ["LISTING_GOVERNANCE"], effectiveFrom: "2026-07-18T00:00:00.000Z", effectiveUntil: "2026-07-20T00:00:00.000Z", status: "ACTIVE" },
     { id: "assignment-duplicate", principalId: "duplicate-1", role: "DUR", teamIds: ["team-a"], resourceTypes: ["DuplicateGroup"], purposes: ["LISTING_GOVERNANCE"], effectiveFrom: "2026-07-18T00:00:00.000Z", effectiveUntil: "2026-07-20T00:00:00.000Z", status: "ACTIVE" },
   ];
-  const authorizationService = new AuthorizationService({ assignments, auditSink: audit, clock, policyVersion: "auth-v1" });
+  const authorizationService = new AuthorizationService({ assignments, authoritySource: "STATIC_TEST_COMPATIBILITY", auditSink: audit, clock, policyVersion: "auth-v1" });
   return new ListingService({ authorizationService, auditSink: audit, clock, idFactory: () => `listing-${String(++sequence)}`, policyVersion: "listing-v1" });
 }
 

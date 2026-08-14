@@ -107,7 +107,7 @@ function composedReadAdapter() {
     roleAssignment("OPS", ["Publication", "PublicationOperations", "ListingProjectionOperationalStatus"]),
     roleAssignment("SEC", ["Publication"]),
   ]);
-  const authorization = new AuthorizationService({ assignments, auditSink: audit, clock: () => new Date(now), policyVersion: "console-e2e-policy-v1" });
+  const authorization = new AuthorizationService({ assignments, authoritySource: "STATIC_TEST_COMPATIBILITY", auditSink: audit, clock: () => new Date(now), policyVersion: "console-e2e-policy-v1" });
   const infrastructure = createPublicationInfrastructure({ clock, sessionResolver: session, authorizationEvaluator: authorization, publicationPolicyVersion: "publication-policy-v1" });
   infrastructure.repository.save(PublicationAggregate.create({
     identity: { publicationId: "publication-console-e2e", tenantScopeId: "team-a" },

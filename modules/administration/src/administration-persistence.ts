@@ -43,7 +43,7 @@ export interface RoleAssignmentPersistenceRecord extends AdministrationRecordBas
   readonly proposalId: string;
   readonly subjectPrincipalId: string;
   readonly subjectPrincipalType: PrincipalType;
-  readonly role: RoleCode;
+  readonly roleId: string;
   readonly teamIds: readonly string[];
   readonly resourceTypes: readonly string[];
   readonly purposes: readonly string[];
@@ -59,6 +59,7 @@ export interface RoleAssignmentPersistenceRecord extends AdministrationRecordBas
 export interface RolePersistenceRecord extends AdministrationRecordBase {
   readonly recordType: "ROLE";
   readonly roleId: string;
+  readonly roleCode: RoleCode;
   readonly status: "ACTIVE" | "RETIRED";
   readonly policyReference: string;
 }
@@ -154,6 +155,7 @@ export class AdministrationPersistenceError extends Error {
 export interface RoleAssignmentReadRepository {
   find(identity: AdministrationTransactionIdentity): RoleAssignmentPersistenceRecord | undefined;
   listByScope(scope: AdministrationPersistenceScope): readonly RoleAssignmentPersistenceRecord[];
+  listBySubject(tenantId: string, subjectPrincipalId: string): readonly RoleAssignmentPersistenceRecord[];
 }
 export interface RoleReadRepository { find(identity: AdministrationTransactionIdentity): RolePersistenceRecord | undefined; listByScope(scope: AdministrationPersistenceScope): readonly RolePersistenceRecord[] }
 export interface PolicyReadRepository { find(identity: AdministrationTransactionIdentity): PolicyPersistenceRecord | undefined; listByScope(scope: AdministrationPersistenceScope): readonly PolicyPersistenceRecord[] }
@@ -357,6 +359,7 @@ export class InMemoryAdministrationUnitOfWork implements AdministrationUnitOfWor
         return record === undefined ? undefined : immutable(record);
       },
       listByScope: (scope) => immutable([...records.values()].filter((record) => sameScope(record.scope, scope)).sort((a, b) => recordId(a).localeCompare(recordId(b)))),
+      listBySubject: (tenantId, subjectPrincipalId) => immutable([...records.values()].filter((record) => record.recordType === "ROLE_ASSIGNMENT" && record.tenantId === tenantId && record.subjectPrincipalId === subjectPrincipalId).sort((a, b) => recordId(a).localeCompare(recordId(b)))) as readonly RoleAssignmentPersistenceRecord[],
     } as RoleAssignmentReadRepository & RoleReadRepository & PolicyReadRepository & TeamScopeReadRepository & SourceGovernanceReadRepository & PublicationTargetReadRepository;
   }
 
@@ -488,7 +491,7 @@ function assertImmutableGovernedLinkage(current: GovernedRecord, next: GovernedR
   if (current.recordType === "ROLE_ASSIGNMENT" && next.recordType === "ROLE_ASSIGNMENT") {
     const linkageChanged = current.proposalId !== next.proposalId || current.proposedBy !== next.proposedBy
       || current.subjectPrincipalId !== next.subjectPrincipalId || current.subjectPrincipalType !== next.subjectPrincipalType
-      || current.role !== next.role || !sameValues(current.teamIds, next.teamIds)
+      || current.roleId !== next.roleId || !sameValues(current.teamIds, next.teamIds)
       || !sameValues(current.resourceTypes, next.resourceTypes) || !sameValues(current.purposes, next.purposes)
       || current.effectiveFrom !== next.effectiveFrom || current.effectiveUntil !== next.effectiveUntil
       || current.reasonReference !== next.reasonReference
@@ -544,7 +547,7 @@ function validateAtomicBundle(tracker: AdministrationTransactionTracker, identit
 function validateIdentity(identity: AdministrationTransactionIdentity): void { if ([identity.tenantId, identity.resourceType, identity.resourceId].some((value) => value.trim().length === 0)) throw persistenceError("PERSISTENCE_INPUT_INVALID"); }
 function validateHydratedRole(role: RolePersistenceRecord): void {
   if (role.recordType !== "ROLE" || role.tenantId !== role.scope.tenantId) throw persistenceError("PERSISTENCE_SCOPE_VIOLATION");
-  if (![role.tenantId, role.roleId, role.scope.scopeId, role.policyReference].every((value) => value.trim().length > 0)
+  if (![role.tenantId, role.roleId, role.roleCode, role.scope.scopeId, role.policyReference].every((value) => value.trim().length > 0)
     || !Number.isSafeInteger(role.version) || role.version < 1 || !["ACTIVE", "RETIRED"].includes(role.status)
     || role.evidenceReferences.some((reference) => !["DECISION", "APPROVAL", "AUDIT", "CASE"].includes(reference.type) || reference.id.trim().length === 0 || !Number.isSafeInteger(reference.version) || reference.version < 1)) throw persistenceError("PERSISTENCE_INPUT_INVALID");
 }

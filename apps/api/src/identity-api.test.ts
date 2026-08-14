@@ -57,6 +57,7 @@ function fixture(identity: AuthenticatedIdentity | null = {
     sessionService,
     authorizationService: new AuthorizationService({
       assignments,
+      authoritySource: "STATIC_TEST_COMPATIBILITY",
       auditSink: auditLog,
       clock,
       policyVersion: "authorization-v1",

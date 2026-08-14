@@ -774,6 +774,7 @@ test("FCR-003 API-014 production authorization denies a Projection without exact
       ...base,
       authorizationEvaluator: new AuthorizationService({
         assignments: [publicationAssignment, assignment(resourceTypes)],
+        authoritySource: "STATIC_TEST_COMPATIBILITY",
         auditSink: new AuditLog({ clock: () => new Date(now), idFactory: () => `audit-${String(++auditSequence)}` }),
         clock: () => new Date(now),
         policyVersion: "authorization-projection-v1",

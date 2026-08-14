@@ -58,7 +58,7 @@ function fixture() {
     { ...base, id: "assignment-agent", principalId: "agent-1", role: "AGT" },
     { ...base, id: "assignment-reviewer", principalId: "senior-1", role: "SAG" },
   ];
-  const authorization = new AuthorizationService({ assignments, auditSink: audit, clock, policyVersion: "authorization-v1" });
+  const authorization = new AuthorizationService({ assignments, authoritySource: "STATIC_TEST_COMPATIBILITY", auditSink: audit, clock, policyVersion: "authorization-v1" });
   let currentPermission: Permission = permission;
   const service = new ProposalService({ authorizationService: authorization, auditSink: audit, clock, idFactory, policyVersion: "proposal-v1", matchResultResolver: (id: string) => id === match.id ? match : undefined, permissionResolver: (id: string) => id === currentPermission.id ? currentPermission : undefined });
   return { service, audit, setPermission: (value: Permission) => { currentPermission = value; } };
