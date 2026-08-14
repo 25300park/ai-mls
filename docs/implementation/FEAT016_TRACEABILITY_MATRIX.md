@@ -3,12 +3,13 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-DEV-017 |
-| 버전 | v0.2 |
+| 버전 | v0.3 |
 | 상태 | DRAFT |
 | 범위 | `EPIC-008` / `FEAT-016` / `DEV-016` / `IMP-016` |
 | 기준 | Architecture Bible v1.1 + `DEC-114` / `CR-026` |
 | Execution status | `PARTIALLY_IMPLEMENTED_BASELINE` |
 | Phase 5 status | `CONTRACT_LAYER_RESOLVED` |
+| Phase 6 status | `LOGICAL_PERSISTENCE_BOUNDARY_VERIFIED` |
 
 ## 1. Status reconciliation
 
@@ -111,7 +112,15 @@ Physical database, ORM and migration framework remain `DEFERRED`; this alignment
 
 이 evidence는 contract layer만 검증한다. live authority, durable state/idempotency, atomic audit, Runtime/HTTP 및 UI-006/UI-036는 구현됐다고 표시하지 않는다.
 
-## 10. Gap status after Phase 5
+## 10. Phase 6 Repository / UoW evidence
+
+`modules/administration/src/administration-persistence.ts`는 Role Assignment, Role, Policy, Team scope, Source governance, Publication Target governance, Proposal, Decision 및 Idempotency를 위한 bounded repository port와 deterministic in-memory adapter를 구현한다. `InMemoryAdministrationUnitOfWork`는 mutation 유형별 state/proposal/decision/idempotency/version bundle을 단일 logical commit으로 묶으며 write 또는 commit 실패 시 rollback-only로 fail closed 한다.
+
+직접 evidence는 `administration-persistence.test.ts`와 `administration-persistence-architecture.test.ts`이다. 구조화된 evidence reference 보존, append-only evidence, original proposer/approver linkage, exact proposal/resource version, operation/resource/status 결속, optimistic concurrency, idempotent replay/collision, scope/copy isolation, Role snapshot hydration 및 forbidden dependency를 검증했다. Focused 60/60, 전체 657/657, lint/typecheck/build/verify, Architecture checksum 153/153, Gitleaks 0 및 independent review READY를 통과했다. 상세 결과는 [F16 Phase 6 Administration Repository / UoW Implementation Report](../reviews/F16_PHASE_6_ADMINISTRATION_REPOSITORY_UOW_IMPLEMENTATION_REPORT.md)에 기록한다.
+
+이 evidence는 logical persistence boundary만 검증한다. Physical database, ORM, migration 및 durable production adapter는 선택하거나 구현하지 않았고, live authority와 Runtime/HTTP/UI integration도 여전히 미구현이다.
+
+## 11. Gap status after Phase 6
 
 | Gap | Status | Evidence / next gate |
 |---|---|---|
@@ -119,18 +128,18 @@ Physical database, ORM and migration framework remain `DEFERRED`; this alignment
 | `F16-GAP-002` ownership conflict | RESOLVED | `DEC-114`, `TRACE-016`, API-015 and Feature overlay |
 | `F16-GAP-011` approval/delegation ambiguity | RESOLVED | mandatory two-person and explicit-delegation invariant |
 | `F16-GAP-003` live authority | OPEN IMPLEMENTATION GAP | mandatory live resolver integration |
-| `F16-GAP-004` durable state | OPEN IMPLEMENTATION GAP | repository/UoW; physical adapter deferred |
+| `F16-GAP-004` durable state | OPEN IMPLEMENTATION GAP | logical Repository/UoW verified in Phase 6; physical durable adapter deferred |
 | `F16-GAP-005` complete API-015 | CONTRACT_LAYER_RESOLVED | closed command/query schemas, immutable results/views, safe errors and architecture boundary verified in Phase 5 |
-| `F16-GAP-006` idempotency | OPEN IMPLEMENTATION GAP | application/persistence implementation |
-| `F16-GAP-007` atomic audit | OPEN IMPLEMENTATION GAP | Unit of Work implementation |
+| `F16-GAP-006` idempotency | PARTIALLY_VERIFIED | logical same-key replay/collision and atomic record verified; durable adapter remains open |
+| `F16-GAP-007` atomic audit | PARTIALLY_VERIFIED | logical state/decision/evidence/idempotency Unit of Work verified; durable atomic audit remains open |
 | `F16-GAP-008` Runtime/HTTP | OPEN IMPLEMENTATION GAP | later approved interface/runtime phase |
 | `F16-GAP-009` UI-006/UI-036 | OPEN IMPLEMENTATION GAP | read integration then separately approved controlled writes |
 | `F16-GAP-010` full tests | OPEN IMPLEMENTATION GAP | direct/integration/security/UAT acceptance |
 
-## 11. Next boundary
+## 12. Next boundary
 
-The next eligible brief after Phase 5 acceptance is:
+The next eligible brief after Phase 6 acceptance is:
 
-`F16-PHASE-6 — Administration Repository / UoW Ports`
+`F16-PHASE-7 — Live Role Authority Integration`
 
-Phase 5 implements and verifies only the API-015 contract layer. FEAT-016 remains incomplete, and Phase 6 has not started.
+Phase 5와 Phase 6은 각각 API-015 contract와 logical persistence boundary만 검증했다. FEAT-016은 여전히 incomplete이며 Phase 7은 시작하지 않았다.

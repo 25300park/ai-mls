@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-007 |
-| 문서 버전 | v1.5 |
+| 문서 버전 | v1.6 |
 | 상태 | FROZEN |
 | 소유 역할 | Architecture Owner |
 
@@ -37,6 +37,7 @@ Architecture Bible과 운영 문서의 release-level 변경 이력을 관리한�
 | 2026-08-12 | v1.3 | IN REVIEW | FEAT-015 Final Closure Remediation | Publication Event v2를 DEC-113/CR-025/Event Registry v0.2로 정렬하고 FCR-001–006 implementation/trace evidence를 기록 | FEAT-015 Final Closure Remediation Brief; DEC-113; CR-025; AO review pending |
 | 2026-08-13 | v1.4 | IN REVIEW | F16-PHASE-4 Canonical Scope & Evidence Alignment | SP-001 Role Assignment subset을 FEAT-016 partial baseline으로 보존하고 API-003/015 Source governance ownership, two-person approval, persistence/Console/FEAT-015 boundary와 remaining implementation gaps를 정렬; DOC-CORE-001 v2.5, 007 v1.4, 020 v1.5, 021 v1.4, 035 v1.5, 036–038 v0.2, 044 v0.2, DOC-DEV-016 v1.2, DOC-ROADMAP-004 v1.2/016 v1.3 및 DOC-DEV-017 v0.1 반영 | AO-16-01–05; CR-026; DEC-114; DT-114; Architecture Owner approval |
 | 2026-08-14 | v1.5 | IN REVIEW | F16-PHASE-5 API-015 Closed Contracts | API-015 closed command/query schema, Session-derived Actor, two-person/MFA/version/idempotency/error/immutable DTO와 ownership boundary를 구현·검증하고 F16-GAP-005를 contract-layer resolved로 기록; DOC-CORE-001 v2.6, DOC-CORE-007 v1.5, DOC-DEV-017 v0.2 및 DOC-REVIEW-091 반영 | F16-PHASE-5 Implementation Brief; Architecture Owner audit approval; independent review READY |
+| 2026-08-14 | v1.6 | IN REVIEW | F16-PHASE-6 Administration Repository / UoW | bounded Administration repository, logical UoW atomic bundle, optimistic concurrency, idempotency, append-only evidence 및 Role hydration을 구현·검증; DOC-CORE-001 v2.7, DOC-CORE-007 v1.6, DOC-DEV-017 v0.3 및 DOC-REVIEW-092 반영 | F16-PHASE-6 Implementation Brief; Architecture Owner audit approval; independent review READY |
 
 ## 기록 규칙
 

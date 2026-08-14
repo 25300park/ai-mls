@@ -69,7 +69,7 @@ function command(overrides: Readonly<Record<string, unknown>> = {}): unknown {
       policyId: "policy-1",
       scope: scope(),
       expectedVersion: 2,
-      idempotencyKey: "idempotency-policy-1",
+      idempotencyKey: "fixture-fixture-0000",
       reason: "Approve the independently reviewed policy change.",
       evidenceReferences: evidence(),
     },
@@ -280,7 +280,7 @@ test("F16-PHASE-5 revocation preserves proposal evidence and approval represents
       roleAssignmentId: "assignment-1",
       scope: scope(),
       expectedVersion: 4,
-      idempotencyKey: "idempotency-revoke-1",
+      idempotencyKey: "fixture-fixture-1111",
       reason: "Revoke the independently reviewed role assignment.",
       evidenceReferences: evidence(),
     },
@@ -309,7 +309,7 @@ test("F16-PHASE-5 command fingerprint is deterministic and intent-sensitive", ()
     payload: {
       evidenceReferences: evidence(),
       reason: "Approve the independently reviewed policy change.",
-      idempotencyKey: "idempotency-policy-1",
+      idempotencyKey: "fixture-fixture-0000",
       expectedVersion: 2,
       scope: { scopeId: "tenant-1", scopeType: "TENANT", tenantId: "tenant-1" },
       policyId: "policy-1",
@@ -352,7 +352,7 @@ test("F16-PHASE-5 command fingerprint is deterministic and intent-sensitive", ()
     actorId: activeHumanSession.principalId,
     operation: "APPROVE_POLICY_CHANGE",
     resourceIdentity: "policy-1",
-    idempotencyKey: "idempotency-policy-1",
+    idempotencyKey: "fixture-fixture-0000",
   });
   const anotherActor = resolveAdministrationApiSession(first, resolver({
     ...activeHumanSession,
