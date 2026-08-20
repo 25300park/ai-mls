@@ -2,6 +2,8 @@ import type { AuditSink, Clock } from "../../../packages/security-contracts/src/
 import {
   AuthorizationService,
   isCanonicalRoleCode,
+  type AuthorizationDecision,
+  type AuthorizationRequest,
   type LiveAssignmentResolutionContext,
   type LiveAssignmentResolver,
   type LiveRoleAssignment,
@@ -44,14 +46,25 @@ interface LiveAuthorizationCompositionDependencies {
   readonly policyVersion: string;
 }
 
+const liveAdministrationAuthorityBrand: unique symbol = Symbol("LIVE_ADMINISTRATION_AUTHORITY");
+
+export interface LiveAdministrationAuthorizationService {
+  readonly [liveAdministrationAuthorityBrand]: true;
+  evaluate(request: AuthorizationRequest): AuthorizationDecision;
+}
+
 export function createAdministrationBackedAuthorizationService(
   dependencies: LiveAuthorizationCompositionDependencies,
-): AuthorizationService {
-  return new AuthorizationService({
+): LiveAdministrationAuthorizationService {
+  const service = new AuthorizationService({
     liveAssignmentResolver: new AdministrationLiveAssignmentAdapter(dependencies),
     auditSink: dependencies.auditSink,
     clock: dependencies.clock,
     policyVersion: dependencies.policyVersion,
+  });
+  return Object.freeze({
+    [liveAdministrationAuthorityBrand]: true as const,
+    evaluate: (request: AuthorizationRequest) => service.evaluate(request),
   });
 }
 

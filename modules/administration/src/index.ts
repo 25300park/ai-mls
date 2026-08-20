@@ -34,4 +34,5 @@ export {
 export {
   AdministrationLiveAssignmentAdapter,
   createAdministrationBackedAuthorizationService,
+  type LiveAdministrationAuthorizationService,
 } from "./live-assignment-adapter.js";

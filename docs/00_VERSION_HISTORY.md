@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-007 |
-| 문서 버전 | v1.7 |
+| 문서 버전 | v1.8 |
 | 상태 | FROZEN |
 | 소유 역할 | Architecture Owner |
 
@@ -39,6 +39,7 @@ Architecture Bible과 운영 문서의 release-level 변경 이력을 관리한�
 | 2026-08-14 | v1.5 | IN REVIEW | F16-PHASE-5 API-015 Closed Contracts | API-015 closed command/query schema, Session-derived Actor, two-person/MFA/version/idempotency/error/immutable DTO와 ownership boundary를 구현·검증하고 F16-GAP-005를 contract-layer resolved로 기록; DOC-CORE-001 v2.6, DOC-CORE-007 v1.5, DOC-DEV-017 v0.2 및 DOC-REVIEW-091 반영 | F16-PHASE-5 Implementation Brief; Architecture Owner audit approval; independent review READY |
 | 2026-08-14 | v1.6 | IN REVIEW | F16-PHASE-6 Administration Repository / UoW | bounded Administration repository, logical UoW atomic bundle, optimistic concurrency, idempotency, append-only evidence 및 Role hydration을 구현·검증; DOC-CORE-001 v2.7, DOC-CORE-007 v1.6, DOC-DEV-017 v0.3 및 DOC-REVIEW-092 반영 | F16-PHASE-6 Implementation Brief; Architecture Owner audit approval; independent review READY |
 | 2026-08-14 | v1.7 | IN REVIEW | F16-PHASE-7 Live Role Authority Integration | `RoleAssignment.roleId`를 current Role/RoleCode/capability에 결속하고 live assignment, exact approval evidence, operation-specific deny precedence를 구현·검증; DOC-CORE-001 v2.8, DOC-CORE-007 v1.7, DOC-DEV-017 v0.4 및 DOC-REVIEW-093 반영 | F16-PHASE-7R; AO-16-06~08; Architecture Owner audit approval; independent review READY |
+| 2026-08-20 | v1.8 | IN REVIEW | F16-PHASE-8 Policy / Source / Target Administration | API-015, Phase 6 UoW 및 Phase 7 live authority로 Policy/Source/Target governed workflow, exact replay, terminal proposal guard와 execution isolation을 구현·검증; DOC-CORE-001 v2.9, DOC-CORE-007 v1.8, DOC-DEV-017 v0.5 및 DOC-REVIEW-094 반영 | F16-PHASE-8 Brief; Architecture Owner audit approval; independent review READY |
 
 ## 기록 규칙
 

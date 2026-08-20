@@ -83,6 +83,11 @@ export interface SourceGovernancePersistenceRecord extends AdministrationRecordB
   readonly sourceRegistryEntryId: string;
   readonly status: "DRAFT" | "UNDER_REVIEW" | "ACTIVE" | "PAUSED" | "BLOCKED" | "RETIRED";
   readonly policyReference: string;
+  readonly name: string;
+  readonly sourceType: string;
+  readonly allowedMethods: readonly string[];
+  readonly allowedPurposes: readonly string[];
+  readonly classification: "PUBLIC_APPROVED" | "INTERNAL" | "CONFIDENTIAL_BUSINESS" | "RESTRICTED_PERSONAL" | "RESTRICTED_SECURITY";
 }
 
 export interface PublicationTargetGovernancePersistenceRecord extends AdministrationRecordBase {
@@ -91,6 +96,24 @@ export interface PublicationTargetGovernancePersistenceRecord extends Administra
   readonly status: "PROPOSED" | "ACTIVE" | "PAUSED" | "RETIRED";
   readonly policyReference: string;
   readonly channelReference: string;
+  readonly name: string;
+  readonly targetType: string;
+  readonly allowedFieldReferences: readonly string[];
+}
+
+export interface ProposedSourceGovernanceChange {
+  readonly name: string;
+  readonly sourceType: string;
+  readonly allowedMethods: readonly string[];
+  readonly allowedPurposes: readonly string[];
+  readonly classification: SourceGovernancePersistenceRecord["classification"];
+}
+
+export interface ProposedPublicationTargetGovernanceChange {
+  readonly name: string;
+  readonly targetType: string;
+  readonly channelReference: string;
+  readonly allowedFieldReferences: readonly string[];
 }
 
 export interface AdministrationProposalRecord extends AdministrationRecordBase {
@@ -103,6 +126,8 @@ export interface AdministrationProposalRecord extends AdministrationRecordBase {
   readonly policyReference: string;
   readonly status: "PROPOSED" | "APPROVED" | "REJECTED" | "REVOKED";
   readonly reasonReference: string;
+  readonly sourceGovernanceChange?: ProposedSourceGovernanceChange;
+  readonly publicationTargetGovernanceChange?: ProposedPublicationTargetGovernanceChange;
 }
 
 export interface AdministrationDecisionRecord {
@@ -131,6 +156,8 @@ export interface AdministrationIdempotencyRecord extends AdministrationIdempoten
   readonly fingerprint: string;
   readonly resultReference: string;
   readonly resultVersion: number;
+  readonly resultStatus?: "PROPOSED" | "ACTIVE" | "REJECTED" | "REVOKED" | "PAUSED" | "BLOCKED" | "RETIRED";
+  readonly resultEvidenceReferences?: readonly AdministrationEvidenceReference[];
   readonly recordedAt: string;
 }
 
@@ -422,7 +449,8 @@ function proposalWriteRepository(state: InMemoryAdministrationState, identity: A
       const key = proposalKey(record.tenantId, record.proposalId); const current = state.proposals.get(key);
       if (current === undefined) throw persistenceError("RECORD_NOT_FOUND");
       if (current.version !== expectedVersion) throw persistenceError("VERSION_CONFLICT");
-      if (current.proposedBy !== record.proposedBy || current.resourceType !== record.resourceType || current.resourceId !== record.resourceId || current.resourceVersion !== record.resourceVersion || current.proposedChangeReference !== record.proposedChangeReference || current.policyReference !== record.policyReference || current.reasonReference !== record.reasonReference || !sameScope(current.scope, record.scope) || !evidenceAppends(current.evidenceReferences, record.evidenceReferences)) throw persistenceError("PROPOSER_IMMUTABLE");
+      if (current.proposedBy !== record.proposedBy || current.resourceType !== record.resourceType || current.resourceId !== record.resourceId || current.resourceVersion !== record.resourceVersion || current.proposedChangeReference !== record.proposedChangeReference || current.policyReference !== record.policyReference || current.reasonReference !== record.reasonReference || JSON.stringify(current.sourceGovernanceChange) !== JSON.stringify(record.sourceGovernanceChange) || JSON.stringify(current.publicationTargetGovernanceChange) !== JSON.stringify(record.publicationTargetGovernanceChange) || !sameScope(current.scope, record.scope) || !evidenceAppends(current.evidenceReferences, record.evidenceReferences)) throw persistenceError("PROPOSER_IMMUTABLE");
+      if (current.status !== "PROPOSED") throw persistenceError("PERSISTENCE_INPUT_INVALID");
       validateVersion(record.version, expectedVersion + 1);
       if (tracker.proposalUpdate !== undefined) throw persistenceError("ATOMIC_BUNDLE_INCOMPLETE");
       tracker.proposalUpdate = clone(record);

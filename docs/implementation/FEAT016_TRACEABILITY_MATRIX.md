@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-DEV-017 |
-| 버전 | v0.4 |
+| 버전 | v0.5 |
 | 상태 | DRAFT |
 | 범위 | `EPIC-008` / `FEAT-016` / `DEV-016` / `IMP-016` |
 | 기준 | Architecture Bible v1.1 + `DEC-114` / `CR-026` |
@@ -11,6 +11,7 @@
 | Phase 5 status | `CONTRACT_LAYER_RESOLVED` |
 | Phase 6 status | `LOGICAL_PERSISTENCE_BOUNDARY_VERIFIED` |
 | Phase 7 status | `LIVE_ROLE_AUTHORITY_INTEGRATION_VERIFIED` |
+| Phase 8 status | `POLICY_SOURCE_TARGET_WORKFLOWS_VERIFIED` |
 
 ## 1. Status reconciliation
 
@@ -131,7 +132,15 @@ Physical database, ORM and migration framework remain `DEFERRED`; this alignment
 
 이 evidence는 live logical authority composition만 검증한다. Physical database, durable production adapter, API-015 Runtime/HTTP, UI-006/UI-036 write integration 및 FEAT-016 final acceptance는 완료하지 않는다.
 
-## 12. Gap status after Phase 7
+## 12. Phase 8 Policy / Source / Target Administration evidence
+
+`apps/api/src/administration-governance-api.ts`는 API-015 command/query contract, Phase 6 logical Repository/UoW 및 module-private-symbol branded Phase 7 live authorization port를 결합한다. Policy, Source Registry governance 및 Publication Target governance는 bounded proposal, independent approval/rejection, successor transition, optimistic version, idempotent replay, append-only decision evidence와 immutable scope-aware read를 제공한다. Source workflow는 connector/crawl을 실행하지 않고 Target workflow는 Publication lifecycle/dispatch/reconciliation을 실행하지 않는다.
+
+직접 evidence는 `administration-governance-api.test.ts`와 `administration-governance-architecture.test.ts`이다. Focused Phase 8 13/13, 영향 회귀 112/112 및 최종 관련 53/53, 전체 685/685, lint/typecheck/build/verify, Architecture checksum 153/153, Gitleaks worktree findings 0, production audit 0 및 independent review Critical/Important/Minor 0/0/0을 통과했다. 상세 결과는 [F16 Phase 8 Policy / Source / Target Administration Report](../reviews/F16_PHASE_8_POLICY_SOURCE_TARGET_ADMINISTRATION_IMPLEMENTATION_REPORT.md)에 기록한다.
+
+이 evidence는 logical application workflow만 검증한다. Physical durable persistence, Runtime/HTTP, UI-006/UI-036, UAT 및 FEAT-016 final acceptance는 완료하지 않는다.
+
+## 13. Gap status after Phase 8
 
 | Gap | Status | Evidence / next gate |
 |---|---|---|
@@ -141,16 +150,16 @@ Physical database, ORM and migration framework remain `DEFERRED`; this alignment
 | `F16-GAP-003` live authority | RESOLVED | current Role/Assignment/Proposal/Decision read graph, exact evidence linkage, live activation/revocation 및 deny precedence verified in Phase 7 |
 | `F16-GAP-004` durable state | OPEN IMPLEMENTATION GAP | logical Repository/UoW verified in Phase 6; physical durable adapter deferred |
 | `F16-GAP-005` complete API-015 | CONTRACT_LAYER_RESOLVED | closed command/query schemas, immutable results/views, safe errors and architecture boundary verified in Phase 5 |
-| `F16-GAP-006` idempotency | PARTIALLY_VERIFIED | logical same-key replay/collision and atomic record verified; durable adapter remains open |
-| `F16-GAP-007` atomic audit | PARTIALLY_VERIFIED | logical state/decision/evidence/idempotency Unit of Work verified; durable atomic audit remains open |
+| `F16-GAP-006` idempotency | PARTIALLY_VERIFIED | Phase 8 canonical proposal/decision/transition/rejection replay and collision verified; durable adapter remains open |
+| `F16-GAP-007` atomic audit | PARTIALLY_VERIFIED | Phase 8 state/proposal/decision/evidence/idempotency logical Unit of Work and rollback verified; durable atomic audit remains open |
 | `F16-GAP-008` Runtime/HTTP | OPEN IMPLEMENTATION GAP | later approved interface/runtime phase |
 | `F16-GAP-009` UI-006/UI-036 | OPEN IMPLEMENTATION GAP | read integration then separately approved controlled writes |
-| `F16-GAP-010` full tests | PARTIALLY_VERIFIED | Phase 7 direct/integration/security/full regression passed; later Runtime/HTTP/UI/UAT acceptance remains open |
+| `F16-GAP-010` full tests | PARTIALLY_VERIFIED | Phase 8 direct/integration/security/full 685/685 passed; later Runtime/HTTP/UI/UAT acceptance remains open |
 
-## 13. Next boundary
+## 14. Next boundary
 
-The next eligible brief after Phase 7 acceptance is:
+The next eligible brief after Phase 8 acceptance is:
 
-`F16-PHASE-8` — only after separate Architecture Owner authorization.
+`F16-PHASE-9` — only after separate Architecture Owner authorization.
 
-Phase 5~7은 closed API-015 contract, logical persistence boundary 및 live Role authority integration을 검증했다. FEAT-016은 여전히 incomplete이며 Phase 8은 시작하지 않았다.
+Phase 5~8은 closed API-015 contract, logical persistence, live Role authority 및 Policy/Source/Target logical workflow를 검증했다. FEAT-016은 여전히 incomplete이며 Phase 9는 시작하지 않았다.

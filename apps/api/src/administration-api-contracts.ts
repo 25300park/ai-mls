@@ -466,7 +466,12 @@ function parseCommandPayload(
       : operation.startsWith("TRANSITION_")
         ? ["targetStatus"]
         : [];
-  requireExactKeys(payload, [...identityKeys, ...proposalKeys, ...common]);
+  const optionalProposalIdentityKeys = operation === "PROPOSE_SOURCE_GOVERNANCE"
+    ? ["sourceRegistryEntryId"]
+    : operation === "PROPOSE_PUBLICATION_TARGET_GOVERNANCE"
+      ? ["publicationTargetId"]
+      : [];
+  requireExactKeys(payload, [...identityKeys, ...proposalKeys, ...common], optionalProposalIdentityKeys);
   const parsed: Record<string, ContractValue> = {};
   for (const key of identityKeys) parsed[key] = requireCanonicalId(payload[key]);
   if (operation === "PROPOSE_ROLE_ASSIGNMENT") {
@@ -480,6 +485,7 @@ function parseCommandPayload(
     parsed["effectiveUntil"] = requireIsoTimestamp(payload["effectiveUntil"]);
     if (Date.parse(parsed["effectiveFrom"] as string) >= Date.parse(parsed["effectiveUntil"] as string)) failValidation();
   } else if (operation === "PROPOSE_SOURCE_GOVERNANCE") {
+    if (payload["sourceRegistryEntryId"] !== undefined) parsed["sourceRegistryEntryId"] = requireCanonicalId(payload["sourceRegistryEntryId"]);
     parsed["name"] = requireBoundedString(payload["name"], 3, 160);
     parsed["sourceType"] = requireCanonicalId(payload["sourceType"]);
     parsed["policyReference"] = requireCanonicalId(payload["policyReference"]);
@@ -489,6 +495,7 @@ function parseCommandPayload(
       "PUBLIC_APPROVED", "INTERNAL", "CONFIDENTIAL_BUSINESS", "RESTRICTED_PERSONAL", "RESTRICTED_SECURITY",
     ] as const);
   } else if (operation === "PROPOSE_PUBLICATION_TARGET_GOVERNANCE") {
+    if (payload["publicationTargetId"] !== undefined) parsed["publicationTargetId"] = requireCanonicalId(payload["publicationTargetId"]);
     parsed["name"] = requireBoundedString(payload["name"], 3, 160);
     parsed["targetType"] = requireCanonicalId(payload["targetType"]);
     parsed["channelReference"] = requireCanonicalId(payload["channelReference"]);
@@ -506,10 +513,12 @@ function parseCommandPayload(
   parsed["expectedVersion"] = requireCanonicalVersion(payload["expectedVersion"]);
   if (
     (operation === "PROPOSE_ROLE_ASSIGNMENT"
-      || operation === "PROPOSE_SOURCE_GOVERNANCE"
-      || operation === "PROPOSE_PUBLICATION_TARGET_GOVERNANCE")
+      || (operation === "PROPOSE_SOURCE_GOVERNANCE" && parsed["sourceRegistryEntryId"] === undefined)
+      || (operation === "PROPOSE_PUBLICATION_TARGET_GOVERNANCE" && parsed["publicationTargetId"] === undefined))
     && parsed["expectedVersion"] !== 0
   ) failValidation();
+  if ((parsed["sourceRegistryEntryId"] !== undefined || parsed["publicationTargetId"] !== undefined)
+    && parsed["expectedVersion"] === 0) failValidation();
   parsed["idempotencyKey"] = requireCanonicalId(payload["idempotencyKey"]);
   parsed["reason"] = requireSafeReason(payload["reason"]);
   parsed["evidenceReferences"] = parseEvidenceReferences(payload["evidenceReferences"]);

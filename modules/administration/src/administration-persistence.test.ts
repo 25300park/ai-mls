@@ -22,6 +22,13 @@ const identity: AdministrationTransactionIdentity = Object.freeze({
 });
 const scope = Object.freeze({ tenantId: "tenant-1", scopeType: "TEAM" as const, scopeId: "team-1" });
 const evidence = (id: string) => Object.freeze({ type: "AUDIT" as const, id, version: 1 });
+const sourceMetadata = Object.freeze({
+  name: "Fixture Source", sourceType: "PUBLIC_WEBSITE", allowedMethods: ["MANUAL_CAPTURE"] as const,
+  allowedPurposes: ["LISTING_DISCOVERY"] as const, classification: "INTERNAL" as const,
+});
+const targetMetadata = Object.freeze({
+  name: "Fixture Target", targetType: "MLS_PORTAL", allowedFieldReferences: ["field-title"] as const,
+});
 
 function assignment(version = 1, status: RoleAssignmentPersistenceRecord["status"] = "PROPOSED"): RoleAssignmentPersistenceRecord {
   return {
@@ -450,15 +457,15 @@ test("F16-PHASE-6 verifies non-role approval, rejection and governance transitio
     const operation = resourceType === "SOURCE_REGISTRY" ? "TRANSITION_SOURCE_GOVERNANCE" as const : "TRANSITION_PUBLICATION_TARGET_GOVERNANCE" as const;
     const unitOfWork = new InMemoryAdministrationUnitOfWork();
     let transaction = unitOfWork.begin(flowIdentity);
-    if (resourceType === "SOURCE_REGISTRY") transaction.sourceGovernance.save({ recordType: "SOURCE_REGISTRY", tenantId: "tenant-1", sourceRegistryEntryId: resourceId, scope: flowScope, status: "DRAFT", version: 1, policyReference: "policy-ref", evidenceReferences: [evidence("flow-evidence")] });
-    else transaction.publicationTargets.save({ recordType: "PUBLICATION_TARGET", tenantId: "tenant-1", publicationTargetId: resourceId, scope: flowScope, status: "PROPOSED", version: 1, policyReference: "policy-ref", channelReference: "channel-ref", evidenceReferences: [evidence("flow-evidence")] });
+    if (resourceType === "SOURCE_REGISTRY") transaction.sourceGovernance.save({ recordType: "SOURCE_REGISTRY", tenantId: "tenant-1", sourceRegistryEntryId: resourceId, scope: flowScope, status: "DRAFT", version: 1, policyReference: "policy-ref", ...sourceMetadata, evidenceReferences: [evidence("flow-evidence")] });
+    else transaction.publicationTargets.save({ recordType: "PUBLICATION_TARGET", tenantId: "tenant-1", publicationTargetId: resourceId, scope: flowScope, status: "PROPOSED", version: 1, policyReference: "policy-ref", channelReference: "channel-ref", ...targetMetadata, evidenceReferences: [evidence("flow-evidence")] });
     const initialProposal = { ...proposal(), proposalId: "proposal-flow", resourceType, resourceId, resourceVersion: 1, scope: flowScope };
     transaction.proposals.save(initialProposal);
     transaction.idempotency.record({ ...idempotency(), ...flowIdentity, idempotencyKey: "idem-flow-propose", operation: resourceType === "SOURCE_REGISTRY" ? "PROPOSE_SOURCE_GOVERNANCE" : "PROPOSE_PUBLICATION_TARGET_GOVERNANCE", resultReference: "proposal-flow", resultVersion: 1 });
     transaction.commit();
     transaction = unitOfWork.begin(flowIdentity);
-    if (resourceType === "SOURCE_REGISTRY") transaction.sourceGovernance.update(1, { recordType: "SOURCE_REGISTRY", tenantId: "tenant-1", sourceRegistryEntryId: resourceId, scope: flowScope, status: "ACTIVE", version: 2, policyReference: "policy-ref", evidenceReferences: [evidence("flow-evidence")] });
-    else transaction.publicationTargets.update(1, { recordType: "PUBLICATION_TARGET", tenantId: "tenant-1", publicationTargetId: resourceId, scope: flowScope, status: "ACTIVE", version: 2, policyReference: "policy-ref", channelReference: "channel-ref", evidenceReferences: [evidence("flow-evidence")] });
+    if (resourceType === "SOURCE_REGISTRY") transaction.sourceGovernance.update(1, { recordType: "SOURCE_REGISTRY", tenantId: "tenant-1", sourceRegistryEntryId: resourceId, scope: flowScope, status: "ACTIVE", version: 2, policyReference: "policy-ref", ...sourceMetadata, evidenceReferences: [evidence("flow-evidence")] });
+    else transaction.publicationTargets.update(1, { recordType: "PUBLICATION_TARGET", tenantId: "tenant-1", publicationTargetId: resourceId, scope: flowScope, status: "ACTIVE", version: 2, policyReference: "policy-ref", channelReference: "channel-ref", ...targetMetadata, evidenceReferences: [evidence("flow-evidence")] });
     transaction.proposals.update(1, { ...initialProposal, status: "APPROVED", version: 2 });
     const approveOperation = resourceType === "SOURCE_REGISTRY" ? "APPROVE_SOURCE_GOVERNANCE" as const : "APPROVE_PUBLICATION_TARGET_GOVERNANCE" as const;
     transaction.decisions.append({ ...decision(), decisionId: "decision-flow-approve", proposalId: "proposal-flow", resourceType, resourceId, scope: flowScope, operation: approveOperation, version: 2 });
@@ -470,8 +477,8 @@ test("F16-PHASE-6 verifies non-role approval, rejection and governance transitio
     transaction.idempotency.record({ ...idempotency(), ...flowIdentity, idempotencyKey: "idem-transition-propose", operation: resourceType === "SOURCE_REGISTRY" ? "PROPOSE_SOURCE_GOVERNANCE" : "PROPOSE_PUBLICATION_TARGET_GOVERNANCE", resultReference: "proposal-transition", resultVersion: 1 });
     transaction.commit();
     transaction = unitOfWork.begin(flowIdentity);
-    if (resourceType === "SOURCE_REGISTRY") transaction.sourceGovernance.update(2, { recordType: "SOURCE_REGISTRY", tenantId: "tenant-1", sourceRegistryEntryId: resourceId, scope: flowScope, status: "PAUSED", version: 3, policyReference: "policy-ref", evidenceReferences: [evidence("flow-evidence")] });
-    else transaction.publicationTargets.update(2, { recordType: "PUBLICATION_TARGET", tenantId: "tenant-1", publicationTargetId: resourceId, scope: flowScope, status: "PAUSED", version: 3, policyReference: "policy-ref", channelReference: "channel-ref", evidenceReferences: [evidence("flow-evidence")] });
+    if (resourceType === "SOURCE_REGISTRY") transaction.sourceGovernance.update(2, { recordType: "SOURCE_REGISTRY", tenantId: "tenant-1", sourceRegistryEntryId: resourceId, scope: flowScope, status: "PAUSED", version: 3, policyReference: "policy-ref", ...sourceMetadata, evidenceReferences: [evidence("flow-evidence")] });
+    else transaction.publicationTargets.update(2, { recordType: "PUBLICATION_TARGET", tenantId: "tenant-1", publicationTargetId: resourceId, scope: flowScope, status: "PAUSED", version: 3, policyReference: "policy-ref", channelReference: "channel-ref", ...targetMetadata, evidenceReferences: [evidence("flow-evidence")] });
     transaction.proposals.update(1, { ...transitionProposal, status: "APPROVED", version: 2 });
     transaction.decisions.append({ ...decision(), decisionId: "decision-flow", proposalId: "proposal-transition", resourceType, resourceId, scope: flowScope, operation, version: 3 });
     transaction.idempotency.record({ ...idempotency(), ...flowIdentity, idempotencyKey: "idem-flow-transition", operation, resultReference: "decision-flow", resultVersion: 3 });
@@ -545,8 +552,8 @@ test("F16-PHASE-6 bounded repositories persist every canonical governance record
     role: { recordType: "ROLE", tenantId: "tenant-1", roleId: "role-1", roleCode: "AGT", scope, status: "ACTIVE", version: 1, policyReference: "policy-role-1", evidenceReferences: [evidence("evidence-role-1")] } satisfies RolePersistenceRecord,
     policy: { recordType: "POLICY", tenantId: "tenant-1", policyId: "policy-1", scope: { tenantId: "tenant-1", scopeType: "POLICY", scopeId: "policy-1" }, status: "PROPOSED", version: 1, policyReference: "policy-version-1", evidenceReferences: [evidence("evidence-policy-1")] } satisfies PolicyPersistenceRecord,
     team: { recordType: "TEAM_SCOPE", tenantId: "tenant-1", teamId: "team-1", scope, status: "PROPOSED", version: 1, organizationId: "organization-1", evidenceReferences: [evidence("evidence-team-1")] } satisfies TeamScopePersistenceRecord,
-    source: { recordType: "SOURCE_REGISTRY", tenantId: "tenant-1", sourceRegistryEntryId: "source-1", scope: { tenantId: "tenant-1", scopeType: "SOURCE", scopeId: "source-1" }, status: "DRAFT", version: 1, policyReference: "source-policy-1", evidenceReferences: [evidence("evidence-source-1")] } satisfies SourceGovernancePersistenceRecord,
-    target: { recordType: "PUBLICATION_TARGET", tenantId: "tenant-1", publicationTargetId: "target-1", scope: { tenantId: "tenant-1", scopeType: "TARGET", scopeId: "target-1" }, status: "PROPOSED", version: 1, policyReference: "target-policy-1", channelReference: "channel-1", evidenceReferences: [evidence("evidence-target-1")] } satisfies PublicationTargetGovernancePersistenceRecord,
+    source: { recordType: "SOURCE_REGISTRY", tenantId: "tenant-1", sourceRegistryEntryId: "source-1", scope: { tenantId: "tenant-1", scopeType: "SOURCE", scopeId: "source-1" }, status: "DRAFT", version: 1, policyReference: "source-policy-1", ...sourceMetadata, evidenceReferences: [evidence("evidence-source-1")] } satisfies SourceGovernancePersistenceRecord,
+    target: { recordType: "PUBLICATION_TARGET", tenantId: "tenant-1", publicationTargetId: "target-1", scope: { tenantId: "tenant-1", scopeType: "TARGET", scopeId: "target-1" }, status: "PROPOSED", version: 1, policyReference: "target-policy-1", channelReference: "channel-1", ...targetMetadata, evidenceReferences: [evidence("evidence-target-1")] } satisfies PublicationTargetGovernancePersistenceRecord,
   };
   const cases = [
     { identity: { tenantId: "tenant-1", resourceType: "POLICY", resourceId: "policy-1" } as const, operation: "PROPOSE_POLICY_CHANGE" as const, scope: records.policy.scope, save: (transaction: ReturnType<typeof unitOfWork.begin>) => transaction.policies.save(records.policy), replaceEvidence: (transaction: ReturnType<typeof unitOfWork.begin>) => transaction.policies.update(1, { ...records.policy, version: 2, evidenceReferences: [evidence("replacement")] }), find: () => unitOfWork.policies.find({ tenantId: "tenant-1", resourceType: "POLICY", resourceId: "policy-1" }) },
