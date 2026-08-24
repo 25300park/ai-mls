@@ -7,6 +7,7 @@ const pageTitles: Readonly<Record<ConsolePage, string>> = Object.freeze({
   "UI-033": "Publication Recovery",
   "UI-035": "Audit / History",
   ADMINISTRATION: "Administration",
+  "UI-036": "Role & Policy Administration",
   PROJECTION: "Projection Status",
   OPERATIONS: "Operations / Health",
 });
@@ -19,7 +20,10 @@ const navigation = Object.freeze([
     { page: "UI-033" as const, label: "Recovery", path: "/publication/recovery" },
     { page: "UI-035" as const, label: "Audit / History", path: "/publication/audit" },
   ]) }),
-  Object.freeze({ section: "Administration", items: Object.freeze([{ page: "ADMINISTRATION" as const, label: "Overview", path: "/administration" }]) }),
+  Object.freeze({ section: "Administration", items: Object.freeze([
+    { page: "ADMINISTRATION" as const, label: "Overview", path: "/administration" },
+    { page: "UI-036" as const, label: "Role & Policy Administration", path: "/administration/governance" },
+  ]) }),
   Object.freeze({ section: "System", items: Object.freeze([
     { page: "PROJECTION" as const, label: "Projection", path: "/system/projection" },
     { page: "OPERATIONS" as const, label: "Operations / Health", path: "/system/operations" },
@@ -52,8 +56,8 @@ export function renderConsoleShell(page: ConsolePage, publicationId?: string): s
     </aside>
     <main id="console-content" class="content" tabindex="-1">
       <header class="page-header">
-        <div><p class="eyebrow">READ-ONLY VISIBILITY</p><h1>${escapeHtml(pageTitles[page])}</h1></div>
-        <span class="mode-badge">NON-AUTHORITATIVE</span>
+        <div><p class="eyebrow">${page === "UI-036" ? "CONTROLLED GOVERNANCE" : "READ-ONLY VISIBILITY"}</p><h1>${escapeHtml(pageTitles[page])}</h1></div>
+        <span class="mode-badge">${page === "UI-036" ? "BACKEND AUTHORIZED" : "NON-AUTHORITATIVE"}</span>
       </header>
       <div id="console-view" aria-live="polite" aria-busy="true">
         <section class="state-card loading-state"><span class="spinner" aria-hidden="true"></span><h2>Loading...</h2><p>Reading bounded FEAT-015 status.</p></section>
@@ -82,6 +86,7 @@ export function renderConsoleResult(result: ConsoleReadResult): string {
     case "UI-033": return renderRecovery(data);
     case "UI-035": return renderAudit(data);
     case "ADMINISTRATION": return renderAdministration(data);
+    case "UI-036": return renderControlledAdministration(data);
     case "PROJECTION": return renderProjection(data);
     case "OPERATIONS": return renderOperations(data);
   }
@@ -136,6 +141,81 @@ function renderAdministration(data: Readonly<Record<string, unknown>>): string {
   ${unavailableAdministrationSection("Recent Decisions", data["recentDecisions"], "Not available through the current API-015 runtime read boundary.")}
   <p class="scope-note">Read-only governance visibility. UI-036 controlled write actions are not available.</p>`;
 }
+function renderControlledAdministration(data: Readonly<Record<string, unknown>>): string {
+  const selectors = isRecord(data["selectorOptions"]) ? data["selectorOptions"] : Object.freeze({});
+  const governedScopes: Readonly<Record<string, unknown>> = isRecord(data["governedScopes"]) ? data["governedScopes"] : Object.freeze({});
+  const roles = selectorItems(selectors, "roles");
+  const teams = selectorItems(selectors, "teamScopes");
+  const policies = selectorItems(selectors, "policies");
+  const sources = selectorItems(selectors, "sourceGovernance");
+  const targets = selectorItems(selectors, "publicationTargets");
+  const assignments = selectorItems(selectors, "roleAssignments");
+  const proposals = selectorItems(selectors, "proposals");
+  const subjects = [...new Set(assignments.map((item) => displayValue(item["subjectPrincipalReference"])))]
+    .filter((value) => value !== "N/A")
+    .sort((left, right) => left.localeCompare(right));
+  const noOptions = [roles, teams, policies, sources, targets, proposals].every((items) => items.length === 0);
+  return `<section aria-labelledby="controlled-administration"><div class="section-heading"><div><p class="eyebrow">UI-036 · API-015</p><h2 id="controlled-administration">Role &amp; Policy Administration</h2></div>${statusBadge("CONTROLLED")}</div><p class="scope-note">UI actions request governed changes. Trusted Session, live authority, MFA, two-person control, scope, version, and idempotency are enforced by API-015.</p>${noOptions ? '<div class="notice"><strong>UNAVAILABLE</strong><span>No authorized canonical options are available.</span></div>' : ""}</section>
+  ${controlledSection("Role Assignments", roles, `<form class="governed-form" data-administration-command>
+    <input type="hidden" name="operation" value="PROPOSE_ROLE_ASSIGNMENT"><input type="hidden" name="expectedVersion" value="0">
+    ${selectField("Subject principal", "subjectPrincipalId", subjects.map((value) => simpleOption(value)))}${selectField("Principal type", "subjectPrincipalType", [simpleOption("HUMAN"), simpleOption("SERVICE")])}
+    ${selectField("Canonical role code", "role", roles.map(roleOptionHtml))}
+    ${selectField("Team scope", "teamIds", teams.map(selectorOptionHtml))}${field("Resource types", "resourceTypes", "text", true)}${field("Purposes", "purposes", "text", true)}
+    ${field("Effective from", "effectiveFrom", "datetime-local", true)}${field("Effective until", "effectiveUntil", "datetime-local", true)}${commonGovernanceFields("Propose role assignment")}
+  </form>${selectorTable("Canonical Role Resources", roles)}`)}
+  ${controlledSection("Policy Administration", policies, `<form class="governed-form" data-administration-command>
+    <input type="hidden" name="operation" value="PROPOSE_POLICY_CHANGE">${scopeFields(governedScopes["policies"])}${selectField("Policy", "policyId", policies.map(selectorOptionHtml))}
+    ${field("Proposed change reference", "proposedChangeReference", "text", true)}${commonGovernanceFields("Propose policy change")}
+  </form>`)}
+  ${controlledSection("Source Governance", sources, `<form class="governed-form" data-administration-command>
+    <input type="hidden" name="operation" value="PROPOSE_SOURCE_GOVERNANCE">${scopeFields(governedScopes["sourceGovernance"])}${selectField("Existing source (optional successor)", "sourceRegistryEntryId", [simpleOption("", "New source"), ...sources.map(selectorOptionHtml)])}
+    ${field("Name", "name", "text", true)}${field("Source type", "sourceType", "text", true)}${selectField("Policy", "policyReference", policies.map(selectorOptionHtml))}
+    ${field("Allowed methods", "allowedMethods", "text", true)}${field("Allowed purposes", "allowedPurposes", "text", true)}${selectField("Classification", "classification", ["PUBLIC_APPROVED", "INTERNAL", "CONFIDENTIAL_BUSINESS", "RESTRICTED_PERSONAL", "RESTRICTED_SECURITY"].map((value) => simpleOption(value)))}
+    ${commonGovernanceFields("Propose source governance")}
+  </form>`)}
+  ${controlledSection("Publication Target Governance", targets, `<form class="governed-form" data-administration-command>
+    <input type="hidden" name="operation" value="PROPOSE_PUBLICATION_TARGET_GOVERNANCE">${scopeFields(governedScopes["publicationTargets"])}${selectField("Existing target (optional successor)", "publicationTargetId", [simpleOption("", "New target"), ...targets.map(selectorOptionHtml)])}
+    ${field("Name", "name", "text", true)}${field("Target type", "targetType", "text", true)}${field("Channel reference", "channelReference", "text", true)}${selectField("Policy", "policyReference", policies.map(selectorOptionHtml))}
+    ${field("Allowed field references", "allowedFieldReferences", "text", true)}${commonGovernanceFields("Propose target governance")}
+  </form>`)}
+  ${renderProposalActions(proposals, { assignments, policies, sources, targets })}`;
+}
+
+function controlledSection(title: string, items: readonly Readonly<Record<string, unknown>>[], body: string): string {
+  return `<section><div class="section-heading"><h2>${escapeHtml(title)}</h2>${statusBadge(items.length === 0 ? "EMPTY" : "AVAILABLE")}</div>${body}</section>`;
+}
+
+function renderProposalActions(proposals: readonly Readonly<Record<string, unknown>>[], resources: Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>): string {
+  if (proposals.length === 0) return `<section><div class="section-heading"><h2>Pending Proposals</h2>${statusBadge("EMPTY")}</div><p class="empty-inline">No authorized pending proposals are available.</p></section>`;
+  return `<section><div class="section-heading"><div><p class="eyebrow">TWO-PERSON CONTROL</p><h2>Pending Proposals</h2></div>${statusBadge("PROPOSED")}</div><p class="scope-note">Proposed by is shown for safe review. Approval requires an independent authorized actor. Confirmation required for privileged actions.</p><div class="table-wrap"><table><thead><tr><th>Proposal</th><th>Resource</th><th>Proposed by</th><th>Status</th><th>Governed actions</th></tr></thead><tbody>${proposals.map((proposal) => {
+    const resourceType = displayValue(proposal["resourceType"]);
+    const resourceId = displayValue(proposal["resourceId"]);
+    const resourceItems = resourceType === "ROLE_ASSIGNMENT" ? resources["assignments"] : resourceType === "POLICY" ? resources["policies"] : resourceType === "SOURCE_REGISTRY" ? resources["sources"] : resources["targets"];
+    const resource = resourceItems?.find((item) => item["id"] === resourceId);
+    const expectedVersion = resource?.["version"];
+    const operations = decisionOperations(resourceType, displayValue(resource?.["status"]));
+    return `<tr><td>${escapeHtml(proposal["id"])}</td><td>${escapeHtml(resourceType)} · ${escapeHtml(resourceId)}</td><td>${escapeHtml(proposal["proposerReference"])}</td><td>${statusBadge(proposal["status"])}</td><td><div class="action-list">${expectedVersion === undefined ? '<span class="scope-note">Current resource version unavailable.</span>' : operations.map((operation) => `<form class="inline-command-form" data-administration-command data-confirmation-required><input type="hidden" name="operation" value="${operation}"><input type="hidden" name="proposalId" value="${escapeHtml(proposal["id"])}"><input type="hidden" name="resourceType" value="${escapeHtml(resourceType)}"><input type="hidden" name="resourceId" value="${escapeHtml(resourceId)}"><input type="hidden" name="scopeType" value="${escapeHtml(proposal["scopeType"])}"><input type="hidden" name="scopeId" value="${escapeHtml(proposal["scopeId"])}"><input type="hidden" name="expectedVersion" value="${escapeHtml(expectedVersion)}"><label><span class="sr-only">Reason for ${escapeHtml(operation)}</span><input name="reason" required minlength="3" maxlength="512" placeholder="Reason"></label>${operation.startsWith("TRANSITION_") ? transitionSelect(resourceType) : ""}<button type="submit">${escapeHtml(operation)}</button></form>`).join("")}</div></td></tr>`;
+  }).join("")}</tbody></table></div><div class="confirmation-panel" hidden data-confirmation-panel><strong>Confirmation required</strong><p data-confirmation-summary></p><button type="button" data-confirm-command>Confirm governed action</button><button type="button" data-cancel-command>Cancel</button></div></section>`;
+}
+
+function decisionOperations(resourceType: string, resourceStatus: string): readonly string[] {
+  if (resourceType === "ROLE_ASSIGNMENT") return resourceStatus === "ACTIVE" ? ["REVOKE_ROLE_ASSIGNMENT"] : ["APPROVE_ROLE_ASSIGNMENT", "REJECT_ROLE_ASSIGNMENT"];
+  if (resourceType === "POLICY") return ["APPROVE_POLICY_CHANGE", "REJECT_POLICY_CHANGE"];
+  if (resourceType === "SOURCE_REGISTRY") return ["APPROVE_SOURCE_GOVERNANCE", "REJECT_SOURCE_GOVERNANCE", "TRANSITION_SOURCE_GOVERNANCE"];
+  if (resourceType === "PUBLICATION_TARGET") return ["APPROVE_PUBLICATION_TARGET_GOVERNANCE", "REJECT_PUBLICATION_TARGET_GOVERNANCE", "TRANSITION_PUBLICATION_TARGET_GOVERNANCE"];
+  return [];
+}
+
+function transitionSelect(resourceType: string): string { return selectField("Target status", "targetStatus", (resourceType === "SOURCE_REGISTRY" ? ["PAUSED", "BLOCKED", "RETIRED"] : ["PAUSED", "RETIRED"]).map((value) => simpleOption(value))); }
+function commonGovernanceFields(label: string): string { return `${field("Reason", "reason", "text", true)}${field("Evidence reference", "evidenceReferenceId", "text", false)}<button type="submit">${escapeHtml(label)}</button>`; }
+function field(label: string, name: string, type: string, required: boolean): string { return `<label><span>${escapeHtml(label)}</span><input type="${escapeHtml(type)}" name="${escapeHtml(name)}"${required ? " required" : ""} minlength="3" maxlength="512"></label>`; }
+function selectField(label: string, name: string, options: readonly string[]): string { return `<label><span>${escapeHtml(label)}</span><select name="${escapeHtml(name)}" required>${options.join("")}</select></label>`; }
+function simpleOption(value: string, label = value): string { return `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`; }
+function selectorOptionHtml(item: Readonly<Record<string, unknown>>): string { return `<option value="${escapeHtml(item["id"])}" data-version="${escapeHtml(item["version"])}" data-scope-type="${escapeHtml(item["scopeType"])}" data-scope-id="${escapeHtml(item["scopeId"])}">${escapeHtml(item["id"])} · ${escapeHtml(item["status"])} · v${escapeHtml(item["version"])}</option>`; }
+function roleOptionHtml(item: Readonly<Record<string, unknown>>): string { return `<option value="${escapeHtml(item["roleCode"])}">${escapeHtml(item["roleCode"])} · ${escapeHtml(item["id"])}</option>`; }
+function selectorItems(selectors: Readonly<Record<string, unknown>>, key: string): readonly Readonly<Record<string, unknown>>[] { const section = selectors[key]; return isRecord(section) ? arrayOf(section["items"]).filter(isRecord) : []; }
+function selectorTable(title: string, items: readonly Readonly<Record<string, unknown>>[]): string { return `<div class="selector-summary"><h3>${escapeHtml(title)}</h3>${items.length === 0 ? '<p class="empty-inline">No authorized canonical options are available.</p>' : items.map((item) => `<span class="selector-chip">${escapeHtml(item["id"])} · ${escapeHtml(item["status"])}</span>`).join("")}</div>`; }
+function scopeFields(value: unknown): string { return isRecord(value) ? `<input type="hidden" name="scopeType" value="${escapeHtml(value["scopeType"])}"><input type="hidden" name="scopeId" value="${escapeHtml(value["scopeId"])}">` : ""; }
 
 function unavailableAdministrationSection(title: string, value: unknown, message: string): string {
   const state = isRecord(value) ? displayValue(value["state"]) : "UNAVAILABLE";
@@ -222,22 +302,111 @@ export const CONSOLE_BROWSER_CLIENT = String.raw`(() => {
   const root = document.getElementById("console-view");
   const page = document.body.dataset.consolePage;
   if (!root || !page) return;
-  const query = new URLSearchParams(window.location.search);
-  const request = new URLSearchParams({ page });
-  const publicationId = query.get("publicationId");
-  if (publicationId) request.set("publicationId", publicationId);
-  fetch("/api/console/view?" + request.toString(), { headers: { accept: "application/json" } })
-    .then((response) => response.ok ? response.json() : Promise.reject(new Error("SAFE_HTTP_FAILURE")))
-    .then((payload) => {
-      root.innerHTML = typeof payload.html === "string" ? payload.html : "<section class=\"state-card error-state\"><h2>CONSOLE_READ_UNAVAILABLE</h2><p>The requested Console view is unavailable.</p></section>";
-      root.setAttribute("aria-busy", "false");
-    })
-    .catch(() => {
-      root.innerHTML = "<section class=\"state-card error-state\"><h2>CONSOLE_READ_UNAVAILABLE</h2><p>The requested Console view is unavailable.</p></section>";
-      root.setAttribute("aria-busy", "false");
-    });
+  let pendingForm = null;
+  const safeFailure = () => {
+    root.innerHTML = "<section class=\"state-card error-state\"><h2>CONSOLE_READ_UNAVAILABLE</h2><p>The requested Console view is unavailable.</p></section>";
+    root.setAttribute("aria-busy", "false");
+  };
+  const setHtml = (html) => {
+    root.innerHTML = typeof html === "string" ? html : "";
+    root.setAttribute("aria-busy", "false");
+    wireForms();
+  };
+  const load = () => {
+    const query = new URLSearchParams(window.location.search);
+    const request = new URLSearchParams({ page });
+    const publicationId = query.get("publicationId");
+    if (publicationId) request.set("publicationId", publicationId);
+    return fetch("/api/console/view?" + request.toString(), { headers: { accept: "application/json" } })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("SAFE_HTTP_FAILURE")))
+      .then((payload) => setHtml(payload.html))
+      .catch(safeFailure);
+  };
+  const selectedOption = (form) => {
+    const select = form.querySelector('select[name="teamIds"],select[name="policyId"],select[name="sourceRegistryEntryId"],select[name="publicationTargetId"]');
+    return select && select.selectedOptions ? select.selectedOptions[0] : null;
+  };
+  const buildCommand = (form) => {
+    const values = new FormData(form);
+    const operation = String(values.get("operation") || "");
+    const payload = {};
+    const csvFields = new Set(["teamIds", "resourceTypes", "purposes", "allowedMethods", "allowedPurposes", "allowedFieldReferences"]);
+    for (const [key, raw] of values.entries()) {
+      if (["operation", "resourceType", "resourceId", "evidenceReferenceId", "scopeType", "scopeId"].includes(key)) continue;
+      const value = String(raw).trim();
+      if (!value) continue;
+      payload[key] = csvFields.has(key) ? value.split(",").map((item) => item.trim()).filter(Boolean)
+        : key === "expectedVersion" ? Number(value)
+        : key === "effectiveFrom" || key === "effectiveUntil" ? new Date(value).toISOString()
+        : value;
+    }
+    const option = selectedOption(form);
+    const explicitVersion = values.get("expectedVersion");
+    if (explicitVersion === null || String(explicitVersion).length === 0) payload.expectedVersion = option && option.dataset.version ? Number(option.dataset.version) : 0;
+    const scopeType = String(values.get("scopeType") || (option && option.dataset.scopeType) || "");
+    const scopeId = String(values.get("scopeId") || (option && option.dataset.scopeId) || "");
+    payload.scopeType = scopeType;
+    payload.scopeId = scopeId;
+    const resourceType = String(values.get("resourceType") || "");
+    const resourceId = String(values.get("resourceId") || "");
+    if (resourceId) {
+      const identityKey = resourceType === "ROLE_ASSIGNMENT" ? "roleAssignmentId" : resourceType === "POLICY" ? "policyId" : resourceType === "SOURCE_REGISTRY" ? "sourceRegistryEntryId" : "publicationTargetId";
+      payload[identityKey] = resourceId;
+    }
+    const evidenceReferenceId = String(values.get("evidenceReferenceId") || "").trim();
+    payload.evidenceReferenceId = evidenceReferenceId;
+    if (!form.dataset.idempotencyKey) form.dataset.idempotencyKey = crypto.randomUUID();
+    payload.idempotencyKey = form.dataset.idempotencyKey;
+    return { operation, payload };
+  };
+  const feedback = (result) => {
+    const notice = document.createElement("div");
+    notice.className = result && result.state === "CONFIRMED" ? "notice command-feedback" : "notice command-feedback error-state";
+    const title = document.createElement("strong");
+    const detail = document.createElement("span");
+    title.textContent = result && result.state === "CONFIRMED" ? "Confirmed by API-015" : String((result && result.errorCode) || "COMMAND_REJECTED");
+    detail.textContent = result && result.state === "CONFIRMED" ? String(result.operation) + " · " + String(result.status) + " · v" + String(result.version) : String((result && result.message) || "The request could not be completed.");
+    notice.append(title, detail);
+    root.prepend(notice);
+  };
+  const submit = (form) => {
+    const button = form.querySelector('button[type="submit"]');
+    if (button) button.disabled = true;
+    fetch("/api/console/administration/command", {
+      method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify(buildCommand(form)),
+    }).then((response) => response.ok ? response.json() : Promise.reject(new Error("SAFE_HTTP_FAILURE")))
+      .then((payload) => {
+        if (payload.result && payload.result.state === "CONFIRMED") {
+          delete form.dataset.idempotencyKey;
+          setHtml(payload.html);
+          feedback(payload.result);
+          return;
+        }
+        if (button) button.disabled = false;
+        feedback(payload.result);
+      }).catch(() => { if (button) button.disabled = false; feedback({ state: "REJECTED", errorCode: "CONSOLE_READ_UNAVAILABLE", message: "The command outcome is unavailable. Retry uses the same idempotency key." }); });
+  };
+  const wireForms = () => {
+    root.querySelectorAll("[data-administration-command]").forEach((form) => form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (!form.reportValidity()) return;
+      if (form.hasAttribute("data-confirmation-required")) {
+        pendingForm = form;
+        const panel = root.querySelector("[data-confirmation-panel]");
+        const summary = root.querySelector("[data-confirmation-summary]");
+        if (panel) panel.hidden = false;
+        if (summary) summary.textContent = String(new FormData(form).get("operation")) + " · " + String(new FormData(form).get("resourceId")) + " · v" + String(new FormData(form).get("expectedVersion"));
+        return;
+      }
+      submit(form);
+    }));
+    root.querySelector("[data-confirm-command]")?.addEventListener("click", () => { if (pendingForm) submit(pendingForm); pendingForm = null; });
+    root.querySelector("[data-cancel-command]")?.addEventListener("click", () => { const panel = root.querySelector("[data-confirmation-panel]"); if (panel) panel.hidden = true; pendingForm = null; });
+  };
+  void load();
 })();`;
 
 export const CONSOLE_STYLES = `
 :root{--radius:10px;--control-height:32px;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#15253a;background:#f3f6fa;font-synthesis:none}*{box-sizing:border-box}body{margin:0;min-width:320px}.skip-link{position:fixed;left:1rem;top:-4rem;z-index:10;background:#fff;padding:.75rem;border-radius:.5rem}.skip-link:focus{top:1rem}.console-layout{min-height:100vh;display:grid;grid-template-columns:240px 1fr}.sidebar{background:#10243e;color:#dbe8f6;padding:24px;display:flex;flex-direction:column;gap:1.5rem}.brand{display:flex;align-items:center;gap:.75rem}.brand-mark{display:grid;place-items:center;width:2.4rem;height:2.4rem;border-radius:.7rem;background:#3bd2b1;color:#092033;font-weight:800}.nav-section{margin-top:1rem}.nav-section h2{font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:#8198b3}.nav-link{display:block;color:#dbe8f6;text-decoration:none;padding:.7rem .8rem;margin:.2rem 0;border-radius:.5rem}.nav-link:hover,.nav-link.active{background:#1c3858;color:#fff}.nav-link:focus-visible,button:focus-visible{outline:3px solid #f4c95d;outline-offset:2px}.baseline{margin-top:auto;border-top:1px solid #31506e;padding-top:1rem;display:grid;gap:.3rem;font-size:.76rem;color:#9eb2c8}.content{padding:24px;min-width:0;max-width:1440px;width:100%;margin:0 auto}.page-header,.section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem}.page-header{height:48px;margin-bottom:16px}.page-header h1{font-size:1.45rem;line-height:1.2;margin:.1rem 0}.eyebrow{font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:#58718b;font-weight:750}.mode-badge,.status-badge{display:inline-flex;align-items:center;gap:.45rem;border:1px solid #c9d5e2;border-radius:999px;padding:.45rem .7rem;background:#fff;font-size:.72rem;font-weight:750;white-space:nowrap}.status-dot{width:.55rem;height:.55rem;border-radius:50%;background:#1ead86}[data-status="unavailable"] .status-dot{background:#8198b3}[data-status="revoked"] .status-dot,[data-status="rejected"] .status-dot,[data-status="blocked"] .status-dot{background:#b54444}[data-status="pending"] .status-dot,[data-status="proposed"] .status-dot{background:#a36a16}.content section,.development-card{background:#fff;border:1px solid #dce4ed;border-radius:var(--radius);padding:1.25rem;margin-bottom:16px;box-shadow:0 8px 24px rgba(38,63,89,.055)}.card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.75rem}.metric-card{border:1px solid #dce4ed;border-radius:.8rem;padding:1rem;display:grid;gap:.55rem}.metric-card span{font-size:.76rem;color:#64788d}.metric-card strong{font-size:1.05rem}.definition-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:.7rem;margin:1rem 0 0}.definition-grid>div{background:#f7f9fc;padding:.8rem;border-radius:.65rem;min-width:0}.definition-grid dt{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:#6a7c91}.definition-grid dd{margin:.35rem 0 0;overflow-wrap:anywhere;font-weight:650}.action-list{display:flex;flex-wrap:wrap;gap:.6rem}.action-list button{border:1px solid #c9d5e2;background:#eef2f6;color:#65768a;padding:.65rem .85rem;border-radius:.55rem}.notice{display:flex;justify-content:space-between;gap:1rem;border-left:4px solid #3a80d2;background:#f2f7fd;padding:.8rem 1rem;margin-top:.75rem}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:720px}th{text-align:left;font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:#607388;padding:.65rem .5rem;border-bottom:1px solid #dce4ed}td{border-top:1px solid #e2e8ef;padding:.5rem}.state-card{text-align:center;padding:2.5rem!important}.state-card h2{font-size:1.1rem}.error-state{border-color:#eab0b0!important}.numeric{font-variant-numeric:tabular-nums}.governance-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.governance-grid .compact-section{margin-bottom:0}.reference,.scope-note,.empty-inline{color:#607388;font-size:.86rem}.spinner{display:inline-block;width:1.4rem;height:1.4rem;border:3px solid #d5e0eb;border-top-color:#2978c8;border-radius:50%}@media(max-width:900px){.governance-grid{grid-template-columns:1fr}}@media(max-width:760px){.card-grid{grid-template-columns:1fr}.console-layout{grid-template-columns:1fr}.sidebar{position:static}.content{padding:1.2rem}.page-header{height:auto;align-items:flex-start;flex-direction:column}.baseline{margin-top:1rem}}
+.governed-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;align-items:end}.governed-form label,.inline-command-form label{display:grid;gap:5px;font-size:.76rem;color:#526a82}.governed-form input,.governed-form select,.inline-command-form input,.inline-command-form select{min-height:var(--control-height);border:1px solid #b9c8d8;border-radius:.45rem;background:#fff;color:#15253a;padding:.4rem .55rem;min-width:0}.governed-form button,.inline-command-form button,.confirmation-panel button{min-height:var(--control-height);border:1px solid #245f9d;border-radius:.45rem;background:#245f9d;color:#fff;padding:.4rem .7rem;font-weight:700}.inline-command-form{display:flex;gap:.4rem;align-items:end;flex-wrap:wrap}.inline-command-form button{font-size:.68rem}.selector-summary{grid-column:1/-1;border-top:1px solid #e2e8ef;margin-top:.75rem;padding-top:.75rem}.selector-chip{display:inline-flex;margin:.2rem .35rem .2rem 0;border:1px solid #d2dde8;border-radius:999px;padding:.3rem .55rem;font-size:.72rem}.confirmation-panel{border:1px solid #d6b267;background:#fff9e8;border-radius:.6rem;padding:1rem;margin-top:1rem}.confirmation-panel[hidden]{display:none}.command-feedback{margin-bottom:16px}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}@media(max-width:760px){.governed-form{grid-template-columns:1fr}.inline-command-form{display:grid;grid-template-columns:1fr}.governed-form button,.inline-command-form button{width:100%}}
 `;

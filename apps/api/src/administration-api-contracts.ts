@@ -195,12 +195,12 @@ export interface AdministrationRoleAssignmentView extends AdministrationGoverned
   readonly subjectPrincipalReference: string;
   readonly roleId: string;
 }
-export interface AdministrationRoleView extends AdministrationGovernedViewBase<"ACTIVE" | "RETIRED"> { readonly viewType: "ROLE"; readonly roleId: string }
+export interface AdministrationRoleView extends AdministrationGovernedViewBase<"ACTIVE" | "RETIRED"> { readonly viewType: "ROLE"; readonly roleId: string; readonly roleCode: RoleCode }
 export interface AdministrationPolicyView extends AdministrationGovernedViewBase<"PROPOSED" | "ACTIVE" | "REJECTED" | "REVOKED"> { readonly viewType: "POLICY"; readonly policyId: string }
 export interface AdministrationTeamScopeView extends AdministrationGovernedViewBase<"PROPOSED" | "ACTIVE" | "REVOKED"> { readonly viewType: "TEAM_SCOPE"; readonly teamId: string }
 export interface AdministrationSourceGovernanceView extends AdministrationGovernedViewBase<"DRAFT" | "UNDER_REVIEW" | "ACTIVE" | "PAUSED" | "BLOCKED" | "RETIRED"> { readonly viewType: "SOURCE_GOVERNANCE"; readonly sourceRegistryEntryId: string; readonly policyReference: string }
 export interface AdministrationPublicationTargetGovernanceView extends AdministrationGovernedViewBase<"PROPOSED" | "ACTIVE" | "PAUSED" | "RETIRED"> { readonly viewType: "PUBLICATION_TARGET_GOVERNANCE"; readonly publicationTargetId: string; readonly policyReference: string; readonly channelReference: string }
-export interface AdministrationProposalView extends AdministrationGovernedViewBase<"PROPOSED" | "APPROVED" | "REJECTED" | "REVOKED"> { readonly viewType: "ADMINISTRATION_PROPOSAL"; readonly proposalId: string; readonly proposerReference: string; readonly proposedChangeReference: string }
+export interface AdministrationProposalView extends AdministrationGovernedViewBase<"PROPOSED" | "APPROVED" | "REJECTED" | "REVOKED"> { readonly viewType: "ADMINISTRATION_PROPOSAL"; readonly proposalId: string; readonly resourceType: AdministrationGovernedResourceType; readonly resourceId: string; readonly proposerReference: string; readonly proposedChangeReference: string }
 export interface AdministrationDecisionSummaryView extends AdministrationGovernedViewBase<"APPROVED" | "REJECTED" | "REVOKED"> { readonly viewType: "ADMINISTRATION_DECISION"; readonly decisionId: string; readonly proposalId: string; readonly decisionActorReference: string }
 export type AdministrationReadView =
   | AdministrationRoleAssignmentView | AdministrationRoleView | AdministrationPolicyView
@@ -363,9 +363,10 @@ export function createAdministrationReadView(input: unknown): AdministrationRead
     const viewType = requireClosedValue(value["viewType"], readViewTypes);
     const identityKeys = readViewIdentityKeys[viewType];
     const extraKeys = viewType === "ROLE_ASSIGNMENT" ? ["subjectPrincipalReference", "roleId"]
+      : viewType === "ROLE" ? ["roleCode"]
       : viewType === "SOURCE_GOVERNANCE" ? ["policyReference"]
         : viewType === "PUBLICATION_TARGET_GOVERNANCE" ? ["policyReference", "channelReference"]
-          : viewType === "ADMINISTRATION_PROPOSAL" ? ["proposerReference", "proposedChangeReference"]
+          : viewType === "ADMINISTRATION_PROPOSAL" ? ["resourceType", "resourceId", "proposerReference", "proposedChangeReference"]
             : viewType === "ADMINISTRATION_DECISION" ? ["proposalId", "decisionActorReference"] : [];
     requireExactKeys(value, ["viewType", identityKeys, ...extraKeys, "scope", "status", "version", "evidenceReferences"]);
     const result: Record<string, unknown> = {
@@ -381,7 +382,11 @@ export function createAdministrationReadView(input: unknown): AdministrationRead
         : viewType;
     const allowedScopes = allowedScopesForResource(governedViewResource);
     if (!allowedScopes.includes((result["scope"] as AdministrationScopeReference).scopeType)) failValidation();
+    if (viewType === "ADMINISTRATION_PROPOSAL") {
+      result["resourceType"] = requireClosedValue(value["resourceType"], governedResourceTypes);
+    }
     for (const key of extraKeys) result[key] = requireCanonicalId(value[key]);
+    if (viewType === "ROLE") result["roleCode"] = requireClosedValue(value["roleCode"], roleCodes);
     return immutableAdministrationApiValue(result) as unknown as AdministrationReadView;
   } catch (error: unknown) {
     if (error instanceof AdministrationContractValidationError) throw new AdministrationApiError("VALIDATION_FAILED");

@@ -297,6 +297,7 @@ test("F16-PHASE-11A LIST_ROLES returns authorized scope-bounded selector views i
     "role-security-phase8",
   ]);
   assert.equal(listed.items.every((item) => item.viewType === "ROLE" && item.status === "ACTIVE"), true);
+  assert.deepEqual(listed.items.map((item) => "roleCode" in item ? item.roleCode : undefined), ["AGT", "SEC"]);
   assert.equal(Object.isFrozen(listed), true);
   assert.equal(Object.isFrozen(listed.items), true);
 });
@@ -411,6 +412,36 @@ test("F16-PHASE-11A LIST_POLICIES returns authorized canonical IDs and versions 
   assert.equal(listed.items[0]?.version, 1);
   assert.equal(JSON.stringify(listed).includes("proposedChangeReference"), false);
   assert.equal(JSON.stringify(listed).includes("reasonReference"), false);
+});
+
+test("F16-PHASE-11B LIST_ADMINISTRATION_PROPOSALS returns safe resource-bound pending proposals", () => {
+  const { application } = fixture();
+  const proposed = application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
+    policyId: "policy-proposal-selector-phase11b",
+    proposedChangeReference: "policy-change-selector-phase11b",
+    ...common(policyScope, 0, "idem-policy-proposal-selector-phase11b"),
+  }));
+
+  const listed = application.list(command("LIST_ADMINISTRATION_PROPOSALS", "session-policy-approver", {
+    scope: policyScope,
+    status: "PROPOSED",
+    pagination: { limit: 10 },
+  }));
+
+  assert.equal(listed.items.length, 1);
+  assert.deepEqual(listed.items[0], {
+    viewType: "ADMINISTRATION_PROPOSAL",
+    proposalId: proposed.proposalId,
+    resourceType: "POLICY",
+    resourceId: "policy-proposal-selector-phase11b",
+    proposerReference: "policy-proposer",
+    proposedChangeReference: "policy-change-selector-phase11b",
+    scope: policyScope,
+    status: "PROPOSED",
+    version: 1,
+    evidenceReferences: [{ type: "AUDIT", id: "evidence-idem-policy-proposal-selector-phase11b", version: 1 }],
+  });
+  assert.equal(Object.isFrozen(listed.items[0]), true);
 });
 
 test("F16-PHASE-11A LIST_SOURCE_GOVERNANCE returns safe scoped metadata without source execution", () => {

@@ -80,6 +80,7 @@ function repositories(overrides: {
   const proposals: AdministrationProposalReadRepository = {
     findById: () => proposalRecord,
     listPending: () => [],
+    listByScope: () => [],
   };
   const decisions: AdministrationDecisionReadRepository = { list: () => decisionRecords };
   return { roleAssignments, roles, proposals, decisions };

@@ -25,7 +25,8 @@ test("POST-F15-CONSOLE shell renders the approved accessible navigation and load
   assert.equal(html.includes("aria-live=\"polite\""), true);
   assert.equal(CONSOLE_STYLES.includes(":focus-visible"), true);
   assert.equal(CONSOLE_BROWSER_CLIENT.includes("fetch("), true);
-  assert.equal(CONSOLE_BROWSER_CLIENT.includes("method: \"POST\""), false);
+  assert.equal(CONSOLE_BROWSER_CLIENT.includes("/api/console/administration/command"), true);
+  assert.equal(/publication\/(commands|execute)|PUBLISH_PUBLICATION/u.test(CONSOLE_BROWSER_CLIENT), false);
 });
 
 test("POST-F15-CONSOLE UI-031 renders bounded fields and diagnostic actions as non-executable", () => {
@@ -195,6 +196,62 @@ test("F16-PHASE-10 UI-006 renders loading, empty, unavailable, not-authorized, a
   assert.equal(unauthorized.includes("Not authorized."), true);
   assert.equal(error.includes("console-safe-reference"), true);
   assert.equal(JSON.stringify([shell, empty, unavailable, unauthorized, error]).includes("Session"), false);
+});
+test("F16-PHASE-11 UI-036 renders canonical controlled workflows without authority or execution leakage", () => {
+  const shell = renderConsoleShell("UI-036");
+  const html = renderConsoleResult(ready("UI-036", {
+    selectorOptions: {
+      roles: { state: "READY", items: [{ id: "role-<unsafe>", roleCode: "SEC", status: "ACTIVE", version: 2, scopeType: "TENANT", scopeId: "tenant-a" }] },
+      teamScopes: { state: "READY", items: [{ id: "team-a", status: "ACTIVE", version: 3, scopeType: "TEAM", scopeId: "team-a" }] },
+      roleAssignments: { state: "READY", items: [{ id: "assignment-a", subjectPrincipalReference: "principal-canonical", status: "ACTIVE", version: 1, scopeType: "TEAM", scopeId: "team-a" }] },
+      policies: { state: "READY", items: [{ id: "policy-a", status: "ACTIVE", version: 4, scopeType: "POLICY", scopeId: "policy-a" }] },
+      sourceGovernance: { state: "READY", items: [{ id: "source-a", status: "ACTIVE", version: 5, scopeType: "SOURCE", scopeId: "source-a" }] },
+      publicationTargets: { state: "READY", items: [{ id: "target-a", status: "ACTIVE", version: 6, scopeType: "TARGET", scopeId: "target-a" }] },
+      proposals: { state: "READY", items: [
+        { id: "proposal-role-a", resourceType: "ROLE_ASSIGNMENT", resourceId: "assignment-a", proposerReference: "proposer-a", status: "PROPOSED", version: 1, scopeType: "TEAM", scopeId: "team-a" },
+        { id: "proposal-policy-a", resourceType: "POLICY", resourceId: "policy-a", proposerReference: "proposer-b", status: "PROPOSED", version: 1, scopeType: "POLICY", scopeId: "policy-a" },
+      ] },
+    },
+  }));
+
+  assert.equal(shell.includes("Role &amp; Policy Administration"), true);
+  assert.equal(shell.includes('data-console-page="UI-036"'), true);
+  for (const label of ["Role Assignments", "Policy Administration", "Source Governance", "Publication Target Governance", "Pending Proposals", "Confirmation required"]) {
+    assert.equal(html.includes(label), true, label);
+  }
+  for (const operation of [
+    "PROPOSE_ROLE_ASSIGNMENT", "PROPOSE_POLICY_CHANGE", "PROPOSE_SOURCE_GOVERNANCE", "PROPOSE_PUBLICATION_TARGET_GOVERNANCE",
+    "REVOKE_ROLE_ASSIGNMENT",
+  ]) assert.equal(html.includes(operation), true, operation);
+  assert.equal(html.includes("APPROVE_ROLE_ASSIGNMENT"), false);
+  assert.equal(html.includes("REJECT_ROLE_ASSIGNMENT"), false);
+  assert.equal(html.includes('<option value="SEC">SEC · role-&lt;unsafe&gt;</option>'), true);
+  assert.equal(html.includes('<option value="AUD">'), false);
+  assert.equal(html.includes('<option value="COMP">'), false);
+  assert.equal(html.includes("proposal-role-a"), true);
+  assert.equal(html.includes('<option value="principal-canonical">principal-canonical</option>'), true);
+  assert.equal(html.includes('name="subjectPrincipalId" type="text"'), false);
+  assert.equal(html.includes("assignment-a"), true);
+  assert.equal(html.includes("role-<unsafe>"), false);
+  assert.equal(html.includes("role-&lt;unsafe&gt;"), true);
+  assert.equal(/name="(actorId|roles|capabilities|isMfaVerified|sessionId)"/u.test(html), false);
+  assert.equal(/PUBLISH_PUBLICATION|REVOKE_PUBLICATION|SOURCE_INGEST|CRAWL|FETCH/u.test(html), false);
+  assert.equal(shell.includes('if (payload.result && payload.result.state === "CONFIRMED") {'), true);
+  assert.equal(shell.includes("setHtml(payload.html);"), true);
+  assert.equal(shell.includes('feedback({ state: "REJECTED", errorCode: "CONSOLE_READ_UNAVAILABLE"'), true);
+  assert.equal(shell.includes('catch(() => { if (button) button.disabled = false; safeFailure(); })'), false);
+  assert.equal(shell.indexOf('if (payload.result && payload.result.state === "CONFIRMED") {') < shell.indexOf("setHtml(payload.html);"), true);
+  assert.equal(shell.includes('if (payload.result && payload.result.state === "CONFIRMED") delete form.dataset.idempotencyKey'), false);
+});
+
+test("F16-PHASE-11 UI-036 renders bounded unavailable selector state without fake IDs", () => {
+  const html = renderConsoleResult(ready("UI-036", { selectorOptions: {
+    roles: { state: "EMPTY", items: [] }, teamScopes: { state: "EMPTY", items: [] },
+    policies: { state: "EMPTY", items: [] }, sourceGovernance: { state: "EMPTY", items: [] },
+    publicationTargets: { state: "EMPTY", items: [] }, proposals: { state: "EMPTY", items: [] },
+  } }));
+  assert.equal(html.includes("No authorized canonical options are available."), true);
+  assert.equal(/temporary-|hardcoded-|fixture-/u.test(html), false);
 });
 function ready(page: ConsoleReadResult["page"], data: Readonly<Record<string, unknown>>): ConsoleReadResult {
   return Object.freeze({ page, state: "READY", data: Object.freeze(data) });

@@ -192,6 +192,7 @@ export interface PublicationTargetReadRepository { find(identity: Administration
 export interface AdministrationProposalReadRepository {
   findById(tenantId: string, proposalId: string): AdministrationProposalRecord | undefined;
   listPending(scope: AdministrationPersistenceScope): readonly AdministrationProposalRecord[];
+  listByScope(scope: AdministrationPersistenceScope): readonly AdministrationProposalRecord[];
 }
 export interface AdministrationDecisionReadRepository { list(identity: AdministrationTransactionIdentity): readonly AdministrationDecisionRecord[] }
 export interface AdministrationIdempotencyReadRepository { find(identity: AdministrationIdempotencyIdentity): AdministrationIdempotencyRecord | undefined }
@@ -429,6 +430,7 @@ function proposalReadRepository(state: InMemoryAdministrationState): Administrat
   return {
     findById: (tenantId, proposalId) => optionalImmutable(state.proposals.get(proposalKey(tenantId, proposalId))),
     listPending: (scope) => immutable([...state.proposals.values()].filter((record) => record.status === "PROPOSED" && sameScope(record.scope, scope)).sort((a, b) => a.proposalId.localeCompare(b.proposalId))),
+    listByScope: (scope) => immutable([...state.proposals.values()].filter((record) => sameScope(record.scope, scope)).sort((a, b) => a.proposalId.localeCompare(b.proposalId))),
   };
 }
 

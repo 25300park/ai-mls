@@ -1,6 +1,10 @@
 import type { AdminConsoleConfiguration } from "./console-configuration.js";
 import { immutableConsole, type ConsoleReadPort, type ConsoleReadRequest, type ConsoleReadResult } from "./console-read-adapter.js";
 import { createAdminConsoleServer, type AdminConsoleServer } from "./console-server.js";
+import type {
+  AdministrationConsoleCommandPort,
+  AdministrationSelectorReadRequest,
+} from "./administration-console-read-adapter.js";
 import { createDevelopmentConsoleSessionAdapter } from "./development-session.js";
 
 export interface DevelopmentAdminConsoleComposition {
@@ -15,6 +19,8 @@ export interface DevelopmentAdminConsoleComposition {
 export interface DevelopmentAdminConsoleDependencies {
   readonly readAdapter?: ConsoleReadPort;
   readonly administrationReadAdapter?: ConsoleReadPort;
+  readonly administrationCommandAdapter?: AdministrationConsoleCommandPort;
+  readonly administrationSelectorScopes?: AdministrationSelectorReadRequest["selectorScopes"];
 }
 
 export function composeDevelopmentAdminConsole(
@@ -31,7 +37,7 @@ export function composeDevelopmentAdminConsole(
   const publicationReadAdapter = dependencies.readAdapter ?? unavailableReadAdapter;
   const administrationReadAdapter = dependencies.administrationReadAdapter ?? unavailableReadAdapter;
   const readAdapter: ConsoleReadPort = Object.freeze({
-    read: (request: ConsoleReadRequest) => request.page === "ADMINISTRATION"
+    read: (request: ConsoleReadRequest) => request.page === "ADMINISTRATION" || request.page === "UI-036"
       ? administrationReadAdapter.read(request)
       : publicationReadAdapter.read(request),
   });
@@ -42,6 +48,8 @@ export function composeDevelopmentAdminConsole(
       sessionId: session.sessionId,
       tenantId: configuration.tenantId,
       readAdapter,
+      ...(dependencies.administrationCommandAdapter === undefined ? {} : { administrationCommandAdapter: dependencies.administrationCommandAdapter }),
+      ...(dependencies.administrationSelectorScopes === undefined ? {} : { administrationSelectorScopes: dependencies.administrationSelectorScopes }),
     }),
     runtimeDecision: Object.freeze({
       existingFrontendRuntime: "NONE" as const,

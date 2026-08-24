@@ -4,10 +4,23 @@ import { AdministrationConsoleHttpClient } from "./administration-console-http-c
 import { AdministrationConsoleReadAdapter } from "./administration-console-read-adapter.js";
 
 const configuration = parseAdminConsoleArguments(process.argv.slice(2));
+const administrationAdapter = new AdministrationConsoleReadAdapter(
+  new AdministrationConsoleHttpClient(configuration.administrationApiOrigin),
+);
+const governedSelectorScopes = configuration.policyScopeId !== undefined
+  && configuration.sourceScopeId !== undefined && configuration.targetScopeId !== undefined
+  ? Object.freeze({
+      roles: { tenantId: configuration.tenantId, scopeType: "TENANT" as const, scopeId: configuration.tenantId },
+      teamScopes: { tenantId: configuration.tenantId, scopeType: "TEAM" as const, scopeId: configuration.tenantId },
+      policies: { tenantId: configuration.tenantId, scopeType: "POLICY" as const, scopeId: configuration.policyScopeId },
+      sourceGovernance: { tenantId: configuration.tenantId, scopeType: "SOURCE" as const, scopeId: configuration.sourceScopeId },
+      publicationTargets: { tenantId: configuration.tenantId, scopeType: "TARGET" as const, scopeId: configuration.targetScopeId },
+    })
+  : undefined;
 const composition = composeDevelopmentAdminConsole(configuration, {
-  administrationReadAdapter: new AdministrationConsoleReadAdapter(
-    new AdministrationConsoleHttpClient(configuration.administrationApiOrigin),
-  ),
+  administrationReadAdapter: administrationAdapter,
+  administrationCommandAdapter: administrationAdapter,
+  ...(governedSelectorScopes === undefined ? {} : { administrationSelectorScopes: governedSelectorScopes }),
 });
 
 await composition.server.start();

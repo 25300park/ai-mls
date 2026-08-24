@@ -4,8 +4,10 @@ import test from "node:test";
 import {
   AdministrationApiError,
   createAdministrationCollectionView,
+  createAdministrationCommandResult,
   createAdministrationReadView,
   parseAdministrationApiRequest,
+  type AdministrationApiCommandRequest,
   type AdministrationApiQueryRequest,
 } from "../../api/src/administration-api-contracts.js";
 import { createAdministrationHttpRequestHandler } from "../../api/src/administration-http-adapter.js";
@@ -73,7 +75,7 @@ test("F16-PHASE-11A Administration read adapter obtains selector options only th
       operations.push(parsed.operation);
       if (parsed.operation === "LIST_ROLES") roleStatuses.push(parsed.payload["status"]);
       const view = parsed.operation === "LIST_ROLES" ? createAdministrationReadView({
-          viewType: "ROLE", roleId: "role-selector-phase11a", scope: parsed.payload.scope,
+          viewType: "ROLE", roleId: "role-selector-phase11a", roleCode: "SEC", scope: parsed.payload.scope,
           status: "ACTIVE", version: 2, evidenceReferences: [{ type: "AUDIT", id: "evidence-role-selector-phase11a", version: 1 }],
         }) : parsed.operation === "LIST_TEAM_SCOPES" ? createAdministrationReadView({
           viewType: "TEAM_SCOPE", teamId: "team-selector-phase11a", scope: parsed.payload.scope,
@@ -89,6 +91,16 @@ test("F16-PHASE-11A Administration read adapter obtains selector options only th
           viewType: "PUBLICATION_TARGET_GOVERNANCE", publicationTargetId: "target-selector-phase11a",
           policyReference: "policy-target-selector-phase11a", channelReference: "channel-selector-phase11a",
           scope: parsed.payload.scope, status: "ACTIVE", version: 6, evidenceReferences: [],
+        }) : parsed.operation === "LIST_ROLE_ASSIGNMENTS" ? createAdministrationReadView({
+          viewType: "ROLE_ASSIGNMENT", roleAssignmentId: "assignment-selector-phase11",
+          subjectPrincipalReference: "principal-selector-phase11", roleId: "role-selector-phase11a",
+          scope: parsed.payload.scope, status: "PROPOSED", version: 1, evidenceReferences: [],
+        }) : parsed.operation === "LIST_ADMINISTRATION_PROPOSALS" ? createAdministrationReadView({
+          viewType: "ADMINISTRATION_PROPOSAL", proposalId: `proposal-${parsed.payload.scope.scopeType.toLowerCase()}-phase11b`,
+          resourceType: parsed.payload.scope.scopeType === "POLICY" ? "POLICY" : parsed.payload.scope.scopeType === "SOURCE" ? "SOURCE_REGISTRY" : parsed.payload.scope.scopeType === "TARGET" ? "PUBLICATION_TARGET" : "ROLE_ASSIGNMENT",
+          resourceId: `resource-${parsed.payload.scope.scopeType.toLowerCase()}-phase11b`, proposerReference: "proposer-phase11b",
+          proposedChangeReference: `change-${parsed.payload.scope.scopeType.toLowerCase()}-phase11b`, scope: parsed.payload.scope,
+          status: "PROPOSED", version: 1, evidenceReferences: [],
         }) : undefined;
       return createAdministrationCollectionView({ items: view === undefined ? [] : [view] });
     },
@@ -105,11 +117,20 @@ test("F16-PHASE-11A Administration read adapter obtains selector options only th
   const selectors = result.data?.["selectorOptions"] as Readonly<Record<string, { readonly items: readonly { readonly id: string }[] }>>;
 
   assert.equal(result.state, "READY");
-  assert.deepEqual(operations, ["LIST_ROLES", "LIST_TEAM_SCOPES", "LIST_POLICIES", "LIST_SOURCE_GOVERNANCE", "LIST_PUBLICATION_TARGET_GOVERNANCE"]);
+  assert.deepEqual(operations, [
+    "LIST_ROLES", "LIST_TEAM_SCOPES", "LIST_POLICIES", "LIST_SOURCE_GOVERNANCE", "LIST_PUBLICATION_TARGET_GOVERNANCE", "LIST_ROLE_ASSIGNMENTS",
+    "LIST_ADMINISTRATION_PROPOSALS", "LIST_ADMINISTRATION_PROPOSALS", "LIST_ADMINISTRATION_PROPOSALS", "LIST_ADMINISTRATION_PROPOSALS",
+  ]);
   assert.deepEqual(roleStatuses, ["ACTIVE"]);
   assert.equal(selectors["roles"]?.items[0]?.id, "role-selector-phase11a");
+  assert.equal((selectors["roles"]?.items[0] as { roleCode?: string }).roleCode, "SEC");
   assert.equal(selectors["publicationTargets"]?.items[0]?.id, "target-selector-phase11a");
+  assert.equal((selectors["roleAssignments"]?.items[0] as { subjectPrincipalReference?: string }).subjectPrincipalReference, "principal-selector-phase11");
+  assert.equal(selectors["roleAssignments"]?.items[0]?.id, "assignment-selector-phase11");
   assert.equal(JSON.stringify(selectors).includes("evidence-role-selector-phase11a"), false);
+  assert.equal(selectors["proposals"]?.items.length, 4);
+  assert.equal((selectors["proposals"]?.items[0] as { resourceType?: string }).resourceType, "POLICY");
+  assert.equal((selectors["proposals"]?.items[0] as { resourceId?: string }).resourceId, "resource-policy-phase11b");
   assert.equal(Object.isFrozen(selectors), true);
 });
 
@@ -134,6 +155,61 @@ test("F16-PHASE-11A selector reads fail closed without leaking denied scope or b
   assert.equal(result.state, "NOT_AUTHORIZED");
   assert.equal(JSON.stringify(result).includes("policy-denied-phase11a"), false);
   assert.equal(JSON.stringify(result).includes("capability graph"), false);
+});
+
+test("F16-PHASE-11 controlled command adapter uses API-015 without browser-authored authority", async () => {
+  const observed: AdministrationApiCommandRequest[] = [];
+  const adapter = new AdministrationConsoleReadAdapter(createAdministrationHttpRequestHandler({
+    execute: (input) => {
+      const parsed = parseAdministrationApiRequest(input) as AdministrationApiCommandRequest;
+      observed.push(parsed);
+      return createAdministrationCommandResult({
+        operation: parsed.operation, proposalId: "proposal-policy-phase11", resourceType: "POLICY",
+        resourceId: "policy-selector-phase11a", status: "PROPOSED", version: 1,
+        decisionReferences: [], evidenceReferences: [],
+      });
+    },
+    read: () => { throw new Error("read must not execute"); },
+    list: () => { throw new Error("list must not execute"); },
+  }));
+
+  const result = await adapter.execute({
+    sessionId: "trusted-console-session", tenantId: "tenant-phase11", correlationId: "console-command-phase11",
+    operation: "PROPOSE_POLICY_CHANGE",
+    payload: {
+      policyId: "policy-selector-phase11a", proposedChangeReference: "change-policy-phase11",
+      scope: { tenantId: "tenant-phase11", scopeType: "POLICY", scopeId: "policy-scope-phase11" },
+      expectedVersion: 4, idempotencyKey: "repeat-repeat-repeat-repeat", reason: "Governed policy proposal",
+      evidenceReferences: [{ type: "CASE", id: "case-policy-phase11", version: 1 }],
+    },
+  });
+
+  assert.equal(result.state, "CONFIRMED");
+  assert.equal(result.operation, "PROPOSE_POLICY_CHANGE");
+  assert.equal(result.status, "PROPOSED");
+  assert.equal(result.version, 1);
+  assert.equal(observed.length, 1);
+  assert.equal(observed[0]?.sessionId, "trusted-console-session");
+  assert.equal(Object.hasOwn(observed[0] ?? {}, "actorId"), false);
+  assert.equal(JSON.stringify(observed).includes("capabilities"), false);
+});
+
+test("F16-PHASE-11 controlled command adapter rejects browser authority fields before API-015", async () => {
+  let calls = 0;
+  const adapter = new AdministrationConsoleReadAdapter({ handle: () => { calls += 1; throw new Error("must not execute"); } });
+  const result = await adapter.execute({
+    sessionId: "trusted-console-session", tenantId: "tenant-phase11", correlationId: "console-command-spoof",
+    operation: "PROPOSE_POLICY_CHANGE",
+    payload: {
+      actorId: "spoofed-actor", policyId: "policy-selector-phase11a", proposedChangeReference: "change-policy-phase11",
+      scope: { tenantId: "tenant-phase11", scopeType: "POLICY", scopeId: "policy-scope-phase11" },
+      expectedVersion: 4, idempotencyKey: "idempotency-policy-spoof", reason: "Spoof attempt",
+      evidenceReferences: [],
+    },
+  });
+  assert.equal(result.state, "REJECTED");
+  assert.equal(result.errorCode, "VALIDATION_FAILED");
+  assert.equal(calls, 0);
 });
 
 test("F16-PHASE-10 Administration read adapter maps empty, authorization, and safe failure states", async () => {

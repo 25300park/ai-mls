@@ -11,10 +11,11 @@ import { createPublicationInfrastructure } from "../../../modules/publication/sr
 import { ConsoleReadAdapter, type ConsoleReadRequest, type ConsoleReadResult } from "./console-read-adapter.js";
 import { createAdminConsoleServer } from "./console-server.js";
 import { createDevelopmentConsoleSessionAdapter } from "./development-session.js";
+import type { AdministrationConsoleCommandRequest } from "./administration-console-read-adapter.js";
 
 const approvedRoutes = Object.freeze([
   "/", "/publication/operations", "/publication/revalidation", "/publication/recovery",
-  "/publication/audit", "/administration", "/system/projection", "/system/operations",
+  "/publication/audit", "/administration", "/administration/governance", "/system/projection", "/system/operations",
 ]);
 
 test("POST-F15-CONSOLE Node server renders every approved browser route and bounded read endpoint", async () => {
@@ -107,6 +108,87 @@ test("F16-PHASE-10 Node server awaits the injected asynchronous Administration r
   assert.equal(payload.html?.includes("No role assignments are currently available."), true);
   await server.stop();
 });
+test("F16-PHASE-11 Node server uses trusted command context and refreshes UI-036 after confirmed mutation", async () => {
+  const commands: AdministrationConsoleCommandRequest[] = [];
+  const pages: string[] = [];
+  const selectorScopes = Object.freeze({
+    roles: { tenantId: "tenant-a", scopeType: "TENANT" as const, scopeId: "tenant-a" },
+    teamScopes: { tenantId: "tenant-a", scopeType: "TEAM" as const, scopeId: "team-a" },
+    policies: { tenantId: "tenant-a", scopeType: "POLICY" as const, scopeId: "policy-scope-a" },
+    sourceGovernance: { tenantId: "tenant-a", scopeType: "SOURCE" as const, scopeId: "source-scope-a" },
+    publicationTargets: { tenantId: "tenant-a", scopeType: "TARGET" as const, scopeId: "target-scope-a" },
+  });
+  const server = createAdminConsoleServer({
+    host: "127.0.0.1", port: 0, sessionId: "trusted-console-session", tenantId: "tenant-a",
+    readAdapter: { read: (input) => { pages.push(input.page); return { page: input.page, state: "READY", data: { selectorOptions: {} } }; } },
+    administrationCommandAdapter: { execute: (input) => {
+      commands.push(input);
+      return Promise.resolve(Object.freeze({
+        state: "CONFIRMED" as const, operation: input.operation, proposalId: "proposal-server-phase11",
+        resourceType: "POLICY", resourceId: "policy-a", status: "PROPOSED", version: 1, decisionReferences: Object.freeze([]),
+      }));
+    } },
+    administrationSelectorScopes: selectorScopes,
+  });
+  await server.start();
+
+  const shell = await send(server.port, "GET", "/administration/governance");
+  const response = await send(server.port, "POST", "/api/console/administration/command", JSON.stringify({
+    operation: "PROPOSE_POLICY_CHANGE",
+    payload: {
+      policyId: "policy-a", proposedChangeReference: "change-a", scope: { tenantId: "tenant-a", scopeType: "POLICY", scopeId: "policy-scope-a" },
+      expectedVersion: 4, idempotencyKey: "idempotency-server-phase11", reason: "Governed policy proposal", evidenceReferences: [],
+    },
+  }));
+  const payload = JSON.parse(response.body) as { readonly result?: { readonly status?: string }; readonly html?: string };
+
+  assert.equal(shell.statusCode, 200);
+  assert.equal(shell.body.includes('data-console-page="UI-036"'), true);
+  assert.equal(response.statusCode, 200);
+  assert.equal(payload.result?.status, "PROPOSED");
+  assert.equal(typeof payload.html, "string");
+  assert.equal(commands.length, 1);
+  assert.equal(commands[0]?.sessionId, "trusted-console-session");
+  assert.equal(commands[0]?.tenantId, "tenant-a");
+  assert.equal(Object.hasOwn(commands[0] ?? {}, "actorId"), false);
+  assert.deepEqual(pages, ["UI-036"]);
+  await server.stop();
+});
+test("F16-PHASE-11 UI-036 fails unavailable before reads when trusted governed scopes are absent", async () => {
+  let readCalls = 0;
+  const server = createAdminConsoleServer({
+    host: "127.0.0.1", port: 0, sessionId: "trusted-console-session", tenantId: "tenant-a",
+    readAdapter: { read: () => { readCalls += 1; return { page: "ADMINISTRATION", state: "READY", data: {} }; } },
+    administrationCommandAdapter: { execute: () => { throw new Error("must not execute"); } },
+  });
+  await server.start();
+  const response = await send(server.port, "GET", "/api/console/view?page=UI-036");
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.includes("Authorized governed selector scopes are unavailable."), true);
+  assert.equal(response.body.includes("Administration Overview"), false);
+  assert.equal(readCalls, 0);
+  await server.stop();
+});
+
+
+test("F16-PHASE-11 Node server rejects browser authority and unsupported command routes without side effects", async () => {
+  let calls = 0;
+  const server = createAdminConsoleServer({
+    host: "127.0.0.1", port: 0, sessionId: "trusted-console-session", tenantId: "tenant-a",
+    readAdapter: { read: (input) => ({ page: input.page, state: "READY", data: { selectorOptions: {} } }) },
+    administrationCommandAdapter: { execute: () => { calls += 1; throw new Error("must not execute"); } },
+  });
+  await server.start();
+  const spoofed = await send(server.port, "POST", "/api/console/administration/command", JSON.stringify({ operation: "PROPOSE_POLICY_CHANGE", payload: {}, actorId: "spoofed" }));
+  const publication = await send(server.port, "POST", "/api/console/publication/command", JSON.stringify({ operation: "PUBLISH_PUBLICATION", payload: {} }));
+  assert.equal(spoofed.statusCode, 400);
+  assert.equal(spoofed.body.includes("INVALID_CONSOLE_REQUEST"), true);
+  assert.equal(spoofed.body.includes("spoofed"), false);
+  assert.equal(publication.statusCode, 405);
+  assert.equal(calls, 0);
+  await server.stop();
+});
+
 test("POST-F15-CONSOLE Node server has zero mutation routes and returns safe failures", async () => {
   let readCalls = 0;
   const server = createAdminConsoleServer({

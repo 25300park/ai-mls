@@ -17,7 +17,13 @@ test("POST-F15-CONSOLE startup requires explicit development Session configurati
     /DEVELOPMENT_SESSION_DISABLED/u,
   );
   assert.deepEqual(
-    parseAdminConsoleArguments(["--runtime=development", "--development-session", "--port=4173", "--administration-api-origin=http://127.0.0.1:4172"]),
+    parseAdminConsoleArguments([
+      "--runtime=development", "--development-session", "--port=4173",
+      "--administration-api-origin=http://127.0.0.1:4172",
+      "--policy-scope-id=policy-scope-dev",
+      "--source-scope-id=source-scope-dev",
+      "--target-scope-id=target-scope-dev",
+    ]),
     {
       runtimeEnvironment: "DEVELOPMENT",
       developmentSessionEnabled: true,
@@ -27,8 +33,13 @@ test("POST-F15-CONSOLE startup requires explicit development Session configurati
       sessionId: "console-development-session",
       principalId: "console-development-operator",
       administrationApiOrigin: "http://127.0.0.1:4172",
+      policyScopeId: "policy-scope-dev", sourceScopeId: "source-scope-dev", targetScopeId: "target-scope-dev",
     },
   );
+  const withoutGovernedScopes = parseAdminConsoleArguments(["--runtime=development", "--development-session"]);
+  assert.equal(withoutGovernedScopes.policyScopeId, undefined);
+  assert.equal(withoutGovernedScopes.sourceScopeId, undefined);
+  assert.equal(withoutGovernedScopes.targetScopeId, undefined);
   assert.throws(
     () => parseAdminConsoleArguments(["--runtime=development", "--development-session", "--administration-api-origin=https://example.com"]),
     /CONSOLE_CONFIGURATION_INVALID/u,
@@ -110,7 +121,35 @@ test("F16-PHASE-10 composition routes UI-006 only through the injected Administr
   assert.equal((await dashboard.text()).includes("Publication read boundary."), true);
   await composition.server.stop();
 });
-test("POST-F15-CONSOLE production boundary imports no authoritative graph or command capability", () => {
+test("F16-PHASE-11 composition injects selector and command ports into the existing Console server", async () => {
+  const scopes = Object.freeze({
+    roles: { tenantId: "team-a", scopeType: "TENANT" as const, scopeId: "team-a" },
+    teamScopes: { tenantId: "team-a", scopeType: "TEAM" as const, scopeId: "team-a" },
+    policies: { tenantId: "team-a", scopeType: "POLICY" as const, scopeId: "team-a" },
+    sourceGovernance: { tenantId: "team-a", scopeType: "SOURCE" as const, scopeId: "team-a" },
+    publicationTargets: { tenantId: "team-a", scopeType: "TARGET" as const, scopeId: "team-a" },
+  });
+  const composition = composeDevelopmentAdminConsole({
+    runtimeEnvironment: "DEVELOPMENT", developmentSessionEnabled: true, host: "127.0.0.1", port: 0,
+    tenantId: "team-a", sessionId: "console-phase11-session", principalId: "console-phase11-operator",
+    administrationApiOrigin: "http://127.0.0.1:4172",
+  }, {
+    administrationReadAdapter: { read: (input) => ({ page: input.page, state: "READY", data: { selectorOptions: {}, compositionMarker: "PHASE11_COMPOSED" } }) },
+    administrationCommandAdapter: { execute: (input) => Promise.resolve({ state: "CONFIRMED", operation: input.operation, proposalId: "proposal-composed", resourceType: "POLICY", resourceId: "policy-composed", status: "PROPOSED", version: 1, decisionReferences: [] }) },
+    administrationSelectorScopes: scopes,
+  });
+  await composition.server.start();
+  const view = await fetch(`${composition.server.localUrl}/api/console/view?page=UI-036`);
+  const viewPayload = await view.json() as { readonly html?: string };
+  const command = await fetch(`${composition.server.localUrl}/api/console/administration/command`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ operation: "PROPOSE_POLICY_CHANGE", payload: { policyId: "policy-composed", proposedChangeReference: "change-composed", scopeType: "POLICY", scopeId: "team-a", expectedVersion: 1, idempotencyKey: "idem-composed", reason: "Composed command", evidenceReferences: [] } }),
+  });
+  assert.equal(viewPayload.html?.includes("Role &amp; Policy Administration"), true);
+  assert.equal(command.status, 200);
+  await composition.server.stop();
+});
+
+test("F16-PHASE-11 Console imports no authoritative graph and exposes only the bounded API-015 command boundary", () => {
   const sourceRoot = join(process.cwd(), "apps", "admin-console", "src");
   const productionFiles = readdirSync(sourceRoot).filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts"));
   for (const file of productionFiles) {
@@ -125,10 +164,13 @@ test("POST-F15-CONSOLE production boundary imports no authoritative graph or com
   assert.equal(administrationAdapter.includes('method: "GET"'), true);
   assert.equal(administrationAdapter.includes('path: "/administration/queries"'), true);
   assert.equal(administrationAdapter.includes('operation: "LIST_ROLE_ASSIGNMENTS"'), true);
-  assert.equal(/method: "POST"|\/administration\/commands|executeCommand|AdministrationUnitOfWork|Repository/u.test(administrationAdapter), false);
+  assert.equal(administrationAdapter.includes('method: "POST"'), true);
+  assert.equal(administrationAdapter.includes('path: "/administration/commands"'), true);
+  assert.equal(/executeCommand|AdministrationUnitOfWork|Repository|publication\/commands/u.test(administrationAdapter), false);
   const serverSource = readFileSync(join(sourceRoot, "console-server.ts"), "utf8");
   assert.equal(serverSource.includes('method !== "GET"'), true);
-  assert.equal(serverSource.includes('"POST"'), false);
+  assert.equal(serverSource.includes('"POST"'), true);
+  assert.equal(/api\/console\/(publication|source)\/command/u.test(serverSource), false);
   const mainSource = readFileSync(join(sourceRoot, "main.ts"), "utf8");
   assert.match(mainSource, /AdministrationConsoleHttpClient/u);
   assert.match(mainSource, /AdministrationConsoleReadAdapter/u);

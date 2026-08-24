@@ -47,10 +47,53 @@ test("F16-PHASE-10 executable Administration HTTP client forwards only the canon
   await new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
 });
 
-test("F16-PHASE-10 Administration HTTP client rejects external origins and mutation-shaped requests", async () => {
+test("F16-PHASE-11 Administration HTTP client forwards only the canonical command request", async () => {
+  let observed: Readonly<{ method: string; url: string; sessionId: string; contentType: string; body: string }> =
+    Object.freeze({ method: "", url: "", sessionId: "", contentType: "", body: "" });
+  const server = createServer((request, response) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk: string) => { body += chunk; });
+    request.on("end", () => {
+      observed = Object.freeze({
+        method: request.method ?? "", url: request.url ?? "",
+        sessionId: typeof request.headers["x-session-id"] === "string" ? request.headers["x-session-id"] : "",
+        contentType: request.headers["content-type"] ?? "", body,
+      });
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ success: true, data: { operation: "PROPOSE_POLICY_CHANGE", status: "PROPOSED", version: 1 } }));
+    });
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address() as AddressInfo;
+  const client = new AdministrationConsoleHttpClient(`http://127.0.0.1:${address.port}`);
+  const body = Object.freeze({ tenantId: "tenant-a", correlationId: "correlation-command", operation: "PROPOSE_POLICY_CHANGE", payload: Object.freeze({
+    scope: Object.freeze({ scopeType: "TENANT", scopeId: "tenant-a" }), policyId: "policy-a", proposedChangeReference: "change-a",
+    expectedVersion: 1, idempotencyKey: "idempotency-a", reason: "Approved change request", evidenceReferences: Object.freeze(["evidence-a"]),
+  }) });
+
+  const result = await client.handle({
+    method: "POST", path: "/administration/commands", headers: { "x-session-id": "trusted-console-session" },
+    query: {}, pathParameters: {}, body, requestId: "request-command",
+  });
+
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual({ ...observed, body: undefined }, {
+    method: "POST", url: "/administration/commands", sessionId: "trusted-console-session",
+    contentType: "application/json", body: undefined,
+  });
+  assert.deepEqual(JSON.parse(observed.body), body);
+  await new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
+});
+
+test("F16-PHASE-11 Administration HTTP client rejects external origins and non-canonical requests", async () => {
   assert.throws(() => new AdministrationConsoleHttpClient("https://example.com"), /CONSOLE_CONFIGURATION_INVALID/u);
   const client = new AdministrationConsoleHttpClient("http://127.0.0.1:4172");
   await assert.rejects(() => client.handle({
-    method: "POST", path: "/administration/commands", headers: {}, query: {}, pathParameters: {}, body: {}, requestId: "request-command",
-  }), /CONSOLE_ADMINISTRATION_READ_ONLY/u);
+    method: "POST", path: "/publication/commands", headers: { "x-session-id": "trusted-session" }, query: {}, pathParameters: {}, body: {}, requestId: "request-command",
+  }), /CONSOLE_ADMINISTRATION_REQUEST_INVALID/u);
+  await assert.rejects(() => client.handle({
+    method: "POST", path: "/administration/commands", headers: { "x-session-id": "trusted-session" }, query: { actorId: "spoofed" }, pathParameters: {}, body: {}, requestId: "request-command",
+  }), /CONSOLE_ADMINISTRATION_REQUEST_INVALID/u);
 });

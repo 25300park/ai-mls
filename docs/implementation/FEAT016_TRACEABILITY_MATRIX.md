@@ -173,7 +173,17 @@ UI-006은 `IMPLEMENTED_AND_VERIFIED`다. UI-036 controlled write, physical durab
 
 Phase 11A는 selector read boundary만 구현했다. UI-036 form/write action, command/mutation route, physical durable persistence, Phase 11 resume 및 FEAT-016 final acceptance는 완료하지 않았다.
 
-## 16. Gap status after Phase 11A
+## 16. Phase 11 / Phase 11B UI-036 Controlled Administration evidence
+
+`LIST_ADMINISTRATION_PROPOSALS`는 기존 `AdministrationGovernanceApplication.list()`에서 safe `proposalId`, `resourceType`, `resourceId`, status, scope 및 version을 반환하고, Runtime/HTTP/Console adapter 전체에서 trusted Session, live authorization, tenant/exact-scope filtering 및 immutable DTO를 유지한다. UI-036은 `LIST_ROLES`, `LIST_TEAM_SCOPES`, `LIST_POLICIES`, `LIST_SOURCE_GOVERNANCE`, `LIST_PUBLICATION_TARGET_GOVERNANCE`, `LIST_ROLE_ASSIGNMENTS`와 위 proposal query에서 canonical selector와 mutation identity를 도출한다. `LIST_ADMINISTRATION_DECISIONS`는 Phase 11 workflow에 필요하지 않아 추가하지 않았다.
+
+기존 `/administration/control` Console flow는 하나의 injected API-015 adapter를 통해 Role Assignment, Policy, Source Governance 및 Publication Target Governance controlled operations를 수행한다. Server-derived Session, live capability/tenant/scope/purpose/MFA, actor-level SoD, expected version, canonical idempotency, append-only evidence 및 logical UoW invariants를 재사용한다. Browser-authored authority, free-text canonical ID, hardcoded production ID, direct Repository/UoW access, Retention/Legal Hold, Source/Publication execution 및 신규 API operation은 없다.
+
+직접 evidence는 `administration-console-http-client.test.ts`, `administration-console-read-adapter.test.ts`, `console-composition.test.ts`, `console-server.test.ts`, `console-renderer.test.ts`, `administration-api-contracts.test.ts` 및 `administration-governance-api.test.ts`다. Focused/affected 83/83, 전체 732/732, lint/typecheck/build/verify, Browser acceptance 12/12, Architecture checksum 153/153, Gitleaks 0, production audit vulnerabilities 0 및 fresh independent review Critical/Important/Minor 0/0/0 READY를 통과했다. Full audit은 기존 승인된 development-only transitive `brace-expansion` High 4건만 유지하며 신규 미승인 High/Critical은 0이다. 상세 결과는 [F16 Phase 11 UI-036 Controlled Write Console Report](../reviews/F16_PHASE_11_UI_036_CONTROLLED_WRITE_CONSOLE_IMPLEMENTATION_REPORT.md)에 기록한다.
+
+UI-036 logical controlled administration boundary는 `IMPLEMENTED_AND_VERIFIED`다. Physical durable production persistence와 FEAT-016 final acceptance는 완료로 표시하지 않는다.
+
+## 17. Gap status after Phase 11
 
 | Gap | Status | Evidence / next gate |
 |---|---|---|
@@ -182,17 +192,17 @@ Phase 11A는 selector read boundary만 구현했다. UI-036 form/write action, c
 | `F16-GAP-011` approval/delegation ambiguity | RESOLVED | mandatory two-person and explicit-delegation invariant |
 | `F16-GAP-003` live authority | RESOLVED | current Role/Assignment/Proposal/Decision read graph, exact evidence linkage, live activation/revocation 및 deny precedence verified in Phase 7 |
 | `F16-GAP-004` durable state | OPEN IMPLEMENTATION GAP | logical Repository/UoW verified in Phase 6; physical durable adapter deferred |
-| `F16-GAP-005` complete API-015 | RUNTIME_CONTRACT_VERIFIED | Phase 5 closed schemas, Phase 9 application/HTTP operation surface 및 Phase 11A five canonical selector list boundaries verified; UI write remains separate |
-| `F16-GAP-006` idempotency | PARTIALLY_VERIFIED | Phase 9 HTTP replay/collision과 canonical proposal/decision result verified; durable adapter remains open |
-| `F16-GAP-007` atomic audit | PARTIALLY_VERIFIED | Phase 9 Role/Policy/Source/Target logical UoW state/evidence/idempotency와 rollback verified; durable atomic audit remains open |
+| `F16-GAP-005` complete API-015 | RUNTIME_CONTRACT_VERIFIED | closed schemas, canonical application/HTTP surface, selector/proposal reads 및 UI-036 controlled operations verified; no new operation |
+| `F16-GAP-006` idempotency | PARTIALLY_VERIFIED | UI-036 canonical key, retry/replay/conflict와 rejection-state key preservation verified; durable adapter remains open |
+| `F16-GAP-007` atomic audit | PARTIALLY_VERIFIED | Role/Policy/Source/Target logical UoW state/evidence/idempotency와 rollback verified; durable atomic audit remains open |
 | `F16-GAP-008` Runtime/HTTP | RESOLVED | single application boundary, existing Node server composition, closed command/bodyless-query transport and loopback verified in Phase 9 |
-| `F16-GAP-009` UI-006/UI-036 | PARTIALLY_VERIFIED | UI-006 read-oriented Console and Phase 11A canonical selector reads verified; UI-036 controlled writes remain open |
-| `F16-GAP-010` full tests | PARTIALLY_VERIFIED | Phase 11A focused 40/40, affected 133/133 및 full 722/722 passed; UI-036/UAT/final acceptance remain open |
+| `F16-GAP-009` UI-006/UI-036 | IMPLEMENTED_AND_VERIFIED | UI-006 read Console, canonical selector/proposal reads 및 UI-036 controlled workflows verified through API-015 |
+| `F16-GAP-010` full tests | PARTIALLY_VERIFIED | Phase 11 focused/affected 83/83, full 732/732 및 browser acceptance 12/12 passed; final acceptance/UAT remain open |
 
-## 17. Next boundary
+## 18. Next boundary
 
-The next eligible brief after Phase 11A acceptance is:
+The next eligible brief after Phase 11 acceptance requires separate Architecture Owner authorization.
 
-`F16-PHASE-11` — UI-036 Controlled Write Console RESUME, only after separate Architecture Owner authorization.
+`F16-PHASE-12` — `NOT_STARTED`.
 
-Phase 5~11A는 closed API-015 contract, logical persistence, live Role authority, governed workflow, Runtime/HTTP boundary, UI-006 read-oriented Console 및 canonical selector read boundary를 검증했다. FEAT-016은 여전히 incomplete이며 UI-036 write와 Phase 11 resume는 시작하지 않았다.
+Phase 5~11은 closed API-015 contract, logical persistence, live Role authority, governed workflow, Runtime/HTTP boundary, UI-006 read-oriented Console, canonical selector/proposal read boundary 및 UI-036 controlled administration을 검증했다. Physical durable production persistence와 FEAT-016 final acceptance는 여전히 별도 승인 범위다.

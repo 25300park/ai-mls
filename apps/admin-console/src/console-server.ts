@@ -1,4 +1,4 @@
-import { createServer, type Server, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 
 import {
   CONSOLE_PAGES,
@@ -7,6 +7,12 @@ import {
   type ConsoleReadRequest,
 } from "./console-read-adapter.js";
 import { renderConsoleResult, renderConsoleShell } from "./console-renderer.js";
+import {
+  CONSOLE_ADMINISTRATION_COMMAND_OPERATIONS,
+  type AdministrationConsoleCommandOperation,
+  type AdministrationConsoleCommandPort,
+  type AdministrationSelectorReadRequest,
+} from "./administration-console-read-adapter.js";
 
 interface AdminConsoleServerConfiguration {
   readonly host: string;
@@ -14,6 +20,8 @@ interface AdminConsoleServerConfiguration {
   readonly sessionId: string;
   readonly tenantId: string;
   readonly readAdapter: ConsoleReadPort;
+  readonly administrationCommandAdapter?: AdministrationConsoleCommandPort;
+  readonly administrationSelectorScopes?: AdministrationSelectorReadRequest["selectorScopes"];
 }
 
 export interface AdminConsoleServer {
@@ -31,6 +39,7 @@ const browserRoutes: Readonly<Record<string, ConsolePage>> = Object.freeze({
   "/publication/audit": "UI-035",
   "/administration": "ADMINISTRATION",
   "/system/projection": "PROJECTION",
+  "/administration/governance": "UI-036",
   "/system/operations": "OPERATIONS",
 });
 
@@ -49,11 +58,6 @@ export function createAdminConsoleServer(configuration: AdminConsoleServerConfig
         const method = request.method ?? "";
         const rawUrl = request.url ?? "";
         requestSequence += 1;
-        if (method !== "GET") {
-          request.resume();
-          writeJson(response, 405, { success: false, error: { code: "METHOD_NOT_ALLOWED", message: "The Console exposes read-only GET routes." } });
-          return;
-        }
         if (rawUrl.length > 2_048) {
           writeJson(response, 400, { success: false, error: { code: "INVALID_CONSOLE_REQUEST", message: "The Console request is invalid." } });
           return;
@@ -63,6 +67,15 @@ export function createAdminConsoleServer(configuration: AdminConsoleServerConfig
           writeJson(response, 400, { success: false, error: { code: "INVALID_CONSOLE_REQUEST", message: "The Console request is invalid." } });
           return;
         }
+        if (method === "POST" && url.pathname === "/api/console/administration/command") {
+          void handleAdministrationCommand(request, response, configuration, requestSequence);
+          return;
+        }
+        if (method !== "GET") {
+          request.resume();
+          writeJson(response, 405, { success: false, error: { code: "METHOD_NOT_ALLOWED", message: "The Console route does not allow this method." } });
+          return;
+        }
         if (url.pathname === "/api/console/view") {
           const page = parsePage(url.searchParams.get("page"));
           if (page === undefined) {
@@ -70,7 +83,7 @@ export function createAdminConsoleServer(configuration: AdminConsoleServerConfig
             return;
           }
           const publicationId = safePublicationId(url.searchParams.get("publicationId"));
-          const readRequest: ConsoleReadRequest = {
+          const baseReadRequest: ConsoleReadRequest = {
             page,
             sessionId: configuration.sessionId,
             tenantId: configuration.tenantId,
@@ -78,6 +91,15 @@ export function createAdminConsoleServer(configuration: AdminConsoleServerConfig
             ...(publicationId === undefined ? {} : { publicationId }),
             correlationId: `console-read-${String(requestSequence)}`,
           };
+          if (page === "UI-036" && configuration.administrationSelectorScopes === undefined) {
+            writeJson(response, 200, { html: renderConsoleResult({
+              page, state: "UNAVAILABLE", message: "Authorized governed selector scopes are unavailable.",
+            }) });
+            return;
+          }
+          const readRequest: ConsoleReadRequest | AdministrationSelectorReadRequest = page === "UI-036" && configuration.administrationSelectorScopes !== undefined
+            ? { ...baseReadRequest, selectorScopes: configuration.administrationSelectorScopes }
+            : baseReadRequest;
           void Promise.resolve(configuration.readAdapter.read(readRequest))
             .then((result) => writeJson(response, 200, { html: renderConsoleResult(result) }))
             .catch(() => writeJson(response, 200, { html: renderConsoleResult({
@@ -142,6 +164,103 @@ function validateConfiguration(configuration: AdminConsoleServerConfiguration): 
   }
 }
 
+
+async function handleAdministrationCommand(
+  request: IncomingMessage,
+  response: ServerResponse,
+  configuration: AdminConsoleServerConfiguration,
+  requestSequence: number,
+): Promise<void> {
+  const contentType = request.headers["content-type"] ?? "";
+  if (!contentType.toLowerCase().startsWith("application/json")) {
+    request.resume();
+    invalidConsoleRequest(response);
+    return;
+  }
+  try {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || !hasExactKeys(body, ["operation", "payload"]) || typeof body["operation"] !== "string"
+      || !CONSOLE_ADMINISTRATION_COMMAND_OPERATIONS.includes(body["operation"] as AdministrationConsoleCommandOperation)
+      || !isRecord(body["payload"])) {
+      invalidConsoleRequest(response);
+      return;
+    }
+    const commandAdapter = configuration.administrationCommandAdapter;
+    const selectorScopes = configuration.administrationSelectorScopes;
+    if (commandAdapter === undefined || selectorScopes === undefined) {
+      writeJson(response, 503, { success: false, error: { code: "CONTROLLED_ADMINISTRATION_UNAVAILABLE", message: "Controlled administration is unavailable." } });
+      return;
+    }
+
+    const correlationId = `console-command-${String(requestSequence)}`;
+    const result = await commandAdapter.execute({
+      sessionId: configuration.sessionId,
+      tenantId: configuration.tenantId,
+      correlationId,
+      operation: body["operation"] as AdministrationConsoleCommandOperation,
+      payload: canonicalizeBrowserPayload(body["payload"], configuration.tenantId),
+    });
+    const refreshRequest: AdministrationSelectorReadRequest = {
+      page: "UI-036", sessionId: configuration.sessionId, tenantId: configuration.tenantId,
+      teamId: configuration.tenantId, correlationId: `console-refresh-${String(requestSequence)}`, selectorScopes,
+    };
+    const refreshed = await configuration.readAdapter.read(refreshRequest);
+    writeJson(response, 200, { result, html: renderConsoleResult(refreshed) });
+  } catch {
+    invalidConsoleRequest(response);
+  }
+}
+
+async function readJsonBody(request: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of request as AsyncIterable<unknown>) {
+    const buffer = Buffer.isBuffer(chunk) ? Buffer.from(chunk) : Buffer.from(String(chunk));
+    size += buffer.length;
+    if (size > 65_536) throw new Error("INVALID_CONSOLE_REQUEST");
+    chunks.push(buffer);
+  }
+  if (size === 0) throw new Error("INVALID_CONSOLE_REQUEST");
+  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+}
+
+function invalidConsoleRequest(response: ServerResponse): void {
+  writeJson(response, 400, { success: false, error: { code: "INVALID_CONSOLE_REQUEST", message: "The Console request is invalid." } });
+}
+
+function hasExactKeys(value: Readonly<Record<string, unknown>>, keys: readonly string[]): boolean {
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
+}
+function canonicalizeBrowserPayload(input: Readonly<Record<string, unknown>>, tenantId: string): Readonly<Record<string, unknown>> {
+  const payload: Record<string, unknown> = { ...input };
+  const suppliedScope = isRecord(payload["scope"]) ? payload["scope"] : undefined;
+  const scopeType = typeof payload["scopeType"] === "string" ? payload["scopeType"]
+    : typeof suppliedScope?.["scopeType"] === "string" ? suppliedScope["scopeType"] : undefined;
+  const scopeId = typeof payload["scopeId"] === "string" ? payload["scopeId"]
+    : typeof suppliedScope?.["scopeId"] === "string" ? suppliedScope["scopeId"] : undefined;
+  if (scopeType === undefined || scopeId === undefined) throw new Error("INVALID_CONSOLE_REQUEST");
+  delete payload["scopeType"];
+  delete payload["scopeId"];
+  payload["scope"] = Object.freeze({ tenantId, scopeType, scopeId });
+  const evidenceReferenceId = payload["evidenceReferenceId"];
+  delete payload["evidenceReferenceId"];
+  if (typeof evidenceReferenceId === "string" && evidenceReferenceId.trim().length > 0) {
+    payload["evidenceReferences"] = Object.freeze([{ type: "CASE", id: evidenceReferenceId.trim(), version: 1 }]);
+  } else if (payload["evidenceReferences"] === undefined) {
+    payload["evidenceReferences"] = Object.freeze([]);
+  }
+  for (const key of Object.keys(payload)) {
+    if (payload[key] === "") delete payload[key];
+  }
+  return Object.freeze(payload);
+}
+
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 function writeHtml(response: ServerResponse, body: string): void {
   write(response, 200, "text/html; charset=utf-8", body);
 }

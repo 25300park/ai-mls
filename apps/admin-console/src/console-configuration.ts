@@ -10,6 +10,9 @@ export interface AdminConsoleConfiguration {
   readonly sessionId: string;
   readonly principalId: string;
   readonly administrationApiOrigin: string;
+  readonly policyScopeId?: string;
+  readonly sourceScopeId?: string;
+  readonly targetScopeId?: string;
 }
 
 export function parseAdminConsoleArguments(argumentsList: readonly string[]): AdminConsoleConfiguration {
@@ -20,7 +23,7 @@ export function parseAdminConsoleArguments(argumentsList: readonly string[]): Ad
       continue;
     }
     const match = /^--([a-z-]+)=(.+)$/u.exec(argument);
-    if (match?.[1] === undefined || match[2] === undefined || !["runtime", "port", "administration-api-origin"].includes(match[1])) {
+    if (match?.[1] === undefined || match[2] === undefined || !["runtime", "port", "administration-api-origin", "policy-scope-id", "source-scope-id", "target-scope-id"].includes(match[1])) {
       throw new Error("CONSOLE_CONFIGURATION_INVALID");
     }
     values.set(match[1], match[2]);
@@ -41,6 +44,16 @@ export function parseAdminConsoleArguments(argumentsList: readonly string[]): Ad
       ? values.get("administration-api-origin") as string
       : "http://127.0.0.1:4172",
   );
+  const governedScope = (key: string): string | undefined => {
+    const value = values.get(key);
+    if (value === undefined) return undefined;
+    if (typeof value !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/u.test(value)) throw new Error("CONSOLE_CONFIGURATION_INVALID");
+    return value;
+  };
+
+  const policyScopeId = governedScope("policy-scope-id");
+  const sourceScopeId = governedScope("source-scope-id");
+  const targetScopeId = governedScope("target-scope-id");
   return Object.freeze({
     runtimeEnvironment,
     developmentSessionEnabled,
@@ -50,5 +63,8 @@ export function parseAdminConsoleArguments(argumentsList: readonly string[]): Ad
     sessionId: "console-development-session",
     principalId: "console-development-operator",
     administrationApiOrigin,
+    ...(policyScopeId === undefined ? {} : { policyScopeId }),
+    ...(sourceScopeId === undefined ? {} : { sourceScopeId }),
+    ...(targetScopeId === undefined ? {} : { targetScopeId }),
   });
 }

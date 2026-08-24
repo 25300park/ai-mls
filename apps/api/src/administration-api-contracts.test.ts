@@ -466,12 +466,12 @@ test("F16-PHASE-5 operation descriptors encode exact authority and scope precond
 test("F16-PHASE-5 creates every required closed immutable administration read view", () => {
   const cases: readonly Readonly<Record<string, unknown>>[] = [
     { viewType: "ROLE_ASSIGNMENT", roleAssignmentId: "assignment-1", subjectPrincipalReference: "principal-1", roleId: "role-1", status: "ACTIVE" },
-    { viewType: "ROLE", roleId: "role-1", status: "ACTIVE" },
+    { viewType: "ROLE", roleId: "role-1", roleCode: "SEC", status: "ACTIVE" },
     { viewType: "POLICY", policyId: "policy-1", status: "ACTIVE" },
     { viewType: "TEAM_SCOPE", teamId: "team-1", status: "ACTIVE" },
     { viewType: "SOURCE_GOVERNANCE", sourceRegistryEntryId: "source-1", policyReference: "policy-source-1", status: "PAUSED" },
     { viewType: "PUBLICATION_TARGET_GOVERNANCE", publicationTargetId: "target-1", policyReference: "policy-target-1", channelReference: "channel-1", status: "ACTIVE" },
-    { viewType: "ADMINISTRATION_PROPOSAL", proposalId: "proposal-1", proposerReference: "principal-1", proposedChangeReference: "change-1", status: "PROPOSED" },
+    { viewType: "ADMINISTRATION_PROPOSAL", proposalId: "proposal-1", resourceType: "POLICY", resourceId: "policy-1", proposerReference: "principal-1", proposedChangeReference: "change-1", status: "PROPOSED" },
     { viewType: "ADMINISTRATION_DECISION", decisionId: "decision-1", proposalId: "proposal-1", decisionActorReference: "principal-2", status: "APPROVED" },
   ];
   for (const item of cases) {

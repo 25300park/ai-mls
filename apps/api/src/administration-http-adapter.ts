@@ -35,7 +35,7 @@ const runtimeCommandOperations = new Set<string>([
 
 const runtimeListOperations = new Set<string>([
   "LIST_ROLE_ASSIGNMENTS", "LIST_ROLES", "LIST_TEAM_SCOPES", "LIST_POLICIES",
-  "LIST_SOURCE_GOVERNANCE", "LIST_PUBLICATION_TARGET_GOVERNANCE",
+  "LIST_SOURCE_GOVERNANCE", "LIST_PUBLICATION_TARGET_GOVERNANCE", "LIST_ADMINISTRATION_PROPOSALS",
 ]);
 
 const runtimeQueryOperations = new Set<string>([

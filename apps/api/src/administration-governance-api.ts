@@ -155,7 +155,7 @@ export class AdministrationGovernanceApplication {
         .filter((record) => pagination.cursor === undefined || record.roleId.localeCompare(pagination.cursor) > 0)
         .sort((left, right) => left.roleId.localeCompare(right.roleId));
       return pagedAdministrationCollection(records, pagination, (record) => record.roleId, (record) => createAdministrationReadView({
-        viewType: "ROLE", roleId: record.roleId, scope: record.scope, status: record.status,
+        viewType: "ROLE", roleId: record.roleId, roleCode: record.roleCode, scope: record.scope, status: record.status,
         version: record.version, evidenceReferences: record.evidenceReferences,
       }));
     }
@@ -202,6 +202,20 @@ export class AdministrationGovernanceApplication {
         evidenceReferences: record.evidenceReferences,
       }));
     }
+    if (request.operation === "LIST_ADMINISTRATION_PROPOSALS") {
+      const records = this.dependencies.proposals.listByScope(scope)
+        .filter((record) => requestedStatus === undefined || record.status === requestedStatus)
+        .filter((record) => pagination.cursor === undefined || record.proposalId.localeCompare(pagination.cursor) > 0)
+        .sort((left, right) => left.proposalId.localeCompare(right.proposalId));
+      return pagedAdministrationCollection(records, pagination, (record) => record.proposalId, (record) => createAdministrationReadView({
+        viewType: "ADMINISTRATION_PROPOSAL", proposalId: record.proposalId,
+        resourceType: record.resourceType, resourceId: record.resourceId,
+        proposerReference: record.proposedBy, proposedChangeReference: record.proposedChangeReference,
+        scope: record.scope, status: record.status, version: record.version,
+        evidenceReferences: record.evidenceReferences,
+      }));
+    }
+
     if (request.operation !== "LIST_ROLE_ASSIGNMENTS") throw new AdministrationApiError("VALIDATION_FAILED");
     const records = this.dependencies.roleAssignments.listByScope(scope)
       .filter((record) => requestedStatus === undefined || record.status === requestedStatus)

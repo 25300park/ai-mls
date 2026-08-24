@@ -13,19 +13,29 @@ export class AdministrationConsoleHttpClient implements AdministrationHttpReques
 
   public async handle(input: unknown): Promise<PublicationHttpResponse> {
     const request = createPublicationHttpRequest(input);
-    if (request.method !== "GET" || request.path !== "/administration/queries"
-      || request.body !== null || Object.keys(request.pathParameters).length !== 0) {
-      throw new Error("CONSOLE_ADMINISTRATION_READ_ONLY");
+    const isQuery = request.method === "GET" && request.path === "/administration/queries"
+      && request.body === null && Object.keys(request.query).length > 0;
+    const isCommand = request.method === "POST" && request.path === "/administration/commands"
+      && isRecord(request.body) && Object.keys(request.query).length === 0;
+    if ((!isQuery && !isCommand) || Object.keys(request.pathParameters).length !== 0) {
+      throw new Error("CONSOLE_ADMINISTRATION_REQUEST_INVALID");
     }
     const sessionId = request.headers["x-session-id"];
     if (sessionId === undefined || sessionId.trim().length === 0) throw new Error("AUTHENTICATION_REQUIRED");
     const url = new URL(request.path, this.origin);
-    for (const [key, value] of Object.entries(request.query).sort(([left], [right]) => left.localeCompare(right))) {
-      for (const item of typeof value === "string" ? [value] : value) url.searchParams.append(key, item);
+    if (isQuery) {
+      for (const [key, value] of Object.entries(request.query).sort(([left], [right]) => left.localeCompare(right))) {
+        for (const item of typeof value === "string" ? [value] : value) url.searchParams.append(key, item);
+      }
     }
+    const commandBody = isCommand ? JSON.stringify(request.body) : undefined;
     const response = await fetch(url, {
-      method: "GET",
-      headers: { accept: "application/json", "x-request-id": request.requestId, "x-session-id": sessionId },
+      method: isCommand ? "POST" : "GET",
+      headers: {
+        accept: "application/json", "x-request-id": request.requestId, "x-session-id": sessionId,
+        ...(isCommand ? { "content-type": "application/json" } : {}),
+      },
+      ...(commandBody === undefined ? {} : { body: commandBody }),
       redirect: "error",
       signal: AbortSignal.timeout(5_000),
     });
@@ -63,4 +73,8 @@ export function normalizeAdministrationApiOrigin(value: string): string {
     throw new Error("CONSOLE_CONFIGURATION_INVALID");
   }
   return parsed.origin;
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

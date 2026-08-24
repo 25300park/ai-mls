@@ -18,6 +18,7 @@ export const CONSOLE_PAGES = Object.freeze([
   "UI-033",
   "UI-035",
   "ADMINISTRATION",
+  "UI-036",
   "PROJECTION",
   "OPERATIONS",
 ] as const);
@@ -66,7 +67,7 @@ interface ConsoleReadAdapterDependencies {
   readonly clock: PublicationClock;
 }
 
-const publicationOperations: Readonly<Record<Exclude<ConsolePage, "DASHBOARD" | "ADMINISTRATION" | "PROJECTION" | "OPERATIONS">, PublicationQueryRequest["operation"]>> = Object.freeze({
+const publicationOperations: Readonly<Record<Exclude<ConsolePage, "DASHBOARD" | "ADMINISTRATION" | "UI-036" | "PROJECTION" | "OPERATIONS">, PublicationQueryRequest["operation"]>> = Object.freeze({
   "UI-031": "GET_PUBLICATION_OPERATIONS_VIEW",
   "UI-032": "GET_PUBLICATION_REVALIDATION_VIEW",
   "UI-033": "GET_PUBLICATION_RECOVERY_VIEW",
@@ -81,6 +82,7 @@ export class ConsoleReadAdapter {
       switch (request.page) {
         case "DASHBOARD": return this.readDashboard(request);
         case "ADMINISTRATION": return immutableConsole({ page: request.page, state: "UNAVAILABLE" as const, message: "Administration data is unavailable." });
+        case "UI-036": return immutableConsole({ page: request.page, state: "UNAVAILABLE" as const, message: "Controlled administration is unavailable." });
         case "PROJECTION": return this.readProjection(request);
         case "OPERATIONS": return this.readOperations(request);
         case "UI-031":
