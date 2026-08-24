@@ -33,9 +33,15 @@ const runtimeCommandOperations = new Set<string>([
   "REJECT_PUBLICATION_TARGET_GOVERNANCE", "TRANSITION_PUBLICATION_TARGET_GOVERNANCE",
 ]);
 
+const runtimeListOperations = new Set<string>([
+  "LIST_ROLE_ASSIGNMENTS", "LIST_ROLES", "LIST_TEAM_SCOPES", "LIST_POLICIES",
+  "LIST_SOURCE_GOVERNANCE", "LIST_PUBLICATION_TARGET_GOVERNANCE",
+]);
+
 const runtimeQueryOperations = new Set<string>([
   "READ_ROLE_ASSIGNMENT", "LIST_ROLE_ASSIGNMENTS", "READ_POLICY",
   "READ_SOURCE_GOVERNANCE", "READ_PUBLICATION_TARGET_GOVERNANCE",
+  ...runtimeListOperations,
 ]);
 
 export class InProcessAdministrationHttpAdapter implements AdministrationHttpRequestHandler {
@@ -72,7 +78,7 @@ export class InProcessAdministrationHttpAdapter implements AdministrationHttpReq
       };
       const data = route === "COMMAND"
         ? this.application.execute(applicationRequest)
-        : body.operation === "LIST_ROLE_ASSIGNMENTS"
+        : runtimeListOperations.has(body.operation)
           ? this.application.list(applicationRequest)
           : this.application.read(applicationRequest);
       return createPublicationHttpResponse({
@@ -151,8 +157,9 @@ function parseQuery(query: PublicationHttpRequest["query"]): Readonly<{
       : operation === "READ_SOURCE_GOVERNANCE" ? "sourceRegistryEntryId"
         : operation === "READ_PUBLICATION_TARGET_GOVERNANCE" ? "publicationTargetId"
           : undefined;
-  const optionalKeys = operation === "LIST_ROLE_ASSIGNMENTS" ? ["status", "limit", "cursor"] : [];
-  if (identityKey === undefined && operation !== "LIST_ROLE_ASSIGNMENTS") throw new AdministrationApiError("VALIDATION_FAILED");
+  const isList = runtimeListOperations.has(operation);
+  const optionalKeys = isList ? ["status", "limit", "cursor"] : [];
+  if (identityKey === undefined && !isList) throw new AdministrationApiError("VALIDATION_FAILED");
   const expectedKeys = ["tenantId", "correlationId", "operation", "scopeType", "scopeId",
     ...(identityKey === undefined ? [] : [identityKey]), ...optionalKeys.filter((key) => query[key] !== undefined)];
   if (!hasExactKeys(query, expectedKeys)) throw new AdministrationApiError("VALIDATION_FAILED");
@@ -160,8 +167,9 @@ function parseQuery(query: PublicationHttpRequest["query"]): Readonly<{
     scope: Object.freeze({ tenantId, scopeType, scopeId }),
   };
   if (identityKey !== undefined) payload[identityKey] = queryString(query, identityKey);
-  if (operation === "LIST_ROLE_ASSIGNMENTS") {
+  if (isList) {
     if (query["status"] !== undefined) payload["status"] = queryString(query, "status");
+
     const limit = query["limit"] === undefined ? undefined : queryString(query, "limit");
     const cursor = query["cursor"] === undefined ? undefined : queryString(query, "cursor");
     if (limit !== undefined || cursor !== undefined) {

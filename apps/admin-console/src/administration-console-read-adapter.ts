@@ -1,5 +1,16 @@
+import type { AdministrationScopeReference } from "../../api/src/administration-api-contracts.js";
 import type { AdministrationHttpRequestHandler } from "../../api/src/administration-http-adapter.js";
 import { immutableConsole, type ConsoleReadRequest, type ConsoleReadResult } from "./console-read-adapter.js";
+
+export interface AdministrationSelectorReadRequest extends ConsoleReadRequest {
+  readonly selectorScopes: Readonly<{
+    roles: AdministrationScopeReference;
+    teamScopes: AdministrationScopeReference;
+    policies: AdministrationScopeReference;
+    sourceGovernance: AdministrationScopeReference;
+    publicationTargets: AdministrationScopeReference;
+  }>;
+}
 
 interface RoleAssignmentRow {
   readonly roleAssignmentId: string;
@@ -14,7 +25,8 @@ interface RoleAssignmentRow {
 export class AdministrationConsoleReadAdapter {
   public constructor(private readonly api015: AdministrationHttpRequestHandler) {}
 
-  public async read(request: ConsoleReadRequest): Promise<ConsoleReadResult> {
+  public async read(request: ConsoleReadRequest | AdministrationSelectorReadRequest): Promise<ConsoleReadResult> {
+    if ("selectorScopes" in request) return this.readSelectorOptions(request);
     try {
       const response = await this.api015.handle({
         method: "GET",
@@ -65,6 +77,57 @@ export class AdministrationConsoleReadAdapter {
       return safeError(request.correlationId);
     }
   }
+
+  private async readSelectorOptions(request: AdministrationSelectorReadRequest): Promise<ConsoleReadResult> {
+    const definitions = [
+      ["roles", "LIST_ROLES", request.selectorScopes.roles, "ROLE", "roleId"],
+      ["teamScopes", "LIST_TEAM_SCOPES", request.selectorScopes.teamScopes, "TEAM_SCOPE", "teamId"],
+      ["policies", "LIST_POLICIES", request.selectorScopes.policies, "POLICY", "policyId"],
+      ["sourceGovernance", "LIST_SOURCE_GOVERNANCE", request.selectorScopes.sourceGovernance, "SOURCE_GOVERNANCE", "sourceRegistryEntryId"],
+      ["publicationTargets", "LIST_PUBLICATION_TARGET_GOVERNANCE", request.selectorScopes.publicationTargets, "PUBLICATION_TARGET_GOVERNANCE", "publicationTargetId"],
+    ] as const;
+    try {
+      const responses = await Promise.all(definitions.map(([, operation, scope], index) => this.api015.handle({
+        method: "GET",
+        path: "/administration/queries",
+        headers: { "x-session-id": request.sessionId },
+        query: {
+          tenantId: request.tenantId,
+          correlationId: request.correlationId,
+          operation,
+          scopeType: scope.scopeType,
+          scopeId: scope.scopeId,
+          limit: "100",
+          ...(operation === "LIST_ROLES" ? { status: "ACTIVE" } : {}),
+        },
+        pathParameters: {},
+        body: null,
+        requestId: `console-selector-${index}-${request.correlationId}`,
+      })));
+      if (responses.some(({ statusCode }) => statusCode === 401 || statusCode === 403 || statusCode === 404)) {
+        return immutableConsole({ page: "ADMINISTRATION" as const, state: "NOT_AUTHORIZED" as const, message: "Not authorized." });
+      }
+      const selectorOptions: Record<string, unknown> = {};
+      for (const [index, [key, , , viewType, identityKey]] of definitions.entries()) {
+        const collection = successfulCollection(responses[index]!.statusCode, responses[index]!.body);
+        if (collection === undefined) return safeError(request.correlationId);
+        const options = collection.items.map((item) => selectorOption(item, viewType, identityKey));
+        if (options.some((item) => item === undefined)) return safeError(request.correlationId);
+        selectorOptions[key] = {
+          state: options.length === 0 ? "EMPTY" : "READY",
+          items: options,
+          truncated: collection.truncated,
+        };
+      }
+      return immutableConsole({
+        page: "ADMINISTRATION" as const,
+        state: "READY" as const,
+        data: { selectorOptions },
+      });
+    } catch {
+      return safeError(request.correlationId);
+    }
+  }
 }
 
 function successfulCollection(statusCode: number, body: unknown): Readonly<{ items: readonly unknown[]; truncated: boolean }> | undefined {
@@ -90,6 +153,22 @@ function roleAssignmentRow(value: unknown): RoleAssignmentRow | undefined {
   return Object.freeze({
     roleAssignmentId, subjectPrincipalReference, roleId, scopeType, scopeId, status, version: version as number,
   });
+}
+
+function selectorOption(
+  value: unknown,
+  expectedViewType: string,
+  identityKey: string,
+): Readonly<{ id: string; status: string; version: number; scopeType: string; scopeId: string }> | undefined {
+  if (!isRecord(value) || value["viewType"] !== expectedViewType || !isRecord(value["scope"])) return undefined;
+  const id = safeText(value[identityKey]);
+  const status = safeText(value["status"]);
+  const scopeType = safeText(value["scope"]["scopeType"]);
+  const scopeId = safeText(value["scope"]["scopeId"]);
+  const version = value["version"];
+  if (id === undefined || status === undefined || scopeType === undefined || scopeId === undefined
+    || !Number.isSafeInteger(version) || (version as number) < 1) return undefined;
+  return Object.freeze({ id, status, version: version as number, scopeType, scopeId });
 }
 
 function unavailableSection(): Readonly<{ state: "UNAVAILABLE" }> {

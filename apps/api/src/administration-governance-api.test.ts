@@ -147,7 +147,10 @@ function revokeSecurityAuthority(unitOfWork: InMemoryAdministrationUnitOfWork, p
   transaction.commit();
 }
 
-function fixture(wrapUnitOfWork?: (unitOfWork: InMemoryAdministrationUnitOfWork) => AdministrationUnitOfWork) {
+function fixture(
+  wrapUnitOfWork?: (unitOfWork: InMemoryAdministrationUnitOfWork) => AdministrationUnitOfWork,
+  additionalRoles: readonly RolePersistenceRecord[] = [],
+) {
   const role: RolePersistenceRecord = {
     recordType: "ROLE", tenantId, roleId: "role-security-phase8", roleCode: "SEC",
     scope: { tenantId, scopeType: "TENANT", scopeId: tenantId }, status: "ACTIVE",
@@ -164,7 +167,7 @@ function fixture(wrapUnitOfWork?: (unitOfWork: InMemoryAdministrationUnitOfWork)
     ...role, roleId: "role-security-retired-phase9", status: "RETIRED",
     evidenceReferences: [evidence("evidence-role-security-retired-phase9")],
   };
-  const unitOfWork = InMemoryAdministrationUnitOfWork.rehydrate({ roles: [role, governedRole, retiredRole] });
+  const unitOfWork = InMemoryAdministrationUnitOfWork.rehydrate({ roles: [role, governedRole, retiredRole, ...additionalRoles] });
   activateSecurityAuthority(unitOfWork, "policy-proposer");
   activateSecurityAuthority(unitOfWork, "policy-approver");
   const sessions = new Map([
@@ -182,7 +185,7 @@ function fixture(wrapUnitOfWork?: (unitOfWork: InMemoryAdministrationUnitOfWork)
   const application = new AdministrationGovernanceApplication({
     authorizationService, unitOfWork: wrapUnitOfWork?.(unitOfWork) ?? unitOfWork,
     roleAssignments: unitOfWork.roleAssignments, roles: unitOfWork.roles,
-    policies: unitOfWork.policies, sourceGovernance: unitOfWork.sourceGovernance,
+    policies: unitOfWork.policies, teamScopes: unitOfWork.teamScopes, sourceGovernance: unitOfWork.sourceGovernance,
     publicationTargets: unitOfWork.publicationTargets, proposals: unitOfWork.proposals,
     decisions: unitOfWork.decisions, idempotency: unitOfWork.idempotency,
     sessionResolver: { resolve: (sessionId) => sessions.get(sessionId) }, clock,
@@ -276,6 +279,191 @@ test("F16-PHASE-9 Role Assignment read and list are live-authorized and scope bo
   assert.equal("items" in listed && listed.items.length, 1);
 });
 
+test("F16-PHASE-11A LIST_ROLES returns authorized scope-bounded selector views in canonical ID order", () => {
+  const { application, unitOfWork, sessions } = fixture();
+  activateSecurityAuthority(unitOfWork, "tenant-role-reader", {
+    resourceTypes: [`Administration:TENANT:${tenantId}`],
+  });
+  sessions.set("session-tenant-role-reader", session("tenant-role-reader"));
+
+  const listed = application.list(command("LIST_ROLES", "session-tenant-role-reader", {
+    scope: { tenantId, scopeType: "TENANT", scopeId: tenantId },
+    status: "ACTIVE",
+    pagination: { limit: 10 },
+  }));
+
+  assert.deepEqual(listed.items.map((item) => "roleId" in item ? item.roleId : undefined), [
+    "role-agent-phase9",
+    "role-security-phase8",
+  ]);
+  assert.equal(listed.items.every((item) => item.viewType === "ROLE" && item.status === "ACTIVE"), true);
+  assert.equal(Object.isFrozen(listed), true);
+  assert.equal(Object.isFrozen(listed.items), true);
+});
+
+test("F16-PHASE-11A selector lists expose deterministic bounded continuation without duplicate records", () => {
+  const { application, unitOfWork, sessions } = fixture();
+  activateSecurityAuthority(unitOfWork, "tenant-pagination-reader", {
+    resourceTypes: [`Administration:TENANT:${tenantId}`],
+  });
+  sessions.set("session-tenant-pagination-reader", session("tenant-pagination-reader"));
+  const scope = { tenantId, scopeType: "TENANT" as const, scopeId: tenantId };
+
+  const first = application.list(command("LIST_ROLES", "session-tenant-pagination-reader", {
+    scope, status: "ACTIVE", pagination: { limit: 1 },
+  }));
+  assert.deepEqual(first.items.map((item) => "roleId" in item ? item.roleId : undefined), ["role-agent-phase9"]);
+  assert.equal(first.nextCursor, "role-agent-phase9");
+
+  const second = application.list(command("LIST_ROLES", "session-tenant-pagination-reader", {
+    scope, status: "ACTIVE", pagination: { limit: 1, cursor: first.nextCursor },
+  }));
+  assert.deepEqual(second.items.map((item) => "roleId" in item ? item.roleId : undefined), ["role-security-phase8"]);
+  assert.equal(second.nextCursor, undefined);
+});
+
+test("F16-PHASE-11A selector pagination uses the same canonical comparator for cursor continuation", () => {
+  const mixedCaseRole: RolePersistenceRecord = {
+    recordType: "ROLE" as const,
+    tenantId,
+    roleId: "role-Z-phase11a",
+    roleCode: "SEC",
+    scope: { tenantId, scopeType: "TENANT" as const, scopeId: tenantId },
+    status: "ACTIVE" as const,
+    policyReference: "policy-role-mixed-case-phase11a",
+    version: 1,
+    evidenceReferences: [evidence("evidence-role-mixed-case-phase11a")],
+  };
+  const { application, unitOfWork, sessions } = fixture(undefined, [mixedCaseRole]);
+  activateSecurityAuthority(unitOfWork, "tenant-pagination-reader", {
+    resourceTypes: [`Administration:TENANT:${tenantId}`],
+  });
+  sessions.set("session-tenant-pagination-reader", session("tenant-pagination-reader"));
+
+  const scope = { tenantId, scopeType: "TENANT" as const, scopeId: tenantId };
+  const first = application.list(command("LIST_ROLES", "session-tenant-pagination-reader", {
+    scope, status: "ACTIVE", pagination: { limit: 1 },
+  }));
+  const second = application.list(command("LIST_ROLES", "session-tenant-pagination-reader", {
+    scope, status: "ACTIVE", pagination: { limit: 2, cursor: first.nextCursor },
+  }));
+
+  assert.deepEqual(first.items.map((item) => "roleId" in item ? item.roleId : undefined), ["role-agent-phase9"]);
+  assert.deepEqual(second.items.map((item) => "roleId" in item ? item.roleId : undefined), [
+    "role-security-phase8",
+    "role-Z-phase11a",
+  ]);
+});
+
+test("F16-PHASE-11A LIST_TEAM_SCOPES returns only canonical records in the authorized scope", () => {
+  const { application, unitOfWork } = fixture();
+  const scope = { tenantId, scopeType: "TEAM" as const, scopeId: teamId };
+  const identity = { tenantId, resourceType: "TEAM_SCOPE" as const, resourceId: teamId };
+  const transaction = unitOfWork.begin(identity);
+  const teamEvidence = evidence("evidence-team-scope-phase11a");
+  const proposalId = "proposal-team-scope-phase11a";
+  transaction.teamScopes.save({
+    recordType: "TEAM_SCOPE", tenantId, teamId, organizationId: "organization-phase11a",
+    scope, status: "PROPOSED", version: 1, evidenceReferences: [teamEvidence],
+  });
+  transaction.proposals.save({
+    proposalId, tenantId, resourceType: "TEAM_SCOPE", resourceId: teamId, resourceVersion: 1,
+    proposedBy: "policy-proposer", proposedChangeReference: "change-team-scope-phase11a",
+    policyReference: "policy-team-scope-phase11a", status: "PROPOSED", version: 1,
+    reasonReference: "reason-team-scope-phase11a", evidenceReferences: [teamEvidence], scope,
+  });
+  transaction.idempotency.record({
+    ...identity, idempotencyKey: "idem-team-scope-phase11a", operation: "PROPOSE_TEAM_SCOPE_CHANGE",
+    fingerprint: "fingerprint-team-scope-phase11a", resultReference: proposalId,
+    resultVersion: 1, recordedAt: now,
+  });
+  transaction.commit();
+
+  const before = unitOfWork.teamScopes.find(identity);
+  const listed = application.list(command("LIST_TEAM_SCOPES", "session-policy-proposer", {
+    scope,
+    status: "PROPOSED",
+    pagination: { limit: 10 },
+  }));
+
+  assert.deepEqual(listed.items.map((item) => "teamId" in item ? item.teamId : undefined), [teamId]);
+  assert.equal(listed.items[0]?.viewType, "TEAM_SCOPE");
+  assert.deepEqual(unitOfWork.teamScopes.find(identity), before);
+});
+
+test("F16-PHASE-11A LIST_POLICIES returns authorized canonical IDs and versions without policy internals", () => {
+  const { application } = fixture();
+  application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
+    policyId: "policy-selector-phase11a", proposedChangeReference: "policy-selector-reference-phase11a",
+    ...common(policyScope, 0, "idem-policy-selector-phase11a"),
+  }));
+
+  const listed = application.list(command("LIST_POLICIES", "session-policy-approver", {
+    scope: policyScope,
+    status: "PROPOSED",
+    pagination: { limit: 10 },
+  }));
+
+  assert.deepEqual(listed.items.map((item) => "policyId" in item ? item.policyId : undefined), [
+    "policy-selector-phase11a",
+  ]);
+  assert.equal(listed.items[0]?.viewType, "POLICY");
+  assert.equal(listed.items[0]?.version, 1);
+  assert.equal(JSON.stringify(listed).includes("proposedChangeReference"), false);
+  assert.equal(JSON.stringify(listed).includes("reasonReference"), false);
+});
+
+test("F16-PHASE-11A LIST_SOURCE_GOVERNANCE returns safe scoped metadata without source execution", () => {
+  const { application, unitOfWork } = fixture();
+  const proposed = application.execute(command("PROPOSE_SOURCE_GOVERNANCE", "session-policy-proposer", {
+    name: "Selector Source Phase 11A", sourceType: "PUBLIC_WEBSITE",
+    policyReference: "source-selector-policy-phase11a", allowedMethods: ["MANUAL_CAPTURE"],
+    allowedPurposes: ["LISTING_DISCOVERY"], classification: "INTERNAL",
+    ...common(sourceScope, 0, "idem-source-selector-phase11a"),
+  }));
+  const identity = { tenantId, resourceType: "SOURCE_REGISTRY" as const, resourceId: proposed.resourceId };
+  const before = unitOfWork.sourceGovernance.find(identity);
+
+  const listed = application.list(command("LIST_SOURCE_GOVERNANCE", "session-policy-approver", {
+    scope: sourceScope, status: "DRAFT", pagination: { limit: 10 },
+  }));
+
+  assert.deepEqual(listed.items.map((item) => "sourceRegistryEntryId" in item ? item.sourceRegistryEntryId : undefined), [proposed.resourceId]);
+  assert.equal(listed.items[0]?.viewType, "SOURCE_GOVERNANCE");
+  assert.equal(JSON.stringify(listed).includes("allowedMethods"), false);
+  assert.equal(JSON.stringify(listed).includes("classification"), false);
+  assert.deepEqual(unitOfWork.sourceGovernance.find(identity), before);
+});
+
+test("F16-PHASE-11A LIST_PUBLICATION_TARGET_GOVERNANCE returns safe scoped metadata without publication execution", () => {
+  const { application, unitOfWork } = fixture();
+  const proposed = application.execute(command("PROPOSE_PUBLICATION_TARGET_GOVERNANCE", "session-policy-proposer", {
+    name: "Selector Target Phase 11A", targetType: "MLS_PORTAL",
+    channelReference: "channel-selector-phase11a", policyReference: "target-selector-policy-phase11a",
+    allowedFieldReferences: ["field-selector-phase11a"],
+    ...common(targetScope, 0, "idem-target-selector-phase11a"),
+  }));
+  const identity = { tenantId, resourceType: "PUBLICATION_TARGET" as const, resourceId: proposed.resourceId };
+  const before = unitOfWork.publicationTargets.find(identity);
+
+  const listed = application.list(command("LIST_PUBLICATION_TARGET_GOVERNANCE", "session-policy-approver", {
+    scope: targetScope, status: "PROPOSED", pagination: { limit: 10 },
+  }));
+
+  assert.deepEqual(listed.items.map((item) => "publicationTargetId" in item ? item.publicationTargetId : undefined), [proposed.resourceId]);
+  assert.equal(listed.items[0]?.viewType, "PUBLICATION_TARGET_GOVERNANCE");
+  assert.equal(JSON.stringify(listed).includes("allowedFieldReferences"), false);
+  assert.deepEqual(unitOfWork.publicationTargets.find(identity), before);
+});
+
+test("F16-PHASE-11A selector list fails closed when live authority does not cover the requested scope", () => {
+  const { application } = fixture();
+  assert.throws(() => application.list(command("LIST_SOURCE_GOVERNANCE", "session-policy-proposer", {
+    scope: { tenantId, scopeType: "SOURCE", scopeId: "source-outside-authority-phase11a" },
+    pagination: { limit: 10 },
+  })), (error: unknown) => error instanceof AdministrationApiError && error.code === "AUTHORIZATION_DENIED");
+});
+
 test("F16-PHASE-9 Role Assignment self approval and stale version fail without persistence", () => {
   const { application, unitOfWork } = fixture();
   const proposed = application.execute(command("PROPOSE_ROLE_ASSIGNMENT", "session-policy-proposer", roleAssignmentProposal("idem-role-denial-phase9")));
@@ -333,6 +521,37 @@ test("F16-PHASE-9 HTTP query route is separated from commands and returns bounde
   assert.equal(body.data.items.length, 1);
   const wrongMethod = await handler.handle(httpRequest("POST", "/administration/queries", "session-policy-proposer", {}));
   assert.equal(wrongMethod.statusCode, 405);
+});
+
+test("F16-PHASE-11A HTTP query surface exposes only the approved selector list operations", async () => {
+  const { application, unitOfWork, sessions } = fixture();
+  activateSecurityAuthority(unitOfWork, "tenant-selector-reader", {
+    resourceTypes: [`Administration:TENANT:${tenantId}`],
+  });
+  sessions.set("session-tenant-selector-reader", session("tenant-selector-reader"));
+  const handler = createAdministrationHttpRequestHandler(application);
+  const cases = [
+    { operation: "LIST_ROLES", sessionId: "session-tenant-selector-reader", scopeType: "TENANT", scopeId: tenantId },
+    { operation: "LIST_TEAM_SCOPES", sessionId: "session-policy-proposer", scopeType: "TEAM", scopeId: teamId },
+    { operation: "LIST_POLICIES", sessionId: "session-policy-proposer", scopeType: "POLICY", scopeId: policyScope.scopeId },
+    { operation: "LIST_SOURCE_GOVERNANCE", sessionId: "session-policy-proposer", scopeType: "SOURCE", scopeId: sourceScope.scopeId },
+    { operation: "LIST_PUBLICATION_TARGET_GOVERNANCE", sessionId: "session-policy-proposer", scopeType: "TARGET", scopeId: targetScope.scopeId },
+  ] as const;
+
+  for (const entry of cases) {
+    const response = await handler.handle(httpRequest("GET", "/administration/queries", entry.sessionId, {}, {
+      tenantId, correlationId: `correlation-${entry.operation.toLowerCase()}-phase11a`, operation: entry.operation,
+      scopeType: entry.scopeType, scopeId: entry.scopeId, limit: "25",
+    }));
+    assert.equal(response.statusCode, 200, entry.operation);
+    assert.equal((response.body as { success?: boolean }).success, true, entry.operation);
+  }
+
+  const unknown = await handler.handle(httpRequest("GET", "/administration/queries", "session-policy-proposer", {}, {
+    tenantId, correlationId: "correlation-unknown-query-phase11a", operation: "LIST_POLICIES",
+    scopeType: "POLICY", scopeId: policyScope.scopeId, limit: "25", wildcard: "*",
+  }));
+  assert.equal(unknown.statusCode, 400);
 });
 
 test("F16-PHASE-9 HTTP boundary rejects body-authored Session and fails closed without a Session header", async () => {

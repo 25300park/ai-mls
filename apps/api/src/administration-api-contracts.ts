@@ -689,7 +689,7 @@ function resourceTypeForOperation(operation: string): AdministrationOperationDes
   if (operation.includes("TEAM_SCOPE")) return "TEAM_SCOPE";
   if (operation.includes("SOURCE_GOVERNANCE")) return "SOURCE_REGISTRY";
   if (operation.includes("PUBLICATION_TARGET")) return "PUBLICATION_TARGET";
-  if (operation.includes("POLICY")) return "POLICY";
+  if (operation.includes("POLICY") || operation.includes("POLICIES")) return "POLICY";
   if (operation.includes("ADMINISTRATION_PROPOSAL")) return "ADMINISTRATION_PROPOSAL";
   if (operation.includes("ADMINISTRATION_DECISION")) return "ADMINISTRATION_DECISION";
   return "ROLE";

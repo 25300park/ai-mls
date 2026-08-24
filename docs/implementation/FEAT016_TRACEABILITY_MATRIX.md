@@ -163,7 +163,17 @@ Retention Policy와 Legal Hold는 canonical owner에 남고 Phase 9 operation su
 
 UI-006은 `IMPLEMENTED_AND_VERIFIED`다. UI-036 controlled write, physical durable persistence와 FEAT-016 final acceptance는 완료로 표시하지 않는다.
 
-## 15. Gap status after Phase 10
+## 15. Phase 11A Canonical Administration Read Boundaries evidence
+
+`apps/api/src/administration-governance-api.ts`는 기존 `AdministrationGovernanceApplication.list()`와 Phase 6 bounded `listByScope()` repository port를 통해 `LIST_ROLES`, `LIST_TEAM_SCOPES`, `LIST_POLICIES`, `LIST_SOURCE_GOVERNANCE`, `LIST_PUBLICATION_TARGET_GOVERNANCE`를 구현한다. 모든 query는 trusted Session resolution과 `authorizeRead()`를 재사용하고 exact tenant/scope authorization, status filter, bounded cursor pagination, deterministic canonical ID ordering 및 immutable API-015 view를 적용한다. Cursor filtering과 ordering은 동일 `localeCompare` comparator를 사용한다.
+
+`apps/api/src/administration-http-adapter.ts`는 위 다섯 operation을 기존 GET `/administration/queries` closed allowlist에만 등록한다. 허용 query는 canonical scope, status, limit 및 cursor로 제한되며 unknown parameter와 unknown operation은 거부된다. `apps/admin-console/src/administration-console-read-adapter.ts`는 injected API-015 handler를 통해서만 selector options를 읽고 ID, status, version, scopeType 및 scopeId만 immutable Console DTO로 반환한다. Repository/UoW 직접 접근, hardcoded production ID, raw evidence, command route, mutation, Source execution 및 Publication execution은 추가하지 않았다.
+
+직접 evidence는 `administration-governance-api.test.ts`와 `administration-console-read-adapter.test.ts`이며 architecture regression은 `administration-governance-architecture.test.ts`, `administration-api-contracts.test.ts` 및 `console-composition.test.ts`를 포함한다. Focused 40/40, Phase 5~10 affected 133/133, 전체 722/722, lint/typecheck/build/verify, Architecture checksum 153/153, Gitleaks 0, production audit vulnerabilities 0 및 fresh independent review Critical/Important/Minor 0/0/0 READY를 통과했다. Full audit은 기존 승인된 development-only transitive `brace-expansion` High 4건만 유지하며 신규 미승인 High/Critical은 0이다. 상세 결과는 [F16 Phase 11A Canonical Administration Read Boundaries Report](../reviews/F16_PHASE_11A_CANONICAL_ADMIN_READ_BOUNDARIES_IMPLEMENTATION_REPORT.md)에 기록한다.
+
+Phase 11A는 selector read boundary만 구현했다. UI-036 form/write action, command/mutation route, physical durable persistence, Phase 11 resume 및 FEAT-016 final acceptance는 완료하지 않았다.
+
+## 16. Gap status after Phase 11A
 
 | Gap | Status | Evidence / next gate |
 |---|---|---|
@@ -172,17 +182,17 @@ UI-006은 `IMPLEMENTED_AND_VERIFIED`다. UI-036 controlled write, physical durab
 | `F16-GAP-011` approval/delegation ambiguity | RESOLVED | mandatory two-person and explicit-delegation invariant |
 | `F16-GAP-003` live authority | RESOLVED | current Role/Assignment/Proposal/Decision read graph, exact evidence linkage, live activation/revocation 및 deny precedence verified in Phase 7 |
 | `F16-GAP-004` durable state | OPEN IMPLEMENTATION GAP | logical Repository/UoW verified in Phase 6; physical durable adapter deferred |
-| `F16-GAP-005` complete API-015 | RUNTIME_CONTRACT_VERIFIED | Phase 5 closed schemas와 Phase 9 canonical application/HTTP operation surface verified; UI remains separate |
+| `F16-GAP-005` complete API-015 | RUNTIME_CONTRACT_VERIFIED | Phase 5 closed schemas, Phase 9 application/HTTP operation surface 및 Phase 11A five canonical selector list boundaries verified; UI write remains separate |
 | `F16-GAP-006` idempotency | PARTIALLY_VERIFIED | Phase 9 HTTP replay/collision과 canonical proposal/decision result verified; durable adapter remains open |
 | `F16-GAP-007` atomic audit | PARTIALLY_VERIFIED | Phase 9 Role/Policy/Source/Target logical UoW state/evidence/idempotency와 rollback verified; durable atomic audit remains open |
 | `F16-GAP-008` Runtime/HTTP | RESOLVED | single application boundary, existing Node server composition, closed command/bodyless-query transport and loopback verified in Phase 9 |
-| `F16-GAP-009` UI-006/UI-036 | PARTIALLY_VERIFIED | UI-006 read-oriented Console implemented and browser-verified in Phase 10; UI-036 controlled writes remain open |
-| `F16-GAP-010` full tests | PARTIALLY_VERIFIED | Phase 10 Console/API/full 711/711 and Browser 8/8 passed; UI-036/UAT/final acceptance remain open |
+| `F16-GAP-009` UI-006/UI-036 | PARTIALLY_VERIFIED | UI-006 read-oriented Console and Phase 11A canonical selector reads verified; UI-036 controlled writes remain open |
+| `F16-GAP-010` full tests | PARTIALLY_VERIFIED | Phase 11A focused 40/40, affected 133/133 및 full 722/722 passed; UI-036/UAT/final acceptance remain open |
 
-## 16. Next boundary
+## 17. Next boundary
 
-The next eligible brief after Phase 9 acceptance is:
+The next eligible brief after Phase 11A acceptance is:
 
-`F16-PHASE-11` — only after separate Architecture Owner authorization.
+`F16-PHASE-11` — UI-036 Controlled Write Console RESUME, only after separate Architecture Owner authorization.
 
-Phase 5~10은 closed API-015 contract, logical persistence, live Role authority, governed workflow, Runtime/HTTP boundary 및 UI-006 read-oriented Console을 검증했다. FEAT-016은 여전히 incomplete이며 UI-036 및 Phase 11은 시작하지 않았다.
+Phase 5~11A는 closed API-015 contract, logical persistence, live Role authority, governed workflow, Runtime/HTTP boundary, UI-006 read-oriented Console 및 canonical selector read boundary를 검증했다. FEAT-016은 여전히 incomplete이며 UI-036 write와 Phase 11 resume는 시작하지 않았다.

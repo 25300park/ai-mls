@@ -20,6 +20,7 @@ import type {
   RoleAssignmentPersistenceRecord,
   RoleReadRepository,
   SourceGovernanceReadRepository,
+  TeamScopeReadRepository,
 } from "../../../modules/administration/src/administration-persistence.js";
 import type { SessionContext } from "../../../modules/identity/src/session-service.js";
 import {
@@ -50,6 +51,7 @@ interface AdministrationGovernanceApplicationDependencies {
   readonly roleAssignments: RoleAssignmentReadRepository;
   readonly roles: RoleReadRepository;
   readonly policies: PolicyReadRepository;
+  readonly teamScopes: TeamScopeReadRepository;
   readonly sourceGovernance: SourceGovernanceReadRepository;
   readonly publicationTargets: PublicationTargetReadRepository;
   readonly proposals: AdministrationProposalReadRepository;
@@ -141,19 +143,71 @@ export class AdministrationGovernanceApplication {
 
   public list(input: unknown): AdministrationCollectionView<AdministrationReadView> {
     const request = parseAdministrationApiRequest(input);
-    if (request.kind !== "QUERY" || request.operation !== "LIST_ROLE_ASSIGNMENTS") {
-      throw new AdministrationApiError("VALIDATION_FAILED");
-    }
+    if (request.kind !== "QUERY") throw new AdministrationApiError("VALIDATION_FAILED");
     const resolved = resolveAdministrationApiSession(request, this.dependencies.sessionResolver, this.dependencies.clock);
     const scope = asPersistenceScope(request.payload.scope);
     this.authorizeRead(resolved.actor, request, scope, scope.scopeId);
     const pagination = queryPagination(request.payload["pagination"]);
     const requestedStatus = request.payload["status"];
+    if (request.operation === "LIST_ROLES") {
+      const records = this.dependencies.roles.listByScope(scope)
+        .filter((record) => requestedStatus === undefined || record.status === requestedStatus)
+        .filter((record) => pagination.cursor === undefined || record.roleId.localeCompare(pagination.cursor) > 0)
+        .sort((left, right) => left.roleId.localeCompare(right.roleId));
+      return pagedAdministrationCollection(records, pagination, (record) => record.roleId, (record) => createAdministrationReadView({
+        viewType: "ROLE", roleId: record.roleId, scope: record.scope, status: record.status,
+        version: record.version, evidenceReferences: record.evidenceReferences,
+      }));
+    }
+    if (request.operation === "LIST_TEAM_SCOPES") {
+      const records = this.dependencies.teamScopes.listByScope(scope)
+        .filter((record) => requestedStatus === undefined || record.status === requestedStatus)
+        .filter((record) => pagination.cursor === undefined || record.teamId.localeCompare(pagination.cursor) > 0)
+        .sort((left, right) => left.teamId.localeCompare(right.teamId));
+      return pagedAdministrationCollection(records, pagination, (record) => record.teamId, (record) => createAdministrationReadView({
+        viewType: "TEAM_SCOPE", teamId: record.teamId, scope: record.scope, status: record.status,
+        version: record.version, evidenceReferences: record.evidenceReferences,
+      }));
+    }
+    if (request.operation === "LIST_POLICIES") {
+      const records = this.dependencies.policies.listByScope(scope)
+        .filter((record) => requestedStatus === undefined || record.status === requestedStatus)
+        .filter((record) => pagination.cursor === undefined || record.policyId.localeCompare(pagination.cursor) > 0)
+        .sort((left, right) => left.policyId.localeCompare(right.policyId));
+      return pagedAdministrationCollection(records, pagination, (record) => record.policyId, (record) => createAdministrationReadView({
+        viewType: "POLICY", policyId: record.policyId, scope: record.scope, status: record.status,
+        version: record.version, evidenceReferences: record.evidenceReferences,
+      }));
+    }
+    if (request.operation === "LIST_SOURCE_GOVERNANCE") {
+      const records = this.dependencies.sourceGovernance.listByScope(scope)
+        .filter((record) => requestedStatus === undefined || record.status === requestedStatus)
+        .filter((record) => pagination.cursor === undefined || record.sourceRegistryEntryId.localeCompare(pagination.cursor) > 0)
+        .sort((left, right) => left.sourceRegistryEntryId.localeCompare(right.sourceRegistryEntryId));
+      return pagedAdministrationCollection(records, pagination, (record) => record.sourceRegistryEntryId, (record) => createAdministrationReadView({
+        viewType: "SOURCE_GOVERNANCE", sourceRegistryEntryId: record.sourceRegistryEntryId,
+        scope: record.scope, status: record.status, version: record.version,
+        policyReference: record.policyReference, evidenceReferences: record.evidenceReferences,
+      }));
+    }
+    if (request.operation === "LIST_PUBLICATION_TARGET_GOVERNANCE") {
+      const records = this.dependencies.publicationTargets.listByScope(scope)
+        .filter((record) => requestedStatus === undefined || record.status === requestedStatus)
+        .filter((record) => pagination.cursor === undefined || record.publicationTargetId.localeCompare(pagination.cursor) > 0)
+        .sort((left, right) => left.publicationTargetId.localeCompare(right.publicationTargetId));
+      return pagedAdministrationCollection(records, pagination, (record) => record.publicationTargetId, (record) => createAdministrationReadView({
+        viewType: "PUBLICATION_TARGET_GOVERNANCE", publicationTargetId: record.publicationTargetId,
+        scope: record.scope, status: record.status, version: record.version,
+        policyReference: record.policyReference, channelReference: record.channelReference,
+        evidenceReferences: record.evidenceReferences,
+      }));
+    }
+    if (request.operation !== "LIST_ROLE_ASSIGNMENTS") throw new AdministrationApiError("VALIDATION_FAILED");
     const records = this.dependencies.roleAssignments.listByScope(scope)
       .filter((record) => requestedStatus === undefined || record.status === requestedStatus)
-      .filter((record) => pagination.cursor === undefined || record.roleAssignmentId > pagination.cursor)
-      .slice(0, pagination.limit);
-    return createAdministrationCollectionView({ items: records.map(roleAssignmentView) });
+      .filter((record) => pagination.cursor === undefined || record.roleAssignmentId.localeCompare(pagination.cursor) > 0)
+      .sort((left, right) => left.roleAssignmentId.localeCompare(right.roleAssignmentId));
+    return pagedAdministrationCollection(records, pagination, (record) => record.roleAssignmentId, roleAssignmentView);
   }
 
   private proposeRoleAssignment(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): AdministrationApiCommandResult {
@@ -720,6 +774,22 @@ function queryPagination(value: unknown): Readonly<{ limit: number; cursor?: str
     throw new AdministrationApiError("VALIDATION_FAILED");
   }
   return Object.freeze({ limit: limit as number, ...(cursor === undefined ? {} : { cursor }) });
+}
+
+function pagedAdministrationCollection<RecordType>(
+  records: readonly RecordType[],
+  pagination: Readonly<{ limit: number; cursor?: string }>,
+  identity: (record: RecordType) => string,
+  view: (record: RecordType) => AdministrationReadView,
+): AdministrationCollectionView<AdministrationReadView> {
+  const bounded = records.slice(0, pagination.limit + 1);
+  const page = bounded.slice(0, pagination.limit);
+  return createAdministrationCollectionView({
+    items: page.map(view),
+    ...(bounded.length > pagination.limit && page.length > 0
+      ? { nextCursor: identity(page[page.length - 1]!) }
+      : {}),
+  });
 }
 
 function requiredClassification(value: unknown): "PUBLIC_APPROVED" | "INTERNAL" | "CONFIDENTIAL_BUSINESS" | "RESTRICTED_PERSONAL" | "RESTRICTED_SECURITY" {
