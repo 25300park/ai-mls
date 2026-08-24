@@ -16,15 +16,17 @@ import {
 import type { SessionContext } from "../../../modules/identity/src/session-service.js";
 import { AdministrationApiError, safeAdministrationApiError } from "./administration-api-contracts.js";
 import { AdministrationGovernanceApplication } from "./administration-governance-api.js";
+import { composeAdministrationApi015NodeHttpServer } from "./composition.js";
+import { createAdministrationHttpRequestHandler } from "./administration-http-adapter.js";
 
 const now = "2026-08-20T01:00:00.000Z";
 const tenantId = "tenant-phase8";
 const teamId = "team-phase8";
 const evidence = (id: string) => ({ type: "AUDIT" as const, id, version: 1 });
 
-function session(principalId: string): SessionContext {
+function session(principalId: string, principalTeamId = teamId): SessionContext {
   return Object.freeze({
-    id: `session-${principalId}`, principalId, principalType: "HUMAN", roles: [] as const, teamId,
+    id: `session-${principalId}`, principalId, principalType: "HUMAN", roles: [] as const, teamId: principalTeamId,
     state: "ACTIVE", assurance: "MFA", isMfaVerified: true,
     authenticatedAt: "2026-08-20T00:00:00.000Z", expiresAt: "2026-08-20T04:00:00.000Z",
     absoluteExpiresAt: "2026-08-21T00:00:00.000Z", familyId: `family-${principalId}`,
@@ -32,28 +34,35 @@ function session(principalId: string): SessionContext {
   });
 }
 
-function activateSecurityAuthority(unitOfWork: InMemoryAdministrationUnitOfWork, principalId: string): void {
+function activateSecurityAuthority(
+  unitOfWork: InMemoryAdministrationUnitOfWork,
+  principalId: string,
+  overrides: Readonly<Partial<Pick<RoleAssignmentPersistenceRecord,
+  "effectiveFrom" | "effectiveUntil" | "purposes" | "resourceTypes" | "roleId">>> = {},
+  authorityTeamId = teamId,
+): void {
   const suffix = principalId.replaceAll("-", "_");
   const identity: AdministrationTransactionIdentity = {
     tenantId, resourceType: "ROLE_ASSIGNMENT", resourceId: `assignment-${suffix}`,
   };
-  const scope = { tenantId, scopeType: "TEAM" as const, scopeId: teamId };
+  const scope = { tenantId, scopeType: "TEAM" as const, scopeId: authorityTeamId };
   const proposalId = `proposal-authority-${suffix}`;
   const assignmentEvidence = evidence(`evidence-authority-${suffix}`);
   const decisionEvidence = evidence(`evidence-authority-decision-${suffix}`);
   const assignment = (version: number, status: RoleAssignmentPersistenceRecord["status"]): RoleAssignmentPersistenceRecord => ({
     recordType: "ROLE_ASSIGNMENT", tenantId, roleAssignmentId: identity.resourceId, proposalId,
     subjectPrincipalId: principalId, subjectPrincipalType: "HUMAN", roleId: "role-security-phase8",
-    teamIds: [teamId], resourceTypes: [
+    teamIds: [authorityTeamId], resourceTypes: [
       "Administration:POLICY:policy-scope-phase8",
       "Administration:SOURCE:source-scope-phase8",
       "Administration:TARGET:target-scope-phase8",
+      `Administration:TEAM:${authorityTeamId}`,
     ], purposes: ["ACCESS_GOVERNANCE"], effectiveFrom: "2026-08-20T00:00:00.000Z",
     effectiveUntil: "2026-08-21T00:00:00.000Z", status, version,
     proposedBy: `authority-proposer-${suffix}`, ...(status === "ACTIVE" ? { approvedBy: `authority-approver-${suffix}` } : {}),
     reasonReference: `reason-authority-${suffix}`,
     evidenceReferences: status === "ACTIVE" ? [assignmentEvidence, decisionEvidence] : [assignmentEvidence],
-    scope,
+    scope, ...overrides,
   });
   const proposal = (status: AdministrationProposalRecord["status"], version: number): AdministrationProposalRecord => ({
     proposalId, tenantId, resourceType: "ROLE_ASSIGNMENT", resourceId: identity.resourceId, resourceVersion: 1,
@@ -145,7 +154,17 @@ function fixture(wrapUnitOfWork?: (unitOfWork: InMemoryAdministrationUnitOfWork)
     policyReference: "policy-role-security-phase8", version: 1,
     evidenceReferences: [evidence("evidence-role-security-phase8")],
   };
-  const unitOfWork = InMemoryAdministrationUnitOfWork.rehydrate({ roles: [role] });
+  const governedRole: RolePersistenceRecord = {
+    recordType: "ROLE", tenantId, roleId: "role-agent-phase9", roleCode: "AGT",
+    scope: { tenantId, scopeType: "TENANT", scopeId: tenantId }, status: "ACTIVE",
+    policyReference: "policy-role-agent-phase9", version: 1,
+    evidenceReferences: [evidence("evidence-role-agent-phase9")],
+  };
+  const retiredRole: RolePersistenceRecord = {
+    ...role, roleId: "role-security-retired-phase9", status: "RETIRED",
+    evidenceReferences: [evidence("evidence-role-security-retired-phase9")],
+  };
+  const unitOfWork = InMemoryAdministrationUnitOfWork.rehydrate({ roles: [role, governedRole, retiredRole] });
   activateSecurityAuthority(unitOfWork, "policy-proposer");
   activateSecurityAuthority(unitOfWork, "policy-approver");
   const sessions = new Map([
@@ -162,6 +181,7 @@ function fixture(wrapUnitOfWork?: (unitOfWork: InMemoryAdministrationUnitOfWork)
   let id = 0;
   const application = new AdministrationGovernanceApplication({
     authorizationService, unitOfWork: wrapUnitOfWork?.(unitOfWork) ?? unitOfWork,
+    roleAssignments: unitOfWork.roleAssignments, roles: unitOfWork.roles,
     policies: unitOfWork.policies, sourceGovernance: unitOfWork.sourceGovernance,
     publicationTargets: unitOfWork.publicationTargets, proposals: unitOfWork.proposals,
     decisions: unitOfWork.decisions, idempotency: unitOfWork.idempotency,
@@ -181,10 +201,326 @@ function command(operation: string, sessionId: string, payload: Record<string, u
 const policyScope = { tenantId, scopeType: "POLICY", scopeId: "policy-scope-phase8" } as const;
 const sourceScope = { tenantId, scopeType: "SOURCE", scopeId: "source-scope-phase8" } as const;
 const targetScope = { tenantId, scopeType: "TARGET", scopeId: "target-scope-phase8" } as const;
+const roleAssignmentScope = { tenantId, scopeType: "TEAM", scopeId: teamId } as const;
 const common = (scope: object, expectedVersion: number, idempotencyKey: string) => ({
   scope, expectedVersion, idempotencyKey, reason: "approved phase 8 governance reason",
   evidenceReferences: [evidence(`evidence-${idempotencyKey}`)],
 });
+
+function roleAssignmentProposal(idempotencyKey: string) {
+  return {
+    subjectPrincipalId: "principal-agent-phase9", subjectPrincipalType: "HUMAN", role: "AGT",
+    teamIds: [teamId], resourceTypes: ["CandidateListing"], purposes: ["CLIENT_SERVICE"],
+    effectiveFrom: "2026-08-20T00:00:00.000Z", effectiveUntil: "2026-08-21T00:00:00.000Z",
+    ...common(roleAssignmentScope, 0, idempotencyKey),
+  };
+}
+
+test("F16-PHASE-9 Role Assignment proposal and independent approval use the canonical UoW", () => {
+  const { application, unitOfWork } = fixture();
+  const proposedInput = command("PROPOSE_ROLE_ASSIGNMENT", "session-policy-proposer", roleAssignmentProposal("idem-role-propose-phase9"));
+  const proposed = application.execute(proposedInput);
+  assert.equal(proposed.status, "PROPOSED");
+  const identity = { tenantId, resourceType: "ROLE_ASSIGNMENT" as const, resourceId: proposed.resourceId };
+  assert.equal(unitOfWork.roleAssignments.find(identity)?.proposedBy, "policy-proposer");
+
+  const approvedInput = command("APPROVE_ROLE_ASSIGNMENT", "session-policy-approver", {
+    proposalId: proposed.proposalId, roleAssignmentId: proposed.resourceId,
+    ...common(roleAssignmentScope, 1, "idem-role-approve-phase9"),
+  });
+  const approved = application.execute(approvedInput);
+  assert.equal(approved.status, "ACTIVE");
+  assert.equal(unitOfWork.roleAssignments.find(identity)?.approvedBy, "policy-approver");
+  assert.equal(unitOfWork.decisions.list(identity).length, 1);
+  assert.deepEqual(application.execute(approvedInput), approved);
+  assert.equal(unitOfWork.decisions.list(identity).length, 1);
+});
+
+test("F16-PHASE-9A ACTIVE Role Assignment successor proposal enables canonical revocation", () => {
+  const { application, unitOfWork } = fixture();
+  const initial = application.execute(command("PROPOSE_ROLE_ASSIGNMENT", "session-policy-proposer", roleAssignmentProposal("idem-role-initial-phase9a")));
+  application.execute(command("APPROVE_ROLE_ASSIGNMENT", "session-policy-approver", {
+    proposalId: initial.proposalId, roleAssignmentId: initial.resourceId,
+    ...common(roleAssignmentScope, 1, "idem-role-activate-phase9a"),
+  }));
+  const successor = application.execute(command("PROPOSE_ROLE_ASSIGNMENT", "session-policy-proposer", {
+    ...roleAssignmentProposal("idem-role-successor-phase9a"),
+    roleAssignmentId: initial.resourceId, expectedVersion: 2,
+  }));
+  assert.equal(successor.resourceId, initial.resourceId);
+  const identity = { tenantId, resourceType: "ROLE_ASSIGNMENT" as const, resourceId: initial.resourceId };
+  assert.equal(unitOfWork.roleAssignments.find(identity)?.status, "ACTIVE");
+
+  const revokeInput = command("REVOKE_ROLE_ASSIGNMENT", "session-policy-approver", {
+    proposalId: successor.proposalId, roleAssignmentId: initial.resourceId,
+    ...common(roleAssignmentScope, 2, "idem-role-revoke-phase9a"),
+  });
+  const revoked = application.execute(revokeInput);
+  assert.equal(revoked.status, "REVOKED");
+  assert.equal(unitOfWork.roleAssignments.find(identity)?.revokedBy, "policy-approver");
+  assert.equal(unitOfWork.decisions.list(identity).length, 2);
+  assert.deepEqual(application.execute(revokeInput), revoked);
+  assert.equal(unitOfWork.decisions.list(identity).length, 2);
+});
+
+test("F16-PHASE-9 Role Assignment read and list are live-authorized and scope bounded", () => {
+  const { application } = fixture();
+  const proposed = application.execute(command("PROPOSE_ROLE_ASSIGNMENT", "session-policy-proposer", roleAssignmentProposal("idem-role-query-phase9")));
+  const read = application.read(command("READ_ROLE_ASSIGNMENT", "session-policy-proposer", {
+    roleAssignmentId: proposed.resourceId, scope: roleAssignmentScope,
+  }));
+  assert.equal("viewType" in read && read.viewType, "ROLE_ASSIGNMENT");
+  const listed = application.list(command("LIST_ROLE_ASSIGNMENTS", "session-policy-proposer", {
+    scope: roleAssignmentScope, status: "PROPOSED", pagination: { limit: 25 },
+  }));
+  assert.equal("items" in listed && listed.items.length, 1);
+});
+
+test("F16-PHASE-9 Role Assignment self approval and stale version fail without persistence", () => {
+  const { application, unitOfWork } = fixture();
+  const proposed = application.execute(command("PROPOSE_ROLE_ASSIGNMENT", "session-policy-proposer", roleAssignmentProposal("idem-role-denial-phase9")));
+  const identity = { tenantId, resourceType: "ROLE_ASSIGNMENT" as const, resourceId: proposed.resourceId };
+  assert.throws(() => application.execute(command("APPROVE_ROLE_ASSIGNMENT", "session-policy-proposer", {
+    proposalId: proposed.proposalId, roleAssignmentId: proposed.resourceId,
+    ...common(roleAssignmentScope, 1, "idem-role-self-approve-phase9"),
+  })), (error: unknown) => error instanceof AdministrationApiError && error.code === "SELF_APPROVAL_FORBIDDEN");
+  assert.throws(() => application.execute(command("APPROVE_ROLE_ASSIGNMENT", "session-policy-approver", {
+    proposalId: proposed.proposalId, roleAssignmentId: proposed.resourceId,
+    ...common(roleAssignmentScope, 2, "idem-role-stale-phase9"),
+  })), (error: unknown) => error instanceof AdministrationApiError && error.code === "VERSION_CONFLICT");
+  assert.equal(unitOfWork.roleAssignments.find(identity)?.status, "PROPOSED");
+  assert.equal(unitOfWork.decisions.list(identity).length, 0);
+});
+
+test("F16-PHASE-9A successor lookup conceals an assignment outside the authorized scope", () => {
+  const { application, unitOfWork, sessions } = fixture();
+  const proposed = application.execute(command("PROPOSE_ROLE_ASSIGNMENT", "session-policy-proposer", roleAssignmentProposal("idem-role-scope-source-phase9")));
+  activateSecurityAuthority(unitOfWork, "other-scope-actor", {}, "team-other-phase9");
+  sessions.set("session-other-scope-actor", session("other-scope-actor", "team-other-phase9"));
+  assert.throws(() => application.execute(command("PROPOSE_ROLE_ASSIGNMENT", "session-other-scope-actor", {
+    ...roleAssignmentProposal("idem-role-scope-probe-phase9"), roleAssignmentId: proposed.resourceId,
+    scope: { tenantId, scopeType: "TEAM", scopeId: "team-other-phase9" }, expectedVersion: 1,
+  })), (error: unknown) => error instanceof AdministrationApiError && error.code === "NOT_FOUND");
+});
+
+test("F16-PHASE-9 HTTP command route derives the Session and reaches the single application boundary", async () => {
+  const { application, unitOfWork } = fixture();
+  const handler = createAdministrationHttpRequestHandler(application);
+  const response = await handler.handle(httpRequest("POST", "/administration/commands", "session-policy-proposer", {
+    tenantId, correlationId: "correlation-role-http-phase9", operation: "PROPOSE_ROLE_ASSIGNMENT",
+    payload: roleAssignmentProposal("idem-role-http-phase9"),
+  }));
+  assert.equal(response.statusCode, 200);
+  const body = response.body as { success: boolean; data: { resourceId: string; status: string } };
+  assert.equal(body.success, true);
+  assert.equal(body.data.status, "PROPOSED");
+  assert.equal(unitOfWork.roleAssignments.find({
+    tenantId, resourceType: "ROLE_ASSIGNMENT", resourceId: body.data.resourceId,
+  })?.proposedBy, "policy-proposer");
+});
+
+test("F16-PHASE-9 HTTP query route is separated from commands and returns bounded Role Assignment views", async () => {
+  const { application } = fixture();
+  application.execute(command("PROPOSE_ROLE_ASSIGNMENT", "session-policy-proposer", roleAssignmentProposal("idem-role-http-query-phase9")));
+  const handler = createAdministrationHttpRequestHandler(application);
+  const response = await handler.handle(httpRequest("GET", "/administration/queries", "session-policy-proposer", {}, {
+    tenantId, correlationId: "correlation-role-http-query-phase9", operation: "LIST_ROLE_ASSIGNMENTS",
+    scopeType: "TEAM", scopeId: teamId, status: "PROPOSED", limit: "10",
+  }));
+  assert.equal(response.statusCode, 200);
+  const body = response.body as { success: boolean; data: { items: readonly unknown[] } };
+  assert.equal(body.success, true);
+  assert.equal(body.data.items.length, 1);
+  const wrongMethod = await handler.handle(httpRequest("POST", "/administration/queries", "session-policy-proposer", {}));
+  assert.equal(wrongMethod.statusCode, 405);
+});
+
+test("F16-PHASE-9 HTTP boundary rejects body-authored Session and fails closed without a Session header", async () => {
+  const { application, unitOfWork } = fixture();
+  const handler = createAdministrationHttpRequestHandler(application);
+  const body = {
+    tenantId, correlationId: "correlation-role-http-auth-phase9", operation: "PROPOSE_ROLE_ASSIGNMENT",
+    payload: roleAssignmentProposal("idem-role-http-auth-phase9"),
+  };
+  const missing = await handler.handle(httpRequest("POST", "/administration/commands", undefined, body));
+  assert.equal(missing.statusCode, 401);
+  const forged = await handler.handle(httpRequest("POST", "/administration/commands", "session-policy-proposer", {
+    ...body, sessionId: "session-policy-approver", actorId: "policy-approver", roles: ["SEC"],
+  }));
+  assert.equal(forged.statusCode, 400);
+  assert.equal(unitOfWork.roleAssignments.listBySubject(tenantId, "principal-agent-phase9").length, 0);
+});
+
+test("F16-PHASE-9 HTTP routes reuse Policy, Source and Target application workflows without execution authority", async () => {
+  const { application } = fixture();
+  const handler = createAdministrationHttpRequestHandler(application);
+  const cases = [
+    {
+      operation: "PROPOSE_POLICY_CHANGE",
+      payload: { policyId: "policy-http-phase9", proposedChangeReference: "policy-http-reference-phase9", ...common(policyScope, 0, "idem-policy-http-phase9") },
+    },
+    {
+      operation: "PROPOSE_SOURCE_GOVERNANCE",
+      payload: {
+        name: "HTTP Source Phase 9", sourceType: "PUBLIC_WEBSITE", policyReference: "source-policy-http-phase9",
+        allowedMethods: ["MANUAL_CAPTURE"], allowedPurposes: ["LISTING_DISCOVERY"], classification: "INTERNAL",
+        ...common(sourceScope, 0, "idem-source-http-phase9"),
+      },
+    },
+    {
+      operation: "PROPOSE_PUBLICATION_TARGET_GOVERNANCE",
+      payload: {
+        name: "HTTP Target Phase 9", targetType: "MLS_PORTAL", channelReference: "channel-http-phase9",
+        policyReference: "target-policy-http-phase9", allowedFieldReferences: ["field-title"],
+        ...common(targetScope, 0, "idem-target-http-phase9"),
+      },
+    },
+  ] as const;
+  for (const item of cases) {
+    const response = await handler.handle(httpRequest("POST", "/administration/commands", "session-policy-proposer", {
+      tenantId, correlationId: `correlation-${item.operation.toLowerCase()}`, operation: item.operation, payload: item.payload,
+    }));
+    assert.equal(response.statusCode, 200);
+  }
+  const forbidden = await handler.handle(httpRequest("POST", "/administration/commands", "session-policy-proposer", {
+    tenantId, correlationId: "correlation-forbidden-phase9", operation: "SET_LEGAL_HOLD", payload: {},
+  }));
+  assert.equal(forbidden.statusCode, 400);
+});
+
+test("F16-PHASE-9 HTTP preserves canonical idempotency conflicts and concealed live-authorization denials", async () => {
+  const { application, sessions } = fixture();
+  const handler = createAdministrationHttpRequestHandler(application);
+  const firstBody = {
+    tenantId, correlationId: "correlation-http-idempotency-phase9", operation: "PROPOSE_ROLE_ASSIGNMENT",
+    payload: roleAssignmentProposal("idem-http-conflict-phase9"),
+  };
+  assert.equal((await handler.handle(httpRequest("POST", "/administration/commands", "session-policy-proposer", firstBody))).statusCode, 200);
+  const conflict = await handler.handle(httpRequest("POST", "/administration/commands", "session-policy-proposer", {
+    ...firstBody, payload: { ...roleAssignmentProposal("idem-http-conflict-phase9"), subjectPrincipalId: "principal-other-phase9" },
+  }));
+  assert.equal(conflict.statusCode, 409);
+
+  sessions.set("session-low-assurance-phase9", Object.freeze({
+    ...session("policy-proposer"), id: "session-low-assurance-phase9", assurance: "SINGLE_FACTOR", isMfaVerified: false,
+  }));
+  const denied = await handler.handle(httpRequest("POST", "/administration/commands", "session-low-assurance-phase9", {
+    tenantId, correlationId: "correlation-http-mfa-phase9", operation: "PROPOSE_ROLE_ASSIGNMENT",
+    payload: roleAssignmentProposal("idem-http-mfa-phase9"),
+  }));
+  assert.equal(denied.statusCode, 403);
+  assert.doesNotMatch(JSON.stringify(denied.body), /principal-agent-phase9|policy-role-agent-phase9|stack|at file:/i);
+});
+
+test("F16-PHASE-9 composed HTTP path fails closed for every mandatory live-authority rejection", async () => {
+  const { application, unitOfWork, sessions } = fixture();
+  sessions.set("session-no-assignment-phase9", session("no-assignment-phase9"));
+  activateSecurityAuthority(unitOfWork, "expired-authority-phase9", {
+    effectiveFrom: "2026-08-18T00:00:00.000Z", effectiveUntil: "2026-08-19T00:00:00.000Z",
+  });
+  sessions.set("session-expired-authority-phase9", session("expired-authority-phase9"));
+  activateSecurityAuthority(unitOfWork, "wrong-purpose-phase9", { purposes: ["LISTING_DISCOVERY"] });
+  sessions.set("session-wrong-purpose-phase9", session("wrong-purpose-phase9"));
+  activateSecurityAuthority(unitOfWork, "revoked-authority-phase9");
+  revokeSecurityAuthority(unitOfWork, "revoked-authority-phase9");
+  sessions.set("session-revoked-authority-phase9", session("revoked-authority-phase9"));
+  activateSecurityAuthority(unitOfWork, "retired-role-phase9", { roleId: "role-security-retired-phase9" });
+  sessions.set("session-retired-role-phase9", session("retired-role-phase9"));
+  const handler = createAdministrationHttpRequestHandler(application);
+  const cases = [
+    { sessionId: "session-no-assignment-phase9", tenant: tenantId, scope: roleAssignmentScope, suffix: "missing-capability" },
+    { sessionId: "session-expired-authority-phase9", tenant: tenantId, scope: roleAssignmentScope, suffix: "expired-assignment" },
+    { sessionId: "session-wrong-purpose-phase9", tenant: tenantId, scope: roleAssignmentScope, suffix: "purpose-mismatch" },
+    { sessionId: "session-revoked-authority-phase9", tenant: tenantId, scope: roleAssignmentScope, suffix: "revoked-assignment" },
+    { sessionId: "session-retired-role-phase9", tenant: tenantId, scope: roleAssignmentScope, suffix: "revoked-role" },
+    { sessionId: "session-policy-proposer", tenant: "tenant-other-phase9", scope: { tenantId: "tenant-other-phase9", scopeType: "TEAM", scopeId: teamId }, suffix: "wrong-tenant" },
+    { sessionId: "session-policy-proposer", tenant: tenantId, scope: { tenantId, scopeType: "TEAM", scopeId: "team-other-phase9" }, suffix: "wrong-scope" },
+  ] as const;
+  for (const item of cases) {
+    const response = await handler.handle(httpRequest("POST", "/administration/commands", item.sessionId, {
+      tenantId: item.tenant, correlationId: `correlation-${item.suffix}-phase9`, operation: "PROPOSE_ROLE_ASSIGNMENT",
+      payload: { ...roleAssignmentProposal(`idem-${item.suffix}-phase9`), scope: item.scope },
+    }));
+    assert.equal(response.statusCode, 404, item.suffix);
+    assert.deepEqual(response.body, {
+      success: false, error: { code: "NOT_FOUND", message: "Resource not found." },
+    }, item.suffix);
+  }
+  assert.equal(unitOfWork.roleAssignments.listBySubject(tenantId, "principal-agent-phase9").length, 0);
+});
+
+test("F16-PHASE-9 multiplexer preserves the existing HTTP handler for non-Administration routes", async () => {
+  const { application } = fixture();
+  let fallbackCalls = 0;
+  const handler = createAdministrationHttpRequestHandler(application, {
+    handle: (input: unknown) => {
+      fallbackCalls += 1;
+      const requestId = (input as { requestId: string }).requestId;
+      return Promise.resolve({
+        statusCode: 202, headers: { "content-type": "application/json" }, body: { success: true }, requestId,
+      });
+    },
+  });
+  const response = await handler.handle(httpRequest("POST", "/publications/commands/create", undefined, {}));
+  assert.equal(response.statusCode, 202);
+  assert.equal(fallbackCalls, 1);
+});
+
+test("F16-PHASE-9 existing Node HTTP server enforces bounded bodies and executes the composed API-015 route", async () => {
+  const { application } = fixture();
+  const server = composeAdministrationApi015NodeHttpServer({
+    configuration: { host: "127.0.0.1", port: 0, maximumBodyBytes: 2_048, shutdownTimeout: 250 },
+    application,
+    requestIdFactory: () => "request-node-api015-phase9",
+  });
+  await server.start();
+  try {
+    assert.notEqual(server.diagnostics.boundPort, null);
+    const base = `http://127.0.0.1:${server.diagnostics.boundPort!}`;
+    const response = await fetch(`${base}/administration/commands`, {
+      method: "POST", headers: {
+        "content-type": "application/json", "x-request-id": "request-node-role-phase9",
+        "x-session-id": "session-policy-proposer",
+      },
+      body: JSON.stringify({
+        tenantId, correlationId: "correlation-node-role-phase9", operation: "PROPOSE_ROLE_ASSIGNMENT",
+        payload: roleAssignmentProposal("idem-node-role-phase9"),
+      }),
+    });
+    assert.equal(response.status, 200);
+    const query = new URLSearchParams({
+      tenantId, correlationId: "correlation-node-role-query-phase9", operation: "LIST_ROLE_ASSIGNMENTS",
+      scopeType: "TEAM", scopeId: teamId, status: "PROPOSED", limit: "10",
+    });
+    const queryResponse = await fetch(`${base}/administration/queries?${query}`, {
+      headers: { "x-request-id": "request-node-role-query-phase9", "x-session-id": "session-policy-proposer" },
+    });
+    assert.equal(queryResponse.status, 200);
+    const queryBody = await queryResponse.json() as { success: boolean; data: { items: readonly unknown[] } };
+    assert.equal(queryBody.success, true);
+    assert.equal(queryBody.data.items.length, 1);
+    const oversized = await fetch(`${base}/administration/commands`, {
+      method: "POST", headers: { "content-type": "application/json", "x-request-id": "request-node-large-phase9" },
+      body: JSON.stringify({ padding: "x".repeat(3_000) }),
+    });
+    assert.equal(oversized.status, 413);
+  } finally {
+    await server.stop();
+  }
+});
+
+function httpRequest(
+  method: string,
+  path: string,
+  sessionId: string | undefined,
+  body: object,
+  query: Readonly<Record<string, string>> = {},
+) {
+  return {
+    method, path, headers: sessionId === undefined ? {} : { "x-session-id": sessionId },
+    query, pathParameters: {}, body, requestId: `request-http-${method.toLowerCase()}-${path.replaceAll("/", "-")}`,
+  };
+}
 
 test("F16-PHASE-8 Policy proposal and independent approval persist one atomic authoritative result", () => {
   const { application, unitOfWork } = fixture();

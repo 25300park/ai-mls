@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-DEV-017 |
-| 버전 | v0.5 |
+| 버전 | v0.6 |
 | 상태 | DRAFT |
 | 범위 | `EPIC-008` / `FEAT-016` / `DEV-016` / `IMP-016` |
 | 기준 | Architecture Bible v1.1 + `DEC-114` / `CR-026` |
@@ -12,6 +12,7 @@
 | Phase 6 status | `LOGICAL_PERSISTENCE_BOUNDARY_VERIFIED` |
 | Phase 7 status | `LIVE_ROLE_AUTHORITY_INTEGRATION_VERIFIED` |
 | Phase 8 status | `POLICY_SOURCE_TARGET_WORKFLOWS_VERIFIED` |
+| Phase 9 status | `RUNTIME_HTTP_API_015_VERIFIED` |
 
 ## 1. Status reconciliation
 
@@ -64,6 +65,8 @@ FEAT-016 completion requires closed operation families for:
 6. administration Decision/evidence references and API-016 history linkage.
 
 Detailed request/response schema, exact operation names and safe error contracts belong to `F16-PHASE-5 — API-015 Closed Contracts`.
+
+Phase 9A는 새 operation을 추가하지 않고 기존 `PROPOSE_ROLE_ASSIGNMENT`를 확장한다. 새 proposal은 `roleAssignmentId` 없이 `expectedVersion = 0`을 사용한다. revoke successor proposal은 기존 ACTIVE `roleAssignmentId`와 exact current version을 사용하고 subject, Role, tenant/scope, team, resource, purpose 및 effective-period 관계를 보존한다. Successor proposal은 기존 `REVOKE_ROLE_ASSIGNMENT` lifecycle에서만 authoritative state 변경으로 이어질 수 있다.
 
 ## 5. Approval and delegation invariant
 
@@ -140,7 +143,17 @@ Physical database, ORM and migration framework remain `DEFERRED`; this alignment
 
 이 evidence는 logical application workflow만 검증한다. Physical durable persistence, Runtime/HTTP, UI-006/UI-036, UAT 및 FEAT-016 final acceptance는 완료하지 않는다.
 
-## 13. Gap status after Phase 8
+## 13. Phase 9 Runtime / HTTP API-015 evidence
+
+`apps/api/src/administration-http-adapter.ts`는 canonical API-015 command와 query를 분리하고 HTTP header의 Session ID만 authoritative authentication input으로 사용한다. Command body와 bodyless GET query는 각각 closed schema로 검증되며 unknown field, body-authored actor/session/role, unsupported operation과 `SET_LEGAL_HOLD`를 거부한다. `apps/api/src/composition.ts`의 `composeAdministrationApi015NodeHttpServer`는 injected `AdministrationGovernanceApplication`과 기존 Node HTTP server를 단일 production composition boundary로 연결한다.
+
+Role Assignment read/list/propose/approve/reject/revoke와 Phase 8 Policy/Source/Target workflow는 동일 application, Phase 6 UoW/idempotency/evidence, Phase 7 live authorization을 재사용한다. 실제 loopback은 command, bodyless GET query, bounded body를 검증하고, composed HTTP rejection matrix는 missing capability, expired/revoked assignment, retired Role, purpose mismatch, wrong tenant/scope, MFA 및 stale authority를 concealment와 no-persistence assertion으로 검증한다. Cross-scope successor lookup은 `NOT_FOUND`로 fail closed한다.
+
+직접 evidence는 `administration-api-contracts.test.ts`, `administration-governance-api.test.ts`, `administration-governance-architecture.test.ts`이다. Focused 51/51, 영향 회귀 96/96, 전체 700/700, lint/typecheck/build/verify, Architecture checksum 153/153, Gitleaks 0 및 fresh independent review Critical/Important/Minor 0/0/0 READY를 통과했다. 상세 결과는 [F16 Phase 9 Runtime / HTTP API-015 Report](../reviews/F16_PHASE_9_RUNTIME_HTTP_API_015_IMPLEMENTATION_REPORT.md)에 기록한다.
+
+Retention Policy와 Legal Hold는 canonical owner에 남고 Phase 9 operation surface에 포함되지 않는다. Physical durable persistence와 UI-006/UI-036는 구현하지 않았다.
+
+## 14. Gap status after Phase 9
 
 | Gap | Status | Evidence / next gate |
 |---|---|---|
@@ -149,17 +162,17 @@ Physical database, ORM and migration framework remain `DEFERRED`; this alignment
 | `F16-GAP-011` approval/delegation ambiguity | RESOLVED | mandatory two-person and explicit-delegation invariant |
 | `F16-GAP-003` live authority | RESOLVED | current Role/Assignment/Proposal/Decision read graph, exact evidence linkage, live activation/revocation 및 deny precedence verified in Phase 7 |
 | `F16-GAP-004` durable state | OPEN IMPLEMENTATION GAP | logical Repository/UoW verified in Phase 6; physical durable adapter deferred |
-| `F16-GAP-005` complete API-015 | CONTRACT_LAYER_RESOLVED | closed command/query schemas, immutable results/views, safe errors and architecture boundary verified in Phase 5 |
-| `F16-GAP-006` idempotency | PARTIALLY_VERIFIED | Phase 8 canonical proposal/decision/transition/rejection replay and collision verified; durable adapter remains open |
-| `F16-GAP-007` atomic audit | PARTIALLY_VERIFIED | Phase 8 state/proposal/decision/evidence/idempotency logical Unit of Work and rollback verified; durable atomic audit remains open |
-| `F16-GAP-008` Runtime/HTTP | OPEN IMPLEMENTATION GAP | later approved interface/runtime phase |
+| `F16-GAP-005` complete API-015 | RUNTIME_CONTRACT_VERIFIED | Phase 5 closed schemas와 Phase 9 canonical application/HTTP operation surface verified; UI remains separate |
+| `F16-GAP-006` idempotency | PARTIALLY_VERIFIED | Phase 9 HTTP replay/collision과 canonical proposal/decision result verified; durable adapter remains open |
+| `F16-GAP-007` atomic audit | PARTIALLY_VERIFIED | Phase 9 Role/Policy/Source/Target logical UoW state/evidence/idempotency와 rollback verified; durable atomic audit remains open |
+| `F16-GAP-008` Runtime/HTTP | RESOLVED | single application boundary, existing Node server composition, closed command/bodyless-query transport and loopback verified in Phase 9 |
 | `F16-GAP-009` UI-006/UI-036 | OPEN IMPLEMENTATION GAP | read integration then separately approved controlled writes |
-| `F16-GAP-010` full tests | PARTIALLY_VERIFIED | Phase 8 direct/integration/security/full 685/685 passed; later Runtime/HTTP/UI/UAT acceptance remains open |
+| `F16-GAP-010` full tests | PARTIALLY_VERIFIED | Phase 9 direct/integration/security/full 700/700 passed; UI/UAT acceptance remains open |
 
-## 14. Next boundary
+## 15. Next boundary
 
-The next eligible brief after Phase 8 acceptance is:
+The next eligible brief after Phase 9 acceptance is:
 
-`F16-PHASE-9` — only after separate Architecture Owner authorization.
+`F16-PHASE-10` — only after separate Architecture Owner authorization.
 
-Phase 5~8은 closed API-015 contract, logical persistence, live Role authority 및 Policy/Source/Target logical workflow를 검증했다. FEAT-016은 여전히 incomplete이며 Phase 9는 시작하지 않았다.
+Phase 5~9는 closed API-015 contract, logical persistence, live Role authority, governed workflow 및 Runtime/HTTP boundary를 검증했다. FEAT-016은 여전히 incomplete이며 Phase 10은 시작하지 않았다.

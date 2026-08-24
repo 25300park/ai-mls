@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-001 |
-| 문서 버전 | v2.9 |
+| 문서 버전 | v3.0 |
 | 상태 | IN REVIEW |
 | 소유 역할 | Architecture Owner |
 | 기준일 | 2026-07-24 |
@@ -219,6 +219,7 @@
 | DOC-REVIEW-092 | [F16 Phase 6 Administration Repository / UoW](reviews/F16_PHASE_6_ADMINISTRATION_REPOSITORY_UOW_IMPLEMENTATION_REPORT.md) | bounded repository, logical UoW, atomicity, hydration 및 persistence evidence | AVAILABLE |
 | DOC-REVIEW-093 | [F16 Phase 7 Live Role Authority Integration](reviews/F16_PHASE_7_LIVE_ROLE_AUTHORITY_INTEGRATION_REPORT.md) | current Role resolution, live assignment, SoD/MFA 및 governed approval evidence 검증 | AVAILABLE |
 | DOC-REVIEW-094 | [F16 Phase 8 Policy / Source / Target Administration](reviews/F16_PHASE_8_POLICY_SOURCE_TARGET_ADMINISTRATION_IMPLEMENTATION_REPORT.md) | Policy, Source Registry, Publication Target governed workflow 및 validation evidence | AVAILABLE |
+| DOC-REVIEW-095 | [F16 Phase 9 Runtime / HTTP API-015](reviews/F16_PHASE_9_RUNTIME_HTTP_API_015_IMPLEMENTATION_REPORT.md) | API-015 single application composition, closed HTTP transport, live authorization 및 loopback evidence | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -868,6 +869,7 @@
 | DOC-REVIEW-092 | F16 Phase 6 Administration Repository / UoW Implementation Report | [F16_PHASE_6_ADMINISTRATION_REPOSITORY_UOW_IMPLEMENTATION_REPORT.md](reviews/F16_PHASE_6_ADMINISTRATION_REPOSITORY_UOW_IMPLEMENTATION_REPORT.md) |
 | DOC-REVIEW-093 | F16 Phase 7 Live Role Authority Integration Report | [F16_PHASE_7_LIVE_ROLE_AUTHORITY_INTEGRATION_REPORT.md](reviews/F16_PHASE_7_LIVE_ROLE_AUTHORITY_INTEGRATION_REPORT.md) |
 | DOC-REVIEW-094 | F16 Phase 8 Policy / Source / Target Administration Implementation Report | [F16_PHASE_8_POLICY_SOURCE_TARGET_ADMINISTRATION_IMPLEMENTATION_REPORT.md](reviews/F16_PHASE_8_POLICY_SOURCE_TARGET_ADMINISTRATION_IMPLEMENTATION_REPORT.md) |
+| DOC-REVIEW-095 | F16 Phase 9 Runtime / HTTP API-015 Implementation Report | [F16_PHASE_9_RUNTIME_HTTP_API_015_IMPLEMENTATION_REPORT.md](reviews/F16_PHASE_9_RUNTIME_HTTP_API_015_IMPLEMENTATION_REPORT.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books

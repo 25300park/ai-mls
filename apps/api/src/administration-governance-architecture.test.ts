@@ -4,6 +4,8 @@ import test from "node:test";
 
 const source = new URL("apps/api/src/administration-governance-api.ts", `file:///${process.cwd().replaceAll("\\", "/")}/`);
 const index = new URL("apps/api/src/index.ts", `file:///${process.cwd().replaceAll("\\", "/")}/`);
+const httpAdapter = new URL("apps/api/src/administration-http-adapter.ts", `file:///${process.cwd().replaceAll("\\", "/")}/`);
+const composition = new URL("apps/api/src/composition.ts", `file:///${process.cwd().replaceAll("\\", "/")}/`);
 
 test("F16-PHASE-8 workflow uses API-015, Phase 6 UoW and Phase 7 live authorization without execution dependencies", async () => {
   const [workflow, exports] = await Promise.all([
@@ -19,4 +21,24 @@ test("F16-PHASE-8 workflow uses API-015, Phase 6 UoW and Phase 7 live authorizat
     "publication-service", "publication-aggregate", "connector", "reconciliation", "recovery",
     "admin-console", "http", "express", "fastify", "typeorm", "prisma", "sequelize", "openai",
   ]) assert.doesNotMatch(workflow.toLowerCase(), new RegExp(forbidden));
+});
+
+test("F16-PHASE-9 HTTP adapter uses one governance application boundary and preserves canonical ownership", async () => {
+  const [adapter, root, exports] = await Promise.all([
+    readFile(httpAdapter, "utf8"), readFile(composition, "utf8"), readFile(index, "utf8"),
+  ]);
+  assert.match(adapter, /AdministrationGovernanceApplicationPort/);
+  assert.match(adapter, /x-session-id/);
+  assert.match(adapter, /\/administration\/commands/);
+  assert.match(adapter, /\/administration\/queries/);
+  assert.match(adapter, /AdministrationHttpRequestMultiplexer/);
+  assert.match(adapter, /parseQuery\(request\.query\)/);
+  assert.match(root, /composeAdministrationApi015NodeHttpServer/);
+  assert.match(root, /createAdministrationHttpRequestHandler\(options\.application/);
+  assert.match(root, /createPublicationNodeHttpServer/);
+  assert.match(exports, /administration-http-adapter\.js/);
+  for (const forbidden of [
+    "admin-audit-api", "administration-service", "AdministrationUnitOfWork", "Repository",
+    "SET_LEGAL_HOLD", "Retention", "Legal Hold", "express", "fastify",
+  ]) assert.doesNotMatch(adapter, new RegExp(forbidden, "i"));
 });

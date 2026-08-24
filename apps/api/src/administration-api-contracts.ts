@@ -466,8 +466,10 @@ function parseCommandPayload(
       : operation.startsWith("TRANSITION_")
         ? ["targetStatus"]
         : [];
-  const optionalProposalIdentityKeys = operation === "PROPOSE_SOURCE_GOVERNANCE"
-    ? ["sourceRegistryEntryId"]
+  const optionalProposalIdentityKeys = operation === "PROPOSE_ROLE_ASSIGNMENT"
+    ? ["roleAssignmentId"]
+    : operation === "PROPOSE_SOURCE_GOVERNANCE"
+      ? ["sourceRegistryEntryId"]
     : operation === "PROPOSE_PUBLICATION_TARGET_GOVERNANCE"
       ? ["publicationTargetId"]
       : [];
@@ -475,6 +477,7 @@ function parseCommandPayload(
   const parsed: Record<string, ContractValue> = {};
   for (const key of identityKeys) parsed[key] = requireCanonicalId(payload[key]);
   if (operation === "PROPOSE_ROLE_ASSIGNMENT") {
+    if (payload["roleAssignmentId"] !== undefined) parsed["roleAssignmentId"] = requireCanonicalId(payload["roleAssignmentId"]);
     parsed["subjectPrincipalId"] = requireCanonicalId(payload["subjectPrincipalId"]);
     parsed["subjectPrincipalType"] = requireClosedValue(payload["subjectPrincipalType"], ["HUMAN", "SERVICE"] satisfies readonly PrincipalType[]);
     parsed["role"] = requireClosedValue(payload["role"], roleCodes);
@@ -512,12 +515,12 @@ function parseCommandPayload(
   if (!ADMINISTRATION_API_OPERATION_REGISTRY[operation].allowedScopeTypes.includes((parsed["scope"] as AdministrationScopeReference).scopeType)) failValidation();
   parsed["expectedVersion"] = requireCanonicalVersion(payload["expectedVersion"]);
   if (
-    (operation === "PROPOSE_ROLE_ASSIGNMENT"
+    ((operation === "PROPOSE_ROLE_ASSIGNMENT" && parsed["roleAssignmentId"] === undefined)
       || (operation === "PROPOSE_SOURCE_GOVERNANCE" && parsed["sourceRegistryEntryId"] === undefined)
       || (operation === "PROPOSE_PUBLICATION_TARGET_GOVERNANCE" && parsed["publicationTargetId"] === undefined))
     && parsed["expectedVersion"] !== 0
   ) failValidation();
-  if ((parsed["sourceRegistryEntryId"] !== undefined || parsed["publicationTargetId"] !== undefined)
+  if ((parsed["roleAssignmentId"] !== undefined || parsed["sourceRegistryEntryId"] !== undefined || parsed["publicationTargetId"] !== undefined)
     && parsed["expectedVersion"] === 0) failValidation();
   parsed["idempotencyKey"] = requireCanonicalId(payload["idempotencyKey"]);
   parsed["reason"] = requireSafeReason(payload["reason"]);

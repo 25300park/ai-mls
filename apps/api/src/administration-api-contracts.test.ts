@@ -188,6 +188,30 @@ test("F16-PHASE-5 proposal operations require create version zero and cannot acc
   expectCode(() => parseAdministrationApiRequest(command({ operation: "PROPOSE_ROLE_ASSIGNMENT", payload: { ...roleProposal, proposerId: "caller-proposer" } })), "VALIDATION_FAILED");
 });
 
+test("F16-PHASE-9A PROPOSE_ROLE_ASSIGNMENT accepts only canonical new or ACTIVE-successor version shapes", () => {
+  const newProposal = validCommandPayload("PROPOSE_ROLE_ASSIGNMENT");
+  assert.equal((parseAdministrationApiRequest(command({
+    operation: "PROPOSE_ROLE_ASSIGNMENT", payload: newProposal,
+  })) as AdministrationApiCommandRequest).payload.expectedVersion, 0);
+
+  const successor = {
+    ...newProposal, roleAssignmentId: "assignment-active-phase9", expectedVersion: 2,
+    idempotencyKey: "idempotency-role-successor-phase9",
+  };
+  const parsed = parseAdministrationApiRequest(command({
+    operation: "PROPOSE_ROLE_ASSIGNMENT", payload: successor,
+  })) as AdministrationApiCommandRequest;
+  assert.equal(parsed.payload["roleAssignmentId"], "assignment-active-phase9");
+  assert.equal(parsed.payload.expectedVersion, 2);
+
+  expectCode(() => parseAdministrationApiRequest(command({
+    operation: "PROPOSE_ROLE_ASSIGNMENT", payload: { ...newProposal, expectedVersion: 2 },
+  })), "VALIDATION_FAILED");
+  expectCode(() => parseAdministrationApiRequest(command({
+    operation: "PROPOSE_ROLE_ASSIGNMENT", payload: { ...successor, expectedVersion: 0 },
+  })), "VALIDATION_FAILED");
+});
+
 test("F16-PHASE-5 requires bounded reasons, safe evidence references, versions, and idempotency", () => {
   const base = (command() as { payload: Record<string, unknown> }).payload;
   expectCode(() => parseAdministrationApiRequest(command({ payload: { ...base, reason: " " } })), "VALIDATION_FAILED");

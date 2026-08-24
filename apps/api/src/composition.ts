@@ -15,7 +15,19 @@ import type { PropertyService } from "../../../modules/property/src/property-ser
 import type { SourceRegistryService } from "../../../modules/source/src/source-registry-service.js";
 import type { VerificationService } from "../../../modules/verification/src/verification-service.js";
 import type { PublicationInfrastructure } from "../../../modules/publication/src/publication-infrastructure.js";
+import {
+  createPublicationNodeHttpServer,
+  type PublicationNodeHttpServer,
+} from "../../../modules/publication/src/publication-node-http-server.js";
+import type {
+  PublicationNodeHttpServerRequestIdFactory,
+} from "../../../modules/publication/src/publication-node-http-contracts.js";
 import { AdminAuditApi } from "./admin-audit-api.js";
+import {
+  createAdministrationHttpRequestHandler,
+  type AdministrationGovernanceApplicationPort,
+  type AdministrationHttpRequestHandler,
+} from "./administration-http-adapter.js";
 import { ContactClientApi } from "./contact-client-api.js";
 import { IdentityApi } from "./identity-api.js";
 import { JobApi } from "./job-api.js";
@@ -29,6 +41,23 @@ import { PublicationApi } from "./publication-api.js";
 
 export function composePublicationApiModule(infrastructure: PublicationInfrastructure): PublicationApi {
   return new PublicationApi(infrastructure);
+}
+
+export interface AdministrationApi015NodeHttpCompositionOptions {
+  readonly application: AdministrationGovernanceApplicationPort;
+  readonly configuration?: unknown;
+  readonly existingHttpHandler?: AdministrationHttpRequestHandler;
+  readonly requestIdFactory?: PublicationNodeHttpServerRequestIdFactory;
+}
+
+export function composeAdministrationApi015NodeHttpServer(
+  options: AdministrationApi015NodeHttpCompositionOptions,
+): PublicationNodeHttpServer {
+  return createPublicationNodeHttpServer({
+    configuration: options.configuration,
+    httpAdapter: createAdministrationHttpRequestHandler(options.application, options.existingHttpHandler),
+    ...(options.requestIdFactory === undefined ? {} : { requestIdFactory: options.requestIdFactory }),
+  });
 }
 
 export interface ApiModuleDependencies {

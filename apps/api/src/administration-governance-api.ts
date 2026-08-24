@@ -16,6 +16,9 @@ import type {
   AdministrationUnitOfWork,
   PolicyReadRepository,
   PublicationTargetReadRepository,
+  RoleAssignmentReadRepository,
+  RoleAssignmentPersistenceRecord,
+  RoleReadRepository,
   SourceGovernanceReadRepository,
 } from "../../../modules/administration/src/administration-persistence.js";
 import type { SessionContext } from "../../../modules/identity/src/session-service.js";
@@ -24,12 +27,14 @@ import {
   assertIndependentAdministrationApproval,
   createAdministrationCommandFingerprint,
   createAdministrationCommandResult,
+  createAdministrationCollectionView,
   createAdministrationReadView,
   parseAdministrationApiRequest,
   resolveAdministrationApiSession,
   type AdministrationApiCommandOperation,
   type AdministrationApiCommandRequest,
   type AdministrationApiCommandResult,
+  type AdministrationCollectionView,
   type AdministrationApiQueryRequest,
   type AdministrationEvidenceReference,
   type AdministrationReadView,
@@ -42,6 +47,8 @@ import {
 interface AdministrationGovernanceApplicationDependencies {
   readonly authorizationService: LiveAdministrationAuthorizationService;
   readonly unitOfWork: AdministrationUnitOfWork;
+  readonly roleAssignments: RoleAssignmentReadRepository;
+  readonly roles: RoleReadRepository;
   readonly policies: PolicyReadRepository;
   readonly sourceGovernance: SourceGovernanceReadRepository;
   readonly publicationTargets: PublicationTargetReadRepository;
@@ -56,6 +63,7 @@ interface AdministrationGovernanceApplicationDependencies {
 type PolicyOperation = "PROPOSE_POLICY_CHANGE" | "APPROVE_POLICY_CHANGE" | "REJECT_POLICY_CHANGE";
 type SourceOperation = "PROPOSE_SOURCE_GOVERNANCE" | "APPROVE_SOURCE_GOVERNANCE" | "REJECT_SOURCE_GOVERNANCE" | "TRANSITION_SOURCE_GOVERNANCE";
 type TargetOperation = "PROPOSE_PUBLICATION_TARGET_GOVERNANCE" | "APPROVE_PUBLICATION_TARGET_GOVERNANCE" | "REJECT_PUBLICATION_TARGET_GOVERNANCE" | "TRANSITION_PUBLICATION_TARGET_GOVERNANCE";
+type RoleAssignmentOperation = "PROPOSE_ROLE_ASSIGNMENT" | "APPROVE_ROLE_ASSIGNMENT" | "REJECT_ROLE_ASSIGNMENT" | "REVOKE_ROLE_ASSIGNMENT";
 
 export class AdministrationGovernanceApplication {
   public constructor(private readonly dependencies: AdministrationGovernanceApplicationDependencies) {}
@@ -65,6 +73,8 @@ export class AdministrationGovernanceApplication {
     if (request.kind !== "COMMAND") throw new AdministrationApiError("VALIDATION_FAILED");
     const resolved = resolveAdministrationApiSession(request, this.dependencies.sessionResolver, this.dependencies.clock);
     try {
+      if (isRoleAssignmentOperation(request.operation)) return request.operation === "PROPOSE_ROLE_ASSIGNMENT"
+        ? this.proposeRoleAssignment(resolved) : this.decideRoleAssignment(resolved);
       if (isPolicyOperation(request.operation)) return request.operation === "PROPOSE_POLICY_CHANGE"
         ? this.proposePolicy(resolved) : this.decidePolicy(resolved);
       if (isSourceOperation(request.operation)) return request.operation === "PROPOSE_SOURCE_GOVERNANCE"
@@ -87,6 +97,13 @@ export class AdministrationGovernanceApplication {
     if (request.kind !== "QUERY") throw new AdministrationApiError("VALIDATION_FAILED");
     const resolved = resolveAdministrationApiSession(request, this.dependencies.sessionResolver, this.dependencies.clock);
     const scope = asPersistenceScope(request.payload.scope);
+    if (request.operation === "READ_ROLE_ASSIGNMENT") {
+      const resourceId = requiredString(request.payload["roleAssignmentId"]);
+      this.authorizeRead(resolved.actor, request, scope, resourceId);
+      const record = this.dependencies.roleAssignments.find(transactionIdentity(request.tenantId, "ROLE_ASSIGNMENT", resourceId));
+      if (record === undefined || !sameScope(record.scope, scope)) throw new AdministrationApiError("NOT_FOUND");
+      return roleAssignmentView(record);
+    }
     if (request.operation === "READ_POLICY") {
       const resourceId = requiredString(request.payload["policyId"]);
       this.authorizeRead(resolved.actor, request, scope, resourceId);
@@ -120,6 +137,143 @@ export class AdministrationGovernanceApplication {
       });
     }
     throw new AdministrationApiError("VALIDATION_FAILED");
+  }
+
+  public list(input: unknown): AdministrationCollectionView<AdministrationReadView> {
+    const request = parseAdministrationApiRequest(input);
+    if (request.kind !== "QUERY" || request.operation !== "LIST_ROLE_ASSIGNMENTS") {
+      throw new AdministrationApiError("VALIDATION_FAILED");
+    }
+    const resolved = resolveAdministrationApiSession(request, this.dependencies.sessionResolver, this.dependencies.clock);
+    const scope = asPersistenceScope(request.payload.scope);
+    this.authorizeRead(resolved.actor, request, scope, scope.scopeId);
+    const pagination = queryPagination(request.payload["pagination"]);
+    const requestedStatus = request.payload["status"];
+    const records = this.dependencies.roleAssignments.listByScope(scope)
+      .filter((record) => requestedStatus === undefined || record.status === requestedStatus)
+      .filter((record) => pagination.cursor === undefined || record.roleAssignmentId > pagination.cursor)
+      .slice(0, pagination.limit);
+    return createAdministrationCollectionView({ items: records.map(roleAssignmentView) });
+  }
+
+  private proposeRoleAssignment(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): AdministrationApiCommandResult {
+    const request = resolved.request;
+    const requestedAssignmentId = request.payload["roleAssignmentId"];
+    const assignmentId = typeof requestedAssignmentId === "string"
+      ? requestedAssignmentId
+      : deterministicCreateId("assignment", request.tenantId, request.payload.idempotencyKey);
+    const scope = asPersistenceScope(request.payload.scope);
+    const identity = transactionIdentity(request.tenantId, "ROLE_ASSIGNMENT", assignmentId);
+    const fingerprint = createAdministrationCommandFingerprint(request);
+    this.authorize(resolved.actor, request, scope, assignmentId);
+    const replay = this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
+    if (replay !== undefined) return replay;
+    const current = this.dependencies.roleAssignments.find(identity);
+    if (requestedAssignmentId === undefined && current !== undefined) throw new AdministrationApiError("VERSION_CONFLICT");
+    if (requestedAssignmentId !== undefined && current === undefined) throw new AdministrationApiError("NOT_FOUND");
+    if (current !== undefined && !sameScope(current.scope, scope)) throw new AdministrationApiError("NOT_FOUND");
+    if (current !== undefined && current.status !== "ACTIVE") throw new AdministrationApiError("INVALID_STATE");
+    if (current !== undefined && current.version !== request.payload.expectedVersion) {
+      throw new AdministrationApiError("VERSION_CONFLICT");
+    }
+    const requestedRoleCode = requiredString(request.payload["role"]);
+    const role = this.dependencies.roles.listByScope({
+      tenantId: request.tenantId, scopeType: "TENANT", scopeId: request.tenantId,
+    }).find((candidate) => candidate.roleCode === requestedRoleCode && candidate.status === "ACTIVE");
+    if (role === undefined) throw new AdministrationApiError("NOT_FOUND");
+    const proposalId = this.dependencies.idFactory();
+    const evidence = asPersistenceEvidence(request.payload.evidenceReferences);
+    const assignment = {
+      recordType: "ROLE_ASSIGNMENT" as const, tenantId: request.tenantId, roleAssignmentId: assignmentId,
+      proposalId, scope, subjectPrincipalId: requiredString(request.payload["subjectPrincipalId"]),
+      subjectPrincipalType: requiredPrincipalType(request.payload["subjectPrincipalType"]), roleId: role.roleId,
+      teamIds: requiredStringList(request.payload["teamIds"]), resourceTypes: requiredStringList(request.payload["resourceTypes"]),
+      purposes: requiredStringList(request.payload["purposes"]), effectiveFrom: requiredString(request.payload["effectiveFrom"]),
+      effectiveUntil: requiredString(request.payload["effectiveUntil"]), status: "PROPOSED" as const, version: 1,
+      proposedBy: resolved.actor.principalId, reasonReference: reasonReference(fingerprint), evidenceReferences: evidence,
+    };
+    if (current !== undefined && (current.subjectPrincipalId !== assignment.subjectPrincipalId
+      || current.subjectPrincipalType !== assignment.subjectPrincipalType || current.roleId !== assignment.roleId
+      || !sameStringValues(current.teamIds, assignment.teamIds) || !sameStringValues(current.resourceTypes, assignment.resourceTypes)
+      || !sameStringValues(current.purposes, assignment.purposes) || current.effectiveFrom !== assignment.effectiveFrom
+      || current.effectiveUntil !== assignment.effectiveUntil)) throw new AdministrationApiError("VALIDATION_FAILED");
+    const proposal: AdministrationProposalRecord = {
+      proposalId, tenantId: request.tenantId, resourceType: "ROLE_ASSIGNMENT", resourceId: assignmentId,
+      resourceVersion: current?.version ?? 1, scope, proposedBy: resolved.actor.principalId, proposedChangeReference: `intent:${fingerprint}`,
+      policyReference: role.policyReference, status: "PROPOSED", version: 1,
+      reasonReference: reasonReference(fingerprint), evidenceReferences: evidence,
+    };
+    const transaction = this.dependencies.unitOfWork.begin(identity);
+    try {
+      if (current === undefined) transaction.roleAssignments.save(assignment);
+      transaction.proposals.save(proposal);
+      transaction.idempotency.record(idempotencyRecord(identity, request, fingerprint, proposalId, 1, "PROPOSED", this.dependencies.clock, evidence));
+      transaction.commit();
+    } catch (error) {
+      if (transaction.isActive()) transaction.rollback();
+      throw error;
+    }
+    return proposalResult(request.operation, proposal);
+  }
+
+  private decideRoleAssignment(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): AdministrationApiCommandResult {
+    const request = resolved.request;
+    const assignmentId = requiredString(request.payload["roleAssignmentId"]);
+    const proposalId = requiredString(request.payload["proposalId"]);
+    const scope = asPersistenceScope(request.payload.scope);
+    const identity = transactionIdentity(request.tenantId, "ROLE_ASSIGNMENT", assignmentId);
+    const fingerprint = createAdministrationCommandFingerprint(request);
+    this.authorize(resolved.actor, request, scope, assignmentId);
+    const replay = this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
+    if (replay !== undefined) return replay;
+    const current = this.dependencies.roleAssignments.find(identity);
+    const proposal = this.dependencies.proposals.findById(request.tenantId, proposalId);
+    if (current === undefined || proposal?.resourceType !== "ROLE_ASSIGNMENT" || proposal.resourceId !== assignmentId
+      || !sameScope(current.scope, scope) || !sameScope(proposal.scope, scope)) throw new AdministrationApiError("NOT_FOUND");
+    if (proposal.status !== "PROPOSED") throw new AdministrationApiError("INVALID_STATE");
+    if (current.version !== request.payload.expectedVersion || proposal.resourceVersion !== current.version) {
+      throw new AdministrationApiError("VERSION_CONFLICT");
+    }
+    if (request.operation === "REVOKE_ROLE_ASSIGNMENT" ? current.status !== "ACTIVE" : current.status !== "PROPOSED") {
+      throw new AdministrationApiError("INVALID_STATE");
+    }
+    assertIndependentAdministrationApproval(resolved.actor, proposalEvidence(proposal));
+    const rejected = request.operation === "REJECT_ROLE_ASSIGNMENT";
+    const revoked = request.operation === "REVOKE_ROLE_ASSIGNMENT";
+    const resultVersion = rejected ? current.version : current.version + 1;
+    const status = rejected ? "REJECTED" as const : revoked ? "REVOKED" as const : "ACTIVE" as const;
+    const decisionId = this.dependencies.idFactory();
+    const decisionReference: PersistenceEvidenceReference = { type: "DECISION", id: decisionId, version: resultVersion };
+    const combinedEvidence = Object.freeze([...asPersistenceEvidence(request.payload.evidenceReferences), decisionReference]);
+    const decision: AdministrationDecisionRecord = {
+      decisionId, proposalId, tenantId: request.tenantId, operation: request.operation,
+      resourceType: "ROLE_ASSIGNMENT", resourceId: assignmentId, scope, proposerId: proposal.proposedBy,
+      decisionActorId: resolved.actor.principalId, status: rejected ? "REJECTED" : revoked ? "REVOKED" : "APPROVED",
+      reasonReference: reasonReference(fingerprint), evidenceReferences: combinedEvidence,
+      version: resultVersion, decidedAt: this.dependencies.clock().toISOString(),
+    };
+    const transaction = this.dependencies.unitOfWork.begin(identity);
+    try {
+      if (!rejected) transaction.roleAssignments.update(current.version, {
+        ...current, status: revoked ? "REVOKED" : "ACTIVE", version: resultVersion,
+        ...(revoked ? { revokedBy: resolved.actor.principalId } : { approvedBy: resolved.actor.principalId }),
+        evidenceReferences: [...current.evidenceReferences, decisionReference],
+      });
+      transaction.proposals.update(proposal.version, {
+        ...proposal, status: rejected ? "REJECTED" : revoked ? "REVOKED" : "APPROVED", version: proposal.version + 1,
+        evidenceReferences: [...proposal.evidenceReferences, decisionReference],
+      });
+      transaction.decisions.append(decision);
+      transaction.idempotency.record(idempotencyRecord(identity, request, fingerprint, decisionId, resultVersion, status, this.dependencies.clock));
+      transaction.commit();
+    } catch (error) {
+      if (transaction.isActive()) transaction.rollback();
+      throw error;
+    }
+    return createAdministrationCommandResult({
+      operation: request.operation, proposalId, resourceType: "ROLE_ASSIGNMENT", resourceId: assignmentId,
+      status, version: resultVersion, decisionReferences: [decisionId], evidenceReferences: combinedEvidence,
+    });
   }
 
   private proposeTarget(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): AdministrationApiCommandResult {
@@ -501,6 +655,11 @@ function isPolicyOperation(operation: AdministrationApiCommandOperation): operat
   return operation === "PROPOSE_POLICY_CHANGE" || operation === "APPROVE_POLICY_CHANGE" || operation === "REJECT_POLICY_CHANGE";
 }
 
+function isRoleAssignmentOperation(operation: AdministrationApiCommandOperation): operation is RoleAssignmentOperation {
+  return operation === "PROPOSE_ROLE_ASSIGNMENT" || operation === "APPROVE_ROLE_ASSIGNMENT"
+    || operation === "REJECT_ROLE_ASSIGNMENT" || operation === "REVOKE_ROLE_ASSIGNMENT";
+}
+
 function isSourceOperation(operation: AdministrationApiCommandOperation): operation is SourceOperation {
   return operation === "PROPOSE_SOURCE_GOVERNANCE" || operation === "APPROVE_SOURCE_GOVERNANCE"
     || operation === "REJECT_SOURCE_GOVERNANCE" || operation === "TRANSITION_SOURCE_GOVERNANCE";
@@ -537,6 +696,32 @@ function requiredStringList(value: unknown): readonly string[] {
   return Object.freeze(strings);
 }
 
+function requiredPrincipalType(value: unknown): "HUMAN" | "SERVICE" {
+  if (value === "HUMAN" || value === "SERVICE") return value;
+  throw new AdministrationApiError("VALIDATION_FAILED");
+}
+
+function roleAssignmentView(record: RoleAssignmentPersistenceRecord): AdministrationReadView {
+  return createAdministrationReadView({
+    viewType: "ROLE_ASSIGNMENT", roleAssignmentId: record.roleAssignmentId,
+    subjectPrincipalReference: record.subjectPrincipalId, roleId: record.roleId, scope: record.scope,
+    status: record.status, version: record.version, evidenceReferences: record.evidenceReferences,
+  });
+}
+
+function queryPagination(value: unknown): Readonly<{ limit: number; cursor?: string }> {
+  if (value === undefined) return Object.freeze({ limit: 100 });
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new AdministrationApiError("VALIDATION_FAILED");
+  const pagination = value as Readonly<Record<string, unknown>>;
+  const limit = pagination["limit"];
+  const cursor = pagination["cursor"];
+  if (!Number.isSafeInteger(limit) || (limit as number) < 1 || (limit as number) > 100
+    || (cursor !== undefined && (typeof cursor !== "string" || cursor.length === 0))) {
+    throw new AdministrationApiError("VALIDATION_FAILED");
+  }
+  return Object.freeze({ limit: limit as number, ...(cursor === undefined ? {} : { cursor }) });
+}
+
 function requiredClassification(value: unknown): "PUBLIC_APPROVED" | "INTERNAL" | "CONFIDENTIAL_BUSINESS" | "RESTRICTED_PERSONAL" | "RESTRICTED_SECURITY" {
   if (value === "PUBLIC_APPROVED" || value === "INTERNAL" || value === "CONFIDENTIAL_BUSINESS"
     || value === "RESTRICTED_PERSONAL" || value === "RESTRICTED_SECURITY") return value;
@@ -545,6 +730,10 @@ function requiredClassification(value: unknown): "PUBLIC_APPROVED" | "INTERNAL" 
 
 function sameScope(left: AdministrationPersistenceScope, right: AdministrationPersistenceScope): boolean {
   return left.tenantId === right.tenantId && left.scopeType === right.scopeType && left.scopeId === right.scopeId;
+}
+
+function sameStringValues(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function reasonReference(fingerprint: string): string { return `reason:${fingerprint.slice(0, 24)}`; }
