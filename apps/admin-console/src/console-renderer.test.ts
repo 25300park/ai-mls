@@ -14,11 +14,11 @@ test("POST-F15-CONSOLE shell renders the approved accessible navigation and load
 
   for (const label of [
     "AI-MLS ADMIN", "Dashboard", "Operations", "Revalidation", "Recovery",
-    "Audit / History", "Projection", "Operations / Health", "Loading...",
+    "Audit / History", "Administration", "Projection", "Operations / Health", "Loading...",
   ]) assert.equal(html.includes(label), true, label);
   for (const path of [
     "/", "/publication/operations", "/publication/revalidation", "/publication/recovery",
-    "/publication/audit", "/system/projection", "/system/operations",
+    "/publication/audit", "/administration", "/system/projection", "/system/operations",
   ]) assert.equal(html.includes(`href=\"${path}`), true, path);
   assert.equal(html.includes("<nav"), true);
   assert.equal(html.includes("<main"), true);
@@ -146,6 +146,56 @@ test("POST-F15-CONSOLE renders meaningful empty and safe error states without ra
   assert.equal(escaped.includes("&quot; onclick=&quot;secret()"), true);
 });
 
+test("F16-PHASE-10 UI-006 renders compact supported data and unavailable canonical sections without write controls", () => {
+  const html = renderConsoleResult(ready("ADMINISTRATION", {
+    visibleActiveRoleAssignmentCount: 1,
+    visibleRoleAssignmentCount: 2,
+    roleAssignments: { state: "READY", items: [
+      { roleAssignmentId: "assignment-&lt;-1", subjectPrincipalReference: "principal-<script>unsafe()</script>", roleId: "role-operations", scopeType: "TENANT", scopeId: "tenant-a", status: "ACTIVE", version: 3 },
+    ] },
+    pendingProposals: { state: "UNAVAILABLE" },
+    recentDecisions: { state: "UNAVAILABLE" },
+    policyGovernance: { state: "UNAVAILABLE" },
+    sourceGovernance: { state: "UNAVAILABLE" },
+    targetGovernance: { state: "UNAVAILABLE" },
+    authorityStatus: "AUTHORIZED",
+    administrationApiStatus: "AVAILABLE",
+  }));
+
+  for (const label of ["Administration Overview", "Visible Active", "Visible Assignments", "Role Assignments", "Pending Proposals", "Recent Decisions", "Policy Governance", "Source Governance", "Target Governance", "UNAVAILABLE", "AUTHORIZED", "AVAILABLE"]) {
+    assert.equal(html.includes(label), true, label);
+  }
+  assert.equal(html.includes("Total Assignments"), false);
+  assert.equal(html.includes("No canonical proposal list operation"), false);
+  assert.equal(html.includes("principal-<script>"), false);
+  assert.equal(html.includes("principal-&lt;script&gt;unsafe()&lt;/script&gt;"), true);
+  assert.equal(/<form|<button|onclick=|data-command=/u.test(html), false);
+  assert.equal(CONSOLE_STYLES.includes("grid-template-columns:240px 1fr"), true);
+  assert.equal(CONSOLE_STYLES.includes("height:48px"), true);
+  assert.equal(CONSOLE_STYLES.includes("padding:24px"), true);
+  assert.equal(CONSOLE_STYLES.includes(".content{padding:24px;min-width:0;"), true);
+  assert.equal(CONSOLE_STYLES.includes(".page-header{height:auto;"), true);
+  assert.equal(CONSOLE_STYLES.includes(".card-grid{grid-template-columns:1fr}"), true);
+  assert.equal(CONSOLE_STYLES.includes('[data-status="unavailable"] .status-dot'), true);
+  assert.equal(CONSOLE_STYLES.includes('[data-status="revoked"] .status-dot'), true);
+  assert.equal(CONSOLE_STYLES.includes("linear-gradient"), false);
+});
+
+test("F16-PHASE-10 UI-006 renders loading, empty, unavailable, not-authorized, and safe-error states", () => {
+  const shell = renderConsoleShell("ADMINISTRATION");
+  const empty = renderConsoleResult({ page: "ADMINISTRATION", state: "EMPTY", message: "No role assignments are currently available." });
+  const unavailable = renderConsoleResult({ page: "ADMINISTRATION", state: "UNAVAILABLE", message: "Administration data is unavailable." });
+  const unauthorized = renderConsoleResult({ page: "ADMINISTRATION", state: "NOT_AUTHORIZED", message: "Not authorized." });
+  const error = renderConsoleResult({ page: "ADMINISTRATION", state: "ERROR", error: { code: "CONSOLE_READ_UNAVAILABLE", message: "The requested Console view is unavailable.", correlationId: "console-safe-reference" } });
+
+  assert.equal(shell.includes("Loading..."), true);
+  assert.equal(shell.includes('aria-busy="true"'), true);
+  assert.equal(empty.includes("No role assignments are currently available."), true);
+  assert.equal(unavailable.includes("Administration data is unavailable."), true);
+  assert.equal(unauthorized.includes("Not authorized."), true);
+  assert.equal(error.includes("console-safe-reference"), true);
+  assert.equal(JSON.stringify([shell, empty, unavailable, unauthorized, error]).includes("Session"), false);
+});
 function ready(page: ConsoleReadResult["page"], data: Readonly<Record<string, unknown>>): ConsoleReadResult {
   return Object.freeze({ page, state: "READY", data: Object.freeze(data) });
 }

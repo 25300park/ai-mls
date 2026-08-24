@@ -8,13 +8,13 @@ import { AuthorizationService, type RoleAssignment } from "../../../modules/auth
 import { PublicationAggregate } from "../../../modules/publication/src/publication-aggregate.js";
 import { FixedClock } from "../../../modules/publication/src/publication-clock.js";
 import { createPublicationInfrastructure } from "../../../modules/publication/src/publication-infrastructure.js";
-import { ConsoleReadAdapter, type ConsoleReadResult } from "./console-read-adapter.js";
+import { ConsoleReadAdapter, type ConsoleReadRequest, type ConsoleReadResult } from "./console-read-adapter.js";
 import { createAdminConsoleServer } from "./console-server.js";
 import { createDevelopmentConsoleSessionAdapter } from "./development-session.js";
 
 const approvedRoutes = Object.freeze([
   "/", "/publication/operations", "/publication/revalidation", "/publication/recovery",
-  "/publication/audit", "/system/projection", "/system/operations",
+  "/publication/audit", "/administration", "/system/projection", "/system/operations",
 ]);
 
 test("POST-F15-CONSOLE Node server renders every approved browser route and bounded read endpoint", async () => {
@@ -47,6 +47,66 @@ test("POST-F15-CONSOLE Node server renders every approved browser route and boun
   await server.stop();
 });
 
+test("F16-PHASE-10 Node server exposes the read-only UI-006 Administration route", async () => {
+  const pages: string[] = [];
+  const server = createAdminConsoleServer({
+    host: "127.0.0.1",
+    port: 0,
+    sessionId: "console-session",
+    tenantId: "team-a",
+    readAdapter: {
+      read: (input) => {
+        pages.push(input.page);
+        return Object.freeze({ page: input.page, state: "UNAVAILABLE", message: "Administration data is unavailable." }) satisfies ConsoleReadResult;
+      },
+    },
+  });
+  await server.start();
+
+  const shell = await send(server.port, "GET", "/administration");
+  const view = await send(server.port, "GET", "/api/console/view?page=ADMINISTRATION");
+
+  assert.equal(shell.statusCode, 200);
+  assert.equal(shell.body.includes("Administration"), true);
+  assert.equal(shell.body.includes('data-console-page="ADMINISTRATION"'), true);
+  assert.equal(view.statusCode, 200);
+  assert.deepEqual(pages, ["ADMINISTRATION"]);
+  await server.stop();
+});
+test("F16-PHASE-10 Node server awaits the injected asynchronous Administration read boundary", async () => {
+  const server = createAdminConsoleServer({
+    host: "127.0.0.1",
+    port: 0,
+    sessionId: "console-session",
+    tenantId: "team-a",
+    readAdapter: {
+      read: (input: ConsoleReadRequest) => Promise.resolve(Object.freeze({
+        page: input.page,
+        state: "READY",
+        data: Object.freeze({
+          activeRoleAssignmentCount: 0,
+          roleAssignmentCount: 0,
+          roleAssignments: Object.freeze({ state: "EMPTY", items: Object.freeze([]) }),
+          pendingProposals: Object.freeze({ state: "UNAVAILABLE" }),
+          recentDecisions: Object.freeze({ state: "UNAVAILABLE" }),
+          policyGovernance: Object.freeze({ state: "UNAVAILABLE" }),
+          sourceGovernance: Object.freeze({ state: "UNAVAILABLE" }),
+          targetGovernance: Object.freeze({ state: "UNAVAILABLE" }),
+          authorityStatus: "AUTHORIZED",
+          administrationApiStatus: "AVAILABLE",
+        }),
+      })),
+    },
+  });
+  await server.start();
+  const response = await send(server.port, "GET", "/api/console/view?page=ADMINISTRATION");
+  const payload = JSON.parse(response.body) as { readonly html?: string };
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(payload.html?.includes("Administration Overview"), true);
+  assert.equal(payload.html?.includes("No role assignments are currently available."), true);
+  await server.stop();
+});
 test("POST-F15-CONSOLE Node server has zero mutation routes and returns safe failures", async () => {
   let readCalls = 0;
   const server = createAdminConsoleServer({

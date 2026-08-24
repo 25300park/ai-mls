@@ -3,7 +3,7 @@ import { createServer, type Server, type ServerResponse } from "node:http";
 import {
   CONSOLE_PAGES,
   type ConsolePage,
-  type ConsoleReadAdapter,
+  type ConsoleReadPort,
   type ConsoleReadRequest,
 } from "./console-read-adapter.js";
 import { renderConsoleResult, renderConsoleShell } from "./console-renderer.js";
@@ -13,7 +13,7 @@ interface AdminConsoleServerConfiguration {
   readonly port: number;
   readonly sessionId: string;
   readonly tenantId: string;
-  readonly readAdapter: Pick<ConsoleReadAdapter, "read">;
+  readonly readAdapter: ConsoleReadPort;
 }
 
 export interface AdminConsoleServer {
@@ -29,6 +29,7 @@ const browserRoutes: Readonly<Record<string, ConsolePage>> = Object.freeze({
   "/publication/revalidation": "UI-032",
   "/publication/recovery": "UI-033",
   "/publication/audit": "UI-035",
+  "/administration": "ADMINISTRATION",
   "/system/projection": "PROJECTION",
   "/system/operations": "OPERATIONS",
 });
@@ -77,8 +78,17 @@ export function createAdminConsoleServer(configuration: AdminConsoleServerConfig
             ...(publicationId === undefined ? {} : { publicationId }),
             correlationId: `console-read-${String(requestSequence)}`,
           };
-          const result = configuration.readAdapter.read(readRequest);
-          writeJson(response, 200, { html: renderConsoleResult(result) });
+          void Promise.resolve(configuration.readAdapter.read(readRequest))
+            .then((result) => writeJson(response, 200, { html: renderConsoleResult(result) }))
+            .catch(() => writeJson(response, 200, { html: renderConsoleResult({
+              page,
+              state: "ERROR",
+              error: {
+                code: "CONSOLE_READ_UNAVAILABLE",
+                message: "The requested Console view is unavailable.",
+                correlationId: readRequest.correlationId,
+              },
+            }) }));
           return;
         }
         const page = browserRoutes[url.pathname];

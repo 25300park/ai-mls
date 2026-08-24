@@ -1,5 +1,5 @@
 import type { AdminConsoleConfiguration } from "./console-configuration.js";
-import { immutableConsole, type ConsoleReadAdapter, type ConsoleReadResult } from "./console-read-adapter.js";
+import { immutableConsole, type ConsoleReadPort, type ConsoleReadRequest, type ConsoleReadResult } from "./console-read-adapter.js";
 import { createAdminConsoleServer, type AdminConsoleServer } from "./console-server.js";
 import { createDevelopmentConsoleSessionAdapter } from "./development-session.js";
 
@@ -13,7 +13,8 @@ export interface DevelopmentAdminConsoleComposition {
 }
 
 export interface DevelopmentAdminConsoleDependencies {
-  readonly readAdapter?: Pick<ConsoleReadAdapter, "read">;
+  readonly readAdapter?: ConsoleReadPort;
+  readonly administrationReadAdapter?: ConsoleReadPort;
 }
 
 export function composeDevelopmentAdminConsole(
@@ -27,7 +28,13 @@ export function composeDevelopmentAdminConsole(
     principalId: configuration.principalId,
     tenantId: configuration.tenantId,
   });
-  const readAdapter = dependencies.readAdapter ?? unavailableReadAdapter;
+  const publicationReadAdapter = dependencies.readAdapter ?? unavailableReadAdapter;
+  const administrationReadAdapter = dependencies.administrationReadAdapter ?? unavailableReadAdapter;
+  const readAdapter: ConsoleReadPort = Object.freeze({
+    read: (request: ConsoleReadRequest) => request.page === "ADMINISTRATION"
+      ? administrationReadAdapter.read(request)
+      : publicationReadAdapter.read(request),
+  });
   return Object.freeze({
     server: createAdminConsoleServer({
       host: configuration.host,
@@ -44,9 +51,11 @@ export function composeDevelopmentAdminConsole(
   });
 }
 
-const unavailableReadAdapter: Pick<ConsoleReadAdapter, "read"> = Object.freeze({
-  read(request): ConsoleReadResult {
-    const message = request.page === "PROJECTION"
+const unavailableReadAdapter: ConsoleReadPort = Object.freeze({
+  read(request: ConsoleReadRequest): ConsoleReadResult {
+    const message = request.page === "ADMINISTRATION"
+      ? "Administration data is unavailable."
+      : request.page === "PROJECTION"
       ? "No Projection record is currently available."
       : request.page === "UI-033"
         ? "No reconciliation case is currently available."
@@ -55,7 +64,9 @@ const unavailableReadAdapter: Pick<ConsoleReadAdapter, "read"> = Object.freeze({
           : "Unavailable in current backend.";
     return immutableConsole({
       page: request.page,
-      state: request.page === "DASHBOARD" || request.page === "OPERATIONS" ? "UNAVAILABLE" as const : "EMPTY" as const,
+      state: request.page === "DASHBOARD" || request.page === "ADMINISTRATION" || request.page === "OPERATIONS"
+        ? "UNAVAILABLE" as const
+        : "EMPTY" as const,
       message,
     });
   },

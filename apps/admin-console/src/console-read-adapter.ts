@@ -17,12 +17,13 @@ export const CONSOLE_PAGES = Object.freeze([
   "UI-032",
   "UI-033",
   "UI-035",
+  "ADMINISTRATION",
   "PROJECTION",
   "OPERATIONS",
 ] as const);
 
 export type ConsolePage = typeof CONSOLE_PAGES[number];
-export type ConsoleReadState = "READY" | "EMPTY" | "UNAVAILABLE" | "ERROR";
+export type ConsoleReadState = "LOADING" | "READY" | "EMPTY" | "UNAVAILABLE" | "NOT_AUTHORIZED" | "ERROR";
 
 export interface ConsoleReadRequest {
   readonly page: ConsolePage;
@@ -33,6 +34,9 @@ export interface ConsoleReadRequest {
   readonly correlationId: string;
 }
 
+export interface ConsoleReadPort {
+  read(request: ConsoleReadRequest): ConsoleReadResult | Promise<ConsoleReadResult>;
+}
 export interface ConsoleReadResult {
   readonly page: ConsolePage;
   readonly state: ConsoleReadState;
@@ -62,7 +66,7 @@ interface ConsoleReadAdapterDependencies {
   readonly clock: PublicationClock;
 }
 
-const publicationOperations: Readonly<Record<Exclude<ConsolePage, "DASHBOARD" | "PROJECTION" | "OPERATIONS">, PublicationQueryRequest["operation"]>> = Object.freeze({
+const publicationOperations: Readonly<Record<Exclude<ConsolePage, "DASHBOARD" | "ADMINISTRATION" | "PROJECTION" | "OPERATIONS">, PublicationQueryRequest["operation"]>> = Object.freeze({
   "UI-031": "GET_PUBLICATION_OPERATIONS_VIEW",
   "UI-032": "GET_PUBLICATION_REVALIDATION_VIEW",
   "UI-033": "GET_PUBLICATION_RECOVERY_VIEW",
@@ -76,6 +80,7 @@ export class ConsoleReadAdapter {
     try {
       switch (request.page) {
         case "DASHBOARD": return this.readDashboard(request);
+        case "ADMINISTRATION": return immutableConsole({ page: request.page, state: "UNAVAILABLE" as const, message: "Administration data is unavailable." });
         case "PROJECTION": return this.readProjection(request);
         case "OPERATIONS": return this.readOperations(request);
         case "UI-031":

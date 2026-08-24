@@ -1,8 +1,14 @@
 import { composeDevelopmentAdminConsole } from "./console-composition.js";
 import { parseAdminConsoleArguments } from "./console-configuration.js";
+import { AdministrationConsoleHttpClient } from "./administration-console-http-client.js";
+import { AdministrationConsoleReadAdapter } from "./administration-console-read-adapter.js";
 
 const configuration = parseAdminConsoleArguments(process.argv.slice(2));
-const composition = composeDevelopmentAdminConsole(configuration);
+const composition = composeDevelopmentAdminConsole(configuration, {
+  administrationReadAdapter: new AdministrationConsoleReadAdapter(
+    new AdministrationConsoleHttpClient(configuration.administrationApiOrigin),
+  ),
+});
 
 await composition.server.start();
 process.stdout.write(`AI-MLS Admin Console: ${composition.server.localUrl}\n`);

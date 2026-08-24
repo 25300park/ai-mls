@@ -1,4 +1,5 @@
 import type { ConsoleRuntimeEnvironment } from "./development-session.js";
+import { normalizeAdministrationApiOrigin } from "./administration-console-http-client.js";
 
 export interface AdminConsoleConfiguration {
   readonly runtimeEnvironment: ConsoleRuntimeEnvironment;
@@ -8,6 +9,7 @@ export interface AdminConsoleConfiguration {
   readonly tenantId: string;
   readonly sessionId: string;
   readonly principalId: string;
+  readonly administrationApiOrigin: string;
 }
 
 export function parseAdminConsoleArguments(argumentsList: readonly string[]): AdminConsoleConfiguration {
@@ -18,7 +20,7 @@ export function parseAdminConsoleArguments(argumentsList: readonly string[]): Ad
       continue;
     }
     const match = /^--([a-z-]+)=(.+)$/u.exec(argument);
-    if (match?.[1] === undefined || match[2] === undefined || !["runtime", "port"].includes(match[1])) {
+    if (match?.[1] === undefined || match[2] === undefined || !["runtime", "port", "administration-api-origin"].includes(match[1])) {
       throw new Error("CONSOLE_CONFIGURATION_INVALID");
     }
     values.set(match[1], match[2]);
@@ -34,6 +36,11 @@ export function parseAdminConsoleArguments(argumentsList: readonly string[]): Ad
   const portValue = values.get("port") ?? "4173";
   const port = typeof portValue === "string" && /^\d{1,5}$/u.test(portValue) ? Number(portValue) : Number.NaN;
   if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) throw new Error("CONSOLE_CONFIGURATION_INVALID");
+  const administrationApiOrigin = normalizeAdministrationApiOrigin(
+    typeof values.get("administration-api-origin") === "string"
+      ? values.get("administration-api-origin") as string
+      : "http://127.0.0.1:4172",
+  );
   return Object.freeze({
     runtimeEnvironment,
     developmentSessionEnabled,
@@ -42,5 +49,6 @@ export function parseAdminConsoleArguments(argumentsList: readonly string[]): Ad
     tenantId: "team-a",
     sessionId: "console-development-session",
     principalId: "console-development-operator",
+    administrationApiOrigin,
   });
 }
