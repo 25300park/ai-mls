@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { AdministrationConsoleHttpClient } from "../../admin-console/src/administration-console-http-client.js";
+import { AdministrationConsoleReadAdapter } from "../../admin-console/src/administration-console-read-adapter.js";
+import { composeDevelopmentAdminConsole } from "../../admin-console/src/console-composition.js";
 import { AuditLog } from "../../../modules/audit/src/audit-log.js";
 import {
   createAdministrationBackedAuthorizationService,
@@ -53,6 +56,7 @@ function activateSecurityAuthority(
     recordType: "ROLE_ASSIGNMENT", tenantId, roleAssignmentId: identity.resourceId, proposalId,
     subjectPrincipalId: principalId, subjectPrincipalType: "HUMAN", roleId: "role-security-phase8",
     teamIds: [authorityTeamId], resourceTypes: [
+      `Administration:TENANT:${tenantId}`,
       "Administration:POLICY:policy-scope-phase8",
       "Administration:SOURCE:source-scope-phase8",
       "Administration:TARGET:target-scope-phase8",
@@ -757,6 +761,113 @@ test("F16-PHASE-9 existing Node HTTP server enforces bounded bodies and executes
   } finally {
     await server.stop();
   }
+});
+
+test("F16-PHASE-12 Console command crosses API-015 and refreshes canonical proposal binding", async () => {
+  const { application, unitOfWork } = fixture();
+  const apiServer = composeAdministrationApi015NodeHttpServer({
+    configuration: { host: "127.0.0.1", port: 0, maximumBodyBytes: 2_048, shutdownTimeout: 250 },
+    application,
+    requestIdFactory: () => "request-phase12-api015",
+  });
+  await apiServer.start();
+  assert.notEqual(apiServer.diagnostics.boundPort, null);
+  const apiOrigin = `http://127.0.0.1:${String(apiServer.diagnostics.boundPort)}`;
+  const adapter = new AdministrationConsoleReadAdapter(new AdministrationConsoleHttpClient(apiOrigin));
+  const consoleComposition = composeDevelopmentAdminConsole({
+    runtimeEnvironment: "TEST",
+    developmentSessionEnabled: true,
+    host: "127.0.0.1",
+    port: 0,
+    tenantId,
+    sessionId: "session-policy-proposer",
+    principalId: "policy-proposer",
+    administrationApiOrigin: apiOrigin,
+  }, {
+    administrationReadAdapter: adapter,
+    administrationCommandAdapter: adapter,
+    administrationSelectorScopes: {
+      roles: { tenantId, scopeType: "TENANT", scopeId: tenantId },
+      teamScopes: roleAssignmentScope,
+      policies: policyScope,
+      sourceGovernance: sourceScope,
+      publicationTargets: targetScope,
+    },
+  });
+  await consoleComposition.server.start();
+  try {
+    const commandResponse = await fetch(`${consoleComposition.server.localUrl}/api/console/administration/command`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "PROPOSE_POLICY_CHANGE",
+        payload: {
+          policyId: "policy-phase12-e2e",
+          proposedChangeReference: "policy-change-phase12-e2e",
+          scopeType: "POLICY",
+          scopeId: policyScope.scopeId,
+          expectedVersion: 0,
+          idempotencyKey: "phase12-repeat-repeat-repeat",
+          reason: "Phase 12 composed governance verification",
+          evidenceReferences: [{ type: "AUDIT", id: "evidence-phase12-e2e", version: 1 }],
+        },
+      }),
+    });
+    assert.equal(commandResponse.status, 200);
+    const commandBody = await commandResponse.json() as {
+      readonly result?: Readonly<{ state?: string; resourceType?: string; resourceId?: string; version?: number }>;
+    };
+    assert.deepEqual(commandBody.result, {
+      state: "CONFIRMED",
+      operation: "PROPOSE_POLICY_CHANGE",
+      proposalId: "phase8-1",
+      resourceType: "POLICY",
+      resourceId: "policy-phase12-e2e",
+      status: "PROPOSED",
+      version: 1,
+      decisionReferences: [],
+    });
+    assert.equal(unitOfWork.policies.find({ tenantId, resourceType: "POLICY", resourceId: "policy-phase12-e2e" })?.status, "PROPOSED");
+
+    const viewResponse = await fetch(`${consoleComposition.server.localUrl}/api/console/view?page=UI-036`);
+    assert.equal(viewResponse.status, 200);
+    const view = await viewResponse.json() as { readonly html?: string };
+    assert.match(view.html ?? "", /phase8-1/);
+    assert.match(view.html ?? "", /POLICY · policy-phase12-e2e/);
+  } finally {
+    await consoleComposition.server.stop();
+    await apiServer.stop();
+  }
+});
+
+test("F16-PHASE-12 client-authored resource rebinding cannot create decision or idempotency evidence", () => {
+  const { application, unitOfWork } = fixture();
+  const proposed = application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
+    policyId: "policy-phase12-bound",
+    proposedChangeReference: "policy-change-phase12-bound",
+    ...common(policyScope, 0, "phase12-binding-proposal-repeat"),
+  }));
+  const originalIdentity = { tenantId, resourceType: "POLICY" as const, resourceId: "policy-phase12-bound" };
+  const reboundIdentity = { tenantId, resourceType: "POLICY" as const, resourceId: "policy-phase12-rebound" };
+
+  assert.throws(() => application.execute(command("APPROVE_POLICY_CHANGE", "session-policy-approver", {
+    proposalId: proposed.proposalId,
+    policyId: reboundIdentity.resourceId,
+    ...common(policyScope, 1, "phase12-binding-decision-repeat"),
+  })), (error: unknown) => error instanceof AdministrationApiError && error.code === "NOT_FOUND");
+
+  assert.equal(unitOfWork.policies.find(originalIdentity)?.status, "PROPOSED");
+  assert.equal(unitOfWork.policies.find(reboundIdentity), undefined);
+  assert.equal(unitOfWork.decisions.list(originalIdentity).length, 0);
+  assert.equal(unitOfWork.decisions.list(reboundIdentity).length, 0);
+  assert.equal(unitOfWork.idempotency.find({
+    ...originalIdentity,
+    idempotencyKey: "phase12-binding-decision-repeat",
+  }), undefined);
+  assert.equal(unitOfWork.idempotency.find({
+    ...reboundIdentity,
+    idempotencyKey: "phase12-binding-decision-repeat",
+  }), undefined);
 });
 
 function httpRequest(

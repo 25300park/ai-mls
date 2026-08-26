@@ -183,7 +183,17 @@ Phase 11A는 selector read boundary만 구현했다. UI-036 form/write action, c
 
 UI-036 logical controlled administration boundary는 `IMPLEMENTED_AND_VERIFIED`다. Physical durable production persistence와 FEAT-016 final acceptance는 완료로 표시하지 않는다.
 
-## 17. Gap status after Phase 11
+## 17. Phase 12 Final Administration Integration / Hardening evidence
+
+`administration-governance-api.test.ts`의 Phase 12 composed test는 실제 Console server, `AdministrationConsoleHttpClient`, API-015 Node HTTP server, `AdministrationGovernanceApplication` 및 Phase 6 UoW를 통과해 Policy proposal을 저장하고 UI-036 canonical proposal/resource selector refresh로 재조회한다. 별도 binding test는 client-authored resource rebinding을 `NOT_FOUND`로 거부하고 original/rebound identity 양쪽의 decision 및 rejected-command idempotency side effect가 0임을 검증한다. Production source 변경은 없다.
+
+기존 Phase 8~11 lifecycle 및 rejection evidence와 함께 Role Assignment, Policy, Source Governance, Publication Target Governance, Session/live authority, tenant/scope/purpose/MFA, expected version, idempotency, append-only evidence, HTTP concealment, canonical selectors 및 Source/Publication execution isolation을 재검증했다. `LIST_ADMINISTRATION_DECISIONS`는 승인 flow에 필요하지 않아 추가하지 않았다.
+
+Focused 2/2, affected 105/105, 전체 734/734, lint/typecheck/build/verify, Architecture checksum 153/153, `git diff --check`, Gitleaks 0, production audit vulnerabilities 0 및 fresh independent review Critical/Important/Minor 0/0/0 READY를 통과했다. Full audit은 기존 승인된 development-only transitive `brace-expansion` High 4건만 유지하며 신규 미승인 High/Critical은 0이다. 상세 결과는 [F16 Phase 12 Final Administration Integration / Hardening Report](../reviews/F16_PHASE_12_FINAL_ADMINISTRATION_INTEGRATION_HARDENING_IMPLEMENTATION_REPORT.md)에 기록한다.
+
+Phase 12 logical Administration integration/hardening은 `IMPLEMENTED_AND_VERIFIED`다. Physical durable production persistence와 FEAT-016 Final Gate는 완료로 표시하지 않는다.
+
+## 18. Gap status after Phase 12
 
 | Gap | Status | Evidence / next gate |
 |---|---|---|
@@ -197,12 +207,12 @@ UI-036 logical controlled administration boundary는 `IMPLEMENTED_AND_VERIFIED`�
 | `F16-GAP-007` atomic audit | PARTIALLY_VERIFIED | Role/Policy/Source/Target logical UoW state/evidence/idempotency와 rollback verified; durable atomic audit remains open |
 | `F16-GAP-008` Runtime/HTTP | RESOLVED | single application boundary, existing Node server composition, closed command/bodyless-query transport and loopback verified in Phase 9 |
 | `F16-GAP-009` UI-006/UI-036 | IMPLEMENTED_AND_VERIFIED | UI-006 read Console, canonical selector/proposal reads 및 UI-036 controlled workflows verified through API-015 |
-| `F16-GAP-010` full tests | PARTIALLY_VERIFIED | Phase 11 focused/affected 83/83, full 732/732 및 browser acceptance 12/12 passed; final acceptance/UAT remain open |
+| `F16-GAP-010` full tests | IMPLEMENTED_AND_VERIFIED | Phase 12 focused 2/2, affected 105/105 및 full 734/734 passed; FEAT-016 Final Gate remains separate |
 
-## 18. Next boundary
+## 19. Next boundary
 
-The next eligible brief after Phase 11 acceptance requires separate Architecture Owner authorization.
+The next eligible gate after Phase 12 acceptance requires separate Architecture Owner authorization.
 
-`F16-PHASE-12` — `NOT_STARTED`.
+`F16 Final Gate` — `NOT_STARTED`.
 
-Phase 5~11은 closed API-015 contract, logical persistence, live Role authority, governed workflow, Runtime/HTTP boundary, UI-006 read-oriented Console, canonical selector/proposal read boundary 및 UI-036 controlled administration을 검증했다. Physical durable production persistence와 FEAT-016 final acceptance는 여전히 별도 승인 범위다.
+Phase 5~12는 closed API-015 contract, logical persistence, live Role authority, governed workflow, Runtime/HTTP boundary, UI-006/UI-036 및 final Administration integration/hardening을 검증했다. Physical durable production persistence와 FEAT-016 Final Gate는 여전히 별도 승인 범위다.
