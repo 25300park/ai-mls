@@ -45,7 +45,7 @@ import {
   type ResolvedAdministrationApiRequest,
 } from "./administration-api-contracts.js";
 
-interface AdministrationGovernanceApplicationDependencies {
+export interface AdministrationGovernanceApplicationDependencies {
   readonly authorizationService: LiveAdministrationAuthorizationService;
   readonly unitOfWork: AdministrationUnitOfWork;
   readonly roleAssignments: RoleAssignmentReadRepository;

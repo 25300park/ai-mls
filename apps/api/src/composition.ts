@@ -1,4 +1,6 @@
 import type { AdministrationService } from "../../../modules/administration/src/administration-service.js";
+import { DurableAdministrationUnitOfWork } from "../../../modules/administration/src/administration-durable-persistence.js";
+import { createAdministrationBackedAuthorizationService } from "../../../modules/administration/src/live-assignment-adapter.js";
 import type { AuditLog } from "../../../modules/audit/src/audit-log.js";
 import type { AuthorizationService } from "../../../modules/authorization/src/authorization-service.js";
 import type { ClientRequirementService } from "../../../modules/client/src/client-requirement-service.js";
@@ -15,6 +17,7 @@ import type { PropertyService } from "../../../modules/property/src/property-ser
 import type { SourceRegistryService } from "../../../modules/source/src/source-registry-service.js";
 import type { VerificationService } from "../../../modules/verification/src/verification-service.js";
 import type { PublicationInfrastructure } from "../../../modules/publication/src/publication-infrastructure.js";
+import type { AuditSink } from "../../../packages/security-contracts/src/index.js";
 import {
   createPublicationNodeHttpServer,
   type PublicationNodeHttpServer,
@@ -28,6 +31,10 @@ import {
   type AdministrationGovernanceApplicationPort,
   type AdministrationHttpRequestHandler,
 } from "./administration-http-adapter.js";
+import {
+  AdministrationGovernanceApplication,
+  type AdministrationGovernanceApplicationDependencies,
+} from "./administration-governance-api.js";
 import { ContactClientApi } from "./contact-client-api.js";
 import { IdentityApi } from "./identity-api.js";
 import { JobApi } from "./job-api.js";
@@ -58,6 +65,72 @@ export function composeAdministrationApi015NodeHttpServer(
     httpAdapter: createAdministrationHttpRequestHandler(options.application, options.existingHttpHandler),
     ...(options.requestIdFactory === undefined ? {} : { requestIdFactory: options.requestIdFactory }),
   });
+}
+
+export interface ProductionAdministrationCompositionOptions
+  extends Omit<AdministrationGovernanceApplicationDependencies,
+    "authorizationService" | "unitOfWork" | "roleAssignments" | "roles" | "policies" |
+    "teamScopes" | "sourceGovernance" | "publicationTargets" |
+    "proposals" | "decisions" | "idempotency"> {
+  readonly databasePath: string;
+  readonly auditSink: AuditSink;
+  readonly policyVersion: string;
+  readonly configuration?: unknown;
+}
+
+export interface ProductionAdministrationComposition {
+  readonly server: PublicationNodeHttpServer;
+  close(): Promise<void>;
+}
+
+export function composeProductionAdministrationApi015NodeHttpServer(
+  options: ProductionAdministrationCompositionOptions,
+): ProductionAdministrationComposition {
+  const unitOfWork = new DurableAdministrationUnitOfWork({ databasePath: options.databasePath });
+  try {
+    const authorizationService = createAdministrationBackedAuthorizationService({
+      roleAssignments: unitOfWork.roleAssignments,
+      roles: unitOfWork.roles,
+      proposals: unitOfWork.proposals,
+      decisions: unitOfWork.decisions,
+      auditSink: options.auditSink,
+      clock: options.clock,
+      policyVersion: options.policyVersion,
+    });
+    const application = new AdministrationGovernanceApplication({
+      authorizationService,
+      sessionResolver: options.sessionResolver,
+      clock: options.clock,
+      idFactory: options.idFactory,
+      unitOfWork,
+      roleAssignments: unitOfWork.roleAssignments,
+      roles: unitOfWork.roles,
+      policies: unitOfWork.policies,
+      teamScopes: unitOfWork.teamScopes,
+      sourceGovernance: unitOfWork.sourceGovernance,
+      publicationTargets: unitOfWork.publicationTargets,
+      proposals: unitOfWork.proposals,
+      decisions: unitOfWork.decisions,
+      idempotency: unitOfWork.idempotency,
+    });
+    const server = composeAdministrationApi015NodeHttpServer({
+      application,
+      configuration: options.configuration,
+    });
+    return Object.freeze({
+      server,
+      close: async (): Promise<void> => {
+        try {
+          if (server.diagnostics.listening) await server.stop();
+        } finally {
+          unitOfWork.close();
+        }
+      },
+    });
+  } catch (error) {
+    unitOfWork.close();
+    throw error;
+  }
 }
 
 export interface ApiModuleDependencies {

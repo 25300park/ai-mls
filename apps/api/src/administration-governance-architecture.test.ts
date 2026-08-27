@@ -6,6 +6,7 @@ const source = new URL("apps/api/src/administration-governance-api.ts", `file://
 const index = new URL("apps/api/src/index.ts", `file:///${process.cwd().replaceAll("\\", "/")}/`);
 const httpAdapter = new URL("apps/api/src/administration-http-adapter.ts", `file:///${process.cwd().replaceAll("\\", "/")}/`);
 const composition = new URL("apps/api/src/composition.ts", `file:///${process.cwd().replaceAll("\\", "/")}/`);
+const durablePersistence = new URL("modules/administration/src/administration-durable-persistence.ts", `file:///${process.cwd().replaceAll("\\", "/")}/`);
 
 test("F16-PHASE-8 workflow uses API-015, Phase 6 UoW and Phase 7 live authorization without execution dependencies", async () => {
   const [workflow, exports] = await Promise.all([
@@ -41,4 +42,26 @@ test("F16-PHASE-9 HTTP adapter uses one governance application boundary and pres
     "admin-audit-api", "administration-service", "AdministrationUnitOfWork", "Repository",
     "SET_LEGAL_HOLD", "Retention", "Legal Hold", "express", "fastify",
   ]) assert.doesNotMatch(adapter, new RegExp(forbidden, "i"));
+});
+
+test("F16-R1 production composition selects durable persistence with no in-memory fallback", async () => {
+  const [root, durable] = await Promise.all([
+    readFile(composition, "utf8"),
+    readFile(durablePersistence, "utf8"),
+  ]);
+  assert.match(root, /composeProductionAdministrationApi015NodeHttpServer/);
+  assert.match(root, /new DurableAdministrationUnitOfWork/);
+  assert.match(root, /new AdministrationGovernanceApplication/);
+  assert.doesNotMatch(root, /InMemoryAdministrationUnitOfWork/);
+  const productionFactory = root.slice(
+    root.indexOf("export interface ProductionAdministrationCompositionOptions"),
+    root.indexOf("export interface ApiModuleDependencies"),
+  );
+  assert.match(productionFactory, /createAdministrationBackedAuthorizationService/);
+  assert.match(productionFactory, /roleAssignments: unitOfWork\.roleAssignments/);
+  assert.doesNotMatch(productionFactory, /authorizationService: options\.authorizationService/);
+  assert.match(durable, /node:sqlite/);
+  for (const forbidden of ["authorization-service", "session-service", "admin-console", "publication-service", "connector"]) {
+    assert.doesNotMatch(durable, new RegExp(forbidden, "i"));
+  }
 });

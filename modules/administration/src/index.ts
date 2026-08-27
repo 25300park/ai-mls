@@ -32,6 +32,11 @@ export {
 } from "./administration-persistence.js";
 
 export {
+  DurableAdministrationUnitOfWork,
+  type DurableAdministrationUnitOfWorkOptions,
+} from "./administration-durable-persistence.js";
+
+export {
   AdministrationLiveAssignmentAdapter,
   createAdministrationBackedAuthorizationService,
   type LiveAdministrationAuthorizationService,

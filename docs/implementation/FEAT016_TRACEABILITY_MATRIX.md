@@ -193,7 +193,17 @@ Focused 2/2, affected 105/105, 전체 734/734, lint/typecheck/build/verify, Arch
 
 Phase 12 logical Administration integration/hardening은 `IMPLEMENTED_AND_VERIFIED`다. Physical durable production persistence와 FEAT-016 Final Gate는 완료로 표시하지 않는다.
 
-## 18. Gap status after Phase 12
+## 18. F16-R1 Durable Administration Persistence evidence
+
+`modules/administration/src/administration-durable-persistence.ts`는 기존 `AdministrationUnitOfWork` contract와 Phase 6 transaction invariant를 유지하면서 Node.js built-in `node:sqlite` 기반 production durable adapter를 제공한다. Governed resource, proposal, decision, evidence, idempotency와 revision은 하나의 `BEGIN IMMEDIATE` transaction에서 commit되며 실패 시 전체 rollback된다. Database write boundary는 revision 및 record version compare-and-swap을 수행하고, decision/evidence/idempotency table은 update/delete trigger로 append-only를 강제한다.
+
+Production composition은 명시적인 file database path가 없거나 memory database가 지정되면 fail closed하며 `InMemoryAdministrationUnitOfWork`로 fallback하지 않는다. 동일 durable repository graph가 API-015 application과 live authorization에 주입된다. Reopen/restart survival, idempotent replay after restart, conflicting fingerprint, stale/concurrent writer, SQLite lock contention, pre-COMMIT child termination, uncertain COMMIT quarantine/reopen, structural/semantic corruption, decisionless status elevation 및 lifecycle evidence/status mismatch가 직접 검증됐다.
+
+직접 evidence는 `administration-durable-persistence.test.ts`, `administration-production-composition.test.ts`, `administration-governance-architecture.test.ts`다. Focused 34/34, Administration affected regression 148/148, 전체 766/766, lint/typecheck/build/verify, Architecture checksum 153/153, Gitleaks 0 및 independent review Critical/Important/Minor 0/0/0 READY를 통과했다. Dependency audit은 F16-R1 registry metadata 전송 승인이 없어 실행하지 않았으며 dependency manifest와 lockfile 변경은 0이다. 상세 결과는 [F16-R1 Durable Administration Persistence Report](../reviews/F16_R1_DURABLE_ADMINISTRATION_PERSISTENCE_IMPLEMENTATION_REPORT.md)에 기록한다.
+
+F16-R1 durable persistence boundary는 `IMPLEMENTED_AND_VERIFIED`다. 이는 FEAT-016 Final Gate 승인이나 R2/R3 시작을 의미하지 않는다.
+
+## 19. Gap status after F16-R1
 
 | Gap | Status | Evidence / next gate |
 |---|---|---|
@@ -201,18 +211,18 @@ Phase 12 logical Administration integration/hardening은 `IMPLEMENTED_AND_VERIFI
 | `F16-GAP-002` ownership conflict | RESOLVED | `DEC-114`, `TRACE-016`, API-015 and Feature overlay |
 | `F16-GAP-011` approval/delegation ambiguity | RESOLVED | mandatory two-person and explicit-delegation invariant |
 | `F16-GAP-003` live authority | RESOLVED | current Role/Assignment/Proposal/Decision read graph, exact evidence linkage, live activation/revocation 및 deny precedence verified in Phase 7 |
-| `F16-GAP-004` durable state | OPEN IMPLEMENTATION GAP | logical Repository/UoW verified in Phase 6; physical durable adapter deferred |
+| `F16-GAP-004` durable state | IMPLEMENTED_AND_VERIFIED | production SQLite adapter, reopen/restart survival, fail-closed composition 및 no in-memory fallback verified in F16-R1 |
 | `F16-GAP-005` complete API-015 | RUNTIME_CONTRACT_VERIFIED | closed schemas, canonical application/HTTP surface, selector/proposal reads 및 UI-036 controlled operations verified; no new operation |
-| `F16-GAP-006` idempotency | PARTIALLY_VERIFIED | UI-036 canonical key, retry/replay/conflict와 rejection-state key preservation verified; durable adapter remains open |
-| `F16-GAP-007` atomic audit | PARTIALLY_VERIFIED | Role/Policy/Source/Target logical UoW state/evidence/idempotency와 rollback verified; durable atomic audit remains open |
+| `F16-GAP-006` idempotency | IMPLEMENTED_AND_VERIFIED | durable idempotency, restart replay, conflicting fingerprint rejection 및 atomic rollback verified in F16-R1 |
+| `F16-GAP-007` atomic audit | IMPLEMENTED_AND_VERIFIED | governed mutation, append-only decision/audit evidence, idempotency 및 revision의 single-transaction atomicity verified in F16-R1 |
 | `F16-GAP-008` Runtime/HTTP | RESOLVED | single application boundary, existing Node server composition, closed command/bodyless-query transport and loopback verified in Phase 9 |
 | `F16-GAP-009` UI-006/UI-036 | IMPLEMENTED_AND_VERIFIED | UI-006 read Console, canonical selector/proposal reads 및 UI-036 controlled workflows verified through API-015 |
 | `F16-GAP-010` full tests | IMPLEMENTED_AND_VERIFIED | Phase 12 focused 2/2, affected 105/105 및 full 734/734 passed; FEAT-016 Final Gate remains separate |
 
-## 19. Next boundary
+## 20. Next boundary
 
-The next eligible gate after Phase 12 acceptance requires separate Architecture Owner authorization.
+The next eligible gate after F16-R1 acceptance requires separate Architecture Owner authorization.
 
 `F16 Final Gate` — `NOT_STARTED`.
 
-Phase 5~12는 closed API-015 contract, logical persistence, live Role authority, governed workflow, Runtime/HTTP boundary, UI-006/UI-036 및 final Administration integration/hardening을 검증했다. Physical durable production persistence와 FEAT-016 Final Gate는 여전히 별도 승인 범위다.
+Phase 5~12와 F16-R1은 closed API-015 contract, logical/durable persistence, live Role authority, governed workflow, Runtime/HTTP boundary, UI-006/UI-036 및 final Administration integration/hardening을 검증했다. FEAT-016 Final Gate와 F16-R2/R3는 여전히 별도 승인 범위다.
