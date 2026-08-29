@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-007 |
-| 문서 버전 | v1.10 |
+| 문서 버전 | v1.11 |
 | 상태 | FROZEN |
 | 소유 역할 | Architecture Owner |
 
@@ -42,6 +42,7 @@ Architecture Bible과 운영 문서의 release-level 변경 이력을 관리한�
 | 2026-08-20 | v1.8 | IN REVIEW | F16-PHASE-8 Policy / Source / Target Administration | API-015, Phase 6 UoW 및 Phase 7 live authority로 Policy/Source/Target governed workflow, exact replay, terminal proposal guard와 execution isolation을 구현·검증; DOC-CORE-001 v2.9, DOC-CORE-007 v1.8, DOC-DEV-017 v0.5 및 DOC-REVIEW-094 반영 | F16-PHASE-8 Brief; Architecture Owner audit approval; independent review READY |
 | 2026-08-24 | v1.9 | IN REVIEW | F16-PHASE-9 Runtime / HTTP API-015 | Phase 9A Role Assignment successor semantics, single Administration application composition, closed command/bodyless-query HTTP transport, live authority concealment 및 existing Node server loopback을 구현·검증; DOC-CORE-001 v3.0, DOC-CORE-007 v1.9, DOC-DEV-017 v0.6 및 DOC-REVIEW-095 반영 | F16-PHASE-9/9A Architecture Owner approval; independent review READY |
 | 2026-08-29 | v1.10 | IN REVIEW | F16-R3 RTM / Traceability Closure | Phase 5~12 및 F16-R1/R2의 approved implementation evidence를 current FEAT-016 RTM으로 정렬하고 stale partial-gap 표현을 historical context로 교정; R1 durable persistence, R2 exact 10-operation execution, canonical exclusions 및 Final Gate retry boundary를 검증; DOC-CORE-001 v3.1, DOC-CORE-007 v1.10, DOC-DEV-017 v0.7 및 DOC-REV-084 반영 | F16-R3 Brief; independent review Critical/Important/Minor 0/0/0 READY; Architecture Owner review pending |
+| 2026-08-29 | v1.11 | IN REVIEW | F16 Final Gate Retry / Feature Closure | R1 durable production persistence·atomic evidence·idempotency, R2 exact 10-operation API-015 execution, R3 RTM closure, canonical scope, authorization/isolation, Console/HTTP integration 및 full 774/774 regression을 재검증하고 FEAT-016 Final Gate를 승인; DOC-CORE-001 v3.2, DOC-CORE-007 v1.11, DOC-DEV-017 v0.8 및 DOC-REV-085 반영 | F16 Final Gate Retry Brief; production audit 0; full audit approved dev-only High 4; independent review Critical/Important/Minor 0/0/0 READY |
 
 ## 기록 규칙
 

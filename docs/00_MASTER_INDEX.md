@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-001 |
-| 문서 버전 | v3.1 |
+| 문서 버전 | v3.2 |
 | 상태 | IN REVIEW |
 | 소유 역할 | Architecture Owner |
 | 기준일 | 2026-08-29 |
@@ -460,7 +460,7 @@
 | DOC-DEV-014 | [Documentation Rules](book-11/13_DOCUMENTATION_RULES.md) | implementation-linked documentation/version/link upkeep | AVAILABLE |
 | DOC-DEV-015 | [Code Generation Policy](book-11/14_CODE_GENERATION_POLICY.md) | Codex/AI-assisted coding, human review와 ownership | AVAILABLE |
 | DOC-DEV-016 | [Developer Registry](book-11/15_DEVELOPER_REGISTRY.md) | DEV-001–024 complete cross-phase logical work packages | AVAILABLE |
-| DOC-DEV-017 | [FEAT-016 Implementation Traceability](implementation/FEAT016_TRACEABILITY_MATRIX.md) | FEAT-016 verified implementation coverage, canonical exclusions, R1/R2 remediation evidence와 Final Gate retry boundary | AVAILABLE |
+| DOC-DEV-017 | [FEAT-016 Implementation Traceability](implementation/FEAT016_TRACEABILITY_MATRIX.md) | FEAT-016 verified implementation coverage, R1/R2/R3 remediation evidence와 approved Final Gate closure | AVAILABLE |
 | DOC-REVIEW-019 | [Phase 12 Completion](reviews/PHASE12_COMPLETION.md) | Developer Bible completion evidence와 Phase 13 gate | AVAILABLE |
 
 ## Book 12 — Master Development Roadmap (Phase 13)

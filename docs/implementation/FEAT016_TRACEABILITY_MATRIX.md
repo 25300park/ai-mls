@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-DEV-017 |
-| 버전 | v0.7 |
+| 버전 | v0.8 |
 | 상태 | IN REVIEW |
 | 범위 | `EPIC-008` / `FEAT-016` / `DEV-016` / `IMP-016` |
 | 기준 | Architecture Bible v1.1 + `DEC-114` / `CR-026` |
@@ -19,6 +19,7 @@
 | F16-R1 status | `DURABLE_ADMINISTRATION_PERSISTENCE_VERIFIED` |
 | F16-R2 status | `API_015_EXECUTION_COMPLETENESS_VERIFIED` |
 | F16-R3 status | `TRACEABILITY_CLOSURE_VERIFIED` |
+| F16 Final Gate status | `APPROVED / FEATURE_COMPLETE` |
 
 ## 1. Status reconciliation
 
@@ -256,10 +257,16 @@ F16-R2 API-015 execution completeness는 `IMPLEMENTED_AND_VERIFIED`다. 이는 F
 | Execution isolation | Source governance excludes connector execution; Target governance excludes Publication execution | Phase 8 architecture tests, Phase 9 HTTP tests, Phase 11 Console architecture tests | IMPLEMENTED_AND_VERIFIED |
 | Retention / Legal Hold | external canonical ownership; absent from API-015 | closed-contract and architecture rejection assertions including `SET_LEGAL_HOLD` | EXPLICITLY_EXCLUDED |
 
-## 22. Next boundary
+## 22. F16 Final Gate retry evidence
 
-F16-R3 reconciles the canonical RTM against approved Phase 5~12 and F16-R1/R2 evidence. No implementation gap remains in this matrix; F16 Final Gate may be re-executed only with separate Architecture Owner authorization.
+Architecture Owner가 승인한 Final Gate retry에서 F16-R1/R2/R3의 종료 조건을 현재 main baseline `292adb4a1d95970205e00423895d519a25eb4a28`에서 재검증했다. Production code 변경 없이 durable production composition, SQLite atomic transaction, append-only evidence, restart/recovery, exact 10-operation API-015 execution, canonical read/Console path, Session-derived live authorization, tenant/scope/purpose/MFA, closed HTTP schema, concealment 및 canonical exclusion을 모두 통과했다.
 
-`F16 Final Gate` — `READY_FOR_RETRY`.
+직접 evidence는 `administration-durable-persistence.test.ts`, `administration-production-composition.test.ts`, `administration-governance-api.test.ts`, `administration-governance-architecture.test.ts`, `administration-api-contracts.test.ts`, Console integration tests, Authorization/Identity tests다. Final Gate focused 33/33, R1 32/32, R2 8/8, Role/Team 20/20, Policy/Source/Target 13/13, Console 35/35, Authorization/Isolation 40/40, affected regression 215/215 및 full verify 774/774가 PASS했다. Lint/typecheck/build/verify, Architecture checksum 153/153, Gitleaks 0, production audit vulnerabilities 0 및 independent review Critical/Important/Minor 0/0/0 READY를 통과했다. Full audit은 기존 승인된 development-only transitive `brace-expansion` High 4건만 유지하며 신규 미승인 High/Critical은 0이다. 상세 evidence는 [F16 Final Gate Retry / Feature Closure Report](../reviews/F16_FINAL_GATE_RETRY_FEATURE_CLOSURE_REPORT.md)에 기록한다.
 
-Phase 5~12와 F16-R1/R2는 closed API-015 contract, logical/durable persistence, live Role authority, governed workflow, complete Runtime/HTTP execution boundary, UI-006/UI-036 및 final Administration integration/hardening을 검증했다. F16-R3는 이 evidence를 current canonical traceability로 정렬했으며 FEAT-016 formal closure나 Final Gate 실행을 선언하지 않는다.
+Previous blocker B1 durable persistence, B2 API-015 completeness, B3 RTM closure는 모두 `PASS`다. Unsupported `IMPLEMENTED_AND_VERIFIED` claim, stale current-state claim, unresolved F16 blocker는 각각 0이다. FEAT-016은 `IMPLEMENTED_AND_VERIFIED / FINAL_GATE_APPROVED / COMPLETE`로 판정한다.
+
+## 23. Next boundary
+
+F16 Final Gate가 완료되었다. Retention Policy와 Legal Hold는 계속 FEAT-016/API-015 비소유 범위이며 `SET_LEGAL_HOLD`는 operation surface에 없다. Source governance는 Source execution이 아니고 Publication Target governance는 Publication execution이 아니다.
+
+Post-F16 work는 시작하지 않았다. 후속 작업은 별도 Architecture Owner 승인 후에만 시작한다.
