@@ -27,6 +27,8 @@ export interface AdministrationHttpRequestHandler {
 
 const runtimeCommandOperations = new Set<string>([
   "PROPOSE_ROLE_ASSIGNMENT", "APPROVE_ROLE_ASSIGNMENT", "REJECT_ROLE_ASSIGNMENT", "REVOKE_ROLE_ASSIGNMENT",
+  "PROPOSE_ROLE_CHANGE", "APPROVE_ROLE_CHANGE", "REJECT_ROLE_CHANGE",
+  "PROPOSE_TEAM_SCOPE_CHANGE", "APPROVE_TEAM_SCOPE_CHANGE", "REJECT_TEAM_SCOPE_CHANGE",
   "PROPOSE_POLICY_CHANGE", "APPROVE_POLICY_CHANGE", "REJECT_POLICY_CHANGE",
   "PROPOSE_SOURCE_GOVERNANCE", "APPROVE_SOURCE_GOVERNANCE", "REJECT_SOURCE_GOVERNANCE", "TRANSITION_SOURCE_GOVERNANCE",
   "PROPOSE_PUBLICATION_TARGET_GOVERNANCE", "APPROVE_PUBLICATION_TARGET_GOVERNANCE",
@@ -36,10 +38,12 @@ const runtimeCommandOperations = new Set<string>([
 const runtimeListOperations = new Set<string>([
   "LIST_ROLE_ASSIGNMENTS", "LIST_ROLES", "LIST_TEAM_SCOPES", "LIST_POLICIES",
   "LIST_SOURCE_GOVERNANCE", "LIST_PUBLICATION_TARGET_GOVERNANCE", "LIST_ADMINISTRATION_PROPOSALS",
+  "LIST_ADMINISTRATION_DECISIONS",
 ]);
 
 const runtimeQueryOperations = new Set<string>([
-  "READ_ROLE_ASSIGNMENT", "LIST_ROLE_ASSIGNMENTS", "READ_POLICY",
+  "READ_ROLE_ASSIGNMENT", "LIST_ROLE_ASSIGNMENTS", "READ_ROLE", "READ_TEAM_SCOPE", "READ_POLICY",
+  "READ_ADMINISTRATION_DECISION",
   "READ_SOURCE_GOVERNANCE", "READ_PUBLICATION_TARGET_GOVERNANCE",
   ...runtimeListOperations,
 ]);
@@ -153,10 +157,13 @@ function parseQuery(query: PublicationHttpRequest["query"]): Readonly<{
   const scopeType = queryString(query, "scopeType");
   const scopeId = queryString(query, "scopeId");
   const identityKey = operation === "READ_ROLE_ASSIGNMENT" ? "roleAssignmentId"
-    : operation === "READ_POLICY" ? "policyId"
-      : operation === "READ_SOURCE_GOVERNANCE" ? "sourceRegistryEntryId"
-        : operation === "READ_PUBLICATION_TARGET_GOVERNANCE" ? "publicationTargetId"
-          : undefined;
+    : operation === "READ_ROLE" ? "roleId"
+      : operation === "READ_TEAM_SCOPE" ? "teamId"
+        : operation === "READ_POLICY" ? "policyId"
+          : operation === "READ_SOURCE_GOVERNANCE" ? "sourceRegistryEntryId"
+            : operation === "READ_PUBLICATION_TARGET_GOVERNANCE" ? "publicationTargetId"
+              : operation === "READ_ADMINISTRATION_DECISION" ? "decisionId"
+                : undefined;
   const isList = runtimeListOperations.has(operation);
   const optionalKeys = isList ? ["status", "limit", "cursor"] : [];
   if (identityKey === undefined && !isList) throw new AdministrationApiError("VALIDATION_FAILED");

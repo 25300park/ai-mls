@@ -82,7 +82,12 @@ function repositories(overrides: {
     listPending: () => [],
     listByScope: () => [],
   };
-  const decisions: AdministrationDecisionReadRepository = { list: () => decisionRecords };
+  const decisions: AdministrationDecisionReadRepository = {
+    findById: (tenantId, decisionId) => decisionRecords.find((record) => record.tenantId === tenantId && record.decisionId === decisionId),
+    list: () => decisionRecords,
+    listByScope: (scope) => decisionRecords.filter((record) => record.scope.tenantId === scope.tenantId
+      && record.scope.scopeType === scope.scopeType && record.scope.scopeId === scope.scopeId),
+  };
   return { roleAssignments, roles, proposals, decisions };
 }
 

@@ -202,7 +202,11 @@ export interface AdministrationProposalReadRepository {
   listPending(scope: AdministrationPersistenceScope): readonly AdministrationProposalRecord[];
   listByScope(scope: AdministrationPersistenceScope): readonly AdministrationProposalRecord[];
 }
-export interface AdministrationDecisionReadRepository { list(identity: AdministrationTransactionIdentity): readonly AdministrationDecisionRecord[] }
+export interface AdministrationDecisionReadRepository {
+  findById(tenantId: string, decisionId: string): AdministrationDecisionRecord | undefined;
+  list(identity: AdministrationTransactionIdentity): readonly AdministrationDecisionRecord[];
+  listByScope(scope: AdministrationPersistenceScope): readonly AdministrationDecisionRecord[];
+}
 export interface AdministrationIdempotencyReadRepository { find(identity: AdministrationIdempotencyIdentity): AdministrationIdempotencyRecord | undefined }
 
 export interface RoleAssignmentWriteRepository extends RoleAssignmentReadRepository {

@@ -203,7 +203,17 @@ Production composition은 명시적인 file database path가 없거나 memory da
 
 F16-R1 durable persistence boundary는 `IMPLEMENTED_AND_VERIFIED`다. 이는 FEAT-016 Final Gate 승인이나 R2/R3 시작을 의미하지 않는다.
 
-## 19. Gap status after F16-R1
+## 19. F16-R2 API-015 Closed Contract Execution Completeness evidence
+
+기존 closed API-015 contract에 이미 등록됐지만 Application/Runtime/HTTP에서 실행되지 않던 정확히 10개 operation을 기존 단일 경계에 연결했다. Command는 `PROPOSE_ROLE_CHANGE`, `APPROVE_ROLE_CHANGE`, `REJECT_ROLE_CHANGE`, `PROPOSE_TEAM_SCOPE_CHANGE`, `APPROVE_TEAM_SCOPE_CHANGE`, `REJECT_TEAM_SCOPE_CHANGE`이며 Query는 `READ_ROLE`, `READ_TEAM_SCOPE`, `READ_ADMINISTRATION_DECISION`, `LIST_ADMINISTRATION_DECISIONS`다. `LIST_ROLES`와 `LIST_TEAM_SCOPES`의 기존 동작은 변경하지 않았다.
+
+Role/Team proposal과 independent approval/rejection은 Session-derived actor, live authorization, tenant/scope/purpose/MFA, expected version, SoD, canonical idempotency 및 append-only evidence를 재사용한다. Role approval은 canonical policy reference만 갱신하고 identity, role code와 scope를 보존한다. Team approval은 team/organization/scope identity를 보존한다. 두 approval 모두 version을 정확히 1 증가시키며 rejection은 governed state를 변경하지 않는다. Decision read repository는 기존 SQLite schema에서 `findById`와 `listByScope`만 제공하고 safe immutable DTO로 반환한다.
+
+직접 evidence는 `administration-governance-api.test.ts`, `administration-production-composition.test.ts`, `administration-governance-architecture.test.ts`, `administration-persistence.test.ts` 및 `administration-durable-persistence.test.ts`다. F16-R2 focused 8/8, affected 106/106, 전체 774/774, lint/typecheck/build/verify, Architecture checksum 153/153, `git diff --check`, Gitleaks 0 및 independent review Critical/Important/Minor 0/0/0 READY를 통과했다. Production audit은 vulnerabilities 0이며 full audit은 기존 승인된 development-only transitive `brace-expansion` High 4건만 유지하고 신규 미승인 High/Critical은 0이다. Dependency manifest와 lockfile 변경은 0이다. 상세 결과는 [F16-R2 API-015 Closed Contract Execution Completeness Report](../reviews/F16_R2_API_015_CLOSED_CONTRACT_EXECUTION_COMPLETENESS_IMPLEMENTATION_REPORT.md)에 기록한다.
+
+F16-R2 API-015 execution completeness는 `IMPLEMENTED_AND_VERIFIED`다. 이는 FEAT-016 Final Gate 승인이나 F16-R3 시작을 의미하지 않는다.
+
+## 20. Gap status after F16-R2
 
 | Gap | Status | Evidence / next gate |
 |---|---|---|
@@ -212,17 +222,17 @@ F16-R1 durable persistence boundary는 `IMPLEMENTED_AND_VERIFIED`다. 이는 FEA
 | `F16-GAP-011` approval/delegation ambiguity | RESOLVED | mandatory two-person and explicit-delegation invariant |
 | `F16-GAP-003` live authority | RESOLVED | current Role/Assignment/Proposal/Decision read graph, exact evidence linkage, live activation/revocation 및 deny precedence verified in Phase 7 |
 | `F16-GAP-004` durable state | IMPLEMENTED_AND_VERIFIED | production SQLite adapter, reopen/restart survival, fail-closed composition 및 no in-memory fallback verified in F16-R1 |
-| `F16-GAP-005` complete API-015 | RUNTIME_CONTRACT_VERIFIED | closed schemas, canonical application/HTTP surface, selector/proposal reads 및 UI-036 controlled operations verified; no new operation |
+| `F16-GAP-005` complete API-015 | IMPLEMENTED_AND_VERIFIED | closed contract의 누락 10 operation이 single Application/Runtime/HTTP/durable path에서 verified; no new operation |
 | `F16-GAP-006` idempotency | IMPLEMENTED_AND_VERIFIED | durable idempotency, restart replay, conflicting fingerprint rejection 및 atomic rollback verified in F16-R1 |
 | `F16-GAP-007` atomic audit | IMPLEMENTED_AND_VERIFIED | governed mutation, append-only decision/audit evidence, idempotency 및 revision의 single-transaction atomicity verified in F16-R1 |
 | `F16-GAP-008` Runtime/HTTP | RESOLVED | single application boundary, existing Node server composition, closed command/bodyless-query transport and loopback verified in Phase 9 |
 | `F16-GAP-009` UI-006/UI-036 | IMPLEMENTED_AND_VERIFIED | UI-006 read Console, canonical selector/proposal reads 및 UI-036 controlled workflows verified through API-015 |
-| `F16-GAP-010` full tests | IMPLEMENTED_AND_VERIFIED | Phase 12 focused 2/2, affected 105/105 및 full 734/734 passed; FEAT-016 Final Gate remains separate |
+| `F16-GAP-010` full tests | IMPLEMENTED_AND_VERIFIED | F16-R2 focused 8/8, affected 106/106 및 full 774/774 passed; FEAT-016 Final Gate remains separate |
 
-## 20. Next boundary
+## 21. Next boundary
 
-The next eligible gate after F16-R1 acceptance requires separate Architecture Owner authorization.
+The next eligible gate after F16-R2 acceptance requires separate Architecture Owner authorization.
 
 `F16 Final Gate` — `NOT_STARTED`.
 
-Phase 5~12와 F16-R1은 closed API-015 contract, logical/durable persistence, live Role authority, governed workflow, Runtime/HTTP boundary, UI-006/UI-036 및 final Administration integration/hardening을 검증했다. FEAT-016 Final Gate와 F16-R2/R3는 여전히 별도 승인 범위다.
+Phase 5~12와 F16-R1/R2는 closed API-015 contract, logical/durable persistence, live Role authority, governed workflow, complete Runtime/HTTP execution boundary, UI-006/UI-036 및 final Administration integration/hardening을 검증했다. FEAT-016 Final Gate와 F16-R3는 여전히 별도 승인 범위다.

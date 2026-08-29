@@ -339,7 +339,15 @@ function proposalWriteRepository(state: AdministrationTransactionState, identity
 }
 
 function decisionReadRepository(state: AdministrationTransactionState): AdministrationDecisionReadRepository {
-  return { list: (identity) => immutable([...state.decisions.values()].filter((record) => decisionMatches(record, identity)).sort((a, b) => a.decisionId.localeCompare(b.decisionId))) };
+  return {
+    findById: (tenantId, decisionId) => optionalImmutable(state.decisions.get(decisionKey(tenantId, decisionId))),
+    list: (identity) => immutable([...state.decisions.values()]
+      .filter((record) => decisionMatches(record, identity))
+      .sort((a, b) => a.decisionId.localeCompare(b.decisionId))),
+    listByScope: (scope) => immutable([...state.decisions.values()]
+      .filter((record) => sameScope(record.scope, scope))
+      .sort((a, b) => a.decisionId.localeCompare(b.decisionId))),
+  };
 }
 
 function decisionWriteRepository(state: AdministrationTransactionState, identity: AdministrationTransactionIdentity, guarded: <Result>(operation: () => Result) => Result, failures: AdministrationPersistenceFailurePort, tracker: AdministrationTransactionTracker): AdministrationDecisionWriteRepository {

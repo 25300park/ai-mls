@@ -15,6 +15,7 @@ import {
   type AdministrationUnitOfWork,
   type RoleAssignmentPersistenceRecord,
   type RolePersistenceRecord,
+  type TeamScopePersistenceRecord,
 } from "../../../modules/administration/src/index.js";
 import type { SessionContext } from "../../../modules/identity/src/session-service.js";
 import { AdministrationApiError, safeAdministrationApiError } from "./administration-api-contracts.js";
@@ -151,9 +152,54 @@ function revokeSecurityAuthority(unitOfWork: InMemoryAdministrationUnitOfWork, p
   transaction.commit();
 }
 
+function activateTeamScope(unitOfWork: InMemoryAdministrationUnitOfWork, team: TeamScopePersistenceRecord): void {
+  const identity = { tenantId: team.tenantId, resourceType: "TEAM_SCOPE" as const, resourceId: team.teamId };
+  const proposalId = `proposal-team-${team.teamId}`;
+  const proposalEvidence = evidence(`evidence-proposal-team-${team.teamId}`);
+  const proposal: AdministrationProposalRecord = {
+    proposalId, tenantId: team.tenantId, resourceType: "TEAM_SCOPE", resourceId: team.teamId,
+    resourceVersion: 1, proposedBy: "team-scope-fixture-proposer", proposedChangeReference: `change-${team.teamId}`,
+    policyReference: `policy-${team.teamId}`, status: "PROPOSED", version: 1,
+    reasonReference: `reason-${team.teamId}`, evidenceReferences: [proposalEvidence], scope: team.scope,
+  };
+  let transaction = unitOfWork.begin(identity);
+  transaction.teamScopes.save({ ...team, status: "PROPOSED", version: 1 });
+  transaction.proposals.save(proposal);
+  transaction.idempotency.record({
+    ...identity, idempotencyKey: `idem-team-propose-${team.teamId}`, operation: "PROPOSE_TEAM_SCOPE_CHANGE",
+    fingerprint: `fingerprint-team-propose-${team.teamId}`, resultReference: proposalId, resultVersion: 1,
+    resultStatus: "PROPOSED", recordedAt: now,
+  });
+  transaction.commit();
+  const decisionId = `decision-team-${team.teamId}`;
+  const decisionEvidence = evidence(decisionId);
+  transaction = unitOfWork.begin(identity);
+  transaction.teamScopes.update(1, {
+    ...team, status: "ACTIVE", version: 2,
+    evidenceReferences: [...team.evidenceReferences, decisionEvidence],
+  });
+  transaction.proposals.update(1, {
+    ...proposal, status: "APPROVED", version: 2,
+    evidenceReferences: [...proposal.evidenceReferences, decisionEvidence],
+  });
+  transaction.decisions.append({
+    decisionId, proposalId, tenantId: team.tenantId, operation: "APPROVE_TEAM_SCOPE_CHANGE",
+    resourceType: "TEAM_SCOPE", resourceId: team.teamId, scope: team.scope,
+    proposerId: proposal.proposedBy, decisionActorId: "team-scope-fixture-approver", status: "APPROVED",
+    reasonReference: `reason-decision-${team.teamId}`, evidenceReferences: [decisionEvidence], version: 2, decidedAt: now,
+  });
+  transaction.idempotency.record({
+    ...identity, idempotencyKey: `idem-team-approve-${team.teamId}`, operation: "APPROVE_TEAM_SCOPE_CHANGE",
+    fingerprint: `fingerprint-team-approve-${team.teamId}`, resultReference: decisionId, resultVersion: 2,
+    resultStatus: "ACTIVE", recordedAt: now,
+  });
+  transaction.commit();
+}
+
 function fixture(
   wrapUnitOfWork?: (unitOfWork: InMemoryAdministrationUnitOfWork) => AdministrationUnitOfWork,
   additionalRoles: readonly RolePersistenceRecord[] = [],
+  additionalTeamScopes: readonly TeamScopePersistenceRecord[] = [],
 ) {
   const role: RolePersistenceRecord = {
     recordType: "ROLE", tenantId, roleId: "role-security-phase8", roleCode: "SEC",
@@ -172,6 +218,7 @@ function fixture(
     evidenceReferences: [evidence("evidence-role-security-retired-phase9")],
   };
   const unitOfWork = InMemoryAdministrationUnitOfWork.rehydrate({ roles: [role, governedRole, retiredRole, ...additionalRoles] });
+  for (const additionalTeamScope of additionalTeamScopes) activateTeamScope(unitOfWork, additionalTeamScope);
   activateSecurityAuthority(unitOfWork, "policy-proposer");
   activateSecurityAuthority(unitOfWork, "policy-approver");
   const sessions = new Map([
@@ -281,6 +328,156 @@ test("F16-PHASE-9 Role Assignment read and list are live-authorized and scope bo
     scope: roleAssignmentScope, status: "PROPOSED", pagination: { limit: 25 },
   }));
   assert.equal("items" in listed && listed.items.length, 1);
+});
+
+test("F16-R2 Role change proposal, approval and reads use the canonical application boundary", () => {
+  const { application, unitOfWork } = fixture();
+  const scope = { tenantId, scopeType: "TENANT" as const, scopeId: tenantId };
+  const identity = { tenantId, resourceType: "ROLE" as const, resourceId: "role-agent-phase9" };
+  const proposedInput = command("PROPOSE_ROLE_CHANGE", "session-policy-proposer", {
+    roleId: identity.resourceId, proposedChangeReference: "policy-role-agent-r2",
+    ...common(scope, 1, "idem-role-change-propose-r2"),
+  });
+  const proposed = application.execute(proposedInput);
+  assert.equal(proposed.status, "PROPOSED");
+  assert.equal(unitOfWork.roles.find(identity)?.policyReference, "policy-role-agent-phase9");
+
+  const approvedInput = command("APPROVE_ROLE_CHANGE", "session-policy-approver", {
+    proposalId: proposed.proposalId, roleId: identity.resourceId,
+    ...common(scope, 1, "idem-role-change-approve-r2"),
+  });
+  const approved = application.execute(approvedInput);
+  assert.equal(approved.status, "ACTIVE");
+  assert.equal(approved.version, 2);
+  assert.equal(unitOfWork.roles.find(identity)?.policyReference, "policy-role-agent-r2");
+  assert.equal(unitOfWork.roles.find(identity)?.roleCode, "AGT");
+  assert.equal(unitOfWork.decisions.list(identity).length, 1);
+  assert.deepEqual(application.execute(approvedInput), approved);
+  assert.equal(unitOfWork.decisions.list(identity).length, 1);
+  assert.throws(() => application.execute({
+    ...approvedInput, payload: { ...approvedInput.payload, reason: "conflicting approved role change reason" },
+  }), (error: unknown) => error instanceof AdministrationApiError && error.code === "IDEMPOTENCY_CONFLICT");
+
+  const read = application.read(command("READ_ROLE", "session-policy-approver", {
+    roleId: identity.resourceId, scope,
+  }));
+  assert.equal(read.viewType, "ROLE");
+  assert.equal("roleId" in read && read.roleId, identity.resourceId);
+  assert.equal(read.version, 2);
+});
+
+test("F16-R2 Role rejection persists evidence without mutating governed state", () => {
+  const { application, unitOfWork } = fixture();
+  const scope = { tenantId, scopeType: "TENANT" as const, scopeId: tenantId };
+  const identity = { tenantId, resourceType: "ROLE" as const, resourceId: "role-agent-phase9" };
+  const proposed = application.execute(command("PROPOSE_ROLE_CHANGE", "session-policy-proposer", {
+    roleId: identity.resourceId, proposedChangeReference: "policy-role-rejected-r2",
+    ...common(scope, 1, "idem-role-change-reject-propose-r2"),
+  }));
+  const rejected = application.execute(command("REJECT_ROLE_CHANGE", "session-policy-approver", {
+    proposalId: proposed.proposalId, roleId: identity.resourceId,
+    ...common(scope, 1, "idem-role-change-reject-r2"),
+  }));
+  assert.equal(rejected.status, "REJECTED");
+  assert.equal(rejected.version, 1);
+  assert.equal(unitOfWork.roles.find(identity)?.policyReference, "policy-role-agent-phase9");
+  assert.equal(unitOfWork.roles.find(identity)?.version, 1);
+  assert.equal(unitOfWork.decisions.list(identity).length, 1);
+});
+
+test("F16-R2 Role decisions fail closed for self approval, stale version and unauthorized scope", () => {
+  const { application, unitOfWork } = fixture();
+  const scope = { tenantId, scopeType: "TENANT" as const, scopeId: tenantId };
+  const identity = { tenantId, resourceType: "ROLE" as const, resourceId: "role-agent-phase9" };
+  const proposed = application.execute(command("PROPOSE_ROLE_CHANGE", "session-policy-proposer", {
+    roleId: identity.resourceId, proposedChangeReference: "policy-role-denied-r2",
+    ...common(scope, 1, "idem-role-denied-propose-r2"),
+  }));
+  assert.throws(() => application.execute(command("APPROVE_ROLE_CHANGE", "session-policy-proposer", {
+    proposalId: proposed.proposalId, roleId: identity.resourceId,
+    ...common(scope, 1, "idem-role-self-approve-r2"),
+  })), (error: unknown) => error instanceof AdministrationApiError && error.code === "SELF_APPROVAL_FORBIDDEN");
+  assert.throws(() => application.execute(command("APPROVE_ROLE_CHANGE", "session-policy-approver", {
+    proposalId: proposed.proposalId, roleId: identity.resourceId,
+    ...common(scope, 2, "idem-role-stale-r2"),
+  })), (error: unknown) => error instanceof AdministrationApiError && error.code === "VERSION_CONFLICT");
+  assert.throws(() => application.read(command("READ_ROLE", "session-policy-proposer", {
+    roleId: identity.resourceId,
+    scope: { tenantId, scopeType: "TENANT", scopeId: "tenant-outside-r2" },
+  })), (error: unknown) => error instanceof AdministrationApiError && error.code === "AUTHORIZATION_DENIED");
+  assert.equal(unitOfWork.roles.find(identity)?.version, 1);
+  assert.equal(unitOfWork.decisions.list(identity).length, 0);
+  assert.equal(unitOfWork.idempotency.find({ ...identity, idempotencyKey: "idem-role-self-approve-r2" }), undefined);
+  assert.equal(unitOfWork.idempotency.find({ ...identity, idempotencyKey: "idem-role-stale-r2" }), undefined);
+});
+
+test("F16-R2 Team scope proposal, approval, rejection and read preserve canonical identity", () => {
+  const scope = { tenantId, scopeType: "TEAM" as const, scopeId: teamId };
+  const governedTeamScope: TeamScopePersistenceRecord = {
+    recordType: "TEAM_SCOPE", tenantId, teamId, organizationId: "organization-phase8",
+    scope, status: "ACTIVE", version: 2,
+    evidenceReferences: [evidence("evidence-team-scope-phase8")],
+  };
+  const { application, unitOfWork } = fixture(undefined, [], [governedTeamScope]);
+  const identity = { tenantId, resourceType: "TEAM_SCOPE" as const, resourceId: teamId };
+  const proposed = application.execute(command("PROPOSE_TEAM_SCOPE_CHANGE", "session-policy-proposer", {
+    teamId, proposedChangeReference: "team-scope-change-r2",
+    ...common(scope, 2, "idem-team-change-propose-r2"),
+  }));
+  const approved = application.execute(command("APPROVE_TEAM_SCOPE_CHANGE", "session-policy-approver", {
+    proposalId: proposed.proposalId, teamId,
+    ...common(scope, 2, "idem-team-change-approve-r2"),
+  }));
+  const stored = unitOfWork.teamScopes.find(identity);
+  assert.equal(approved.status, "ACTIVE");
+  assert.equal(stored?.teamId, teamId);
+  assert.equal(stored?.organizationId, "organization-phase8");
+  assert.equal(stored?.version, 3);
+  assert.equal(unitOfWork.decisions.list(identity).length, 2);
+
+  const read = application.read(command("READ_TEAM_SCOPE", "session-policy-approver", { teamId, scope }));
+  assert.equal(read.viewType, "TEAM_SCOPE");
+  assert.equal("teamId" in read && read.teamId, teamId);
+  assert.equal(read.version, 3);
+
+  const secondProposal = application.execute(command("PROPOSE_TEAM_SCOPE_CHANGE", "session-policy-proposer", {
+    teamId, proposedChangeReference: "team-scope-rejected-r2",
+    ...common(scope, 3, "idem-team-change-reject-propose-r2"),
+  }));
+  const rejected = application.execute(command("REJECT_TEAM_SCOPE_CHANGE", "session-policy-approver", {
+    proposalId: secondProposal.proposalId, teamId,
+    ...common(scope, 3, "idem-team-change-reject-r2"),
+  }));
+  assert.equal(rejected.status, "REJECTED");
+  assert.equal(unitOfWork.teamScopes.find(identity)?.version, 3);
+  assert.equal(unitOfWork.decisions.list(identity).length, 3);
+});
+
+test("F16-R2 decision read and list return live-authorized immutable evidence", () => {
+  const { application } = fixture();
+  const scope = { tenantId, scopeType: "TENANT" as const, scopeId: tenantId };
+  const proposed = application.execute(command("PROPOSE_ROLE_CHANGE", "session-policy-proposer", {
+    roleId: "role-agent-phase9", proposedChangeReference: "policy-role-decision-read-r2",
+    ...common(scope, 1, "idem-decision-read-propose-r2"),
+  }));
+  const approved = application.execute(command("APPROVE_ROLE_CHANGE", "session-policy-approver", {
+    proposalId: proposed.proposalId, roleId: "role-agent-phase9",
+    ...common(scope, 1, "idem-decision-read-approve-r2"),
+  }));
+  const decisionId = approved.decisionReferences[0]!;
+  const read = application.read(command("READ_ADMINISTRATION_DECISION", "session-policy-approver", {
+    decisionId, scope,
+  }));
+  assert.equal(read.viewType, "ADMINISTRATION_DECISION");
+  assert.equal("decisionId" in read && read.decisionId, decisionId);
+  assert.equal("proposalId" in read && read.proposalId, proposed.proposalId);
+  assert.equal(Object.isFrozen(read), true);
+
+  const listed = application.list(command("LIST_ADMINISTRATION_DECISIONS", "session-policy-approver", {
+    scope, status: "APPROVED", pagination: { limit: 10 },
+  }));
+  assert.deepEqual(listed.items.map((item) => "decisionId" in item ? item.decisionId : undefined), [decisionId]);
+  assert.equal(Object.isFrozen(listed.items), true);
 });
 
 test("F16-PHASE-11A LIST_ROLES returns authorized scope-bounded selector views in canonical ID order", () => {
@@ -556,6 +753,40 @@ test("F16-PHASE-9 HTTP query route is separated from commands and returns bounde
   assert.equal(body.data.items.length, 1);
   const wrongMethod = await handler.handle(httpRequest("POST", "/administration/queries", "session-policy-proposer", {}));
   assert.equal(wrongMethod.statusCode, 405);
+});
+
+test("F16-R2 HTTP closed allowlists dispatch exactly the ten approved missing operations", async () => {
+  const dispatched: string[] = [];
+  const handler = createAdministrationHttpRequestHandler({
+    execute: (input) => { dispatched.push((input as { operation: string }).operation); return {} as never; },
+    read: (input) => { dispatched.push((input as { operation: string }).operation); return {} as never; },
+    list: (input) => { dispatched.push((input as { operation: string }).operation); return { items: [] }; },
+  });
+  const commands = [
+    "PROPOSE_ROLE_CHANGE", "APPROVE_ROLE_CHANGE", "REJECT_ROLE_CHANGE",
+    "PROPOSE_TEAM_SCOPE_CHANGE", "APPROVE_TEAM_SCOPE_CHANGE", "REJECT_TEAM_SCOPE_CHANGE",
+  ] as const;
+  for (const operation of commands) {
+    const response = await handler.handle(httpRequest("POST", "/administration/commands", "session-r2", {
+      tenantId, correlationId: `correlation-${operation.toLowerCase()}-r2`, operation, payload: {},
+    }));
+    assert.equal(response.statusCode, 200, operation);
+  }
+  const queries = [
+    { operation: "READ_ROLE", identityKey: "roleId", identity: "role-r2" },
+    { operation: "READ_TEAM_SCOPE", identityKey: "teamId", identity: "team-r2" },
+    { operation: "READ_ADMINISTRATION_DECISION", identityKey: "decisionId", identity: "decision-r2" },
+    { operation: "LIST_ADMINISTRATION_DECISIONS" },
+  ] as const;
+  for (const query of queries) {
+    const response = await handler.handle(httpRequest("GET", "/administration/queries", "session-r2", {}, {
+      tenantId, correlationId: `correlation-${query.operation.toLowerCase()}-r2`, operation: query.operation,
+      scopeType: "TENANT", scopeId: tenantId,
+      ...("identityKey" in query ? { [query.identityKey]: query.identity } : { limit: "10" }),
+    }));
+    assert.equal(response.statusCode, 200, query.operation);
+  }
+  assert.deepEqual(dispatched, [...commands, ...queries.map(({ operation }) => operation)]);
 });
 
 test("F16-PHASE-11A HTTP query surface exposes only the approved selector list operations", async () => {

@@ -126,7 +126,11 @@ export class DurableAdministrationUnitOfWork implements AdministrationUnitOfWork
       listPending: (scope): ReturnType<AdministrationProposalReadRepository["listPending"]> => { this.refreshState(); return this.#reads.proposals.listPending(scope); },
       listByScope: (scope): ReturnType<AdministrationProposalReadRepository["listByScope"]> => { this.refreshState(); return this.#reads.proposals.listByScope(scope); },
     };
-    this.decisions = { list: (identity): ReturnType<AdministrationDecisionReadRepository["list"]> => { this.refreshState(); return this.#reads.decisions.list(identity); } };
+    this.decisions = {
+      findById: (tenantId, decisionId): ReturnType<AdministrationDecisionReadRepository["findById"]> => { this.refreshState(); return this.#reads.decisions.findById(tenantId, decisionId); },
+      list: (identity): ReturnType<AdministrationDecisionReadRepository["list"]> => { this.refreshState(); return this.#reads.decisions.list(identity); },
+      listByScope: (scope): ReturnType<AdministrationDecisionReadRepository["listByScope"]> => { this.refreshState(); return this.#reads.decisions.listByScope(scope); },
+    };
     this.idempotency = { find: (identity): ReturnType<AdministrationIdempotencyReadRepository["find"]> => { this.refreshState(); return this.#reads.idempotency.find(identity); } };
   }
 

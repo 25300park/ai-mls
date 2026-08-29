@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import { ADMINISTRATION_API_COMMAND_OPERATIONS, ADMINISTRATION_API_QUERY_OPERATIONS } from "./administration-api-contracts.js";
+
 const source = new URL("apps/api/src/administration-governance-api.ts", `file:///${process.cwd().replaceAll("\\", "/")}/`);
 const index = new URL("apps/api/src/index.ts", `file:///${process.cwd().replaceAll("\\", "/")}/`);
 const httpAdapter = new URL("apps/api/src/administration-http-adapter.ts", `file:///${process.cwd().replaceAll("\\", "/")}/`);
@@ -64,4 +66,32 @@ test("F16-R1 production composition selects durable persistence with no in-memor
   for (const forbidden of ["authorization-service", "session-service", "admin-console", "publication-service", "connector"]) {
     assert.doesNotMatch(durable, new RegExp(forbidden, "i"));
   }
+});
+
+test("F16-R2 exposes exactly the closed API-015 surface including the ten approved missing boundaries", async () => {
+  const [workflow, adapter] = await Promise.all([readFile(source, "utf8"), readFile(httpAdapter, "utf8")]);
+  const operations = [
+    "PROPOSE_ROLE_CHANGE", "APPROVE_ROLE_CHANGE", "REJECT_ROLE_CHANGE",
+    "PROPOSE_TEAM_SCOPE_CHANGE", "APPROVE_TEAM_SCOPE_CHANGE", "REJECT_TEAM_SCOPE_CHANGE",
+    "READ_ROLE", "READ_TEAM_SCOPE", "READ_ADMINISTRATION_DECISION", "LIST_ADMINISTRATION_DECISIONS",
+  ];
+  for (const operation of operations) {
+    assert.match(workflow, new RegExp(`\\b${operation}\\b`), operation);
+    assert.match(adapter, new RegExp(`\\b${operation}\\b`), operation);
+  }
+  const operationStrings = (block: string) => [...block.matchAll(/"([A-Z][A-Z_]+)"/g)].map((match) => match[1]!);
+  const block = (name: string) => {
+    const start = adapter.indexOf(`const ${name}`);
+    const end = adapter.indexOf("]);", start);
+    assert.notEqual(start, -1, name);
+    assert.notEqual(end, -1, name);
+    return adapter.slice(start, end + 3);
+  };
+  const runtimeCommands = operationStrings(block("runtimeCommandOperations"));
+  const runtimeLists = operationStrings(block("runtimeListOperations"));
+  const runtimeQueries = operationStrings(block("runtimeQueryOperations"));
+  assert.deepEqual(new Set(runtimeCommands), new Set(ADMINISTRATION_API_COMMAND_OPERATIONS));
+  assert.deepEqual(new Set([...runtimeQueries, ...runtimeLists]), new Set(ADMINISTRATION_API_QUERY_OPERATIONS));
+  assert.doesNotMatch(workflow, /SET_LEGAL_HOLD|RETENTION_POLICY/);
+  assert.doesNotMatch(adapter, /SET_LEGAL_HOLD|RETENTION_POLICY/);
 });
