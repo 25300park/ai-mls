@@ -3,10 +3,10 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-001 |
-| 문서 버전 | v3.0 |
+| 문서 버전 | v3.1 |
 | 상태 | IN REVIEW |
 | 소유 역할 | Architecture Owner |
-| 기준일 | 2026-07-24 |
+| 기준일 | 2026-08-29 |
 
 이 문서는 Architecture Bible의 master navigation이자 계획 manifest다. `AVAILABLE`은 현재 파일이 존재함을, `PLANNED`는 해당 Brief에서 생성할 예정임을 뜻한다. 문서 상태(`DRAFT` 등)와 파일 존재 상태(`AVAILABLE` 등)는 서로 다른 값이다.
 
@@ -460,7 +460,7 @@
 | DOC-DEV-014 | [Documentation Rules](book-11/13_DOCUMENTATION_RULES.md) | implementation-linked documentation/version/link upkeep | AVAILABLE |
 | DOC-DEV-015 | [Code Generation Policy](book-11/14_CODE_GENERATION_POLICY.md) | Codex/AI-assisted coding, human review와 ownership | AVAILABLE |
 | DOC-DEV-016 | [Developer Registry](book-11/15_DEVELOPER_REGISTRY.md) | DEV-001–024 complete cross-phase logical work packages | AVAILABLE |
-| DOC-DEV-017 | [FEAT-016 Implementation Traceability](implementation/FEAT016_TRACEABILITY_MATRIX.md) | FEAT-016 partial baseline, administration ownership, remaining gaps와 implementation gates | AVAILABLE |
+| DOC-DEV-017 | [FEAT-016 Implementation Traceability](implementation/FEAT016_TRACEABILITY_MATRIX.md) | FEAT-016 verified implementation coverage, canonical exclusions, R1/R2 remediation evidence와 Final Gate retry boundary | AVAILABLE |
 | DOC-REVIEW-019 | [Phase 12 Completion](reviews/PHASE12_COMPLETION.md) | Developer Bible completion evidence와 Phase 13 gate | AVAILABLE |
 
 ## Book 12 — Master Development Roadmap (Phase 13)

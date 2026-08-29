@@ -3,16 +3,22 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-DEV-017 |
-| 버전 | v0.6 |
-| 상태 | DRAFT |
+| 버전 | v0.7 |
+| 상태 | IN REVIEW |
 | 범위 | `EPIC-008` / `FEAT-016` / `DEV-016` / `IMP-016` |
 | 기준 | Architecture Bible v1.1 + `DEC-114` / `CR-026` |
-| Execution status | `PARTIALLY_IMPLEMENTED_BASELINE` |
+| Execution status | `IMPLEMENTED_AND_VERIFIED` |
 | Phase 5 status | `CONTRACT_LAYER_RESOLVED` |
 | Phase 6 status | `LOGICAL_PERSISTENCE_BOUNDARY_VERIFIED` |
 | Phase 7 status | `LIVE_ROLE_AUTHORITY_INTEGRATION_VERIFIED` |
 | Phase 8 status | `POLICY_SOURCE_TARGET_WORKFLOWS_VERIFIED` |
 | Phase 9 status | `RUNTIME_HTTP_API_015_VERIFIED` |
+| Phase 10 status | `UI_006_VERIFIED` |
+| Phase 11 status | `UI_036_CONTROLLED_ADMINISTRATION_VERIFIED` |
+| Phase 12 status | `FINAL_ADMINISTRATION_INTEGRATION_HARDENING_VERIFIED` |
+| F16-R1 status | `DURABLE_ADMINISTRATION_PERSISTENCE_VERIFIED` |
+| F16-R2 status | `API_015_EXECUTION_COMPLETENESS_VERIFIED` |
+| F16-R3 status | `TRACEABILITY_CLOSURE_VERIFIED` |
 
 ## 1. Status reconciliation
 
@@ -20,16 +26,17 @@ Frozen Feature/Developer/Implementation Registry의 primary row `PLANNED`는 log
 
 - SP-001 Role Assignment subset과 해당 test evidence는 유효하다.
 - SP-001은 FEAT-016 전체 completion evidence가 아니다.
-- FEAT-016은 incomplete이며 `IMPLEMENTED`, `VERIFIED` 또는 `CLOSED`가 아니다.
-- 이후 구현은 현재 Role Assignment baseline을 보존하고 확장한다.
+- Phase 5~12와 F16-R1/R2의 승인된 implementation evidence는 FEAT-016 requirement와 canonical exclusion을 모두 구현 또는 명시적 비소유 범위로 추적한다.
+- FEAT-016 implementation coverage는 `IMPLEMENTED_AND_VERIFIED`다. 이는 별도 F16 Final Gate의 release readiness 승인이나 formal feature closure를 대신하지 않는다.
+- Frozen Registry의 historical `PLANNED` row와 초기 SP-001 baseline은 변경하지 않고 post-freeze execution overlay로 해석한다.
 
 ## 2. End-to-end trace
 
 | Requirement | Decision | Workflow | Entity / Scope | API / UI | Security | Tests | Status |
 |---|---|---|---|---|---|---|---|
-| `REQ-CONST-006` | `DEC-076/078/082/114` | `WF-012`, cross-cutting `WF-001–012` | Decision History, administration change evidence | `API-015/016`; `UI-006/036` | `SEC-021/022/026` | `TEST-005/034/053`; Phase 5 closed contract and architecture tests | PARTIALLY_VERIFIED |
-| `REQ-CONST-007` | `DEC-114`; ADR-007 | `WF-001–012` | proposal, approval/rejection, activation, revocation, denial, privileged read evidence | `API-015/016`; `UI-006/036` | `SEC-007/021–023` | `TEST-005/034/037/048/053`; Phase 5 Session/SoD/MFA/error tests | PARTIALLY_VERIFIED |
-| `REQ-CONST-010` | `DEC-053/114`; ADR-003 | `WF-001–012` | User, Role, Role Assignment, Team/scope, governed policy state | `API-002/015/016`; `UI-006/036` | `SEC-001–010/033` | `TEST-005/034/048/053`; Phase 5 operation/read DTO tests | PARTIALLY_VERIFIED |
+| `REQ-CONST-006` | `DEC-076/078/082/114` | `WF-012`, cross-cutting `WF-001–012` | Decision History, administration change evidence | `API-015/016`; `UI-006/036` | `SEC-021/022/026` | `TEST-005/034/053`; Phase 5~12, F16-R1/R2 contract, application, durable evidence and integration tests | VERIFIED |
+| `REQ-CONST-007` | `DEC-114`; ADR-007 | `WF-001–012` | proposal, approval/rejection, activation, revocation, denial, privileged read evidence | `API-015/016`; `UI-006/036` | `SEC-007/021–023` | `TEST-005/034/037/048/053`; Session/SoD/MFA, durable atomic evidence and composed rejection tests | VERIFIED |
+| `REQ-CONST-010` | `DEC-053/114`; ADR-003 | `WF-001–012` | User, Role, Role Assignment, Team/scope, governed policy state | `API-002/015/016`; `UI-006/036` | `SEC-001–010/033` | `TEST-005/034/048/053`; closed operation, Role/Team lifecycle, durable persistence and HTTP/Console tests | VERIFIED |
 
 Canonical chain:
 
@@ -84,7 +91,7 @@ SP-001 baseline의 construction-time assignment snapshot 한계는 Phase 7에서
 
 `approved/revoked assignment → authoritative repository → live assignment resolver → AuthorizationService decision`
 
-Phase 7은 이 logical live-authority flow와 current Role/approval evidence validation을 구현·검증하여 `F16-GAP-003`을 해소했다. Durable production repository와 Runtime/HTTP/UI integration은 별도 gap으로 유지한다.
+Phase 7은 이 logical live-authority flow와 current Role/approval evidence validation을 구현·검증하여 `F16-GAP-003`을 해소했다. 당시 별도 gap이던 Runtime/HTTP/UI integration은 Phase 9~12에서, durable production repository는 F16-R1에서 후속 해소됐다.
 
 ## 7. Persistence and audit boundary
 
@@ -96,16 +103,16 @@ Required logical capabilities:
 - optimistic concurrency and expected-version enforcement;
 - immutable proposal/approval/rejection/activation/revocation/denial/required-read evidence.
 
-No authority mutation is complete if required audit persistence fails. Deterministic in-memory adapters are allowed for development/test. Durable authoritative persistence is required before production completion for Role Assignment, Role/Policy version, Team/scope, administration decisions, idempotency and audit/decision evidence.
+No authority mutation is complete if required audit persistence fails. Deterministic in-memory adapters are allowed for development/test only. F16-R1의 `DurableAdministrationUnitOfWork`는 Role Assignment, Role/Policy version, Team/scope, administration decisions, idempotency, revision 및 audit/decision evidence를 Node.js built-in `node:sqlite`에 durable하게 저장한다.
 
-Physical database, ORM and migration framework remain `DEFERRED`; this alignment selects none.
+Phase 4 시점에는 physical database, ORM과 migration framework가 `DEFERRED`였다. F16-R1은 승인된 별도 decision에 따라 SQLite file database를 선택했으며 external database dependency, ORM과 migration framework는 추가하지 않았다.
 
 ## 8. Console, AI and external boundaries
 
-- `UI-006`: future governed administration read/status integration.
-- `UI-036`: future controlled administration workflow.
-- Current Admin Console remains read-only; no write route is authorized in Phase 4.
-- UI-036 mutation support requires a separately approved controlled-write boundary.
+- `UI-006`: Phase 10에서 API-015 read-only Administration Console로 구현·검증됐다.
+- `UI-036`: Phase 11/11B에서 canonical selector/proposal read와 기존 approved mutation operation만 사용하는 controlled administration workflow로 구현·검증됐다.
+- Phase 4의 read-only Console 제한은 historical boundary이며, 이후 별도 승인된 Phase 11 controlled-write boundary만 예외다.
+- Console은 Repository/UoW를 직접 접근하지 않고 trusted server-side Session과 API-015 HTTP boundary만 사용한다.
 - FEAT-016 AI capability is `NONE`; AI cannot approve, activate, revoke, grant, expand scope or bypass MFA/SoD.
 - SNS, crawler, external website, rbs-homes, email, messaging, AI provider and connector execution are outside FEAT-016.
 
@@ -115,7 +122,7 @@ Physical database, ORM and migration framework remain `DEFERRED`; this alignment
 
 직접 evidence는 `administration-api-contracts.test.ts`와 `administration-api-architecture.test.ts`이며 focused API-015 및 기존 Administration 회귀 30/30, 전체 627/627, lint/typecheck/build/verify, Architecture checksum 153/153, Gitleaks 0, production audit 0 및 independent review Critical/Important/Minor 0/0/0을 통과했다. 상세 결과는 [F16 Phase 5 API-015 Closed Contracts Implementation Report](../reviews/F16_PHASE_5_API_015_CLOSED_CONTRACTS_IMPLEMENTATION_REPORT.md)에 기록한다.
 
-이 Phase 5 evidence 자체는 contract layer만 검증했다. Live authority는 후속 Phase 7 evidence에서 별도로 검증됐고 durable state/idempotency, atomic audit, Runtime/HTTP 및 UI-006/UI-036는 완료로 표시하지 않는다.
+이 Phase 5 evidence 자체는 contract layer만 검증했다. 당시 미완료였던 live authority는 Phase 7, Runtime/HTTP는 Phase 9, UI-006/UI-036는 Phase 10~12, durable state/idempotency와 atomic audit은 F16-R1에서 각각 후속 검증됐다.
 
 ## 10. Phase 6 Repository / UoW evidence
 
@@ -123,7 +130,7 @@ Physical database, ORM and migration framework remain `DEFERRED`; this alignment
 
 직접 evidence는 `administration-persistence.test.ts`와 `administration-persistence-architecture.test.ts`이다. 구조화된 evidence reference 보존, append-only evidence, original proposer/approver linkage, exact proposal/resource version, operation/resource/status 결속, optimistic concurrency, idempotent replay/collision, scope/copy isolation, Role snapshot hydration 및 forbidden dependency를 검증했다. Focused 60/60, 전체 657/657, lint/typecheck/build/verify, Architecture checksum 153/153, Gitleaks 0 및 independent review READY를 통과했다. 상세 결과는 [F16 Phase 6 Administration Repository / UoW Implementation Report](../reviews/F16_PHASE_6_ADMINISTRATION_REPOSITORY_UOW_IMPLEMENTATION_REPORT.md)에 기록한다.
 
-이 Phase 6 evidence 자체는 logical persistence boundary만 검증했다. Physical database, ORM, migration 및 durable production adapter는 선택하거나 구현하지 않았고, live authority는 후속 Phase 7 evidence에서 검증됐으며 Runtime/HTTP/UI integration은 여전히 미구현이다.
+이 Phase 6 evidence 자체는 logical persistence boundary만 검증했다. 당시 미구현이던 live authority는 Phase 7, Runtime/HTTP/UI integration은 Phase 9~12, durable production adapter는 F16-R1에서 후속 검증됐다. ORM과 별도 migration framework는 도입하지 않았다.
 
 ## 11. Phase 7 Live Role Authority evidence
 
@@ -133,7 +140,7 @@ Physical database, ORM and migration framework remain `DEFERRED`; this alignment
 
 직접 evidence는 `live-assignment-adapter.test.ts`, `live-role-authority-integration.test.ts`, `live-role-authority-architecture.test.ts`이다. Focused Phase 7 15/15, broader Authorization/FEAT-015 security regression 54/54, Phase 5/6 및 Identity regression을 포함한 전체 672/672, lint/typecheck/build/verify, Architecture checksum 153/153, Gitleaks 0, production audit 0 및 independent review Critical/Important/Minor 0/0/0을 통과했다. 상세 결과는 [F16 Phase 7 Live Role Authority Integration Report](../reviews/F16_PHASE_7_LIVE_ROLE_AUTHORITY_INTEGRATION_REPORT.md)에 기록한다.
 
-이 evidence는 live logical authority composition만 검증한다. Physical database, durable production adapter, API-015 Runtime/HTTP, UI-006/UI-036 write integration 및 FEAT-016 final acceptance는 완료하지 않는다.
+이 Phase 7 evidence 자체는 live logical authority composition만 검증했다. 당시 미완료였던 API-015 Runtime/HTTP는 Phase 9, UI-006/UI-036는 Phase 10~12, durable production adapter는 F16-R1에서 후속 검증됐다.
 
 ## 12. Phase 8 Policy / Source / Target Administration evidence
 
@@ -141,7 +148,7 @@ Physical database, ORM and migration framework remain `DEFERRED`; this alignment
 
 직접 evidence는 `administration-governance-api.test.ts`와 `administration-governance-architecture.test.ts`이다. Focused Phase 8 13/13, 영향 회귀 112/112 및 최종 관련 53/53, 전체 685/685, lint/typecheck/build/verify, Architecture checksum 153/153, Gitleaks worktree findings 0, production audit 0 및 independent review Critical/Important/Minor 0/0/0을 통과했다. 상세 결과는 [F16 Phase 8 Policy / Source / Target Administration Report](../reviews/F16_PHASE_8_POLICY_SOURCE_TARGET_ADMINISTRATION_IMPLEMENTATION_REPORT.md)에 기록한다.
 
-이 evidence는 logical application workflow만 검증한다. Physical durable persistence, Runtime/HTTP, UI-006/UI-036, UAT 및 FEAT-016 final acceptance는 완료하지 않는다.
+이 Phase 8 evidence 자체는 logical application workflow만 검증했다. 당시 미완료였던 Runtime/HTTP는 Phase 9, UI-006/UI-036는 Phase 10~12, physical durable persistence는 F16-R1에서 후속 검증됐다.
 
 ## 13. Phase 9 Runtime / HTTP API-015 evidence
 
@@ -151,47 +158,47 @@ Role Assignment read/list/propose/approve/reject/revoke와 Phase 8 Policy/Source
 
 직접 evidence는 `administration-api-contracts.test.ts`, `administration-governance-api.test.ts`, `administration-governance-architecture.test.ts`이다. Focused 51/51, 영향 회귀 96/96, 전체 700/700, lint/typecheck/build/verify, Architecture checksum 153/153, Gitleaks 0 및 fresh independent review Critical/Important/Minor 0/0/0 READY를 통과했다. 상세 결과는 [F16 Phase 9 Runtime / HTTP API-015 Report](../reviews/F16_PHASE_9_RUNTIME_HTTP_API_015_IMPLEMENTATION_REPORT.md)에 기록한다.
 
-Retention Policy와 Legal Hold는 canonical owner에 남고 Phase 9 operation surface에 포함되지 않는다. Physical durable persistence와 UI-006/UI-036는 구현하지 않았다.
+Retention Policy와 Legal Hold는 canonical owner에 남고 Phase 9 operation surface에 포함되지 않는다. Phase 9 당시 미구현이던 UI-006/UI-036는 Phase 10~12, physical durable persistence는 F16-R1에서 후속 검증됐다.
 
 ## 14. Phase 10 UI-006 Administration Console evidence
 
-`apps/admin-console/src/administration-console-read-adapter.ts`는 trusted server-side Session을 `x-session-id`로 canonical API-015 `LIST_ROLE_ASSIGNMENTS` query에 전달하고, authorized Role Assignment의 bounded field만 immutable Console DTO로 매핑한다. Unsupported proposal/decision list와 canonical resource ID가 없는 Policy/Source/Target read는 fabricated data 없이 `UNAVAILABLE`이다. `nextCursor`가 있으면 first authorized page의 `Visible` count와 `PARTIAL`만 표시한다.
+Phase 10 당시 `apps/admin-console/src/administration-console-read-adapter.ts`는 trusted server-side Session을 `x-session-id`로 canonical API-015 `LIST_ROLE_ASSIGNMENTS` query에 전달하고, authorized Role Assignment의 bounded field만 immutable Console DTO로 매핑했다. 당시 미지원 proposal/decision list와 canonical resource ID가 없는 Policy/Source/Target read는 fabricated data 없이 `UNAVAILABLE`로 표시했다. Proposal read는 Phase 11B, Decision read/list는 F16-R2에서 후속 구현됐다. `nextCursor`가 있으면 first authorized page의 `Visible` count와 `PARTIAL`만 표시한다.
 
-`apps/admin-console/src/administration-console-http-client.ts`, `main.ts`와 `console-composition.ts`는 credential 없는 loopback HTTP origin, `GET /administration/queries` 및 injected read adapter만 사용한다. Repository/UoW/legacy state, command endpoint, mutation handler, browser-authored authority와 UI-036 write control은 포함하지 않는다. `/administration` route는 LOADING, EMPTY, UNAVAILABLE, NOT_AUTHORIZED, ERROR 및 normal data state를 safe rendering한다.
+Phase 10 evidence 자체에서 `apps/admin-console/src/administration-console-http-client.ts`, `main.ts`와 `console-composition.ts`는 credential 없는 loopback HTTP origin, `GET /administration/queries` 및 injected read adapter만 사용했다. 당시 Repository/UoW/legacy state, command endpoint, mutation handler, browser-authored authority와 UI-036 write control은 포함하지 않았다. 이후 별도 승인된 Phase 11/11B가 기존 Console adapter에 API-015 controlled command boundary를 추가했으며 Repository/UoW 직접 접근과 browser-authored authority는 계속 금지한다. `/administration` route는 LOADING, EMPTY, UNAVAILABLE, NOT_AUTHORIZED, ERROR 및 normal data state를 safe rendering한다.
 
 직접 evidence는 `administration-console-http-client.test.ts`, `administration-console-read-adapter.test.ts`, `console-composition.test.ts`, `console-server.test.ts`와 `console-renderer.test.ts`이다. Console focused 31/31, API-015 affected 51/51, 전체 711/711, lint/typecheck/build/verify, Browser acceptance 8/8, Architecture checksum 153/153, Gitleaks worktree 0, production audit 0 및 fresh independent review Critical/Important/Minor 0/0/0 READY를 통과했다. Full audit은 기존 승인된 development-only transitive `brace-expansion` High 4건만 유지하며 신규 미승인 High/Critical은 0이다. 상세 결과는 [F16 Phase 10 UI-006 Administration Console Report](../reviews/F16_PHASE_10_UI_006_ADMINISTRATION_CONSOLE_IMPLEMENTATION_REPORT.md)에 기록한다.
 
-UI-006은 `IMPLEMENTED_AND_VERIFIED`다. UI-036 controlled write, physical durable persistence와 FEAT-016 final acceptance는 완료로 표시하지 않는다.
+UI-006은 Phase 10에서 `IMPLEMENTED_AND_VERIFIED`로 판정됐다. 당시 미완료였던 UI-036 controlled write는 Phase 11/11B, physical durable persistence는 F16-R1에서 후속 구현·검증됐다.
 
 ## 15. Phase 11A Canonical Administration Read Boundaries evidence
 
 `apps/api/src/administration-governance-api.ts`는 기존 `AdministrationGovernanceApplication.list()`와 Phase 6 bounded `listByScope()` repository port를 통해 `LIST_ROLES`, `LIST_TEAM_SCOPES`, `LIST_POLICIES`, `LIST_SOURCE_GOVERNANCE`, `LIST_PUBLICATION_TARGET_GOVERNANCE`를 구현한다. 모든 query는 trusted Session resolution과 `authorizeRead()`를 재사용하고 exact tenant/scope authorization, status filter, bounded cursor pagination, deterministic canonical ID ordering 및 immutable API-015 view를 적용한다. Cursor filtering과 ordering은 동일 `localeCompare` comparator를 사용한다.
 
-`apps/api/src/administration-http-adapter.ts`는 위 다섯 operation을 기존 GET `/administration/queries` closed allowlist에만 등록한다. 허용 query는 canonical scope, status, limit 및 cursor로 제한되며 unknown parameter와 unknown operation은 거부된다. `apps/admin-console/src/administration-console-read-adapter.ts`는 injected API-015 handler를 통해서만 selector options를 읽고 ID, status, version, scopeType 및 scopeId만 immutable Console DTO로 반환한다. Repository/UoW 직접 접근, hardcoded production ID, raw evidence, command route, mutation, Source execution 및 Publication execution은 추가하지 않았다.
+Phase 11A에서 `apps/api/src/administration-http-adapter.ts`는 위 다섯 operation을 기존 GET `/administration/queries` closed allowlist에 등록했다. 허용 query는 canonical scope, status, limit 및 cursor로 제한되며 unknown parameter와 unknown operation은 거부된다. `apps/admin-console/src/administration-console-read-adapter.ts`는 injected API-015 handler를 통해서만 selector options를 읽고 ID, status, version, scopeType 및 scopeId만 immutable Console DTO로 반환한다. 이 Phase 11A slice 자체에는 command route나 mutation을 추가하지 않았고, 이후 Phase 11/11B controlled command도 동일 API-015 boundary만 사용한다. Repository/UoW 직접 접근, hardcoded production ID, raw evidence, Source execution 및 Publication execution은 계속 금지한다.
 
 직접 evidence는 `administration-governance-api.test.ts`와 `administration-console-read-adapter.test.ts`이며 architecture regression은 `administration-governance-architecture.test.ts`, `administration-api-contracts.test.ts` 및 `console-composition.test.ts`를 포함한다. Focused 40/40, Phase 5~10 affected 133/133, 전체 722/722, lint/typecheck/build/verify, Architecture checksum 153/153, Gitleaks 0, production audit vulnerabilities 0 및 fresh independent review Critical/Important/Minor 0/0/0 READY를 통과했다. Full audit은 기존 승인된 development-only transitive `brace-expansion` High 4건만 유지하며 신규 미승인 High/Critical은 0이다. 상세 결과는 [F16 Phase 11A Canonical Administration Read Boundaries Report](../reviews/F16_PHASE_11A_CANONICAL_ADMIN_READ_BOUNDARIES_IMPLEMENTATION_REPORT.md)에 기록한다.
 
-Phase 11A는 selector read boundary만 구현했다. UI-036 form/write action, command/mutation route, physical durable persistence, Phase 11 resume 및 FEAT-016 final acceptance는 완료하지 않았다.
+Phase 11A evidence 자체는 selector read boundary만 구현했다. 당시 미완료였던 UI-036 form/write action과 command route는 Phase 11/11B, physical durable persistence는 F16-R1에서 후속 구현·검증됐다.
 
 ## 16. Phase 11 / Phase 11B UI-036 Controlled Administration evidence
 
-`LIST_ADMINISTRATION_PROPOSALS`는 기존 `AdministrationGovernanceApplication.list()`에서 safe `proposalId`, `resourceType`, `resourceId`, status, scope 및 version을 반환하고, Runtime/HTTP/Console adapter 전체에서 trusted Session, live authorization, tenant/exact-scope filtering 및 immutable DTO를 유지한다. UI-036은 `LIST_ROLES`, `LIST_TEAM_SCOPES`, `LIST_POLICIES`, `LIST_SOURCE_GOVERNANCE`, `LIST_PUBLICATION_TARGET_GOVERNANCE`, `LIST_ROLE_ASSIGNMENTS`와 위 proposal query에서 canonical selector와 mutation identity를 도출한다. `LIST_ADMINISTRATION_DECISIONS`는 Phase 11 workflow에 필요하지 않아 추가하지 않았다.
+`LIST_ADMINISTRATION_PROPOSALS`는 기존 `AdministrationGovernanceApplication.list()`에서 safe `proposalId`, `resourceType`, `resourceId`, status, scope 및 version을 반환하고, Runtime/HTTP/Console adapter 전체에서 trusted Session, live authorization, tenant/exact-scope filtering 및 immutable DTO를 유지한다. UI-036은 `LIST_ROLES`, `LIST_TEAM_SCOPES`, `LIST_POLICIES`, `LIST_SOURCE_GOVERNANCE`, `LIST_PUBLICATION_TARGET_GOVERNANCE`, `LIST_ROLE_ASSIGNMENTS`와 위 proposal query에서 canonical selector와 mutation identity를 도출한다. `LIST_ADMINISTRATION_DECISIONS`는 Phase 11 workflow에 필요하지 않아 당시 추가하지 않았고 F16-R2에서 closed contract execution boundary로 후속 구현됐다.
 
 기존 `/administration/control` Console flow는 하나의 injected API-015 adapter를 통해 Role Assignment, Policy, Source Governance 및 Publication Target Governance controlled operations를 수행한다. Server-derived Session, live capability/tenant/scope/purpose/MFA, actor-level SoD, expected version, canonical idempotency, append-only evidence 및 logical UoW invariants를 재사용한다. Browser-authored authority, free-text canonical ID, hardcoded production ID, direct Repository/UoW access, Retention/Legal Hold, Source/Publication execution 및 신규 API operation은 없다.
 
 직접 evidence는 `administration-console-http-client.test.ts`, `administration-console-read-adapter.test.ts`, `console-composition.test.ts`, `console-server.test.ts`, `console-renderer.test.ts`, `administration-api-contracts.test.ts` 및 `administration-governance-api.test.ts`다. Focused/affected 83/83, 전체 732/732, lint/typecheck/build/verify, Browser acceptance 12/12, Architecture checksum 153/153, Gitleaks 0, production audit vulnerabilities 0 및 fresh independent review Critical/Important/Minor 0/0/0 READY를 통과했다. Full audit은 기존 승인된 development-only transitive `brace-expansion` High 4건만 유지하며 신규 미승인 High/Critical은 0이다. 상세 결과는 [F16 Phase 11 UI-036 Controlled Write Console Report](../reviews/F16_PHASE_11_UI_036_CONTROLLED_WRITE_CONSOLE_IMPLEMENTATION_REPORT.md)에 기록한다.
 
-UI-036 logical controlled administration boundary는 `IMPLEMENTED_AND_VERIFIED`다. Physical durable production persistence와 FEAT-016 final acceptance는 완료로 표시하지 않는다.
+UI-036 logical controlled administration boundary는 `IMPLEMENTED_AND_VERIFIED`다. 당시 미완료였던 physical durable production persistence는 F16-R1에서 후속 구현·검증됐다.
 
 ## 17. Phase 12 Final Administration Integration / Hardening evidence
 
 `administration-governance-api.test.ts`의 Phase 12 composed test는 실제 Console server, `AdministrationConsoleHttpClient`, API-015 Node HTTP server, `AdministrationGovernanceApplication` 및 Phase 6 UoW를 통과해 Policy proposal을 저장하고 UI-036 canonical proposal/resource selector refresh로 재조회한다. 별도 binding test는 client-authored resource rebinding을 `NOT_FOUND`로 거부하고 original/rebound identity 양쪽의 decision 및 rejected-command idempotency side effect가 0임을 검증한다. Production source 변경은 없다.
 
-기존 Phase 8~11 lifecycle 및 rejection evidence와 함께 Role Assignment, Policy, Source Governance, Publication Target Governance, Session/live authority, tenant/scope/purpose/MFA, expected version, idempotency, append-only evidence, HTTP concealment, canonical selectors 및 Source/Publication execution isolation을 재검증했다. `LIST_ADMINISTRATION_DECISIONS`는 승인 flow에 필요하지 않아 추가하지 않았다.
+기존 Phase 8~11 lifecycle 및 rejection evidence와 함께 Role Assignment, Policy, Source Governance, Publication Target Governance, Session/live authority, tenant/scope/purpose/MFA, expected version, idempotency, append-only evidence, HTTP concealment, canonical selectors 및 Source/Publication execution isolation을 재검증했다. `LIST_ADMINISTRATION_DECISIONS`는 Phase 12 flow에 필요하지 않아 당시 추가하지 않았고 F16-R2에서 후속 구현됐다.
 
 Focused 2/2, affected 105/105, 전체 734/734, lint/typecheck/build/verify, Architecture checksum 153/153, `git diff --check`, Gitleaks 0, production audit vulnerabilities 0 및 fresh independent review Critical/Important/Minor 0/0/0 READY를 통과했다. Full audit은 기존 승인된 development-only transitive `brace-expansion` High 4건만 유지하며 신규 미승인 High/Critical은 0이다. 상세 결과는 [F16 Phase 12 Final Administration Integration / Hardening Report](../reviews/F16_PHASE_12_FINAL_ADMINISTRATION_INTEGRATION_HARDENING_IMPLEMENTATION_REPORT.md)에 기록한다.
 
-Phase 12 logical Administration integration/hardening은 `IMPLEMENTED_AND_VERIFIED`다. Physical durable production persistence와 FEAT-016 Final Gate는 완료로 표시하지 않는다.
+Phase 12 logical Administration integration/hardening은 `IMPLEMENTED_AND_VERIFIED`다. 당시 미완료였던 physical durable production persistence는 F16-R1에서 후속 구현·검증됐다. F16 Final Gate는 여전히 별도 release-readiness gate다.
 
 ## 18. F16-R1 Durable Administration Persistence evidence
 
@@ -213,7 +220,7 @@ Role/Team proposal과 independent approval/rejection은 Session-derived actor, l
 
 F16-R2 API-015 execution completeness는 `IMPLEMENTED_AND_VERIFIED`다. 이는 FEAT-016 Final Gate 승인이나 F16-R3 시작을 의미하지 않는다.
 
-## 20. Gap status after F16-R2
+## 20. Gap status after F16-R3 traceability reconciliation
 
 | Gap | Status | Evidence / next gate |
 |---|---|---|
@@ -229,10 +236,30 @@ F16-R2 API-015 execution completeness는 `IMPLEMENTED_AND_VERIFIED`다. 이는 F
 | `F16-GAP-009` UI-006/UI-036 | IMPLEMENTED_AND_VERIFIED | UI-006 read Console, canonical selector/proposal reads 및 UI-036 controlled workflows verified through API-015 |
 | `F16-GAP-010` full tests | IMPLEMENTED_AND_VERIFIED | F16-R2 focused 8/8, affected 106/106 및 full 774/774 passed; FEAT-016 Final Gate remains separate |
 
-## 21. Next boundary
+## 21. Current verified coverage
 
-The next eligible gate after F16-R2 acceptance requires separate Architecture Owner authorization.
+| Implementation area | Production / contract evidence | Direct validation evidence | Status |
+|---|---|---|---|
+| Canonical API-015 contract | `administration-api-contracts.ts`, `administration-api-validation.ts` | `administration-api-contracts.test.ts`, `administration-governance-architecture.test.ts` exact closed-surface equality | IMPLEMENTED_AND_VERIFIED |
+| Administration application | `administration-governance-api.ts` single command/read/list boundary | Phase 8/9/11A/R2 application tests | IMPLEMENTED_AND_VERIFIED |
+| Runtime / Host / HTTP | `administration-http-adapter.ts`, `composition.ts` | Phase 9/R2 HTTP allowlist, dispatch, loopback and production composition tests | IMPLEMENTED_AND_VERIFIED |
+| Durable Administration UoW | `administration-durable-persistence.ts`, `administration-persistence-engine.ts` | F16-R1 reopen, rollback, CAS, crash/recovery, append-only and no-fallback tests | IMPLEMENTED_AND_VERIFIED |
+| Role Assignment lifecycle | `administration-governance-api.ts`, live assignment adapter | Phase 7/9 proposal, approval, rejection, revoke and live-authority tests | IMPLEMENTED_AND_VERIFIED |
+| Role change lifecycle | `PROPOSE/APPROVE/REJECT_ROLE_CHANGE` application path | F16-R2 success, rejection, SoD, stale version and durable HTTP tests | IMPLEMENTED_AND_VERIFIED |
+| Team Scope lifecycle | `PROPOSE/APPROVE/REJECT_TEAM_SCOPE_CHANGE` application path | F16-R2 identity, version, rejection and durable HTTP tests | IMPLEMENTED_AND_VERIFIED |
+| Policy / Source / Target governance | Phase 8 application workflows | Phase 8 lifecycle/read tests and Phase 9/12 composed tests | IMPLEMENTED_AND_VERIFIED |
+| Proposal / Decision reads | `LIST_ADMINISTRATION_PROPOSALS`, `READ_ADMINISTRATION_DECISION`, `LIST_ADMINISTRATION_DECISIONS` | Phase 11B proposal binding and F16-R2 decision read/list tests | IMPLEMENTED_AND_VERIFIED |
+| Console UI-006 / UI-036 | injected Console adapter through API-015 HTTP | Phase 10/11/12 browser, selector, mutation and composed tests | IMPLEMENTED_AND_VERIFIED |
+| Authorization / isolation | Session-derived actor, live resolver, tenant/scope/purpose/MFA/SoD checks | Phase 7~12 and F16-R2 rejection/no-side-effect tests | IMPLEMENTED_AND_VERIFIED |
+| Version / idempotency / atomic evidence | expected version, durable idempotency and single SQLite transaction | Phase 6, F16-R1 and F16-R2 replay/conflict/rollback/evidence tests | IMPLEMENTED_AND_VERIFIED |
+| Restart / recovery | file-backed `DurableAdministrationUnitOfWork` | F16-R1 restart/reopen/crash/corruption tests and F16-R2 reopened state assertions | IMPLEMENTED_AND_VERIFIED |
+| Execution isolation | Source governance excludes connector execution; Target governance excludes Publication execution | Phase 8 architecture tests, Phase 9 HTTP tests, Phase 11 Console architecture tests | IMPLEMENTED_AND_VERIFIED |
+| Retention / Legal Hold | external canonical ownership; absent from API-015 | closed-contract and architecture rejection assertions including `SET_LEGAL_HOLD` | EXPLICITLY_EXCLUDED |
 
-`F16 Final Gate` — `NOT_STARTED`.
+## 22. Next boundary
 
-Phase 5~12와 F16-R1/R2는 closed API-015 contract, logical/durable persistence, live Role authority, governed workflow, complete Runtime/HTTP execution boundary, UI-006/UI-036 및 final Administration integration/hardening을 검증했다. FEAT-016 Final Gate와 F16-R3는 여전히 별도 승인 범위다.
+F16-R3 reconciles the canonical RTM against approved Phase 5~12 and F16-R1/R2 evidence. No implementation gap remains in this matrix; F16 Final Gate may be re-executed only with separate Architecture Owner authorization.
+
+`F16 Final Gate` — `READY_FOR_RETRY`.
+
+Phase 5~12와 F16-R1/R2는 closed API-015 contract, logical/durable persistence, live Role authority, governed workflow, complete Runtime/HTTP execution boundary, UI-006/UI-036 및 final Administration integration/hardening을 검증했다. F16-R3는 이 evidence를 current canonical traceability로 정렬했으며 FEAT-016 formal closure나 Final Gate 실행을 선언하지 않는다.
