@@ -1,5 +1,9 @@
 import type { PublicationInfrastructureConfigurationInput } from "./publication-infrastructure-configuration.js";
 import {
+  canonicalApiOperations,
+  type PublicationCanonicalApiExecutionPort,
+} from "./publication-runtime-canonical-api-port.js";
+import {
   createPublicationInfrastructure,
   type PublicationInfrastructure,
 } from "./publication-infrastructure.js";
@@ -18,8 +22,13 @@ import {
 
 export class PublicationRuntime {
   private currentContext: PublicationRuntimeContext;
+  private readonly registeredCanonicalApiOperations: readonly string[];
 
-  public constructor(public readonly services: PublicationRuntimeServiceRegistry) {
+  public constructor(
+    public readonly services: PublicationRuntimeServiceRegistry,
+    private readonly canonicalApiPort?: PublicationCanonicalApiExecutionPort,
+  ) {
+    this.registeredCanonicalApiOperations = canonicalApiOperations(canonicalApiPort);
     this.currentContext = immutableRuntimeContext({
       status: "CREATED",
       registeredServices: services.serviceNames,
@@ -32,6 +41,10 @@ export class PublicationRuntime {
 
   public get entryPoint(): PublicationRuntimeServiceRegistry["inputPort"] {
     return this.services.inputPort;
+  }
+
+  public get canonicalApiOperations(): readonly string[] {
+    return this.registeredCanonicalApiOperations;
   }
 
   public get health(): PublicationRuntimeHealth {
@@ -66,6 +79,16 @@ export class PublicationRuntime {
       throw new PublicationRuntimeError("RUNTIME_NOT_READY", "Runtime is not ready for execution.");
     }
     return this.entryPoint.execute(request);
+  }
+
+  public executeCanonicalApi(request: unknown): unknown {
+    if (this.currentContext.status !== "READY") {
+      throw new PublicationRuntimeError("RUNTIME_NOT_READY", "Runtime is not ready for execution.");
+    }
+    if (this.canonicalApiPort === undefined) {
+      throw new PublicationRuntimeError("RUNTIME_DEPENDENCY_MISSING", "Canonical API execution is unavailable.");
+    }
+    return this.canonicalApiPort.execute(request);
   }
 
   public stop(): PublicationRuntimeContext {
@@ -109,6 +132,7 @@ export type PublicationInfrastructureFactory = (
 export interface PublicationRuntimeBootstrapOptions {
   readonly infrastructureConfiguration?: PublicationInfrastructureConfigurationInput;
   readonly infrastructureFactory?: PublicationInfrastructureFactory;
+  readonly canonicalApiPort?: PublicationCanonicalApiExecutionPort;
 }
 
 export interface PublicationRuntimeBootstrapSuccess {
@@ -131,7 +155,10 @@ export function bootstrapPublicationRuntime(
   try {
     const factory = options.infrastructureFactory ?? createPublicationInfrastructure;
     const infrastructure = factory(options.infrastructureConfiguration ?? {});
-    const runtime = new PublicationRuntime(createPublicationRuntimeServiceRegistry(infrastructure));
+    const runtime = new PublicationRuntime(
+      createPublicationRuntimeServiceRegistry(infrastructure),
+      options.canonicalApiPort,
+    );
     runtime.initialize();
     runtime.start();
     runtime.ready();

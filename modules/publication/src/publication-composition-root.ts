@@ -56,6 +56,10 @@ export class PublicationHostCompositionFacade {
     return this.#graph.diagnostics.validationStatus;
   }
 
+  public get canonicalApiOperations(): readonly string[] {
+    return this.#graph.runtime.canonicalApiOperations;
+  }
+
   public execute(
     request: unknown,
   ): ReturnType<PublicationCompositionGraph["application"]["execute"]> {
@@ -66,6 +70,16 @@ export class PublicationHostCompositionFacade {
       );
     }
     return this.#graph.application.execute(request);
+  }
+
+  public executeCanonicalApi(request: unknown): unknown {
+    if (this.#graph.runtime.context.status !== "READY") {
+      throw new PublicationCompositionError(
+        "COMPOSITION_RUNTIME_UNAVAILABLE",
+        "Composition Runtime is unavailable for execution.",
+      );
+    }
+    return this.#graph.runtime.executeCanonicalApi(request);
   }
 
   public shutdown(): void {

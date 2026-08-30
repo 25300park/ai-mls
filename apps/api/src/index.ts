@@ -15,6 +15,8 @@ export * from "./property-listing-api.js";
 export * from "./publication-api.js";
 export * from "./publication-api-contracts.js";
 export * from "./publication-api-error-mapper.js";
+export * from "./publication-api-http-adapter.js";
+export * from "./publication-api-runtime-adapter.js";
 export * from "./publication-view-contracts.js";
 export * from "./source-intake-api.js";
 export * from "./verification-api.js";

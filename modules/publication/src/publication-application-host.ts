@@ -40,6 +40,10 @@ export class PublicationApplicationHost {
     );
   }
 
+  public get canonicalApiOperations(): readonly string[] {
+    return this.composition?.canonicalApiOperations ?? Object.freeze([]);
+  }
+
   public start(): PublicationHostStateSnapshot {
     if (this.lifecycle.snapshot.state === "READY") {
       throw new PublicationHostError("HOST_ALREADY_STARTED", "Host has already started.");
@@ -96,6 +100,17 @@ export class PublicationApplicationHost {
         this.shutdownStatus = "FAILED";
       }
       this.lifecycle.transition("FAILED");
+      throw new PublicationHostError("HOST_RUNTIME_FAILURE", "Host Runtime execution failed.");
+    }
+  }
+
+  public executeCanonicalApi(request: unknown): unknown {
+    if (this.lifecycle.snapshot.state !== "READY" || this.composition === undefined) {
+      throw new PublicationHostError("HOST_NOT_READY", "Host is not ready for execution.");
+    }
+    try {
+      return this.composition.executeCanonicalApi(request);
+    } catch {
       throw new PublicationHostError("HOST_RUNTIME_FAILURE", "Host Runtime execution failed.");
     }
   }

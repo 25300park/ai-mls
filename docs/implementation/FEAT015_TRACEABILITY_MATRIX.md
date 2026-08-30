@@ -131,6 +131,15 @@ Phase 13-4~13-14에서 추가된 Application부터 Node HTTP Server까지의 fou
 
 Fresh Final Validation #3에서 `F15-TASK-013`을 포함한 mandatory implementation trace를 재검증했다. `F15-TASK-001–013`은 `IMPLEMENTED_AND_VERIFIED`, `F15-TASK-011A`는 `SUPPORTING_REMEDIATION_VERIFIED`이며 mandatory gap은 0이다. Physical infrastructure와 product 선택은 [Deferred Decisions](FEAT015_DEFERRED_DECISIONS.md)에 따라 계속 `DEFERRED`다.
 
+## 4.5 F17-D Runtime / Host / HTTP Evidence
+
+| Trace | Implementation evidence | Validation | Status |
+|---|---|---|---|
+| Closed API-014 12 commands + 6 queries | `apps/api/src/publication-api-runtime-adapter.ts`, `publication-api-http-adapter.ts`, existing `publication-api-contracts.ts`와 `publication-api.ts` | operation registry와 HTTP → Host → Runtime execution matrix 18/18; 새 API ID/operation/authority 0 | IMPLEMENTED_AND_VERIFIED |
+| Session-derived authorization / safe boundary | HTTP header-only Session 전달, existing Publication authorization, closed route/operation validation, safe error reconstruction와 query concealment | body Session/actor/role/capability elevation 0; missing/denied Session fail closed; malformed backend evidence leakage 0 | VERIFIED |
+| Durable Production execution | `composeProductionPublicationApi014NodeHttpServer`, F17-C `createProductionPublicationInfrastructure`와 `DurablePublicationUnitOfWork` 단일 graph | missing durable configuration fail closed; command persistence와 read-only query; restart `DISPATCH_STARTED` ambiguity → `RECONCILIATION_REQUIRED`; provider blind resend 0 | VERIFIED |
+| Completion evidence | [F17-D Closed API-014 Runtime / Host / HTTP Report](../reviews/F17_D_CLOSED_API_014_RUNTIME_HTTP_IMPLEMENTATION_REPORT.md) | focused 11/11, affected 74/74, full 796/796, lint/typecheck/build/verify/checksum/Gitleaks/audit PASS 또는 승인 baseline 일치, independent review 0/0/0 | VERIFIED |
+
 ## 5. 상호 참조
 
 - [Implementation Plan](FEAT015_IMPLEMENTATION_PLAN.md)

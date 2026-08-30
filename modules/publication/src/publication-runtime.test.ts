@@ -310,6 +310,7 @@ test("PHASE13-7 runtime source depends only on Infrastructure and Interface boun
     "./publication-infrastructure-configuration.js",
     "./publication-infrastructure.js",
     "./publication-runtime-contracts.js",
+    "./publication-runtime-canonical-api-port.js",
     "./publication-runtime-registry.js",
   ]);
   const files = [

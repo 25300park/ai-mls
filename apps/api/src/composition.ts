@@ -16,7 +16,14 @@ import type { ProposalService } from "../../../modules/proposal/src/proposal-ser
 import type { PropertyService } from "../../../modules/property/src/property-service.js";
 import type { SourceRegistryService } from "../../../modules/source/src/source-registry-service.js";
 import type { VerificationService } from "../../../modules/verification/src/verification-service.js";
-import type { PublicationInfrastructure } from "../../../modules/publication/src/publication-infrastructure.js";
+import {
+  createProductionPublicationInfrastructure,
+  type PublicationInfrastructure,
+} from "../../../modules/publication/src/publication-infrastructure.js";
+import type { PublicationInfrastructureConfigurationInput } from "../../../modules/publication/src/publication-infrastructure-configuration.js";
+import { PublicationApplicationHost } from "../../../modules/publication/src/publication-application-host.js";
+import { composePublicationHostApplication } from "../../../modules/publication/src/publication-composition-root.js";
+import { SystemPublicationHostClock } from "../../../modules/publication/src/publication-host-clock.js";
 import type { AuditSink } from "../../../packages/security-contracts/src/index.js";
 import {
   createPublicationNodeHttpServer,
@@ -45,9 +52,78 @@ import { PropertyListingApi } from "./property-listing-api.js";
 import { SourceIntakeApi } from "./source-intake-api.js";
 import { VerificationApi } from "./verification-api.js";
 import { PublicationApi } from "./publication-api.js";
+import {
+  createPublicationApi014HttpRequestHandler,
+  type PublicationApi014HttpRequestHandler,
+} from "./publication-api-http-adapter.js";
+import { PublicationApiRuntimeAdapter } from "./publication-api-runtime-adapter.js";
 
 export function composePublicationApiModule(infrastructure: PublicationInfrastructure): PublicationApi {
   return new PublicationApi(infrastructure);
+}
+
+export interface ProductionPublicationApi014NodeHttpCompositionOptions {
+  readonly databasePath: string;
+  readonly infrastructureConfiguration?: PublicationInfrastructureConfigurationInput;
+  readonly configuration?: unknown;
+  readonly existingHttpHandler?: PublicationApi014HttpRequestHandler;
+  readonly requestIdFactory?: PublicationNodeHttpServerRequestIdFactory;
+}
+
+export interface ProductionPublicationApi014NodeHttpComposition {
+  readonly server: PublicationNodeHttpServer;
+  close(): Promise<void>;
+}
+
+export function composeProductionPublicationApi014NodeHttpServer(
+  options: ProductionPublicationApi014NodeHttpCompositionOptions,
+): ProductionPublicationApi014NodeHttpComposition {
+  const infrastructure = createProductionPublicationInfrastructure({
+    databasePath: options.databasePath,
+    ...(options.infrastructureConfiguration === undefined ? {} : { configuration: options.infrastructureConfiguration }),
+  });
+  let host: PublicationApplicationHost | undefined;
+  try {
+    const api = new PublicationApi(infrastructure);
+    const canonicalApiPort = new PublicationApiRuntimeAdapter(api);
+    host = new PublicationApplicationHost(
+      composePublicationHostApplication,
+      new SystemPublicationHostClock(),
+      {
+        runtimeOptions: {
+          infrastructureFactory: (): PublicationInfrastructure => infrastructure,
+          canonicalApiPort,
+        },
+      },
+    );
+    host.start();
+    const server = createPublicationNodeHttpServer({
+      configuration: options.configuration,
+      httpAdapter: createPublicationApi014HttpRequestHandler(host, options.existingHttpHandler),
+      ...(options.requestIdFactory === undefined ? {} : { requestIdFactory: options.requestIdFactory }),
+    });
+    return Object.freeze({
+      server,
+      close: async (): Promise<void> => {
+        try {
+          if (server.diagnostics.listening) await server.stop();
+        } finally {
+          try {
+            if (host?.status.state === "READY") host.stop();
+          } finally {
+            infrastructure.unitOfWork.close();
+          }
+        }
+      },
+    });
+  } catch (error) {
+    try {
+      if (host?.status.state === "READY") host.stop();
+    } finally {
+      infrastructure.unitOfWork.close();
+    }
+    throw error;
+  }
 }
 
 export interface AdministrationApi015NodeHttpCompositionOptions {
