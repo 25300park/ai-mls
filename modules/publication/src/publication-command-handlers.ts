@@ -10,6 +10,7 @@ import type {
   PublicationAuthorizedPreflight,
   PublicationCommandHandler,
   PublicationExecutionContext,
+  PublicationTransactionalStage,
   PublicationModificationCommand,
 } from "./publication-application-contracts.js";
 import type { PublicationAuditStore } from "./publication-audit-store.js";
@@ -61,7 +62,7 @@ export class ModifyPublicationHandler implements PublicationCommandHandler<Modif
     return this.executeAuthorized(command, context);
   }
 
-  public executeAuthorized(command: ModifyPublicationApplicationCommand, context: PublicationExecutionContext, preflight?: PublicationAuthorizedPreflight, auditDetails?: PublicationApplicationAuditDetails): PublicationApplicationResult {
+  public executeAuthorized(command: ModifyPublicationApplicationCommand, context: PublicationExecutionContext, preflight?: PublicationAuthorizedPreflight, auditDetails?: PublicationApplicationAuditDetails, stage?: PublicationTransactionalStage): PublicationApplicationResult {
     return executeModificationBoundary(this.dependencies, command, command.identity, context, (transaction, authorizedCommand) => {
       if (authorizedCommand.kind !== "MODIFY_PUBLICATION") throw new Error("APPLICATION_COMMAND_INVALID");
       const snapshot = transaction.repository.find(authorizedCommand.identity);
@@ -70,7 +71,7 @@ export class ModifyPublicationHandler implements PublicationCommandHandler<Modif
       const updated = executeDomainBehaviour(aggregate, authorizedCommand.input).snapshot;
       transaction.repository.update(snapshot.aggregateVersion, updated);
       return { snapshot: updated, previous: snapshot };
-    }, preflight, auditDetails);
+    }, preflight, auditDetails, stage);
   }
 }
 
@@ -82,6 +83,7 @@ function executeModificationBoundary(
   executeDomain: (transaction: PublicationTransaction, authorizedCommand: PublicationApplicationCommand) => { readonly snapshot: PublicationSnapshot; readonly previous: PublicationSnapshot | undefined },
   preflight?: PublicationAuthorizedPreflight,
   auditDetails?: PublicationApplicationAuditDetails,
+  stage?: PublicationTransactionalStage,
 ): PublicationApplicationResult {
   let transaction: PublicationTransaction | undefined;
   let currentVersion = applicationCommand.kind === "MODIFY_PUBLICATION" ? applicationCommand.input.expectedAggregateVersion : 0;
@@ -143,6 +145,7 @@ function executeModificationBoundary(
     transaction = dependencies.unitOfWork.begin(identity);
     const execution = executeDomain(transaction, authorizedCommand);
     const snapshot = execution.snapshot;
+    stage?.(transaction, snapshot);
     currentVersion = snapshot.aggregateVersion;
     const events = dependencies.eventCoordinator.appendAcceptedTransition(transaction, execution.previous, snapshot, authorizedCommand);
     const auditTimestamp = dependencies.clock.now();

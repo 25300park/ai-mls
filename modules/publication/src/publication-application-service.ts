@@ -5,6 +5,7 @@ import type {
   PublicationAuthorizedPreflight,
   PublicationCommandHandler,
   PublicationExecutionContext,
+  PublicationTransactionalStage,
 } from "./publication-application-contracts.js";
 import type { CreatePublicationHandler, ModifyPublicationHandler } from "./publication-command-handlers.js";
 
@@ -20,9 +21,9 @@ export class PublicationApplicationService implements PublicationCommandHandler 
       : this.modifyHandler.execute(command, context);
   }
 
-  public executeAuthorized(command: PublicationApplicationCommand, context: PublicationExecutionContext, preflight: PublicationAuthorizedPreflight, auditDetails?: PublicationApplicationAuditDetails): PublicationApplicationResult {
+  public executeAuthorized(command: PublicationApplicationCommand, context: PublicationExecutionContext, preflight: PublicationAuthorizedPreflight, auditDetails?: PublicationApplicationAuditDetails, stage?: PublicationTransactionalStage): PublicationApplicationResult {
     return command.kind === "CREATE_PUBLICATION"
       ? this.createHandler.executeAuthorized(command, context, preflight)
-      : this.modifyHandler.executeAuthorized(command, context, preflight, auditDetails);
+      : this.modifyHandler.executeAuthorized(command, context, preflight, auditDetails, stage);
   }
 }

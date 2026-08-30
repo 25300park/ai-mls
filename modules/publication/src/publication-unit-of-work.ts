@@ -7,12 +7,14 @@ import { InMemoryPublicationEventJournal } from "./in-memory-publication-event-j
 import type { PublicationEventJournal } from "./publication-event-journal.js";
 import { persistenceError } from "./publication-persistence-error.js";
 import type { PublicationRepository } from "./publication-repository.js";
+import { InMemoryPublicationExecutionJournal, type PublicationExecutionJournal } from "./publication-execution-journal.js";
 
 export interface PublicationTransaction {
   readonly repository: PublicationRepository;
   readonly idempotency: PublicationIdempotencyStore;
   readonly audit: PublicationAuditStore;
   readonly eventJournal: PublicationEventJournal;
+  readonly execution: PublicationExecutionJournal;
   commit(): void;
   rollback(): void;
 }
@@ -29,6 +31,7 @@ export class InMemoryPublicationUnitOfWork implements PublicationUnitOfWork {
   public readonly idempotency = new InMemoryIdempotencyStore(this.state);
   public readonly audit = new InMemoryPublicationAuditStore(this.state);
   public readonly eventJournal = new InMemoryPublicationEventJournal(this.state);
+  public readonly execution = new InMemoryPublicationExecutionJournal(this.state);
 
   public begin(identity: PublicationIdentity): PublicationTransaction {
     if (this.active) throw persistenceError("TRANSACTION_ALREADY_ACTIVE", "A logical transaction is already active.");
@@ -63,6 +66,7 @@ export class InMemoryPublicationUnitOfWork implements PublicationUnitOfWork {
       idempotency: new InMemoryIdempotencyStore(staged, identity, ensureActive),
       audit: new InMemoryPublicationAuditStore(staged, identity, ensureActive),
       eventJournal: new InMemoryPublicationEventJournal(staged, identity, ensureActive),
+      execution: new InMemoryPublicationExecutionJournal(staged, identity, ensureActive),
       commit: (): void => { finish(true); },
       rollback: (): void => { finish(false); },
     };

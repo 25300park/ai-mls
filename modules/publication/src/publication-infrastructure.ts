@@ -22,7 +22,7 @@ import { DeterministicPublicationPresenter } from "./publication-interface-prese
 import { PublicationInterfaceService } from "./publication-interface-service.js";
 import { StructuralPublicationInterfaceValidator } from "./publication-interface-validation.js";
 import { DefaultPublicationRequestMapper } from "./publication-request-mapper.js";
-import { InMemoryPublicationUnitOfWork } from "./publication-unit-of-work.js";
+import { InMemoryPublicationUnitOfWork, type PublicationUnitOfWork } from "./publication-unit-of-work.js";
 import type { PublicationRepository } from "./publication-repository.js";
 import { PublicationLifecycleService } from "./publication-lifecycle-service.js";
 import { PublicationReconciliationService } from "./publication-reconciliation-service.js";
@@ -44,17 +44,29 @@ import { denyListingProjectionRebuildAuthority, ListingProjectionRebuildCoordina
 import { InMemoryPublicationOperationalEvidenceStore, InMemoryPublicationOperationalMetrics } from "./in-memory-publication-operations.js";
 import { PublicationOperationsProjectionReadService, PublicationOperationsRebuildControl, PublicationOperationsRetryPolicy, PublicationOperationsStatusService, type PublicationOperationsProjectionReadPort, type PublicationOperationsReadPort, type PublicationOperationsStatusPort } from "./publication-observability.js";
 import type { PublicationOperationalEvidenceStore, PublicationOperationalMetrics, PublicationOperationsRetryDecision, PublicationOperationsRetryRequest } from "./publication-operations-contracts.js";
+import { PublicationExecutionEligibilityGate } from "./publication-execution-eligibility.js";
+import { DurablePublicationUnitOfWork } from "./publication-durable-persistence.js";
+import type { PublicationExecutionJournal } from "./publication-execution-journal.js";
+
+export interface PublicationPersistenceBundle extends PublicationUnitOfWork {
+  readonly repository: PublicationRepository;
+  readonly idempotency: PublicationIdempotencyStore;
+  readonly audit: PublicationAuditStore;
+  readonly eventJournal: PublicationEventJournal;
+  readonly execution: PublicationExecutionJournal;
+}
 
 export interface PublicationInfrastructure {
   readonly configuration: PublicationInfrastructureConfiguration;
   readonly inputPort: PublicationInputPort;
-  readonly unitOfWork: InMemoryPublicationUnitOfWork;
+  readonly unitOfWork: PublicationPersistenceBundle;
   readonly repository: PublicationRepository;
   readonly idempotency: PublicationIdempotencyStore;
   readonly audit: PublicationAuditStore;
   readonly clock: PublicationClock;
   readonly authorization: PublicationAuthorizationGuard;
   readonly authorizationEvidence: PublicationAuthorizationEvidenceStore;
+  readonly executionEligibility: PublicationExecutionEligibilityGate;
   readonly coordination: PublicationCoordinationService;
   readonly lifecycle: PublicationLifecycleService;
   readonly reconciliation: PublicationReconciliationService;
@@ -89,8 +101,21 @@ export function hasConsistentPublicationOperationsInfrastructure(value: unknown)
 export function createPublicationInfrastructure(
   configurationInput: PublicationInfrastructureConfigurationInput = {},
 ): PublicationInfrastructure {
+  return createPublicationInfrastructureWithPersistence(configurationInput, new InMemoryPublicationUnitOfWork());
+}
+
+export function createProductionPublicationInfrastructure(
+  input: Readonly<{ readonly databasePath: string; readonly configuration?: PublicationInfrastructureConfigurationInput }>,
+): PublicationInfrastructure & Readonly<{ readonly unitOfWork: DurablePublicationUnitOfWork }> {
+  const unitOfWork = new DurablePublicationUnitOfWork({ databasePath: input.databasePath });
+  return createPublicationInfrastructureWithPersistence(input.configuration ?? {}, unitOfWork) as PublicationInfrastructure & Readonly<{ readonly unitOfWork: DurablePublicationUnitOfWork }>;
+}
+
+function createPublicationInfrastructureWithPersistence(
+  configurationInput: PublicationInfrastructureConfigurationInput,
+  unitOfWork: PublicationPersistenceBundle,
+): PublicationInfrastructure {
   const configuration = createPublicationInfrastructureConfiguration(configurationInput);
-  const unitOfWork = new InMemoryPublicationUnitOfWork();
   const operationsEvidence = new InMemoryPublicationOperationalEvidenceStore();
   const operationsMetrics = new InMemoryPublicationOperationalMetrics();
   const operationsStatus = new PublicationOperationsStatusService(operationsEvidence, operationsMetrics, configuration.clock);
@@ -186,11 +211,15 @@ export function createPublicationInfrastructure(
     new CreatePublicationHandler(dependencies),
     new ModifyPublicationHandler(dependencies),
   );
+  const effectiveApproval = configuration.effectiveApprovalPort ?? unavailablePublicationEffectiveApprovalPort;
+  const executionEligibility = new PublicationExecutionEligibilityGate({ effectiveApproval });
   const connectorDispatcher = configuration.connectorDispatcher ?? unavailablePublicationConnectorDispatcher;
   const coordination = new PublicationCoordinationService({
     application,
     repository: unitOfWork.repository,
-    effectiveApproval: configuration.effectiveApprovalPort ?? unavailablePublicationEffectiveApprovalPort,
+    effectiveApproval,
+    executionEligibility,
+    executionJournal: unitOfWork.execution,
     connector: connectorDispatcher,
     unitOfWork,
     audit: unitOfWork.audit,
@@ -233,6 +262,7 @@ export function createPublicationInfrastructure(
     clock: configuration.clock,
     authorization,
     authorizationEvidence,
+    executionEligibility,
     coordination,
     lifecycle,
     reconciliation,

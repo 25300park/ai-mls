@@ -19,6 +19,8 @@ import { PublicationEventError, safePublicationEventErrorCode } from "./publicat
 import type { PublicationConnectorDispatchEvidenceStore } from "./publication-connector-dispatch-evidence-store.js";
 import { createHash } from "node:crypto";
 import type { PublicationOperationsObserver } from "./publication-operations-contracts.js";
+import type { PublicationExecutionEligibilityPort } from "./publication-execution-eligibility.js";
+import type { PublicationExecutionIntent, PublicationExecutionJournal, PublicationExecutionReceipt } from "./publication-execution-journal.js";
 
 export interface PublicationEffectiveApprovalCheckInput extends PublicationBinding {
   readonly actorId: string;
@@ -61,6 +63,7 @@ export interface PublicationConnectorDispatchInput {
   readonly representationVersion: number;
   readonly representationChecksum: string;
   readonly approvalDecisionReference: string;
+  readonly providerIdempotencyKey: string;
 }
 
 export interface PublicationConnectorDispatchResult {
@@ -77,6 +80,8 @@ export interface PublicationCoordinationDependencies {
   readonly application: PublicationApplicationService;
   readonly repository: PublicationRepository;
   readonly effectiveApproval: PublicationEffectiveApprovalPort;
+  readonly executionEligibility: PublicationExecutionEligibilityPort;
+  readonly executionJournal: PublicationExecutionJournal;
   readonly connector: PublicationConnectorDispatcher;
   readonly unitOfWork: PublicationUnitOfWork;
   readonly audit: PublicationAuditStore;
@@ -111,6 +116,8 @@ export class PublicationCoordinationService {
     const repeatedAttempt = before?.attempts.some((attempt) => attempt.commandId === request.attempt.commandId) === true;
     let authorizedActorId = "";
     let approvalDecisionReference = "";
+    let preparedIntent: PublicationExecutionIntent | undefined;
+    let preparedDispatchInput: PublicationConnectorDispatchInput | undefined;
 
     const beginResult = this.dependencies.application.executeAuthorized({
       kind: "MODIFY_PUBLICATION",
@@ -122,8 +129,33 @@ export class PublicationCoordinationService {
         command: request.command,
       },
     }, stageContext(request.context, "publish"), (authorization) => {
-      authorizedActorId = authorization.actorId;
-      approvalDecisionReference = requireEffectivePublicationApproval(this.dependencies.effectiveApproval, identity, request.context, authorization.actorId, authorization.binding).decisionReference;
+      const eligibility = this.dependencies.executionEligibility.evaluate({
+        identity,
+        context: request.context,
+        authorization,
+      });
+      if (eligibility.status === "BLOCKED") {
+        throw new PublicationApplicationError(
+          eligibility.reasonCode,
+          "DOMAIN_REJECTION",
+          "Publication Approval is not effective.",
+        );
+      }
+      authorizedActorId = eligibility.actorId;
+      approvalDecisionReference = eligibility.approvalDecisionReference;
+      const providerIdempotencyKey = providerExecutionKey(identity, request);
+      preparedDispatchInput = createDispatchInput(identity, request, authorization.binding, approvalDecisionReference, providerIdempotencyKey);
+      preparedIntent = immutableDomain({
+        ...identity,
+        commandId: request.attempt.commandId,
+        attemptId: request.attempt.id,
+        dispatchFingerprint: dispatchFingerprint(preparedDispatchInput),
+        providerIdempotencyKey,
+        preparedAt: request.command.occurredAt,
+      });
+    }, undefined, (transaction) => {
+      if (preparedIntent === undefined) throw new PublicationApplicationError("EXECUTION_INTENT_INVALID", "INFRASTRUCTURE", "Publication execution intent is unavailable.");
+      transaction.execution.prepare(preparedIntent);
     });
     if (!beginResult.ok) return beginResult;
 
@@ -148,27 +180,27 @@ export class PublicationCoordinationService {
     if (priorAttempt?.outcome === "NO_EFFECT") return connectorFailure("CONNECTOR_REJECTED");
     if (priorAttempt?.outcome === "UNKNOWN") return connectorFailure("CONNECTOR_OUTCOME_UNKNOWN");
 
-    const dispatchInput = immutableDomain({
-      publicationId: identity.publicationId,
-      tenantScopeId: identity.tenantScopeId,
-      commandId: request.attempt.commandId,
-      attemptId: request.attempt.id,
-      targetId: current.binding.targetId,
-      targetVersion: current.binding.targetVersion,
-      channelId: current.binding.channelId,
-      channelPolicyVersion: current.binding.channelPolicyVersion,
-      representationId: current.binding.representationId,
-      representationVersion: current.binding.representationVersion,
-      representationChecksum: current.binding.representationChecksum,
-      approvalDecisionReference,
-    });
-    const dispatchFingerprint = `sha256:${createHash("sha256").update(JSON.stringify(dispatchInput)).digest("hex")}`;
+    const dispatchInput = preparedDispatchInput ?? createDispatchInput(identity, request, current.binding, approvalDecisionReference, providerExecutionKey(identity, request));
+    const dispatchFingerprintValue = dispatchFingerprint(dispatchInput);
+    const disposition = this.dependencies.executionJournal.recoveryDisposition(identity, request.attempt.commandId);
+    const durableReceipt = this.dependencies.executionJournal.findReceipt(identity, request.attempt.commandId);
     const priorDispatch = this.dependencies.dispatchEvidence.find(identity, request.attempt.commandId);
-    if (priorDispatch !== undefined && (priorDispatch.attemptId !== request.attempt.id || priorDispatch.dispatchFingerprint !== dispatchFingerprint)) {
+    if (priorDispatch !== undefined && (priorDispatch.attemptId !== request.attempt.id || priorDispatch.dispatchFingerprint !== dispatchFingerprintValue)) {
       return dispatchEvidenceConflict();
     }
-    let dispatch = priorDispatch?.result;
+    let dispatch = durableReceipt === undefined ? undefined : receiptToDispatch(durableReceipt);
+    if (dispatch === undefined && disposition.condition === "RECONCILIATION_REQUIRED") {
+      dispatch = immutableDomain({ outcome: "UNKNOWN" as const, evidenceRefs: [`durable-execution:${request.attempt.id}:outcome-unproven`] });
+    }
     if (dispatch === undefined) {
+      const claim = this.dependencies.unitOfWork.begin(identity);
+      try {
+        claim.execution.markDispatchStarted(identity, request.attempt.commandId, this.dependencies.clock.now());
+        claim.commit();
+      } catch {
+        try { claim.rollback(); } catch { /* preserve original safe failure */ }
+        return connectorFailure("CONNECTOR_OUTCOME_UNKNOWN");
+      }
       try {
         dispatch = normalizeConnectorResult(this.dependencies.connector.dispatch(dispatchInput), request.attempt.id);
       } catch {
@@ -177,7 +209,7 @@ export class PublicationCoordinationService {
           evidenceRefs: [`connector-observation:${request.attempt.id}:unavailable`],
         });
       }
-      this.dependencies.dispatchEvidence.record({ ...identity, commandId: request.attempt.commandId, attemptId: request.attempt.id, dispatchFingerprint, result: dispatch });
+      this.dependencies.dispatchEvidence.record({ ...identity, commandId: request.attempt.commandId, attemptId: request.attempt.id, dispatchFingerprint: dispatchFingerprintValue, result: dispatch });
     }
     safelyObserve(this.dependencies.operations, { component: "CONNECTOR_ATTEMPT", result: dispatch.outcome === "CONFIRMED" ? "COMPLETED" : "FAILED", ...(dispatch.outcome === "CONFIRMED" ? {} : { failureCode: dispatch.outcome === "REJECTED" ? "CONNECTOR_REJECTED" : "CONNECTOR_OUTCOME_UNKNOWN" }), sourceReference: request.attempt.id, correlationId: request.command.correlationId, actorOrServiceReference: authorizedActorId });
 
@@ -218,6 +250,16 @@ export class PublicationCoordinationService {
       } as const;
       const updated = PublicationAggregate.rehydrate(snapshot).resolveExecution(domainCommand).snapshot;
       transaction.repository.update(snapshot.aggregateVersion, updated);
+      transaction.execution.appendReceipt({
+        ...identity,
+        receiptId: `${identity.publicationId}:receipt:${request.attempt.id}`,
+        commandId: request.attempt.commandId,
+        attemptId: request.attempt.id,
+        outcome: dispatch.outcome === "CONFIRMED" ? "CONFIRMED" : dispatch.outcome === "REJECTED" ? "NO_EFFECT" : "UNKNOWN",
+        evidenceRefs: dispatch.evidenceRefs,
+        recordedAt: request.command.occurredAt,
+        ...(dispatch.externalObjectReference === undefined ? {} : { externalObjectReference: dispatch.externalObjectReference }),
+      });
       const events = this.dependencies.eventCoordinator.appendAcceptedTransition(transaction, snapshot, updated, {
         kind: "MODIFY_PUBLICATION",
         identity,
@@ -284,6 +326,22 @@ export class PublicationCoordinationService {
     }
   }
 
+}
+
+function createDispatchInput(identity: PublicationIdentity, request: PublishPublicationCoordinationRequest, binding: PublicationBinding, approvalDecisionReference: string, providerIdempotencyKey: string): PublicationConnectorDispatchInput {
+  return immutableDomain({ publicationId: identity.publicationId, tenantScopeId: identity.tenantScopeId, commandId: request.attempt.commandId, attemptId: request.attempt.id, targetId: binding.targetId, targetVersion: binding.targetVersion, channelId: binding.channelId, channelPolicyVersion: binding.channelPolicyVersion, representationId: binding.representationId, representationVersion: binding.representationVersion, representationChecksum: binding.representationChecksum, approvalDecisionReference, providerIdempotencyKey });
+}
+
+function providerExecutionKey(identity: PublicationIdentity, request: PublishPublicationCoordinationRequest): string {
+  return `publication:${identity.tenantScopeId}:${identity.publicationId}:${request.attempt.commandId}:${request.attempt.id}`;
+}
+
+function dispatchFingerprint(input: PublicationConnectorDispatchInput): string {
+  return `sha256:${createHash("sha256").update(JSON.stringify(input)).digest("hex")}`;
+}
+
+function receiptToDispatch(receipt: PublicationExecutionReceipt): PublicationConnectorDispatchResult {
+  return immutableDomain({ outcome: receipt.outcome === "NO_EFFECT" ? "REJECTED" as const : receipt.outcome, evidenceRefs: receipt.evidenceRefs, ...(receipt.externalObjectReference === undefined ? {} : { externalObjectReference: receipt.externalObjectReference }) });
 }
 
 function safelyObserve(observer: PublicationOperationsObserver | undefined, observation: Parameters<PublicationOperationsObserver["observe"]>[0]): void {

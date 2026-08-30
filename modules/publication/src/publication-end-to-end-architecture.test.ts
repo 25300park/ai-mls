@@ -175,7 +175,11 @@ test("PHASE13-15 verifies dependency direction, cycle freedom, forbidden scope a
     for (const specifier of specifiers.filter((value) => !value.startsWith("./") && !value.startsWith("node:"))) {
       assert.equal(forbiddenDependencies.test(specifier), false, `${file} imports forbidden ${specifier}`);
     }
-    assert.equal(forbiddenSource.some((pattern) => pattern.test(source)), false, `${file} contains forbidden scope`);
+    const scopedForbiddenSource = file === "publication-durable-persistence.ts"
+      ? [forbiddenSource[0]!, /\b(orm|migration|redis|queue|event bus|kafka|rabbitmq|nats)\b/i, forbiddenSource[2]!]
+      : forbiddenSource;
+    assert.equal(scopedForbiddenSource.some((pattern) => pattern.test(source)), false, `${file} contains forbidden scope`);
+    if (specifiers.includes("node:sqlite")) assert.equal(file, "publication-durable-persistence.ts", `${file} owns an unauthorized physical persistence boundary`);
     assert.equal(/^\s*export\s+(?:let|var)\s+/m.test(source), false, `${file} exports mutable state`);
     assert.equal(/^(?:let|var)\s+/m.test(source), false, `${file} owns a module-global mutable binding`);
     assert.equal(
@@ -373,6 +377,8 @@ function layerOf(file: string): ArchitectureLayer {
     || file === "publication-clock.ts") return "APPLICATION";
   if (file.startsWith("in-memory-")
     || file.startsWith("publication-persistence-")
+    || file === "publication-durable-persistence.ts"
+    || file === "publication-execution-journal.ts"
     || file === "publication-audit-store.ts"
     || file === "publication-idempotency-store.ts"
     || file === "publication-repository.ts"

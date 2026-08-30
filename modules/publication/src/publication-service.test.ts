@@ -11,6 +11,7 @@ import { Api013EffectiveApprovalAdapter } from "./publication-infrastructure-eff
 import { createTestPublicationAuthorizationConfiguration, createTestPublicationSession } from "./publication-authorization-test-support.test.js";
 import type { PublicationConnectorDispatchResult } from "./publication-service.js";
 import { PublicationEventError } from "./publication-event-error.js";
+import { PublicationExecutionEligibilityGate } from "./publication-execution-eligibility.js";
 
 const timestamp = "2026-08-03T12:00:00.000Z";
 const identity = { publicationId: "publication-coordination-1", tenantScopeId: "team-a" } as const;
@@ -159,7 +160,7 @@ test("F15-TASK-006 coordinates create, live Approval, connector confirmation and
   ]);
 });
 
-test("F15-TASK-010R connector response survives Event append failure without redispatch and preserves the safe Event code", () => {
+test("F17-C receipt persistence failure preserves the safe Event code and fails ambiguous without redispatch", () => {
   const { infrastructure, dispatchCount } = coordinationInfrastructure();
   const coordinated = request(context("event-append-retry"));
   const created = infrastructure.coordination.create({ context: coordinated.context, command: coordinated.create });
@@ -219,7 +220,12 @@ test("F15-TASK-010R connector response survives Event append failure without red
   assert.equal(dispatchCount(), 1);
 
   const effectiveApproval = (dependencies as unknown as { effectiveApproval: unknown }).effectiveApproval;
-  Object.assign(dependencies, { effectiveApproval: { check: () => approvalDecision("approval-decision-changed") } });
+  const executionEligibility = (dependencies as unknown as { executionEligibility: unknown }).executionEligibility;
+  const changedEffectiveApproval = { check: () => approvalDecision("approval-decision-changed") };
+  Object.assign(dependencies, {
+    effectiveApproval: changedEffectiveApproval,
+    executionEligibility: new PublicationExecutionEligibilityGate({ effectiveApproval: changedEffectiveApproval }),
+  });
   const fingerprintConflict = infrastructure.coordination.publish(publishRequest);
   assert.deepEqual(fingerprintConflict, {
     ok: false,
@@ -231,12 +237,14 @@ test("F15-TASK-010R connector response survives Event append failure without red
   });
   assert.equal(dispatchCount(), 1);
 
-  Object.assign(dependencies, { eventCoordinator: workingCoordinator, effectiveApproval });
+  Object.assign(dependencies, { eventCoordinator: workingCoordinator, effectiveApproval, executionEligibility });
   const recovered = infrastructure.coordination.publish(publishRequest);
-  assert.equal(recovered.ok, true);
+  assert.equal(recovered.ok, false);
+  assert.equal(!recovered.ok && recovered.error.code, "CONNECTOR_OUTCOME_UNKNOWN");
   assert.equal(dispatchCount(), 1);
-  assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "ACTIVE");
-  assert.deepEqual(infrastructure.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).map((item) => item.eventType), ["EVT-003"]);
+  assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "RECONCILIATION_REQUIRED");
+  assert.equal(infrastructure.unitOfWork.execution.recoveryDisposition(identity, coordinated.attempt.commandId).providerInvocationPermitted, false);
+  assert.deepEqual(infrastructure.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).map((item) => item.eventType), []);
   assert.notEqual(infrastructure.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: `${coordinated.context.idempotencyKey}:activation` }), undefined);
 });
 
@@ -311,6 +319,40 @@ test("F15-TASK-006 requires current API-013 effective Approval before mutation",
   assert.deepEqual(infrastructure.audit.list(identity).map(({ result, failureReason }) => ({ result, failureReason })), [
     { result: "FAILED", failureReason: "APPROVAL_NOT_EFFECTIVE" },
   ]);
+});
+
+test("F17-B coordination consumes the explicit BLOCKED eligibility result before provider dispatch or state mutation", () => {
+  const { infrastructure, dispatchCount } = coordinationInfrastructure();
+  const coordinated = request(context("eligibility-blocked"));
+  const created = infrastructure.coordination.create({ context: coordinated.context, command: coordinated.create });
+  assert.equal(created.ok, true);
+  const before = infrastructure.repository.find(identity);
+  assert.equal(before?.lifecycleState, "READY");
+
+  const dependencies = (infrastructure.coordination as unknown as {
+    dependencies: { executionEligibility: typeof infrastructure.executionEligibility };
+  }).dependencies;
+  assert.equal(dependencies.executionEligibility, infrastructure.executionEligibility);
+  Object.assign(dependencies, {
+    executionEligibility: Object.freeze({
+      evaluate: () => Object.freeze({ status: "BLOCKED" as const, reasonCode: "APPROVAL_NOT_EFFECTIVE" as const }),
+    }),
+  });
+
+  const result = infrastructure.coordination.publish({
+    context: coordinated.context,
+    identity,
+    command: coordinated.create.input.command,
+    attempt: coordinated.attempt,
+    expectedAggregateVersion: created.ok ? created.aggregateVersion : 1,
+  });
+
+  assert.deepEqual(result, {
+    ok: false,
+    error: { code: "APPROVAL_NOT_EFFECTIVE", category: "DOMAIN_REJECTION", message: "Publication Approval is not effective." },
+  });
+  assert.deepEqual(infrastructure.repository.find(identity), before);
+  assert.equal(dispatchCount(), 0);
 });
 
 test("F15-TASK-006 API-013 adapter supplies the canonical effective Approval contract", () => {
@@ -632,6 +674,7 @@ test("F15-TASK-006 dispatches only the persisted exact binding and approval deci
     representationVersion: binding.representationVersion,
     representationChecksum: binding.representationChecksum,
     approvalDecisionReference: "approval-decision-exact",
+    providerIdempotencyKey: `publication:${identity.tenantScopeId}:${identity.publicationId}:${coordinated.attempt.commandId}:${coordinated.attempt.id}`,
   }]);
 });
 
@@ -660,7 +703,7 @@ test("F15-TASK-006 preserves failure audit when connector outcome persistence fa
     value: (scope: typeof identity) => {
       beginCount += 1;
       const transaction = originalBegin(scope);
-      if (beginCount !== 3) return transaction;
+      if (beginCount !== 4) return transaction;
       return {
         ...transaction,
         commit(): never {

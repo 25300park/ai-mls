@@ -3,6 +3,7 @@ import type {
   PublicationBinding,
   PublicationIdentity,
   PublicationLifecycleState,
+  PublicationSnapshot,
   ReconciliationResolution,
 } from "./publication-contracts.js";
 import type {
@@ -19,6 +20,7 @@ import type {
   SupersedePublicationCommand,
   TerminatePublicationCommand,
 } from "./publication-commands.js";
+import type { PublicationTransaction } from "./publication-unit-of-work.js";
 
 export interface PublicationExecutionContext {
   readonly actorId: string;
@@ -205,6 +207,7 @@ export interface PublicationAuthorizedExecution {
 }
 
 export type PublicationAuthorizedPreflight = (execution: PublicationAuthorizedExecution) => void;
+export type PublicationTransactionalStage = (transaction: PublicationTransaction, snapshot: PublicationSnapshot) => void;
 
 export interface PublicationApplicationAuditDetails {
   readonly decision: PublicationRecoveryDecision;
