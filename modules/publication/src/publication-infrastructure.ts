@@ -107,8 +107,12 @@ export function createPublicationInfrastructure(
 export function createProductionPublicationInfrastructure(
   input: Readonly<{ readonly databasePath: string; readonly configuration?: PublicationInfrastructureConfigurationInput }>,
 ): PublicationInfrastructure & Readonly<{ readonly unitOfWork: DurablePublicationUnitOfWork }> {
+  const configuration = createPublicationInfrastructureConfiguration(input.configuration ?? {});
+  if (configuration.connectorDispatcher !== undefined) {
+    throw new TypeError("Production Publication connector configuration is not approved.");
+  }
   const unitOfWork = new DurablePublicationUnitOfWork({ databasePath: input.databasePath });
-  return createPublicationInfrastructureWithPersistence(input.configuration ?? {}, unitOfWork) as PublicationInfrastructure & Readonly<{ readonly unitOfWork: DurablePublicationUnitOfWork }>;
+  return createPublicationInfrastructureWithPersistence(configuration, unitOfWork) as PublicationInfrastructure & Readonly<{ readonly unitOfWork: DurablePublicationUnitOfWork }>;
 }
 
 function createPublicationInfrastructureWithPersistence(

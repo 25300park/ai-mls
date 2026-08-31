@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
@@ -8,7 +9,7 @@ import { createTestPublicationAuthorizationConfiguration } from "./publication-a
 import {
   createPublicationInfrastructureConfiguration,
 } from "./publication-infrastructure-configuration.js";
-import { createPublicationInfrastructure } from "./publication-infrastructure.js";
+import { createProductionPublicationInfrastructure, createPublicationInfrastructure } from "./publication-infrastructure.js";
 import { createPublicationInterfaceRequest } from "./publication-interface-models.js";
 
 const timestamp = "2026-07-27T15:00:00.000Z";
@@ -154,6 +155,60 @@ test("PHASE13-6 deterministic startup creates isolated in-process state", () => 
   assert.deepEqual(Object.keys(first), Object.keys(second));
   assert.equal(first.inputPort.execute(createRequest()).operationResult, "SUCCEEDED");
   assert.equal(second.repository.find(identity), undefined);
+});
+
+test("F17-E production composition rejects arbitrary connector dispatcher injection before dispatch", () => {
+  const directory = mkdtempSync(join(tmpdir(), "ai-mls-f17-e-production-"));
+  let dispatchCount = 0;
+  let unexpectedInfrastructure: ReturnType<typeof createProductionPublicationInfrastructure> | undefined;
+  let thrown: unknown;
+  try {
+    try {
+      unexpectedInfrastructure = createProductionPublicationInfrastructure({
+        databasePath: join(directory, "publication.sqlite"),
+        configuration: {
+          connectorDispatcher: {
+            dispatch() {
+              dispatchCount += 1;
+              return Object.freeze({
+                outcome: "CONFIRMED" as const,
+                evidenceRefs: Object.freeze(["provider-evidence-unexpected"]),
+                externalObjectReference: "external-unexpected",
+              });
+            },
+          },
+        },
+      });
+    } catch (error) {
+      thrown = error;
+    }
+  } finally {
+    unexpectedInfrastructure?.unitOfWork.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+  assert.deepEqual(thrown, new TypeError("Production Publication connector configuration is not approved."));
+  assert.equal(dispatchCount, 0);
+});
+
+test("F17-E production configuration cannot change dispatcher selection between validation and composition", () => {
+  const directory = mkdtempSync(join(tmpdir(), "ai-mls-f17-e-configuration-"));
+  let reads = 0;
+  let calls = 0;
+  let infrastructure: ReturnType<typeof createProductionPublicationInfrastructure> | undefined;
+  const configuration = {
+    get connectorDispatcher() {
+      reads += 1;
+      return reads === 1 ? undefined : { dispatch() { calls += 1; return { outcome: "CONFIRMED", evidenceRefs: ["unexpected"], externalObjectReference: "unexpected" }; } };
+    },
+  } as unknown as Parameters<typeof createProductionPublicationInfrastructure>[0]["configuration"];
+  try {
+    infrastructure = createProductionPublicationInfrastructure({ databasePath: join(directory, "publication.sqlite"), configuration: configuration! });
+    assert.throws(() => infrastructure!.connectorDispatcher.dispatch({} as never), /connector is unavailable/u);
+    assert.equal(calls, 0);
+  } finally {
+    infrastructure?.unitOfWork.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("PHASE13-6 infrastructure source depends only on approved in-process contracts and adapters", () => {

@@ -1,15 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import type { PublicationExecutionContext } from "./publication-application-contracts.js";
 import { FixedClock } from "./publication-clock.js";
 import { PublicationAggregate } from "./publication-aggregate.js";
 import type { PublicationLiveAuthorizationContext } from "./publication-authorization.js";
 import { composePublicationApplication } from "./publication-composition-root.js";
-import { createPublicationInfrastructure } from "./publication-infrastructure.js";
+import { createProductionPublicationInfrastructure, createPublicationInfrastructure } from "./publication-infrastructure.js";
 import { Api013EffectiveApprovalAdapter } from "./publication-infrastructure-effective-approval-adapter.js";
 import { createTestPublicationAuthorizationConfiguration, createTestPublicationSession } from "./publication-authorization-test-support.test.js";
-import type { PublicationConnectorDispatchResult } from "./publication-service.js";
+import { PublicationCoordinationService, type PublicationConnectorDispatcher, type PublicationConnectorDispatchResult } from "./publication-service.js";
+import { DeterministicPublicationConnectorTestAdapter } from "./publication-provider-test-adapter.js";
+import { PublicationApplicationService } from "./publication-application-service.js";
+import { CreatePublicationHandler, ModifyPublicationHandler } from "./publication-command-handlers.js";
 import { PublicationEventError } from "./publication-event-error.js";
 import { PublicationExecutionEligibilityGate } from "./publication-execution-eligibility.js";
 
@@ -692,6 +698,214 @@ test("F15-TASK-006 converts an inconsistent connector result to UNKNOWN reconcil
   const persisted = infrastructure.repository.find(identity);
   assert.equal(persisted?.lifecycleState, "RECONCILIATION_REQUIRED");
   assert.deepEqual(persisted?.attempts[0]?.evidenceRefs, ["connector-observation:attempt-initial-1:invalid-result"]);
+});
+
+test("F17-E reconstructs only approved provider result fields without evaluating raw extra fields", () => {
+  const providerResult = {
+    outcome: "CONFIRMED" as const,
+    evidenceRefs: ["provider-safe-evidence"],
+    externalObjectReference: "external-safe-e",
+    rawPayload: "NON_SECRET_RAW_RESPONSE_FIXTURE",
+    authorization: "NON_SECRET_AUTH_HEADER_FIXTURE",
+    get rawException(): never { throw new Error("NON_SECRET_EXTRA_GETTER_FIXTURE"); },
+    toJSON(): never { throw new Error("NON_SECRET_RAW_SERIALIZER_FIXTURE"); },
+  };
+  const { infrastructure } = coordinationInfrastructure(() => providerResult);
+  const result = coordinate(infrastructure, request(context("safe-provider-normalization")));
+  assert.equal(result.ok, true);
+  const evidence = infrastructure.dispatchEvidence.find(identity, "command-initial-1");
+  assert.deepEqual(evidence?.result, {
+    outcome: "CONFIRMED", evidenceRefs: ["provider-safe-evidence"], externalObjectReference: "external-safe-e",
+  });
+  assert.equal(Object.isFrozen(evidence?.result), true);
+  assert.equal(Object.isFrozen(evidence?.result.evidenceRefs), true);
+  providerResult.evidenceRefs[0] = "changed-after-dispatch";
+  const receipt = infrastructure.unitOfWork.execution.findReceipt(identity, "command-initial-1");
+  assert.deepEqual(receipt?.evidenceRefs, ["provider-safe-evidence"]);
+  assert.equal(receipt?.outcome, "CONFIRMED");
+  assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "ACTIVE");
+  assert.equal(JSON.stringify([result, evidence, receipt, infrastructure.audit.list(identity), infrastructure.repository.find(identity)]).includes("NON_SECRET"), false);
+});
+
+test("F17-E unsafe provider references fail closed and never enter receipt audit or result", () => {
+  const unsafeReferences = [
+    "Authorization: Bearer NON_SECRET_TEST_VALUE", "token:NON_SECRET_TEST_VALUE",
+    "https://invalid.example/private?password=NON_SECRET_TEST_VALUE", "C:\\private\\provider.log",
+    "cookie=NON_SECRET_TEST_VALUE", "secret-header-fixture", "x".repeat(513), "line\nbreak",
+  ];
+  for (const [index, unsafe] of unsafeReferences.entries()) {
+    for (const field of ["evidenceRefs", "externalObjectReference"] as const) {
+      const candidate = {
+        outcome: "CONFIRMED" as const, evidenceRefs: ["safe-provider-evidence"], externalObjectReference: "safe-external-reference",
+        ...(field === "evidenceRefs" ? { evidenceRefs: [unsafe] } : { externalObjectReference: unsafe }),
+      };
+      const { infrastructure } = coordinationInfrastructure(candidate);
+      const result = coordinate(infrastructure, request(context(`unsafe-provider-${index}-${field}`)));
+      assert.equal(result.ok, false, `${index}:${field}`);
+      assert.equal(!result.ok && result.error.code, "CONNECTOR_OUTCOME_UNKNOWN");
+      assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "RECONCILIATION_REQUIRED");
+      const receipt = infrastructure.unitOfWork.execution.findReceipt(identity, "command-initial-1");
+      assert.equal(receipt?.outcome, "UNKNOWN");
+      assert.equal(receipt?.externalObjectReference, undefined);
+      const serialized = JSON.stringify([result, receipt, infrastructure.dispatchEvidence.find(identity, "command-initial-1"), infrastructure.audit.list(identity), infrastructure.repository.find(identity)]);
+      assert.equal(serialized.includes(unsafe), false);
+      assert.equal(serialized.includes("NON_SECRET"), false);
+    }
+  }
+});
+
+test("F17-E malformed sparse or oversized provider evidence cannot become confirmed", () => {
+  const sparse: string[] = [];
+  sparse.length = 1;
+  for (const candidate of [null, undefined, {}, { outcome: "SUCCESS", evidenceRefs: ["safe"] },
+    { outcome: "CONFIRMED", evidenceRefs: sparse, externalObjectReference: "safe" },
+    { outcome: "CONFIRMED", evidenceRefs: Array.from({ length: 65 }, () => "safe"), externalObjectReference: "safe" },
+  ]) {
+    const { infrastructure } = coordinationInfrastructure(() => candidate as PublicationConnectorDispatchResult);
+    const result = coordinate(infrastructure, request(context("malformed-provider")));
+    assert.equal(result.ok, false);
+    assert.equal(!result.ok && result.error.code, "CONNECTOR_OUTCOME_UNKNOWN");
+    assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "RECONCILIATION_REQUIRED");
+    assert.equal(infrastructure.unitOfWork.execution.findReceipt(identity, "command-initial-1")?.outcome, "UNKNOWN");
+  }
+});
+
+test("F17-E provider-controlled iterators cannot replace or expand bounded evidence", () => {
+  for (const yielded of [[], Array.from({ length: 65 }, () => "forged-evidence")]) {
+    let iteratorCalls = 0;
+    const evidenceRefs = ["safe-indexed-evidence"];
+    Object.defineProperty(evidenceRefs, Symbol.iterator, { value: function* () { iteratorCalls += 1; yield* yielded; } });
+    const { infrastructure } = coordinationInfrastructure({ outcome: "CONFIRMED", evidenceRefs, externalObjectReference: "safe-external" });
+    const result = coordinate(infrastructure, request(context("hostile-provider-iterator")));
+    assert.equal(result.ok, true);
+    assert.equal(iteratorCalls, 0);
+    assert.deepEqual(infrastructure.unitOfWork.execution.findReceipt(identity, "command-initial-1")?.evidenceRefs, ["safe-indexed-evidence"]);
+  }
+});
+
+test("F17-E provider evidence accessors fail closed without evaluating provider code", () => {
+  let accessorCalls = 0;
+  const evidenceRefs = ["safe"];
+  Object.defineProperty(evidenceRefs, "0", { get() { accessorCalls += 1; return "untrusted-getter-evidence"; } });
+  const { infrastructure } = coordinationInfrastructure({ outcome: "CONFIRMED", evidenceRefs, externalObjectReference: "safe-external" });
+  const result = coordinate(infrastructure, request(context("hostile-provider-accessor")));
+  assert.equal(result.ok, false);
+  assert.equal(!result.ok && result.error.code, "CONNECTOR_OUTCOME_UNKNOWN");
+  assert.equal(accessorCalls, 0);
+  assert.equal(infrastructure.unitOfWork.execution.findReceipt(identity, "command-initial-1")?.outcome, "UNKNOWN");
+});
+
+test("F17-E timeout and connection errors preserve safe UNKNOWN categories without raw exception leakage", () => {
+  for (const [code, category] of [["ETIMEDOUT", "timeout"], ["ECONNRESET", "connection-failure"], ["ECONNREFUSED", "connection-failure"], ["UNRECOGNIZED", "unavailable"]] as const) {
+    const { infrastructure, dispatchCount } = coordinationInfrastructure(() => {
+      throw Object.assign(new Error("Authorization: NON_SECRET_PROVIDER_EXCEPTION_FIXTURE"), { code });
+    });
+    const coordinated = request(context(`provider-error-${code}`));
+    const first = coordinate(infrastructure, coordinated);
+    const repeated = coordinate(infrastructure, coordinated);
+    assert.equal(first.ok, false);
+    assert.deepEqual(repeated, first);
+    assert.equal(dispatchCount(), 1);
+    const receipt = infrastructure.unitOfWork.execution.findReceipt(identity, "command-initial-1");
+    assert.equal(receipt?.outcome, "UNKNOWN");
+    assert.deepEqual(receipt?.evidenceRefs, [`connector-observation:attempt-initial-1:${category}`]);
+    assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "RECONCILIATION_REQUIRED");
+    assert.equal(JSON.stringify([first, receipt, infrastructure.audit.list(identity), infrastructure.operationsEvidence.list({ component: "CONNECTOR_ATTEMPT" })]).includes("NON_SECRET"), false);
+  }
+});
+
+function durableProviderTestGraph(databasePath: string, connector: PublicationConnectorDispatcher) {
+  const effectiveApproval = { check: () => approvalDecision("approval-durable-provider-e") };
+  const infrastructure = createProductionPublicationInfrastructure({
+    databasePath,
+    configuration: { ...createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)), effectiveApprovalPort: effectiveApproval },
+  });
+  // Explicit test-only service assembly: production factory itself still exposes only unavailable dispatch.
+  const application = new PublicationApplicationService(new CreatePublicationHandler(infrastructure), new ModifyPublicationHandler(infrastructure));
+  const coordination = new PublicationCoordinationService({
+    application, repository: infrastructure.repository, effectiveApproval,
+    executionEligibility: infrastructure.executionEligibility, executionJournal: infrastructure.unitOfWork.execution,
+    connector, unitOfWork: infrastructure.unitOfWork, audit: infrastructure.audit, clock: infrastructure.clock,
+    eventCoordinator: infrastructure.eventCoordinator, dispatchEvidence: infrastructure.dispatchEvidence,
+  });
+  return { ...infrastructure, coordination };
+}
+
+test("F17-E normalized provider outcomes and atomic evidence survive durable reopen without redispatch", () => {
+  for (const outcome of ["CONFIRMED", "REJECTED", "UNKNOWN"] as const) {
+    const directory = mkdtempSync(join(tmpdir(), "ai-mls-f17-e-reopen-"));
+    const databasePath = join(directory, "publication.sqlite");
+    const adapter = new DeterministicPublicationConnectorTestAdapter(outcome);
+    let calls = 0;
+    const connector: PublicationConnectorDispatcher = { dispatch: (input) => { calls += 1; return adapter.dispatch(input); } };
+    let graph = durableProviderTestGraph(databasePath, connector);
+    try {
+      const coordinated = request(context(`durable-provider-${outcome}`));
+      const first = coordinate(graph, coordinated);
+      assert.equal(first.ok, outcome === "CONFIRMED");
+      const priorReceipt = graph.unitOfWork.execution.findReceipt(identity, coordinated.attempt.commandId);
+      const priorAudit = graph.audit.list(identity);
+      const priorVersion = graph.repository.find(identity)?.aggregateVersion;
+      assert.equal(priorReceipt?.outcome, outcome === "REJECTED" ? "NO_EFFECT" : outcome);
+      assert.equal(priorAudit.length, outcome === "CONFIRMED" ? 4 : 3);
+      assert.notEqual(graph.idempotency.find({ ...identity, aggregateId: identity.publicationId, commandKey: `${coordinated.context.idempotencyKey}:activation` }), undefined);
+      graph.unitOfWork.close();
+      graph = durableProviderTestGraph(databasePath, connector);
+      assert.deepEqual(graph.unitOfWork.execution.findReceipt(identity, coordinated.attempt.commandId), priorReceipt);
+      assert.deepEqual(graph.audit.list(identity), priorAudit);
+      assert.equal(graph.repository.find(identity)?.aggregateVersion, priorVersion);
+      assert.equal(graph.repository.find(identity)?.lifecycleState, outcome === "CONFIRMED" ? "ACTIVE" : outcome === "REJECTED" ? "READY" : "RECONCILIATION_REQUIRED");
+      const replay = coordinate(graph, coordinated);
+      assert.equal(replay.ok, first.ok);
+      assert.equal(calls, 1);
+      assert.deepEqual(graph.unitOfWork.execution.findReceipt(identity, coordinated.attempt.commandId), priorReceipt);
+      assert.deepEqual(graph.audit.list(identity), priorAudit);
+    } finally {
+      graph.unitOfWork.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }
+});
+
+test("F17-E receipt commit failure after confirmed provider effect reopens ambiguous with zero resend", () => {
+  const directory = mkdtempSync(join(tmpdir(), "ai-mls-f17-e-receipt-failure-"));
+  const databasePath = join(directory, "publication.sqlite");
+  const adapter = new DeterministicPublicationConnectorTestAdapter("CONFIRMED");
+  let calls = 0;
+  const connector: PublicationConnectorDispatcher = { dispatch: (input) => { calls += 1; return adapter.dispatch(input); } };
+  let graph = durableProviderTestGraph(databasePath, connector);
+  try {
+    const coordinated = request(context("durable-receipt-failure"));
+    assert.equal(graph.coordination.create({ context: coordinated.context, command: coordinated.create }).ok, true);
+    const original = graph.eventCoordinator.appendAcceptedTransition.bind(graph.eventCoordinator);
+    Object.defineProperty(graph.eventCoordinator, "appendAcceptedTransition", {
+      value: (...args: Parameters<typeof original>) => {
+        if (args[1]?.lifecycleState === "EXECUTION_PENDING") throw new Error("NON_SECRET_RECEIPT_FAILURE_FIXTURE");
+        return original(...args);
+      },
+    });
+    const publish = { context: coordinated.context, identity, command: coordinated.create.input.command, attempt: coordinated.attempt, expectedAggregateVersion: 1 };
+    const failed = graph.coordination.publish(publish);
+    assert.equal(failed.ok, false);
+    assert.equal(!failed.ok && failed.error.code, "CONNECTOR_OUTCOME_PERSISTENCE_FAILED");
+    assert.equal(calls, 1);
+    assert.equal(graph.unitOfWork.execution.findReceipt(identity, coordinated.attempt.commandId), undefined);
+    assert.equal(graph.repository.find(identity)?.lifecycleState, "EXECUTION_PENDING");
+    assert.equal(graph.idempotency.find({ ...identity, aggregateId: identity.publicationId, commandKey: `${coordinated.context.idempotencyKey}:activation` }), undefined);
+    graph.unitOfWork.close();
+    graph = durableProviderTestGraph(databasePath, connector);
+    assert.equal(graph.unitOfWork.execution.recoveryDisposition(identity, coordinated.attempt.commandId).condition, "RECONCILIATION_REQUIRED");
+    const recovered = graph.coordination.publish(publish);
+    assert.equal(recovered.ok, false);
+    assert.equal(!recovered.ok && recovered.error.code, "CONNECTOR_OUTCOME_UNKNOWN");
+    assert.equal(calls, 1);
+    assert.equal(graph.repository.find(identity)?.lifecycleState, "RECONCILIATION_REQUIRED");
+    assert.deepEqual(graph.unitOfWork.execution.findReceipt(identity, coordinated.attempt.commandId)?.evidenceRefs, ["durable-execution:attempt-initial-1:outcome-unproven"]);
+    assert.equal(JSON.stringify(graph.audit.list(identity)).includes("NON_SECRET"), false);
+  } finally {
+    graph.unitOfWork.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("F15-TASK-006 preserves failure audit when connector outcome persistence fails", () => {

@@ -240,8 +240,8 @@ test("F17-D durable HTTP restart contains DISPATCH_STARTED ambiguity and has zer
     occurredAt: "2026-08-31T00:00:00.000Z",
     evidenceRefs: Object.freeze([]),
   });
-  let providerCalls = 0;
-  const infrastructureConfiguration = authorizedConfiguration(() => { providerCalls += 1; });
+  const infrastructureConfiguration = { ...authorizedConfiguration() };
+  delete infrastructureConfiguration.connectorDispatcher;
   let composition = composeProductionPublicationApi014NodeHttpServer({
     databasePath,
     infrastructureConfiguration,
@@ -297,7 +297,17 @@ test("F17-D durable HTTP restart contains DISPATCH_STARTED ambiguity and has zer
 
     assert.equal(publish.statusCode, 409, publish.body);
     assert.equal((JSON.parse(publish.body) as { error: { code: string } }).error.code, "RECONCILIATION_REQUIRED");
-    assert.equal(providerCalls, 0);
+    const recovered = new DurablePublicationUnitOfWork({ databasePath });
+    try {
+      assert.equal(recovered.repository.find(identity)?.lifecycleState, "RECONCILIATION_REQUIRED");
+      // A dispatch to the unavailable adapter would produce connector-observation:*:unavailable instead.
+      assert.deepEqual(recovered.execution.findReceipt(identity, attempt.commandId)?.evidenceRefs, [
+        "durable-execution:attempt-http-ambiguous:outcome-unproven",
+      ]);
+      assert.equal(recovered.execution.findIntent(identity, attempt.commandId)?.attemptId, attempt.id);
+    } finally {
+      recovered.close();
+    }
   } finally {
     await composition.close();
     rmSync(directory, { recursive: true, force: true });
@@ -418,7 +428,7 @@ function authorizedInfrastructure() {
   return createPublicationInfrastructure(authorizedConfiguration());
 }
 
-function authorizedConfiguration(onConnectorDispatch?: () => void): PublicationInfrastructureConfigurationInput {
+function authorizedConfiguration(): PublicationInfrastructureConfigurationInput {
   const clock = new FixedClock("2026-08-31T00:00:00.000Z");
   const base = createTestPublicationAuthorizationConfiguration(clock);
   return {
@@ -450,7 +460,6 @@ function authorizedConfiguration(onConnectorDispatch?: () => void): PublicationI
     },
     connectorDispatcher: {
       dispatch: () => {
-        onConnectorDispatch?.();
         return Object.freeze({ outcome: "CONFIRMED" as const, evidenceRefs: Object.freeze(["connector-confirmed"]), externalObjectReference: "external-safe-reference" });
       },
     },

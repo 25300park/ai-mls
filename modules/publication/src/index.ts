@@ -80,6 +80,7 @@ export * from "./publication-node-http-server.js";
 export * from "./publication-authorization.js";
 export * from "./publication-execution-eligibility.js";
 export * from "./publication-service.js";
+export * from "./publication-provider-test-adapter.js";
 export * from "./publication-lifecycle-service.js";
 export * from "./publication-reconciliation-service.js";
 export * from "./publication-event-error.js";

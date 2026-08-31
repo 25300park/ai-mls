@@ -203,10 +203,10 @@ export class PublicationCoordinationService {
       }
       try {
         dispatch = normalizeConnectorResult(this.dependencies.connector.dispatch(dispatchInput), request.attempt.id);
-      } catch {
+      } catch (error) {
         dispatch = immutableDomain({
           outcome: "UNKNOWN" as const,
-          evidenceRefs: [`connector-observation:${request.attempt.id}:unavailable`],
+          evidenceRefs: [`connector-observation:${request.attempt.id}:${safeConnectorFailureCategory(error)}`],
         });
       }
       this.dependencies.dispatchEvidence.record({ ...identity, commandId: request.attempt.commandId, attemptId: request.attempt.id, dispatchFingerprint: dispatchFingerprintValue, result: dispatch });
@@ -381,14 +381,44 @@ export function requireEffectivePublicationApproval(
 }
 
 function normalizeConnectorResult(result: PublicationConnectorDispatchResult, attemptId: string): PublicationConnectorDispatchResult {
-  const evidenceValid = Array.isArray(result.evidenceRefs)
-    && result.evidenceRefs.length > 0
-    && result.evidenceRefs.every((reference) => typeof reference === "string" && reference.trim().length > 0);
-  const externalReferenceValid = typeof result.externalObjectReference === "string" && result.externalObjectReference.trim().length > 0;
-  if (evidenceValid && result.outcome === "CONFIRMED" && externalReferenceValid) return immutableDomain(result);
-  if (evidenceValid && result.outcome === "REJECTED" && result.externalObjectReference === undefined) return immutableDomain(result);
-  if (evidenceValid && result.outcome === "UNKNOWN" && result.externalObjectReference === undefined) return immutableDomain(result);
-  return immutableDomain({ outcome: "UNKNOWN" as const, evidenceRefs: [`connector-observation:${attemptId}:invalid-result`] });
+  const invalid = (): PublicationConnectorDispatchResult => immutableDomain({ outcome: "UNKNOWN" as const, evidenceRefs: [`connector-observation:${attemptId}:invalid-result`] });
+  if (result === null || typeof result !== "object") return invalid();
+  const outcome: unknown = Object.getOwnPropertyDescriptor(result, "outcome")?.value;
+  const references: unknown = Object.getOwnPropertyDescriptor(result, "evidenceRefs")?.value;
+  const externalObjectReference: unknown = Object.getOwnPropertyDescriptor(result, "externalObjectReference")?.value;
+  if (!Array.isArray(references)) return invalid();
+  const count: unknown = Object.getOwnPropertyDescriptor(references, "length")?.value;
+  if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 1 || count > 64) return invalid();
+  const evidenceRefs: string[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const reference: unknown = Object.getOwnPropertyDescriptor(references, String(index))?.value;
+    if (!isSafeProviderReference(reference)) return invalid();
+    evidenceRefs.push(reference);
+  }
+  if (outcome === "CONFIRMED" && isSafeProviderReference(externalObjectReference)) {
+    return immutableDomain({ outcome, evidenceRefs, externalObjectReference });
+  }
+  if ((outcome === "REJECTED" || outcome === "UNKNOWN") && externalObjectReference === undefined) {
+    return immutableDomain({ outcome, evidenceRefs });
+  }
+  return invalid();
+}
+
+function isSafeProviderReference(value: unknown): value is string {
+  return typeof value === "string"
+    && /^[A-Za-z0-9][A-Za-z0-9:._-]{0,255}$/u.test(value)
+    && !/(?:authorization|bearer|cookie|credential|password|secret|token|api[-_]?key|private[-_]?key)/iu.test(value);
+}
+
+function safeConnectorFailureCategory(error: unknown): "timeout" | "connection-failure" | "unavailable" {
+  try {
+    if (error !== null && typeof error === "object") {
+      const code: unknown = Object.getOwnPropertyDescriptor(error, "code")?.value;
+      if (code === "ETIMEDOUT") return "timeout";
+      if (code === "ECONNRESET" || code === "ECONNREFUSED") return "connection-failure";
+    }
+  } catch { /* Provider objects cannot expose exception details through classification. */ }
+  return "unavailable";
 }
 
 function connectorFailure(code: "CONNECTOR_REJECTED" | "CONNECTOR_OUTCOME_UNKNOWN"): PublicationApplicationErrorResult {

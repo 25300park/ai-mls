@@ -140,6 +140,18 @@ Fresh Final Validation #3에서 `F15-TASK-013`을 포함한 mandatory implementa
 | Durable Production execution | `composeProductionPublicationApi014NodeHttpServer`, F17-C `createProductionPublicationInfrastructure`와 `DurablePublicationUnitOfWork` 단일 graph | missing durable configuration fail closed; command persistence와 read-only query; restart `DISPATCH_STARTED` ambiguity → `RECONCILIATION_REQUIRED`; provider blind resend 0 | VERIFIED |
 | Completion evidence | [F17-D Closed API-014 Runtime / Host / HTTP Report](../reviews/F17_D_CLOSED_API_014_RUNTIME_HTTP_IMPLEMENTATION_REPORT.md) | focused 11/11, affected 74/74, full 796/796, lint/typecheck/build/verify/checksum/Gitleaks/audit PASS 또는 승인 baseline 일치, independent review 0/0/0 | VERIFIED |
 
+## 4.6 F17-E Provider Boundary Evidence
+
+| Trace | Implementation evidence | Validation | Status |
+|---|---|---|---|
+| Production provider isolation | `createProductionPublicationInfrastructure` in `modules/publication/src/publication-infrastructure.ts` | arbitrary dispatcher startup rejection, configuration snapshot/check-use regression, unavailable-only production | IMPLEMENTED_AND_VERIFIED |
+| Test-only provider identity | `publication-provider-test-adapter.ts`, `publication-provider-test-adapter.test.ts` | deterministic no-network adapter 4/4; stable canonical provider identity/evidence; conflicting binding UNKNOWN; production rejection | IMPLEMENTED_AND_VERIFIED |
+| Safe normalized provider boundary | `normalizeConnectorResult` / `safeConnectorFailureCategory`, `publication-service.test.ts` | approved-field immutable reconstruction, bounded own-descriptor evidence, unsafe/malformed/timeout/connection UNKNOWN, iterator/accessor containment | IMPLEMENTED_AND_VERIFIED |
+| F17-C / F17-D preservation | durable reopen/receipt-failure tests in `publication-service.test.ts`; `apps/api/src/publication-api-http-runtime.test.ts` | immutable receipt/audit/idempotency, DISPATCH_STARTED ambiguity → RECONCILIATION_REQUIRED, no blind resend; existing HTTP/runtime path preserved | VERIFIED |
+| Completion evidence | [F17-E Provider Boundary Report](../reviews/F17_E_PROVIDER_BOUNDARY_FOUNDATION_IMPLEMENTATION_REPORT.md) | pre-review focused 61/61, affected 443/443; correction focused 8/8; final full 810/810; lint/typecheck/build/verify PASS; checksum 153/153; Gitleaks 0; prod audit 0; full audit existing accepted dev-only High 4; review 0/0/0 READY | VERIFIED |
+
+F17-E는 실제 provider, credential, sandbox contract, API-018/019 operation 또는 authority를 추가하지 않는다. Sandbox는 DEFERRED / NOT_APPLICABLE이며 F17-F/F18/F19는 NOT_STARTED이다.
+
 ## 5. 상호 참조
 
 - [Implementation Plan](FEAT015_IMPLEMENTATION_PLAN.md)
