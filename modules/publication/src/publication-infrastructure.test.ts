@@ -243,6 +243,7 @@ test("PHASE13-6 infrastructure source depends only on approved in-process contra
     "./listing-projection.js",
     "./publication-operations-contracts.js",
     "./publication-observability.js",
+    "./publication-durable-retry.js",
     "./in-memory-publication-operations.js",
   ]);
   const files = ["publication-infrastructure-configuration.ts", "publication-infrastructure.ts"];

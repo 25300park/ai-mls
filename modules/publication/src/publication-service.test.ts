@@ -18,9 +18,71 @@ import { PublicationApplicationService } from "./publication-application-service
 import { CreatePublicationHandler, ModifyPublicationHandler } from "./publication-command-handlers.js";
 import { PublicationEventError } from "./publication-event-error.js";
 import { PublicationExecutionEligibilityGate } from "./publication-execution-eligibility.js";
+import { PublicationDurableRetryEligibility, type PublicationApprovedRetryPolicyResolver } from "./publication-durable-retry.js";
+import { DurablePublicationUnitOfWork } from "./publication-durable-persistence.js";
 
 const timestamp = "2026-08-03T12:00:00.000Z";
+
+test("F17-F coordinated new attempt after provider rejection requires approved retry policy", () => {
+  let calls = 0;
+  const infrastructure = createPublicationInfrastructure({
+    ...createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)),
+    effectiveApprovalPort: { check: () => approvalDecision("approval-current") },
+    connectorDispatcher: { dispatch: () => { calls++; return { outcome: "REJECTED", evidenceRefs: ["provider:rejected"] }; } },
+  });
+  const initial = request(context("f17-f-first"));
+  assert.equal(coordinate(infrastructure, initial).ok, false);
+  const before = infrastructure.repository.find(identity)!;
+  const retry = request(context("f17-f-second"));
+  const result = infrastructure.coordination.publish({ identity, context: retry.context, command: retry.create.input.command, attempt: { ...retry.attempt, id: "attempt-retry-new", commandId: "command-retry-new" }, expectedAggregateVersion: before.aggregateVersion });
+  assert.equal(result.ok, false);
+  assert.equal(calls, 1, "no approved retry policy means zero second dispatch");
+  assert.deepEqual(infrastructure.repository.find(identity), before);
+});
 const identity = { publicationId: "publication-coordination-1", tenantScopeId: "team-a" } as const;
+
+test("F17-F approved new attempt preserves prior receipt and same attempt replay never redelivers", () => {
+  let calls = 0;
+  const infrastructure = createPublicationInfrastructure({
+    ...createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)),
+    effectiveApprovalPort: { check: () => approvalDecision("approval-current") },
+    approvedRetryPolicy: { resolve: () => ({ tenantScopeId: "team-a", targetId: "target-1", targetVersion: 5, channelId: "channel-1", channelPolicyVersion: "channel-policy-v3", reference: "test-approved-policy", maximumAttempts: 2, allowedOutcomes: ["NO_EFFECT"] }) },
+    connectorDispatcher: { dispatch: () => { calls++; return calls === 1 ? { outcome: "REJECTED", evidenceRefs: ["provider:rejected"] } : { outcome: "CONFIRMED", evidenceRefs: ["provider:confirmed"], externalObjectReference: "external-confirmed" }; } },
+  });
+  const initial = request(context("f17-f-initial"));
+  assert.equal(coordinate(infrastructure, initial).ok, false);
+  const prior = infrastructure.unitOfWork.execution.findReceipt(identity, initial.attempt.commandId);
+  const retry = request(context("f17-f-authorized-retry"));
+  const input = { identity, context: retry.context, command: retry.create.input.command, attempt: { ...retry.attempt, id: "attempt-approved-retry", commandId: "command-approved-retry" }, expectedAggregateVersion: infrastructure.repository.find(identity)!.aggregateVersion };
+  const result = infrastructure.coordination.publish(input);
+  assert.equal(result.ok, true);
+  assert.equal(calls, 2);
+  assert.equal(infrastructure.coordination.publish(input).ok, true);
+  assert.equal(calls, 2);
+  assert.equal(infrastructure.repository.find(identity)?.attempts.length, 2);
+  assert.deepEqual(infrastructure.unitOfWork.execution.findReceipt(identity, initial.attempt.commandId), prior);
+  assert.equal(infrastructure.coordination.publish({ ...input, attempt: { ...input.attempt, id: "conflicting-id" } }).ok, false);
+  assert.equal(calls, 2);
+});
+
+test("F17-F live authority changing after retry admission blocks the dispatch boundary", () => {
+  let calls = 0;
+  let approvalChecks = 0;
+  let authorityCurrent = true;
+  const base = createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp));
+  const infrastructure = createPublicationInfrastructure({
+    ...base,
+    authorizationEvaluator: { evaluate: (input) => authorityCurrent ? base.authorizationEvaluator!.evaluate(input) : { effect: "DENY", reasonCode: "POLICY_DENIED", policyVersion: "current-policy", obligations: [], assignmentIds: [] } },
+    effectiveApprovalPort: { check: () => { approvalChecks++; if (approvalChecks === 4) authorityCurrent = false; return approvalDecision("approval-current"); } },
+    approvedRetryPolicy: { resolve: () => ({ tenantScopeId: "team-a", targetId: "target-1", targetVersion: 5, channelId: "channel-1", channelPolicyVersion: "channel-policy-v3", reference: "test-approved-policy", maximumAttempts: 2, allowedOutcomes: ["NO_EFFECT"] }) },
+    connectorDispatcher: { dispatch: () => { calls++; return { outcome: "REJECTED", evidenceRefs: ["provider:rejected"] }; } },
+  });
+  assert.equal(coordinate(infrastructure, request(context("f17-f-stale-first"))).ok, false);
+  const retry = request(context("f17-f-stale-second"));
+  const result = infrastructure.coordination.publish({ identity, context: retry.context, command: retry.create.input.command, attempt: { ...retry.attempt, id: "stale-retry-attempt", commandId: "stale-retry-command" }, expectedAggregateVersion: infrastructure.repository.find(identity)!.aggregateVersion });
+  assert.equal(result.ok, false);
+  assert.equal(calls, 1, "fresh authority must be checked at dispatch, not only earlier admission");
+});
 const binding = {
   subjectId: "listing-1",
   subjectRevision: 3,
@@ -814,7 +876,7 @@ test("F17-E timeout and connection errors preserve safe UNKNOWN categories witho
   }
 });
 
-function durableProviderTestGraph(databasePath: string, connector: PublicationConnectorDispatcher) {
+function durableProviderTestGraph(databasePath: string, connector: PublicationConnectorDispatcher, approvedRetryPolicy?: PublicationApprovedRetryPolicyResolver) {
   const effectiveApproval = { check: () => approvalDecision("approval-durable-provider-e") };
   const infrastructure = createProductionPublicationInfrastructure({
     databasePath,
@@ -825,11 +887,105 @@ function durableProviderTestGraph(databasePath: string, connector: PublicationCo
   const coordination = new PublicationCoordinationService({
     application, repository: infrastructure.repository, effectiveApproval,
     executionEligibility: infrastructure.executionEligibility, executionJournal: infrastructure.unitOfWork.execution,
+    retryEligibility: new PublicationDurableRetryEligibility({ unitOfWork: infrastructure.unitOfWork, authorization: infrastructure.authorization, effectiveApproval, clock: infrastructure.clock, ...(approvedRetryPolicy === undefined ? {} : { policy: approvedRetryPolicy }) }),
     connector, unitOfWork: infrastructure.unitOfWork, audit: infrastructure.audit, clock: infrastructure.clock,
     eventCoordinator: infrastructure.eventCoordinator, dispatchEvidence: infrastructure.dispatchEvidence,
   });
   return { ...infrastructure, coordination };
 }
+
+test("F17-F durable coordinated retry preserves both receipts and replays after restart without delivery", () => {
+  const directory = mkdtempSync(join(tmpdir(), "f17-f-delivery-"));
+  const databasePath = join(directory, "publication.sqlite");
+  const policy: PublicationApprovedRetryPolicyResolver = { resolve: () => ({ tenantScopeId: "team-a", targetId: "target-1", targetVersion: 5, channelId: "channel-1", channelPolicyVersion: "channel-policy-v3", reference: "test-approved-policy", maximumAttempts: 2, allowedOutcomes: ["NO_EFFECT"] }) };
+  let calls = 0;
+  const connector: PublicationConnectorDispatcher = { dispatch: () => { calls++; return calls === 1 ? { outcome: "REJECTED", evidenceRefs: ["provider:rejected"] } : { outcome: "CONFIRMED", evidenceRefs: ["provider:confirmed"], externalObjectReference: "external-confirmed" }; } };
+  let graph = durableProviderTestGraph(databasePath, connector, policy);
+  try {
+    const initial = request(context("durable-retry-initial"));
+    assert.equal(coordinate(graph, initial).ok, false);
+    const originalReceipt = graph.unitOfWork.execution.findReceipt(identity, initial.attempt.commandId);
+    graph.unitOfWork.close();
+    graph = durableProviderTestGraph(databasePath, connector, policy);
+    const retry = request(context("durable-retry-next"));
+    const input = { identity, context: retry.context, command: retry.create.input.command, attempt: { ...retry.attempt, id: "durable-attempt-next", commandId: "durable-command-next" }, expectedAggregateVersion: graph.repository.find(identity)!.aggregateVersion };
+    assert.equal(graph.coordination.publish(input).ok, true);
+    assert.equal(calls, 2);
+    const completed = graph.repository.find(identity);
+    const receipt = graph.unitOfWork.execution.findReceipt(identity, input.attempt.commandId);
+    const evidence = graph.audit.list(identity);
+    assert.equal(receipt?.outcome, "CONFIRMED");
+    assert.equal(completed?.attempts.length, 2);
+    assert.equal(evidence.filter(record => record.command === "RETRY_DECISION").length, 2);
+    graph.unitOfWork.close();
+    graph = durableProviderTestGraph(databasePath, connector, policy);
+    assert.equal(graph.coordination.publish(input).ok, true);
+    assert.equal(calls, 2);
+    assert.deepEqual(graph.repository.find(identity), completed);
+    assert.deepEqual(graph.audit.list(identity), evidence);
+    assert.deepEqual(graph.unitOfWork.execution.findReceipt(identity, input.attempt.commandId), receipt);
+    assert.deepEqual(graph.unitOfWork.execution.findReceipt(identity, initial.attempt.commandId), originalReceipt);
+  } finally { graph.unitOfWork.close(); rmSync(directory, { recursive: true, force: true }); }
+});
+
+test("F17-F concurrent durable dispatch claim never invokes provider after another claim started", () => {
+  const directory = mkdtempSync(join(tmpdir(), "f17-f-claim-"));
+  let calls = 0;
+  const graph = durableProviderTestGraph(join(directory, "publication.sqlite"), { dispatch: () => { calls++; return { outcome: "REJECTED", evidenceRefs: ["provider:rejected"] }; } });
+  try {
+    const journal = graph.unitOfWork.execution;
+    const read = journal.recoveryDisposition.bind(journal);
+    let claimed = false;
+    Object.defineProperty(journal, "recoveryDisposition", { value: (...args: Parameters<typeof read>) => {
+      const prior = read(...args);
+      if (!claimed && prior.condition === "PRE_DISPATCH") {
+        claimed = true;
+        const other = graph.unitOfWork.begin(identity);
+        other.execution.markDispatchStarted(identity, args[1], timestamp);
+        other.commit();
+      }
+      return prior;
+    } });
+    const result = coordinate(graph, request(context("concurrent-claim")));
+    assert.equal(result.ok, false);
+    assert.equal(claimed, true);
+    assert.equal(calls, 0);
+    assert.equal(graph.repository.find(identity)?.lifecycleState, "RECONCILIATION_REQUIRED");
+    assert.equal(journal.findReceipt(identity, "command-initial-1")?.outcome, "UNKNOWN");
+  } finally { graph.unitOfWork.close(); rmSync(directory, { recursive: true, force: true }); }
+});
+
+test("F17-F concurrent suspension after retry eligibility prevents dispatch claim", () => {
+  const directory = mkdtempSync(join(tmpdir(), "f17-f-suspension-race-"));
+  const databasePath = join(directory, "publication.sqlite");
+  let calls = 0;
+  const graph = durableProviderTestGraph(databasePath, { dispatch: () => { calls++; return { outcome: "REJECTED", evidenceRefs: ["provider:rejected"] }; } }, { resolve: () => ({ tenantScopeId: "team-a", targetId: "target-1", targetVersion: 5, channelId: "channel-1", channelPolicyVersion: "channel-policy-v3", reference: "approved-test-policy", maximumAttempts: 2, allowedOutcomes: ["NO_EFFECT"] }) });
+  const other = new DurablePublicationUnitOfWork({ databasePath });
+  try {
+    assert.equal(coordinate(graph, request(context("race-initial"))).ok, false);
+    const begin = graph.unitOfWork.begin.bind(graph.unitOfWork);
+    let suspended = false;
+    Object.defineProperty(graph.unitOfWork, "begin", { value: (...args: Parameters<typeof begin>) => {
+      if (!suspended && graph.audit.list(identity).filter(record => record.command === "RETRY_DECISION").length === 2) {
+        suspended = true;
+        const tx = other.begin(identity);
+        const current = tx.repository.find(identity)!;
+        const updated = PublicationAggregate.rehydrate(current).setSuspension({ type: "SET_SUSPENSION", expectedAggregateVersion: current.aggregateVersion, suspensionStatus: "SUSPENDED_SECURITY", command: request(context("race-suspend")).create.input.command }).snapshot;
+        tx.repository.update(current.aggregateVersion, updated);
+        tx.commit();
+      }
+      return begin(...args);
+    } });
+    const retry = request(context("race-retry"));
+    const input = { identity, context: retry.context, command: retry.create.input.command, attempt: { ...retry.attempt, id: "race-next-attempt", commandId: "race-next-command" }, expectedAggregateVersion: graph.repository.find(identity)!.aggregateVersion };
+    assert.equal(graph.coordination.publish(input).ok, false);
+    assert.equal(suspended, true);
+    assert.equal(calls, 1);
+    assert.equal(graph.unitOfWork.execution.recoveryDisposition(identity, input.attempt.commandId).condition, "PRE_DISPATCH");
+    assert.equal(graph.unitOfWork.execution.findReceipt(identity, input.attempt.commandId), undefined);
+    assert.equal(graph.repository.find(identity)?.suspensionStatus, "SUSPENDED_SECURITY");
+  } finally { other.close(); graph.unitOfWork.close(); rmSync(directory, { recursive: true, force: true }); }
+});
 
 test("F17-E normalized provider outcomes and atomic evidence survive durable reopen without redispatch", () => {
   for (const outcome of ["CONFIRMED", "REJECTED", "UNKNOWN"] as const) {

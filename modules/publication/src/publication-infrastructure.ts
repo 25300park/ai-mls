@@ -1,4 +1,5 @@
 import { PublicationApplicationService } from "./publication-application-service.js";
+import { PublicationDurableRetryEligibility } from "./publication-durable-retry.js";
 import type { PublicationAuditStore } from "./publication-audit-store.js";
 import {
   InMemoryPublicationAuthorizationEvidenceStore,
@@ -132,7 +133,7 @@ function createPublicationInfrastructureWithPersistence(
     clock: configuration.clock,
     ...(configuration.publicationPolicyVersion === undefined ? {} : { publicationPolicyVersion: configuration.publicationPolicyVersion }),
   });
-  const operationsRetry = new PublicationOperationsRetryPolicy(
+  const legacyOperationsRetry = new PublicationOperationsRetryPolicy(
     operationsEvidence,
     operationsMetrics,
     configuration.clock,
@@ -217,12 +218,22 @@ function createPublicationInfrastructureWithPersistence(
   );
   const effectiveApproval = configuration.effectiveApprovalPort ?? unavailablePublicationEffectiveApprovalPort;
   const executionEligibility = new PublicationExecutionEligibilityGate({ effectiveApproval });
+  const retryEligibility = new PublicationDurableRetryEligibility({ unitOfWork, authorization, effectiveApproval, clock: configuration.clock, ...(configuration.approvedRetryPolicy === undefined ? {} : { policy: configuration.approvedRetryPolicy }) });
+  const operationsRetry: PublicationInfrastructure["operationsRetry"] = unitOfWork instanceof DurablePublicationUnitOfWork ? {
+    decide(request): ReturnType<PublicationInfrastructure["operationsRetry"]["decide"]> {
+      if (request.executionRequest?.identity.tenantScopeId !== request.tenantId || request.operationIdentity !== request.executionRequest.identity.publicationId) {
+        return Object.freeze({ decision: "NOT_ALLOWED", classification: "UNKNOWN", retryEligible: false, retryExhausted: false, attemptNumber: 0, maximumAttempts: 0, operationIdentity: request.operationIdentity });
+      }
+      return retryEligibility.evaluate(request.executionRequest);
+    },
+  } : legacyOperationsRetry;
   const connectorDispatcher = configuration.connectorDispatcher ?? unavailablePublicationConnectorDispatcher;
   const coordination = new PublicationCoordinationService({
     application,
     repository: unitOfWork.repository,
     effectiveApproval,
     executionEligibility,
+    retryEligibility,
     executionJournal: unitOfWork.execution,
     connector: connectorDispatcher,
     unitOfWork,

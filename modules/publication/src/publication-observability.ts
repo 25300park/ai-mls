@@ -266,14 +266,7 @@ export class PublicationOperationsRetryPolicy {
     if (state?.priorFingerprint !== undefined && state.priorFingerprint !== request.fingerprint) {
       throw operationsError("OPERATIONS_RECOVERY_CONFLICT", "Retry fingerprint conflicts with current technical state.");
     }
-    let decision: PublicationOperationsRetryDecision["decision"] = "NOT_ALLOWED";
-    if (state?.externalEffectCompleted === true) decision = "ALREADY_COMPLETED";
-    else if (state === undefined || state.subsystemStatus === "FAILED" || !request.idempotencySafe) decision = "NOT_ALLOWED";
-    else if (request.attemptNumber >= request.maximumAttempts) decision = "EXHAUSTED";
-    else if (classification === "TRANSIENT" || classification === "DEPENDENCY_FAILURE") {
-      if (!authorityCurrent) decision = "STALE_AUTHORITY";
-      else decision = "ELIGIBLE";
-    }
+    const decision = decidePublicationRetryPolicy({ completed: state?.externalEffectCompleted === true, permitted: state !== undefined && state.subsystemStatus !== "FAILED" && request.idempotencySafe, attempts: request.attemptNumber, maximumAttempts: request.maximumAttempts, authorityCurrent, failurePermitted: classification === "TRANSIENT" || classification === "DEPENDENCY_FAILURE" });
     if (replay?.stateFingerprint === stateFingerprint && replay.result.decision === decision) {
       return immutableOperations(replay.result);
     }
@@ -329,6 +322,15 @@ export class PublicationOperationsRetryPolicy {
       return false;
     }
   }
+}
+
+/** Pure existing policy rules; inputs must already be authoritative at the production boundary. */
+export function decidePublicationRetryPolicy(input: Readonly<{ completed: boolean; permitted: boolean; attempts: number; maximumAttempts: number; authorityCurrent: boolean; failurePermitted: boolean }>): PublicationOperationsRetryDecision["decision"] {
+  if (input.completed) return "ALREADY_COMPLETED";
+  if (!input.permitted) return "NOT_ALLOWED";
+  if (input.attempts >= input.maximumAttempts) return "EXHAUSTED";
+  if (!input.failurePermitted) return "NOT_ALLOWED";
+  return input.authorityCurrent ? "ELIGIBLE" : "STALE_AUTHORITY";
 }
 
 function retryPolicyFingerprint(request: PublicationOperationsRetryRequest): string {

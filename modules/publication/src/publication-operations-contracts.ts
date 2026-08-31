@@ -1,4 +1,5 @@
 import type { PublicationAuthorizationRequest } from "./publication-authorization.js";
+import type { PublishPublicationCoordinationRequest } from "./publication-application-contracts.js";
 
 export const PUBLICATION_OPERATIONS_COMPONENTS = Object.freeze([
   "PUBLICATION_APPLICATION",
@@ -119,6 +120,8 @@ export interface PublicationOperationalMetrics {
 }
 
 export interface PublicationOperationsRetryRequest {
+  /** Internal application context, never a new HTTP operation or authority claim. */
+  readonly executionRequest?: PublishPublicationCoordinationRequest;
   readonly tenantId: string;
   readonly operationIdentity: string;
   readonly failureCode: string;

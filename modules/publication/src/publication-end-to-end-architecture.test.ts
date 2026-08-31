@@ -372,6 +372,7 @@ function layerOf(file: string): ArchitectureLayer {
   if (file.startsWith("publication-application-")
     || file === "publication-command-handlers.ts"
     || file === "publication-service.ts"
+    || file === "publication-durable-retry.ts"
     || file === "publication-lifecycle-service.ts"
     || file === "publication-reconciliation-service.ts"
     || file === "publication-clock.ts") return "APPLICATION";

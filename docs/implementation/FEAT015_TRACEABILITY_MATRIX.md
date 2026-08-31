@@ -152,6 +152,17 @@ Fresh Final Validation #3에서 `F15-TASK-013`을 포함한 mandatory implementa
 
 F17-E는 실제 provider, credential, sandbox contract, API-018/019 operation 또는 authority를 추가하지 않는다. Sandbox는 DEFERRED / NOT_APPLICABLE이며 F17-F/F18/F19는 NOT_STARTED이다.
 
+## 4.7 F17-F Failure / Retry Eligibility Evidence
+
+| Trace | Implementation evidence | Validation | Status |
+|---|---|---|---|
+| Authoritative retry / no-policy deny | `publication-durable-retry.ts`, existing `decidePublicationRetryPolicy`, production infrastructure registration | durable count/receipt/disposition + exact approved policy; caller count/history cannot grant permission | VERIFIED |
+| Durable decision / immutable history | existing Publication UoW audit/idempotency/execution journal | SQLite reopen, atomic rollback, prepared reservation, scoped denial evidence, prior receipt preservation | VERIFIED |
+| Live authorization / dispatch containment | existing authorization/effective Approval and `PublicationCoordinationService.publish` | F17-F focused 18 tests; current Session/MFA/SoD/binding/scope; final claim version/suspension checks; ALREADY_STARTED no redispatch | VERIFIED |
+| Phase completion gate | [F17-F Implementation Report](../reviews/F17_F_FAILURE_RETRY_ELIGIBILITY_IMPLEMENTATION_REPORT.md) | affected 203/203; architecture correction 5/5; full 828/828; lint/typecheck/build/verify PASS; checksum 153/153; Gitleaks 0; review 0/0/0 READY; F17-F production audit 0, full audit 기존 승인 dev-only transitive High 4, 신규 미승인 High/Critical 0 | VERIFIED |
+
+F17-E 절의 NOT_STARTED는 당시 완료 시점의 역사적 상태다. F17-F는 승인된 범위의 구현·검증을 완료했으며 F17-H/F18/F19/F20/F21은 NOT_STARTED이다. 새 retry API/provider/recovery authority는 없다.
+
 ## 5. 상호 참조
 
 - [Implementation Plan](FEAT015_IMPLEMENTATION_PLAN.md)

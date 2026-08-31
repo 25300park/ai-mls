@@ -8,11 +8,13 @@ import type {
   PublicationSessionResolver,
 } from "./publication-authorization.js";
 import type { PublicationConnectorDispatcher, PublicationEffectiveApprovalPort } from "./publication-service.js";
+import type { PublicationApprovedRetryPolicyResolver } from "./publication-durable-retry.js";
 import type { PublicationGovernanceContextStore } from "./publication-governance-context.js";
 import type { ListingProjectionRebuildAuthority } from "./listing-projection-rebuild.js";
 import type { PublicationOperationsRebuildAuthority, PublicationOperationsRetryAuthority, PublicationOperationsRetryStateResolver } from "./publication-operations-contracts.js";
 
 export interface PublicationInfrastructureConfiguration {
+  readonly approvedRetryPolicy?: PublicationApprovedRetryPolicyResolver;
   readonly clock: PublicationClock;
   readonly sessionResolver?: PublicationSessionResolver;
   readonly authorizationEvaluator?: PublicationAuthorizationEvaluator;
@@ -28,6 +30,7 @@ export interface PublicationInfrastructureConfiguration {
 }
 
 export interface PublicationInfrastructureConfigurationInput {
+  readonly approvedRetryPolicy?: PublicationApprovedRetryPolicyResolver;
   readonly clock?: PublicationClock;
   readonly sessionResolver?: PublicationSessionResolver;
   readonly authorizationEvaluator?: PublicationAuthorizationEvaluator;
@@ -46,6 +49,7 @@ export function createPublicationInfrastructureConfiguration(
   input: PublicationInfrastructureConfigurationInput = {},
 ): PublicationInfrastructureConfiguration {
   return Object.freeze({
+    ...(input.approvedRetryPolicy === undefined ? {} : { approvedRetryPolicy: input.approvedRetryPolicy }),
     clock: input.clock ?? new SystemPublicationClock(),
     ...(input.sessionResolver === undefined ? {} : { sessionResolver: input.sessionResolver }),
     ...(input.authorizationEvaluator === undefined ? {} : { authorizationEvaluator: input.authorizationEvaluator }),

@@ -105,3 +105,5 @@ export * from "./publication-operations-contracts.js";
 export * from "./publication-operations-error.js";
 export * from "./in-memory-publication-operations.js";
 export * from "./publication-observability.js";
+export * from "./publication-execution-failure.js";
+export * from "./publication-durable-retry.js";

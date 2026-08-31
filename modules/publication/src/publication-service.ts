@@ -6,7 +6,7 @@ import type {
   PublicationApplicationErrorResult,
   PublicationExecutionContext,
 } from "./publication-application-contracts.js";
-import { PublicationApplicationError } from "./publication-application-error.js";
+import { mapPublicationApplicationError, PublicationApplicationError } from "./publication-application-error.js";
 import type { PublicationApplicationService } from "./publication-application-service.js";
 import { PublicationAggregate } from "./publication-aggregate.js";
 import type { PublicationAuditStore } from "./publication-audit-store.js";
@@ -21,6 +21,7 @@ import { createHash } from "node:crypto";
 import type { PublicationOperationsObserver } from "./publication-operations-contracts.js";
 import type { PublicationExecutionEligibilityPort } from "./publication-execution-eligibility.js";
 import type { PublicationExecutionIntent, PublicationExecutionJournal, PublicationExecutionReceipt } from "./publication-execution-journal.js";
+import type { PublicationDurableRetryEligibility } from "./publication-durable-retry.js";
 
 export interface PublicationEffectiveApprovalCheckInput extends PublicationBinding {
   readonly actorId: string;
@@ -77,6 +78,7 @@ export interface PublicationConnectorDispatcher {
 }
 
 export interface PublicationCoordinationDependencies {
+  readonly retryEligibility?: Pick<PublicationDurableRetryEligibility, "evaluate">;
   readonly application: PublicationApplicationService;
   readonly repository: PublicationRepository;
   readonly effectiveApproval: PublicationEffectiveApprovalPort;
@@ -114,6 +116,10 @@ export class PublicationCoordinationService {
     const { identity } = request;
     const before = this.dependencies.repository.find(identity);
     const repeatedAttempt = before?.attempts.some((attempt) => attempt.commandId === request.attempt.commandId) === true;
+    const newRetry = before !== undefined && before.attempts.length > 0 && !repeatedAttempt;
+    const retryExecution = newRetry || (before !== undefined && before.attempts.length > 1 && repeatedAttempt
+      && this.dependencies.executionJournal.findIntent(identity, request.attempt.commandId) !== undefined
+      && this.dependencies.executionJournal.recoveryDisposition(identity, request.attempt.commandId).condition === "PRE_DISPATCH");
     let authorizedActorId = "";
     let approvalDecisionReference = "";
     let preparedIntent: PublicationExecutionIntent | undefined;
@@ -129,6 +135,14 @@ export class PublicationCoordinationService {
         command: request.command,
       },
     }, stageContext(request.context, "publish"), (authorization) => {
+      if (before?.attempts.some((attempt) => (attempt.id === request.attempt.id || attempt.commandId === request.attempt.commandId)
+        && (attempt.id !== request.attempt.id || attempt.commandId !== request.attempt.commandId))) {
+        const conflict = dispatchEvidenceConflict().error;
+        throw new PublicationApplicationError(conflict.code, conflict.category, conflict.message);
+      }
+      if (retryExecution && this.dependencies.retryEligibility?.evaluate({ ...request, expectedAggregateVersion: before.aggregateVersion }).retryEligible !== true) {
+        throw new PublicationApplicationError("PUBLICATION_STATE_INVALID", "DOMAIN_REJECTION", "Publication retry is not allowed.");
+      }
       const eligibility = this.dependencies.executionEligibility.evaluate({
         identity,
         context: request.context,
@@ -193,21 +207,45 @@ export class PublicationCoordinationService {
       dispatch = immutableDomain({ outcome: "UNKNOWN" as const, evidenceRefs: [`durable-execution:${request.attempt.id}:outcome-unproven`] });
     }
     if (dispatch === undefined) {
+      if (retryExecution) {
+        try {
+          if (this.dependencies.retryEligibility?.evaluate({ ...request, expectedAggregateVersion: current.aggregateVersion }).retryEligible !== true) {
+            return mapPublicationApplicationError(new PublicationApplicationError("PUBLICATION_STATE_INVALID", "DOMAIN_REJECTION", "Publication retry is not allowed."));
+          }
+        } catch (error) { return mapPublicationApplicationError(error); }
+      }
       const claim = this.dependencies.unitOfWork.begin(identity);
       try {
-        claim.execution.markDispatchStarted(identity, request.attempt.commandId, this.dependencies.clock.now());
+        const claimedSnapshot = claim.repository.find(identity);
+        if (claimedSnapshot?.aggregateVersion !== current.aggregateVersion
+          || claimedSnapshot.lifecycleState !== "EXECUTION_PENDING"
+          || claimedSnapshot.suspensionStatus !== "NOT_SUSPENDED"
+          || claimedSnapshot.pendingOperation?.attemptId !== request.attempt.id
+          || !claimedSnapshot.attempts.some(attempt => attempt.id === request.attempt.id && attempt.commandId === request.attempt.commandId)) {
+          claim.rollback();
+          return mapPublicationApplicationError(new PublicationApplicationError("PUBLICATION_VERSION_CONFLICT", "CONFLICT", "Publication changed before dispatch."));
+        }
+        const claimed = claim.execution.markDispatchStarted(identity, request.attempt.commandId, this.dependencies.clock.now());
         claim.commit();
+        if (claimed === "ALREADY_STARTED") {
+          const authoritative = this.dependencies.executionJournal.findReceipt(identity, request.attempt.commandId);
+          dispatch = authoritative === undefined
+            ? immutableDomain({ outcome: "UNKNOWN" as const, evidenceRefs: [`durable-execution:${request.attempt.id}:outcome-unproven`] })
+            : receiptToDispatch(authoritative);
+        }
       } catch {
         try { claim.rollback(); } catch { /* preserve original safe failure */ }
         return connectorFailure("CONNECTOR_OUTCOME_UNKNOWN");
       }
-      try {
-        dispatch = normalizeConnectorResult(this.dependencies.connector.dispatch(dispatchInput), request.attempt.id);
-      } catch (error) {
-        dispatch = immutableDomain({
-          outcome: "UNKNOWN" as const,
-          evidenceRefs: [`connector-observation:${request.attempt.id}:${safeConnectorFailureCategory(error)}`],
-        });
+      if (dispatch === undefined) {
+        try {
+          dispatch = normalizeConnectorResult(this.dependencies.connector.dispatch(dispatchInput), request.attempt.id);
+        } catch (error) {
+          dispatch = immutableDomain({
+            outcome: "UNKNOWN" as const,
+            evidenceRefs: [`connector-observation:${request.attempt.id}:${safeConnectorFailureCategory(error)}`],
+          });
+        }
       }
       this.dependencies.dispatchEvidence.record({ ...identity, commandId: request.attempt.commandId, attemptId: request.attempt.id, dispatchFingerprint: dispatchFingerprintValue, result: dispatch });
     }
