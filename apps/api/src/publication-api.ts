@@ -348,6 +348,9 @@ function validateCommandRequest(input: unknown): PublicationCommandRequest {
     throw new PublicationApiError("VALIDATION_ERROR");
   }
   requireCommon(request);
+  // Application identity uses the tenant scope for both tenant and team.
+  // Reject contradictory request scope instead of silently discarding teamId.
+  if (request["teamId"] !== request["tenantId"]) throw new PublicationApiError("AUTHORIZATION_DENIED");
   requireString(request["idempotencyKey"]);
   requireString(request["intentFingerprint"]);
   if (typeof request["documentedReason"] !== "string" || request["documentedReason"].trim().length === 0) {
@@ -379,9 +382,7 @@ function validateQueryRequest(input: unknown): PublicationQueryRequest {
 
 function requireCommon(request: PlainRecord): void {
   for (const key of ["requestId", "tenantId", "teamId", "purpose", "correlationId", "publicationId"] as const) requireString(request[key]);
-  if (request["purpose"] !== "PUBLICATION_EXECUTION") {
-    // Wrong-purpose queries are concealed later; commands are safely denied by the guard.
-  }
+  // Queries conceal wrong purposes; commands pass the original purpose to the guard.
   if (request["sessionId"] !== undefined && typeof request["sessionId"] !== "string") throw new PublicationApiError("VALIDATION_ERROR");
 }
 
@@ -487,7 +488,7 @@ function executionContext(request: PublicationCommandRequest): PublicationExecut
 function domainContext(request: PublicationCommandRequest, occurredAt: string): DomainCommandContext {
   return immutableApiValue({
     actorId: "NON_AUTHORITATIVE_REQUEST_ACTOR_IGNORED",
-    authorityContext: "PUBLICATION_EXECUTION",
+    authorityContext: request.purpose,
     reason: request.documentedReason,
     correlationId: request.correlationId,
     occurredAt,

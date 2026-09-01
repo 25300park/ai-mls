@@ -163,6 +163,21 @@ F17-E는 실제 provider, credential, sandbox contract, API-018/019 operation �
 
 F17-E 절의 NOT_STARTED는 당시 완료 시점의 역사적 상태다. F17-F는 승인된 범위의 구현·검증을 완료했으며 F17-H/F18/F19/F20/F21은 NOT_STARTED이다. 새 retry API/provider/recovery authority는 없다.
 
+## 4.8 F17-H Final Integration / Hardening Evidence (IN REVIEW)
+
+앞 절의 F17-H NOT_STARTED는 F17-F 완료 당시의 역사적 상태다. 현재 F17-H는 검증 및 최소 hardening 중이며 audit/독립 검토 완료 전 최종 승인을 주장하지 않는다.
+
+| 요구/경계 | Production 및 직접 assertion evidence | 결과 |
+|---|---|---|
+| 요청 purpose/team scope 보존 | `apps/api/src/publication-api.ts`의 `domainContext`/`validateCommandRequest`; `publication-api-http-runtime.test.ts`의 F17-H live authorization 18-case matrix. 잘못된 purpose 및 teamId를 RED로 재현 후 기존 guard/scope 규칙으로 최소 교정; aggregate/intent/receipt/성공 idempotency 변경 없음 | VERIFIED |
+| durable HTTP production path / replay | 같은 HTTP 파일의 F17-H production execution/reopen test; unavailable UNKNOWN, reconciliation, durable receipt/audit/idempotency와 query read-only 검증 | VERIFIED |
+| untrusted reconciliation/recovery evidence 차단 | 같은 HTTP 파일의 F17-H caller-authored evidence test; 두 operation 각각 resolution 포함/생략 거부, mutation 없음 | VERIFIED |
+| 실제 process exit / restart containment | `publication-service.test.ts`의 F17-H actual process exit test; provider invocation 내부 exit, durable DISPATCH_STARTED, reopen no receipt, provider 재호출 0, prior intent/audit 보존 | VERIFIED |
+| 통합 regression | H 4/4, B–F 55/55, Publication affected 449/449, full 832/832; lint/typecheck/build/verify PASS; checksum 153/153 | VERIFIED |
+| Final completion | [F17-H final report](../reviews/F17_H_FINAL_INTEGRATION_HARDENING_REPORT.md); prod audit 0, full 기존 dev-only transitive High 4, 신규 미승인 High/Critical 0; independent review 0/0/0 READY | VERIFIED |
+
+F17-G는 DEFERRED이며 F18/F19/F20/F21은 NOT_STARTED다. 18/18 API registration/dispatch 검증은 모든 operation의 새 성공 workflow 또는 실제 provider 활성화를 의미하지 않는다.
+
 ## 5. 상호 참조
 
 - [Implementation Plan](FEAT015_IMPLEMENTATION_PLAN.md)

@@ -314,6 +314,159 @@ test("F17-D durable HTTP restart contains DISPATCH_STARTED ambiguity and has zer
   }
 });
 
+test("F17-H real HTTP production execution persists unavailable outcome and replay remains contained after reopen", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "f17-h-http-"));
+  const databasePath = join(directory, "publication.sqlite");
+  const publicationId = "publication-final-http";
+  const identity = { tenantScopeId: "team-a", publicationId };
+  const configuration = { ...authorizedConfiguration() };
+  delete configuration.connectorDispatcher;
+  const open = () => composeProductionPublicationApi014NodeHttpServer({ databasePath, infrastructureConfiguration: configuration, configuration: serverConfiguration });
+  let composition = open();
+  const attempt = { id: "attempt-final-http", commandId: "command-final-http", operation: "INITIAL_PUBLISH", occurredAt: createPayload.occurredAt, evidenceRefs: [] };
+  const publish = { ...commandRequest("PUBLISH_PUBLICATION", publicationId), idempotencyKey: "key-final-publish", intentFingerprint: "sha256:final-publish", payload: { expectedAggregateVersion: 1, attempt, occurredAt: createPayload.occurredAt } };
+  try {
+    await composition.server.start();
+    let port = composition.server.diagnostics.boundPort!;
+    const created = await send(port, "/api/publication/commands", { ...commandRequest("CREATE_PUBLICATION", publicationId), payload: createPayload }, "session-trusted");
+    assert.equal(created.statusCode, 200, created.body);
+    const first = await send(port, "/api/publication/commands", publish, "session-trusted");
+    assert.equal(first.statusCode, 409, first.body);
+    assert.equal((JSON.parse(first.body) as { error: { code: string } }).error.code, "RECONCILIATION_REQUIRED");
+    const evidence = new DurablePublicationUnitOfWork({ databasePath });
+    const snapshot = evidence.repository.find(identity);
+    const receipt = evidence.execution.findReceipt(identity, attempt.commandId);
+    const audit = evidence.audit.list(identity);
+    assert.equal(snapshot?.lifecycleState, "RECONCILIATION_REQUIRED");
+    assert.equal(snapshot?.attempts.length, 1);
+    assert.equal(receipt?.outcome, "UNKNOWN");
+    assert.equal(receipt?.evidenceRefs.some(reference => reference.includes("unavailable")), true);
+    assert.equal(audit.every(record => record.actorId === "executor-independent"), true);
+    assert.notEqual(evidence.idempotency.find({ ...identity, aggregateId: publicationId, commandKey: "key-final-publish:activation" }), undefined);
+    evidence.close();
+    await composition.close();
+    composition = open();
+    await composition.server.start();
+    port = composition.server.diagnostics.boundPort!;
+    const replay = await send(port, "/api/publication/commands", publish, "session-trusted");
+    assert.equal(replay.statusCode, 409, replay.body);
+    assert.equal((JSON.parse(replay.body) as { error: { code: string } }).error.code, "RECONCILIATION_REQUIRED");
+    for (const operation of PUBLICATION_API_QUERY_OPERATIONS) {
+      const result = await send(port, "/api/publication/queries", queryRequest(operation, publicationId), "session-trusted");
+      assert.ok([200, 404].includes(result.statusCode), `${operation}: ${result.body}`);
+      assert.doesNotMatch(result.body, /SQLite|Authorization:|NON_SECRET|stack|publication\.sqlite/);
+    }
+    const reopened = new DurablePublicationUnitOfWork({ databasePath });
+    try {
+      assert.deepEqual(reopened.repository.find(identity), snapshot);
+      assert.deepEqual(reopened.execution.findReceipt(identity, attempt.commandId), receipt);
+      assert.deepEqual(reopened.audit.list(identity), audit);
+    } finally { reopened.close(); }
+  } finally { await composition.close(); rmSync(directory, { recursive: true, force: true }); }
+});
+
+test("F17-H real HTTP live authorization matrix blocks dispatch and durable state mutation", async () => {
+  const cases = ["unauthenticated", "capability", "revoked", "expired", "tenant", "scope", "team-request", "purpose", "MFA", "SoD", "approval-expired", "approval-revoked", "representation", "target", "target-version", "aggregate-version", "verification", "permission"] as const;
+  for (const scenario of cases) {
+    const directory = mkdtempSync(join(tmpdir(), "f17-h-auth-"));
+    const databasePath = join(directory, "publication.sqlite");
+    const identity = { tenantScopeId: "team-a", publicationId: "publication-final-auth" };
+    const base = { ...authorizedConfiguration() };
+    delete base.connectorDispatcher;
+    let deny = false;
+    const configuration: PublicationInfrastructureConfigurationInput = {
+      ...base,
+      sessionResolver: { resolve: id => {
+        const session = base.sessionResolver!.resolve(id);
+        if (!deny || session === undefined) return session;
+        if (scenario === "revoked") return { ...session, state: "REVOKED" };
+        if (scenario === "expired") return { ...session, expiresAt: "2020-01-01T00:00:00.000Z" };
+        if (scenario === "MFA") return { ...session, assurance: "SINGLE_FACTOR", isMfaVerified: false };
+        if (scenario === "scope") return { ...session, teamId: "team-other" };
+        return session;
+      } },
+      authorizationEvaluator: { evaluate: input => deny && scenario === "capability"
+        ? { effect: "DENY", reasonCode: "CAPABILITY_DENIED", policyVersion: "test-v1", obligations: [], assignmentIds: [] }
+        : base.authorizationEvaluator!.evaluate(input) },
+      liveContextResolver: { resolve: (binding, scope) => {
+        const live = base.liveContextResolver!.resolve(binding, scope);
+        if (!deny || live === undefined) return live;
+        switch (scenario) {
+          case "tenant": return { ...live, tenantId: "tenant-other" };
+          case "SoD": return { ...live, evidenceSubmitterActorIds: ["executor-independent"] };
+          case "approval-expired": return { ...live, approval: { ...live.approval, expiresAt: "2020-01-01T00:00:00.000Z" } };
+          case "approval-revoked": return { ...live, approval: { ...live.approval, status: "REVOKED" } };
+          case "representation": return { ...live, representation: { ...live.representation, checksum: "sha256:changed" } };
+          case "target": return { ...live, target: { ...live.target, status: "INACTIVE" } };
+          case "target-version": return { ...live, target: { ...live.target, version: live.target.version + 1 } };
+          case "verification": return { ...live, verification: { ...live.verification, version: live.verification.version + 1 } };
+          case "permission": return { ...live, permission: { ...live.permission, status: "REVOKED" } };
+          default: return live;
+        }
+      } },
+    };
+    const composition = composeProductionPublicationApi014NodeHttpServer({ databasePath, infrastructureConfiguration: configuration, configuration: serverConfiguration });
+    try {
+      await composition.server.start();
+      const port = composition.server.diagnostics.boundPort!;
+      const created = await send(port, "/api/publication/commands", { ...commandRequest("CREATE_PUBLICATION", identity.publicationId), payload: createPayload }, "session-trusted");
+      assert.equal(created.statusCode, 200, `${scenario}: ${created.body}`);
+      const evidence = new DurablePublicationUnitOfWork({ databasePath });
+      try {
+        const before = evidence.repository.find(identity);
+        deny = true;
+        const response = await send(port, "/api/publication/commands", {
+          ...commandRequest("PUBLISH_PUBLICATION", identity.publicationId), idempotencyKey: "key-denied-publish", intentFingerprint: "sha256:denied-publish",
+          purpose: scenario === "purpose" ? "CLIENT_SERVICE" : "PUBLICATION_EXECUTION",
+          teamId: scenario === "team-request" ? "team-other" : "team-a",
+          payload: { expectedAggregateVersion: scenario === "aggregate-version" ? 2 : 1, occurredAt: createPayload.occurredAt, attempt: { id: "attempt-denied", commandId: "command-denied", operation: "INITIAL_PUBLISH", occurredAt: createPayload.occurredAt, evidenceRefs: [] } },
+        }, scenario === "unauthenticated" ? undefined : "session-trusted");
+        assert.ok([400, 401, 403, 404, 409, 422].includes(response.statusCode), `${scenario}: ${response.statusCode} ${response.body}`);
+        assert.doesNotMatch(response.body, /SQLite|publication\.sqlite|stack|executor-independent/);
+        assert.deepEqual(evidence.repository.find(identity), before, scenario);
+        assert.equal(evidence.execution.findIntent(identity, "command-denied"), undefined, scenario);
+        assert.equal(evidence.execution.findReceipt(identity, "command-denied"), undefined, scenario);
+        assert.equal(evidence.idempotency.find({ ...identity, aggregateId: identity.publicationId, commandKey: "key-denied-publish:publish" }), undefined, scenario);
+      } finally { evidence.close(); }
+    } finally { await composition.close(); rmSync(directory, { recursive: true, force: true }); }
+  }
+});
+
+test("F17-H real HTTP reconciliation and recovery never elevate caller-authored evidence", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "f17-h-evidence-"));
+  const databasePath = join(directory, "publication.sqlite");
+  const configuration = { ...authorizedConfiguration() };
+  delete configuration.connectorDispatcher;
+  const composition = composeProductionPublicationApi014NodeHttpServer({ databasePath, infrastructureConfiguration: configuration, configuration: serverConfiguration });
+  const identity = { tenantScopeId: "team-a", publicationId: "publication-final-evidence" };
+  try {
+    await composition.server.start();
+    const port = composition.server.diagnostics.boundPort!;
+    const created = await send(port, "/api/publication/commands", { ...commandRequest("CREATE_PUBLICATION", identity.publicationId), payload: createPayload }, "session-trusted");
+    assert.equal(created.statusCode, 200, created.body);
+    const evidence = new DurablePublicationUnitOfWork({ databasePath });
+    try {
+      const before = evidence.repository.find(identity);
+      const audit = evidence.audit.list(identity);
+      for (const operation of ["RESOLVE_RECONCILIATION", "RECOVER_PUBLICATION"] as const) {
+        for (const resolution of [undefined, "EFFECT_CONFIRMED"]) {
+          const result = await send(port, "/api/publication/commands", {
+            ...commandRequest(operation, identity.publicationId), idempotencyKey: `key-${operation}`,
+            payload: { occurredAt: createPayload.occurredAt, input: { expectedAggregateVersion: 1, caseId: "case-caller", category: "TRUSTED", evidenceRefs: ["NON_SECRET_CALLER_EVIDENCE"], ...(resolution === undefined ? {} : { resolution }) } },
+          }, "session-trusted");
+          assert.equal(result.statusCode, 400, result.body);
+          assert.equal((JSON.parse(result.body) as { error: { code: string } }).error.code, "VALIDATION_ERROR");
+          assert.doesNotMatch(result.body, /NON_SECRET|case-caller|SQLite|stack/);
+          assert.equal(evidence.idempotency.find({ ...identity, aggregateId: identity.publicationId, commandKey: `key-${operation}` }), undefined);
+        }
+      }
+      assert.deepEqual(evidence.repository.find(identity), before);
+      assert.deepEqual(evidence.audit.list(identity), audit);
+      assert.equal(evidence.repository.find(identity)?.attempts.length, 0);
+    } finally { evidence.close(); }
+  } finally { await composition.close(); rmSync(directory, { recursive: true, force: true }); }
+});
+
 function commandRequest(operation: typeof PUBLICATION_API_COMMAND_OPERATIONS[number], publicationId = "publication-http"): PublicationCommandRequest {
   return {
     requestId: "request-http-command",

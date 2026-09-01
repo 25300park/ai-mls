@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -893,6 +894,61 @@ function durableProviderTestGraph(databasePath: string, connector: PublicationCo
   });
   return { ...infrastructure, coordination };
 }
+
+test("F17-H actual process exit inside provider invocation leaves durable ambiguity and prevents restart resend", () => {
+  const directory = mkdtempSync(join(tmpdir(), "f17-h-crash-"));
+  const databasePath = join(directory, "publication.sqlite");
+  const coordinated = request(context("actual-process-crash"));
+  // Only the child exits. No provider network or production adapter is enabled.
+  const childSource = `
+    import { createProductionPublicationInfrastructure } from ${JSON.stringify(new URL("./publication-infrastructure.js", import.meta.url).href)};
+    import { createTestPublicationAuthorizationConfiguration } from ${JSON.stringify(new URL("./publication-authorization-test-support.test.js", import.meta.url).href)};
+    import { FixedClock } from ${JSON.stringify(new URL("./publication-clock.js", import.meta.url).href)};
+    import { PublicationCoordinationService } from ${JSON.stringify(new URL("./publication-service.js", import.meta.url).href)};
+    import { PublicationApplicationService } from ${JSON.stringify(new URL("./publication-application-service.js", import.meta.url).href)};
+    import { CreatePublicationHandler, ModifyPublicationHandler } from ${JSON.stringify(new URL("./publication-command-handlers.js", import.meta.url).href)};
+    const input = ${JSON.stringify(coordinated)};
+    const effectiveApproval = { check: () => (${JSON.stringify(approvalDecision("approval-crash-test"))}) };
+    const graph = createProductionPublicationInfrastructure({ databasePath: ${JSON.stringify(databasePath)}, configuration: { ...createTestPublicationAuthorizationConfiguration(new FixedClock(${JSON.stringify(timestamp)})), effectiveApprovalPort: effectiveApproval } });
+    const service = new PublicationCoordinationService({
+      application: new PublicationApplicationService(new CreatePublicationHandler(graph), new ModifyPublicationHandler(graph)), repository: graph.repository, effectiveApproval,
+      executionEligibility: graph.executionEligibility, executionJournal: graph.unitOfWork.execution,
+      connector: { dispatch: () => {
+        if (graph.unitOfWork.execution.recoveryDisposition(input.create.input.identity, input.attempt.commandId).condition !== "RECONCILIATION_REQUIRED") process.exit(82);
+        process.stdout.write("TEST_PROVIDER_INVOKED");
+        process.exit(81);
+      } },
+      unitOfWork: graph.unitOfWork, audit: graph.audit, clock: graph.clock,
+      eventCoordinator: graph.eventCoordinator, dispatchEvidence: graph.dispatchEvidence,
+    });
+    const created = service.create({ context: input.context, command: input.create });
+    if (!created.ok) throw new Error("Child creation failed");
+    service.publish({ context: input.context, identity: input.create.input.identity, command: input.create.input.command, attempt: input.attempt, expectedAggregateVersion: created.aggregateVersion });
+    throw new Error("Expected process exit within provider");
+  `;
+  let graph: ReturnType<typeof durableProviderTestGraph> | undefined;
+  try {
+    const child = spawnSync(process.execPath, ["--input-type=module", "--eval", childSource], { encoding: "utf8", timeout: 20_000 });
+    assert.equal(child.error, undefined);
+    assert.equal(child.status, 81, child.stderr);
+    assert.equal(child.stdout, "TEST_PROVIDER_INVOKED");
+    let calls = 0;
+    graph = durableProviderTestGraph(databasePath, { dispatch: () => { calls++; return { outcome: "CONFIRMED", evidenceRefs: ["test:should-not-dispatch"], externalObjectReference: "test-object" }; } });
+    assert.equal(graph.repository.find(identity)?.lifecycleState, "EXECUTION_PENDING");
+    assert.equal(graph.unitOfWork.execution.findReceipt(identity, coordinated.attempt.commandId), undefined);
+    assert.equal(graph.unitOfWork.execution.recoveryDisposition(identity, coordinated.attempt.commandId).condition, "RECONCILIATION_REQUIRED");
+    const intent = graph.unitOfWork.execution.findIntent(identity, coordinated.attempt.commandId);
+    const priorAudit = graph.audit.list(identity);
+    const result = graph.coordination.publish({ identity, context: coordinated.context, command: coordinated.create.input.command, attempt: coordinated.attempt, expectedAggregateVersion: 1 });
+    assert.equal(result.ok, false);
+    assert.equal(!result.ok && result.error.code, "CONNECTOR_OUTCOME_UNKNOWN");
+    assert.equal(calls, 0);
+    assert.equal(graph.repository.find(identity)?.lifecycleState, "RECONCILIATION_REQUIRED");
+    assert.deepEqual(graph.unitOfWork.execution.findIntent(identity, coordinated.attempt.commandId), intent);
+    assert.deepEqual(graph.audit.list(identity).slice(0, priorAudit.length), priorAudit);
+    assert.equal(graph.unitOfWork.execution.findReceipt(identity, coordinated.attempt.commandId)?.outcome, "UNKNOWN");
+  } finally { graph?.unitOfWork.close(); rmSync(directory, { recursive: true, force: true }); }
+});
 
 test("F17-F durable coordinated retry preserves both receipts and replays after restart without delivery", () => {
   const directory = mkdtempSync(join(tmpdir(), "f17-f-delivery-"));
