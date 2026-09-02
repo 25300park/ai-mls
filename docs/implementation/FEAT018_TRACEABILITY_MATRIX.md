@@ -2,8 +2,8 @@
 
 | 항목 | 값 |
 |---|---|
-| Version | v0.1 |
-| Status | IN REVIEW |
+| Version | v1.0 |
+| Status | APPROVED |
 | Scope | F18-A~F18-H implementation evidence |
 | Canonical authority | `TRACE-019`, `TRACE-020`, `API-017`, `API-018`, `API-019` |
 | Baseline | `cd14c099b2dbc47fd78f553238686d50bc6bed46` |
@@ -24,6 +24,7 @@ FEAT-018 Source / Connector Runtime Integration의 canonical requirement, produc
 | F18-F Restart hardening | trusted access precedes history disclosure; exact replay precedes live admission; conflict is deterministic; new identity alone revalidates live admission | `connector-execution-coordinator.ts` | restart/replay/conflict, lease, API-018/019 restart, safe DTO and durable-authority assertions | [F18-F Report](../reviews/F18_F_RESTART_IDEMPOTENCY_AMBIGUITY_HARDENING_IMPLEMENTATION_REPORT.md) | IMPLEMENTED_AND_VERIFIED |
 | F18-G Scheduler classification | API-017 is a scheduling boundary only; no second Connector Runtime, admission bypass, lease/idempotency/checkpoint authority | Production change 0; Job and Connector import graphs remain disjoint | `f18-final-integration-architecture.test.ts` — API-017 scheduling-only assertion | [F18-H Report](../reviews/F18_H_FINAL_INTEGRATION_HARDENING_REPORT.md) | NOT_APPLICABLE |
 | F18-H Final hardening | cross-layer ownership, durability, restart, ambiguity, isolation, leakage, F17 preservation and F19 exclusion | Production change 0 | focused 77/77; F17 59/59; total 909/909; architecture assertion 2/2 | [F18-H Report](../reviews/F18_H_FINAL_INTEGRATION_HARDENING_REPORT.md) | IMPLEMENTED_AND_VERIFIED |
+| F18 Final Gate | approved integrated evidence만 사용한 ownership, safety, contract, regression 및 traceability closure | Production change 0 | F18-H approved evidence 재사용; integrated ancestry와 closure requirements 검증 | [F18 Final Gate Report](../reviews/F18_FINAL_GATE_REPORT.md) | APPROVED |
 
 ## 3. Required F18-H scenario matrix
 
@@ -63,6 +64,7 @@ FEAT-018 Source / Connector Runtime Integration의 canonical requirement, produc
 | New unapproved High/Critical | 0 |
 | Dependency/lockfile changes | 0 |
 | F19 | NOT_STARTED |
+| FEAT-018 | COMPLETE |
 
 ## 5. Scope protection
 
