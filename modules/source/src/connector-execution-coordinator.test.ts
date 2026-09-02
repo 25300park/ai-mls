@@ -23,7 +23,18 @@ const eligible: Extract<SourceIngestionAdmissionDecision, { readonly status: "EL
 });
 const blocked: SourceIngestionAdmissionDecision = Object.freeze({ status: "BLOCKED", reasonCode: "ADMISSION_DENIED" });
 const scope = Object.freeze({ tenantId: eligible.tenantId, scopeType: eligible.scope.scopeType, scopeId: eligible.scope.scopeId, sourceId: eligible.sourceId, connectorId: eligible.connectorId });
-const admissionInput = Object.freeze({}) as SourceIngestionAdmissionInput;
+const admissionInput = Object.freeze({
+  actor: Object.freeze({}) as SourceIngestionAdmissionInput["actor"],
+  tenantId: eligible.tenantId,
+  scope: eligible.scope,
+  sourceId: eligible.sourceId,
+  sourcePolicyVersion: eligible.sourcePolicyVersion,
+  connectorId: eligible.connectorId,
+  connectorVersion: eligible.connectorVersion,
+  method: eligible.method,
+  purpose: eligible.purpose,
+  correlationId: "correlation-f18-f",
+}) satisfies SourceIngestionAdmissionInput;
 
 function input(overrides: Readonly<Record<string, unknown>> = {}) {
   return Object.freeze({
@@ -176,6 +187,97 @@ test("F18-C exact idempotent replay returns the durable prior result with zero d
   assert.deepEqual(replay, first);
   assert.equal(replayAdapter.invocationCount, 0);
   store.close();
+}));
+
+test("F18-F completed exact replay bypasses blocked execution admission without new effects", () => withStore((store, databasePath) => {
+  const firstAdapter = new DeterministicConnectorTestAdapter({ outcome: "SUCCEEDED", safeEvidenceReference: "safe-evidence", checkpointReference: "checkpoint-1" });
+  const first = coordinator(store, firstAdapter).execute(input());
+  const originalLease = store.findLease(scope);
+  store.close();
+
+  const reopened = new DurableConnectorExecutionUnitOfWork({ databasePath });
+  const replayAdapter = new DeterministicConnectorTestAdapter({ outcome: "FAILED", safeEvidenceReference: "must-not-run" });
+  const replay = coordinator(reopened, replayAdapter, blocked).execute(input({ expectedScopeRevision: 1 }));
+  assert.deepEqual(replay, first);
+  assert.equal(replayAdapter.invocationCount, 0);
+  assert.equal(reopened.findCheckpoint(scope)?.version, 1);
+  assert.deepEqual(reopened.findLease(scope), originalLease);
+  reopened.close();
+}));
+
+test("F18-F ambiguous exact replay bypasses blocked execution admission without blind rerun", () => withStore((store, databasePath) => {
+  store.acquireLease({ ...scope, leaseId: "lease-f18-c-coordinator", ownerId: "worker-f18-c", acquiredAt: "2026-09-01T00:00:00.000Z", expiresAt: "2026-09-01T00:05:00.000Z", expectedScopeRevision: 0 });
+  store.prepareInvocation({ ...scope, invocationId: "invocation-f18-c-coordinator", leaseId: "lease-f18-c-coordinator", idempotencyKey: "test-1", inputFingerprint: "fingerprint-f18-c-coordinator", inputReference: "safe-input-reference-f18-c", inputVersion: 4, sourcePolicyVersion: 3, connectorVersion: 5, expectedCheckpointVersion: 0, preparedAt: "2026-09-01T00:00:01.000Z" });
+  store.markExecutionStarted(scope, "invocation-f18-c-coordinator", "2026-09-01T00:00:02.000Z");
+  store.close();
+
+  const reopened = new DurableConnectorExecutionUnitOfWork({ databasePath });
+  const replayAdapter = new DeterministicConnectorTestAdapter({ outcome: "SUCCEEDED", safeEvidenceReference: "must-not-run", checkpointReference: "must-not-run" });
+  const replay = coordinator(reopened, replayAdapter, blocked).execute(input({ expectedScopeRevision: 1 }));
+  assert.deepEqual(replay, { status: "AMBIGUOUS", reasonCode: "RECONCILIATION_REQUIRED", invocationId: "invocation-f18-c-coordinator" });
+  assert.equal(replayAdapter.invocationCount, 0);
+  assert.equal(reopened.findCheckpoint(scope), undefined);
+  reopened.close();
+}));
+
+test("F18-F conflicting replay fingerprint fails before admission and mutation", () => withStore((store) => {
+  const firstAdapter = new DeterministicConnectorTestAdapter({ outcome: "SUCCEEDED", safeEvidenceReference: "safe-evidence", checkpointReference: "checkpoint-1" });
+  coordinator(store, firstAdapter).execute(input());
+  const evidenceBefore = store.listEvidence(scope);
+  const leaseBefore = store.findLease(scope);
+  const checkpointBefore = store.findCheckpoint(scope);
+  const replayAdapter = new DeterministicConnectorTestAdapter({ outcome: "FAILED", safeEvidenceReference: "must-not-run" });
+
+  assert.throws(
+    () => coordinator(store, replayAdapter, blocked).execute(input({ expectedScopeRevision: 1, inputFingerprint: "conflicting-fingerprint" })),
+    { code: "IDEMPOTENCY_CONFLICT" },
+  );
+  assert.equal(replayAdapter.invocationCount, 0);
+  assert.deepEqual(store.listEvidence(scope), evidenceBefore);
+  assert.deepEqual(store.findLease(scope), leaseBefore);
+  assert.deepEqual(store.findCheckpoint(scope), checkpointBefore);
+  store.close();
+}));
+
+test("F18-F same invocation with a different idempotency key conflicts before admission and mutation", () => withStore((store) => {
+  const firstAdapter = new DeterministicConnectorTestAdapter({ outcome: "SUCCEEDED", safeEvidenceReference: "safe-evidence", checkpointReference: "checkpoint-1" });
+  coordinator(store, firstAdapter).execute(input());
+  const evidenceBefore = store.listEvidence(scope);
+  const leaseBefore = store.findLease(scope);
+  const checkpointBefore = store.findCheckpoint(scope);
+  const replayAdapter = new DeterministicConnectorTestAdapter({ outcome: "FAILED", safeEvidenceReference: "must-not-run" });
+
+  assert.throws(
+    () => coordinator(store, replayAdapter, blocked).execute(input({ expectedScopeRevision: 1, idempotencyKey: "test-2" })),
+    { code: "IDEMPOTENCY_CONFLICT" },
+  );
+  assert.equal(replayAdapter.invocationCount, 0);
+  assert.deepEqual(store.listEvidence(scope), evidenceBefore);
+  assert.deepEqual(store.findLease(scope), leaseBefore);
+  assert.deepEqual(store.findCheckpoint(scope), checkpointBefore);
+  store.close();
+}));
+
+test("F18-F crash after connector response but before local completion reopens ambiguous with zero blind rerun", () => withStore((store, databasePath) => {
+  const persistence = new Proxy<DurableConnectorExecutionUnitOfWork>(store, {
+    get(target, property): unknown {
+      if (property === "completeInvocation") return () => { throw new Error("simulated local completion failure"); };
+      const value: unknown = Reflect.get(target, property);
+      return typeof value === "function" ? (value as (...args: readonly unknown[]) => unknown).bind(target) : value;
+    },
+  });
+  const firstAdapter = new DeterministicConnectorTestAdapter({ outcome: "SUCCEEDED", safeEvidenceReference: "provider-confirmed", checkpointReference: "checkpoint-1" });
+  assert.throws(() => coordinator(persistence, firstAdapter).execute(input()), /simulated local completion failure/);
+  assert.equal(firstAdapter.invocationCount, 1);
+  store.close();
+
+  const reopened = new DurableConnectorExecutionUnitOfWork({ databasePath });
+  const replayAdapter = new DeterministicConnectorTestAdapter({ outcome: "SUCCEEDED", safeEvidenceReference: "must-not-run", checkpointReference: "must-not-run" });
+  const replay = coordinator(reopened, replayAdapter, blocked).execute(input({ expectedScopeRevision: 1 }));
+  assert.deepEqual(replay, { status: "AMBIGUOUS", reasonCode: "RECONCILIATION_REQUIRED", invocationId: "invocation-f18-c-coordinator" });
+  assert.equal(replayAdapter.invocationCount, 0);
+  assert.equal(reopened.findCheckpoint(scope), undefined);
+  reopened.close();
 }));
 
 test("F18-C restart after EXECUTION_STARTED has zero blind resend and conflicting payload fails closed", () => withStore((store, databasePath) => {

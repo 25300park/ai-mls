@@ -67,3 +67,25 @@ test("F18-E reconciliation never changes the established business binding",()=>{
  const result=store.reconcileEvidence({...scope,integrationContractId:"contract-1",mappingId:established.mappingId,expectedVersion:1,proofType:"SAME_INTERNAL_BINDING",evidenceRefs:["evidence:mapping:1"],observationIds:[],idempotencyKey:"idem-reconcile",inputFingerprint:"fp-reconcile",recordedAt:"2026-09-02T00:04:00.000Z"});
  assert.equal(result.reconciliationStatus,"CONFIRMED_TECHNICAL_MATCH");assert.equal(store.readMappingById(scope,established.mappingId)?.internalResourceId,"source-1");store.close();
 });
+
+test("F18-F mapping identity and append-only conflict evidence survive restart",()=>{
+ const databasePath=path();let store=new DurableExternalIntegrationStore({databasePath});store.provisionContract(binding);
+ const established=store.registerMapping(mapping);
+ assert.throws(()=>store.registerMapping({...mapping,internalResourceId:"source-2",idempotencyKey:"idem-map-conflict",inputFingerprint:"fp-map-conflict",evidenceRef:"evidence:mapping:conflict"}),{code:"CONFLICT"});
+ store.close();store=new DurableExternalIntegrationStore({databasePath});
+ assert.equal(store.readMappingByExternal(scope,"provider-1","external-1")?.mappingId,established.mappingId);
+ assert.equal(store.readMappingByExternal(scope,"provider-1","external-1")?.internalResourceId,"source-1");
+ assert.equal(store.registerMapping(mapping).version,1);
+ assert.equal(store.listEvidence(scope,"contract-1").filter(item=>item.kind==="MAPPING_CONFLICT").length,1);
+ store.close();
+});
+
+test("F18-F unresolved technical reconciliation survives restart without changing business binding",()=>{
+ const databasePath=path();let store=new DurableExternalIntegrationStore({databasePath});store.provisionContract(binding);const established=store.registerMapping(mapping);
+ const unresolved=store.reconcileEvidence({...scope,integrationContractId:"contract-1",mappingId:established.mappingId,expectedVersion:1,proofType:"SAME_EXTERNAL_IDENTITY",evidenceRefs:["evidence:unproven"],observationIds:[],idempotencyKey:"idem-unresolved",inputFingerprint:"fp-unresolved",recordedAt:"2026-09-02T00:05:00.000Z"});
+ assert.equal(unresolved.reconciliationStatus,"UNRESOLVED_CONFLICT");assert.equal(unresolved.reasonCode,"F19_HANDOFF_REQUIRED");
+ store.close();store=new DurableExternalIntegrationStore({databasePath});
+ const replay=store.reconcileEvidence({...scope,integrationContractId:"contract-1",mappingId:established.mappingId,expectedVersion:1,proofType:"SAME_EXTERNAL_IDENTITY",evidenceRefs:["evidence:unproven"],observationIds:[],idempotencyKey:"idem-unresolved",inputFingerprint:"fp-unresolved",recordedAt:"2026-09-02T00:05:00.000Z"});
+ assert.deepEqual(replay,unresolved);assert.equal(store.readMappingById(scope,established.mappingId)?.internalResourceId,"source-1");
+ assert.equal(store.listEvidence(scope,"contract-1").filter(item=>item.kind==="TECHNICAL_RECONCILIATION").length,1);store.close();
+});

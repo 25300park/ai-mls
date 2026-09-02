@@ -38,6 +38,20 @@ export class ConnectorExecutionCoordinator {
   }>) {}
 
   public execute(input: ConnectorExecutionInput): ConnectorExecutionResult {
+    const replayScope = scopeFromAdmissionInput(input.admissionInput);
+    const priorIdempotency = this.dependencies.persistence.findIdempotency(replayScope, input.idempotencyKey);
+    if (priorIdempotency !== undefined) {
+      if (priorIdempotency.invocationId !== input.invocationId || priorIdempotency.inputFingerprint !== input.inputFingerprint) {
+        throw new ConnectorPersistenceError("IDEMPOTENCY_CONFLICT", "Connector idempotency identity conflicts.");
+      }
+      const prior = this.dependencies.persistence.findInvocation(replayScope, input.invocationId);
+      if (prior === undefined) throw new ConnectorPersistenceError("PERSISTENCE_UNAVAILABLE", "Connector invocation linkage is invalid.");
+      return resultFrom(prior);
+    }
+    if (this.dependencies.persistence.findInvocation(replayScope, input.invocationId) !== undefined) {
+      throw new ConnectorPersistenceError("IDEMPOTENCY_CONFLICT", "Connector invocation identity conflicts.");
+    }
+
     const admission = this.dependencies.admission.evaluate(input.admissionInput);
     if (admission.status === "BLOCKED") return Object.freeze({ status: "BLOCKED", reasonCode: "ADMISSION_DENIED" });
     const scope: ConnectorExecutionScope = Object.freeze({
@@ -47,15 +61,6 @@ export class ConnectorExecutionCoordinator {
       sourceId: admission.sourceId,
       connectorId: admission.connectorId,
     });
-    const priorIdempotency = this.dependencies.persistence.findIdempotency(scope, input.idempotencyKey);
-    if (priorIdempotency !== undefined) {
-      if (priorIdempotency.invocationId !== input.invocationId || priorIdempotency.inputFingerprint !== input.inputFingerprint) {
-        throw new ConnectorPersistenceError("IDEMPOTENCY_CONFLICT", "Connector idempotency identity conflicts.");
-      }
-      const prior = this.dependencies.persistence.findInvocation(scope, input.invocationId);
-      if (prior === undefined) throw new ConnectorPersistenceError("PERSISTENCE_UNAVAILABLE", "Connector invocation linkage is invalid.");
-      return resultFrom(prior);
-    }
 
     this.dependencies.persistence.acquireLease({
       ...scope,
@@ -108,6 +113,16 @@ export class ConnectorExecutionCoordinator {
     });
     return resultFrom(completed);
   }
+}
+
+function scopeFromAdmissionInput(input: SourceIngestionAdmissionInput): ConnectorExecutionScope {
+  return Object.freeze({
+    tenantId: input.tenantId,
+    scopeType: input.scope.scopeType,
+    scopeId: input.scope.scopeId,
+    sourceId: input.sourceId,
+    connectorId: input.connectorId,
+  });
 }
 
 function resultFrom(invocation: ConnectorInvocation): ConnectorExecutionResult {

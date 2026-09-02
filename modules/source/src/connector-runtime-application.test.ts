@@ -90,3 +90,26 @@ test("F18-D body source or connector binding cannot override trusted runtime con
     assert.equal(value.persistence.findTechnicalState({ tenantId: "tenant-1", scopeType: "TEAM", scopeId: "team-1", sourceId: "source-1", connectorId: "connector-1" }, "EXTERNAL_OBSERVATION", "observation-1"), undefined);
   } finally { value.close(); }
 });
+
+test("F18-F wrong tenant and scope cannot disclose a durable prior result", () => {
+  const otherSession = Object.freeze({ ...session, id: "session-2", teamId: "team-2" });
+  const otherContext = Object.freeze({ ...context, session: otherSession, tenantId: "tenant-2", scope: Object.freeze({ scopeType: "TEAM" as const, scopeId: "team-2" }) });
+  const value = fixture({ context: otherContext });
+  try {
+    value.persistence.recordTechnicalState({ tenantId: "tenant-1", scopeType: "TEAM", scopeId: "team-1", sourceId: "source-1", connectorId: "connector-1", recordType: "CAPTURE_BATCH", recordId: "batch-prior", status: "SUCCEEDED", expectedVersion: 0, idempotencyKey: "prior-key", inputFingerprint: "prior-fingerprint", safeEvidenceReference: "evidence:prior", recordedAt: now, bindingReference: "invocation-prior" });
+    const result = value.application.execute("QUERY", { operation: "ReadBatchStatus", sessionId: "session-2", batchId: "batch-prior", connectorId: "connector-1", sourceId: "source-1" });
+    assert.deepEqual(result, { ok: false, error: { code: "NOT_FOUND", message: "Connector resource is unavailable." } });
+    assert.equal(value.captureCalls(), 0);
+  } finally { value.close(); }
+});
+
+test("F18-F inactive session cannot disclose a durable prior result", () => {
+  const inactiveContext = Object.freeze({ ...context, session: Object.freeze({ ...session, state: "REVOKED" as const }) });
+  const value = fixture({ context: inactiveContext });
+  try {
+    value.persistence.recordTechnicalState({ tenantId: "tenant-1", scopeType: "TEAM", scopeId: "team-1", sourceId: "source-1", connectorId: "connector-1", recordType: "CAPTURE_BATCH", recordId: "batch-prior", status: "SUCCEEDED", expectedVersion: 0, idempotencyKey: "prior-key", inputFingerprint: "prior-fingerprint", safeEvidenceReference: "evidence:prior", recordedAt: now, bindingReference: "invocation-prior" });
+    const result = value.application.execute("QUERY", { operation: "ReadBatchStatus", sessionId: "session-1", batchId: "batch-prior", connectorId: "connector-1", sourceId: "source-1" });
+    assert.deepEqual(result, { ok: false, error: { code: "UNAUTHENTICATED", message: "Authentication is required." } });
+    assert.equal(value.captureCalls(), 0);
+  } finally { value.close(); }
+});

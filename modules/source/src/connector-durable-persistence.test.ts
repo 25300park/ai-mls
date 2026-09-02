@@ -96,6 +96,22 @@ test("F18-C rejects conflicting active lease and permits expiry or explicit rele
   store.close();
 }));
 
+test("F18-F active and expired lease states remain authoritative across reopen", () => withDatabase((databasePath) => {
+  const first = new DurableConnectorExecutionUnitOfWork({ databasePath });
+  first.acquireLease(leaseInput());
+  first.close();
+
+  const active = new DurableConnectorExecutionUnitOfWork({ databasePath });
+  assert.equal(active.findLease(scope)?.status, "ACTIVE");
+  assert.throws(() => active.acquireLease({ ...leaseInput(), leaseId: "lease-f18-f-conflict", ownerId: "worker-f18-f-conflict", expectedScopeRevision: 1 }), { code: "LEASE_CONFLICT" });
+  active.expireLeases("2026-09-01T00:06:00.000Z");
+  active.close();
+
+  const expired = new DurableConnectorExecutionUnitOfWork({ databasePath });
+  assert.equal(expired.findLease(scope)?.status, "EXPIRED");
+  expired.close();
+}));
+
 test("F18-C rejects invocation identity, idempotency fingerprint, and stale checkpoint conflicts", () => withDatabase((databasePath) => {
   const store = new DurableConnectorExecutionUnitOfWork({ databasePath });
   store.acquireLease(leaseInput());

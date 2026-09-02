@@ -5,8 +5,13 @@ import { join } from "node:path";
 import test from "node:test";
 
 import type { SessionContext } from "../../../modules/identity/src/session-service.js";
+import { ConnectorApplicationHost } from "../../../modules/source/src/connector-application-host.js";
 import { CONNECTOR_API_HTTP_OPERATIONS, type ConnectorApiRequestKind } from "../../../modules/source/src/connector-api-contracts.js";
-import type { ConnectorTrustedRuntimeContext } from "../../../modules/source/src/connector-runtime-application.js";
+import { DurableConnectorExecutionUnitOfWork } from "../../../modules/source/src/connector-durable-persistence.js";
+import { ConnectorExecutionCoordinator } from "../../../modules/source/src/connector-execution-coordinator.js";
+import type { ConnectorInvocationPort } from "../../../modules/source/src/connector-invocation-port.js";
+import { ConnectorRuntimeApplication, type ConnectorTrustedRuntimeContext } from "../../../modules/source/src/connector-runtime-application.js";
+import { ConnectorRuntime } from "../../../modules/source/src/connector-runtime.js";
 import { createConnectorApi018HttpRequestHandler } from "./connector-api-http-adapter.js";
 import { createProductionConnectorApi018Composition } from "./connector-production-composition.js";
 
@@ -23,6 +28,18 @@ const validBodies: Readonly<Record<string, Readonly<Record<string, unknown>>>> =
 
 function http(body: unknown, path = "/api/connectors/commands", sessionId = "session-trusted") {
   return { method: "POST", path, headers: sessionId.length === 0 ? {} : { "x-session-id": sessionId }, query: {}, pathParameters: {}, body, requestId: "request-1" };
+}
+
+function restartableComposition(databasePath: string, connector: ConnectorInvocationPort, admissionStatus: "ELIGIBLE" | "BLOCKED") {
+  const session: SessionContext = Object.freeze({ id: "session-trusted", principalId: "service-1", principalType: "SERVICE", roles: Object.freeze(["SVC"] as const), teamId: "team-1", state: "ACTIVE", assurance: "WORKLOAD", isMfaVerified: false, authenticatedAt: now, expiresAt: "2026-09-01T01:00:00.000Z", absoluteExpiresAt: "2026-09-01T02:00:00.000Z", familyId: "family-1", refreshReference: "non-sensitive-reference" });
+  const context: ConnectorTrustedRuntimeContext = Object.freeze({ session, tenantId: "tenant-1", scope: Object.freeze({ scopeType: "TEAM", scopeId: "team-1" }), sourceId: "source-1", connectorId: "connector-1", purpose: "LISTING_DISCOVERY", sourcePolicyVersion: 3, connectorVersion: 5, correlationId: "correlation-1" });
+  const persistence = new DurableConnectorExecutionUnitOfWork({ databasePath });
+  const admission = { evaluate: () => admissionStatus === "BLOCKED" ? Object.freeze({ status: "BLOCKED" as const, reasonCode: "ADMISSION_DENIED" as const }) : Object.freeze({ status: "ELIGIBLE" as const, tenantId: context.tenantId, scope: context.scope, sourceId: context.sourceId, sourcePolicyVersion: context.sourcePolicyVersion, connectorId: context.connectorId, connectorVersion: context.connectorVersion, method: "CONNECTOR", purpose: context.purpose }) };
+  const coordinator = new ConnectorExecutionCoordinator({ persistence, connector, admission });
+  const application = new ConnectorRuntimeApplication({ persistence, contextResolver: { resolve: () => context }, authorizer: { authorize: () => true }, coordinator, clock: () => now, externalObservationSink: { submit: () => Object.freeze({ ok: true as const, operation: "SubmitProviderObservation" as const, data: Object.freeze({ evidenceRef: "evidence:observation:1", mappingState: "ACTIVE" }) }) } });
+  const host = new ConnectorApplicationHost(() => new ConnectorRuntime(application));
+  host.start();
+  return Object.freeze({ http: createConnectorApi018HttpRequestHandler(host), persistence, close: () => { host.stop(); persistence.close(); } });
 }
 
 test("F18-D HTTP exposes exactly seven closed operations and derives Session from the header", async () => {
@@ -70,5 +87,49 @@ test("F18-D production composition requires durable configuration, rejects conne
     assert.equal(response.statusCode, 503);
     assert.equal(composition.persistence.findTechnicalState({ tenantId: "tenant-1", scopeType: "TEAM", scopeId: "team-1", sourceId: "source-1", connectorId: "connector-1" }, "CAPTURE_BATCH", "batch-1"), undefined);
     composition.close();
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test("F18-F API-018 exact replay survives restart before blocked live admission and rejects conflicting input", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "f18-f-api018-replay-"));
+  const databasePath = join(directory, "connector.sqlite");
+  let firstCalls = 0;
+  let replayCalls = 0;
+  try {
+    const first = restartableComposition(databasePath, { invoke: () => { firstCalls += 1; return Object.freeze({ outcome: "SUCCEEDED" as const, reasonCode: "CONFIRMED", safeEvidenceReference: "evidence:connector:1", checkpointReference: "checkpoint:1" }); } }, "ELIGIBLE");
+    const firstResponse = await first.http.handle(http(validBodies["SubmitCaptureBatch"]));
+    assert.equal(firstResponse.statusCode, 200);
+    first.close();
+
+    const replay = restartableComposition(databasePath, { invoke: () => { replayCalls += 1; throw new Error("must not run"); } }, "BLOCKED");
+    const replayResponse = await replay.http.handle(http(validBodies["SubmitCaptureBatch"]));
+    assert.deepEqual(replayResponse.body, firstResponse.body);
+    assert.equal(replayCalls, 0);
+    assert.equal(replay.persistence.findCheckpoint({ tenantId: "tenant-1", scopeType: "TEAM", scopeId: "team-1", sourceId: "source-1", connectorId: "connector-1" })?.version, 1);
+    const conflict = await replay.http.handle(http({ ...validBodies["SubmitCaptureBatch"], captureItemEvidenceRefs: ["evidence:item:conflict"] }));
+    assert.equal(conflict.statusCode, 409);
+    assert.equal(replayCalls, 0);
+    replay.close();
+    assert.equal(firstCalls, 1);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test("F18-F API-018 ambiguous replay survives restart with zero blind rerun", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "f18-f-api018-ambiguous-"));
+  const databasePath = join(directory, "connector.sqlite");
+  let replayCalls = 0;
+  try {
+    const first = restartableComposition(databasePath, { invoke: () => { throw new Error("outcome unproven"); } }, "ELIGIBLE");
+    const firstResponse = await first.http.handle(http(validBodies["SubmitCaptureBatch"]));
+    assert.equal(firstResponse.statusCode, 200);
+    first.close();
+
+    const replay = restartableComposition(databasePath, { invoke: () => { replayCalls += 1; throw new Error("must not run"); } }, "BLOCKED");
+    const replayResponse = await replay.http.handle(http(validBodies["SubmitCaptureBatch"]));
+    assert.deepEqual(replayResponse.body, firstResponse.body);
+    assert.match(JSON.stringify(replayResponse.body), /AMBIGUOUS|RECONCILIATION_REQUIRED/u);
+    assert.equal(replayCalls, 0);
+    assert.equal(replay.persistence.findCheckpoint({ tenantId: "tenant-1", scopeType: "TEAM", scopeId: "team-1", sourceId: "source-1", connectorId: "connector-1" }), undefined);
+    replay.close();
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });

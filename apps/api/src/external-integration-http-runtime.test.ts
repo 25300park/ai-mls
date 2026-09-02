@@ -36,3 +36,23 @@ test("F18-E API-018 SubmitExternalObservation delegates to API-019 and suspensio
   const blocked=await connector.http.handle({method:"POST",path:"/api/connectors/commands",headers:{"x-session-id":"session-1"},query:{},pathParameters:{},body:{...body,observationId:"observation-2",idempotencyKey:"test-obs-2"},requestId:"request-2"});assert.equal(blocked.statusCode,403);assert.equal(external.store.listObservations(scope,"contract-1").length,1);
  }finally{connector.close();external.close();}
 });
+
+test("F18-F suspended API-019 contract blocks API-018 observation ingress after both runtimes restart",async()=>{
+ const directory=mkdtempSync(join(tmpdir(),"f18-f-composed-restart-"));const externalPath=join(directory,"external.sqlite");const connectorPath=join(directory,"connector.sqlite");
+ const externalContext={session,tenantId:"tenant-1",scopeType:"SOURCE" as const,scopeId:"source-1",connectorId:"connector-1",sourceId:"source-1",purpose:"EXTERNAL_EVIDENCE"};
+ const binding={integrationContractId:"contract-1",providerNamespace:"provider-1",connectorId:"connector-1",sourceId:"source-1",governedBindingRef:"governance:binding:1",evidenceRef:"evidence:contract:1"};
+ const connectorContext:ConnectorTrustedRuntimeContext=Object.freeze({session,tenantId:"tenant-1",scope:Object.freeze({scopeType:"SOURCE",scopeId:"source-1"}),sourceId:"source-1",connectorId:"connector-1",purpose:"EXTERNAL_EVIDENCE",sourcePolicyVersion:1,connectorVersion:1,correlationId:"correlation-1"});
+ const createExternal=()=>createProductionExternalIntegrationComposition({databasePath:externalPath,contextResolver:{resolve:()=>externalContext},authorizer:{authorize:()=>true},bindingResolver:{resolve:()=>binding},clock:()=>now});
+ const createConnector=(external:ReturnType<typeof createExternal>)=>createProductionConnectorApi018Composition({databasePath:connectorPath,contextResolver:{resolve:()=>connectorContext},authorizer:{authorize:()=>true},admission:{evaluate:()=>Object.freeze({status:"BLOCKED" as const,reasonCode:"ADMISSION_DENIED" as const})},clock:()=>now,externalObservationSink:{submit:(input,sessionId)=>external.application.execute("COMMAND",input,sessionId)}});
+ const body={operation:"SubmitExternalObservation",integrationContractId:"contract-1",connectorId:"connector-1",sourceId:"source-1",observationId:"observation-1",providerNamespace:"provider-1",externalObjectId:"external-1",observationType:"STATUS",normalizedFields:{active:true},observedAt:now,expectedVersion:0,idempotencyKey:"idem-observation"};
+ let external=createExternal();let connector=createConnector(external);
+ try{
+  assert.equal((await connector.http.handle({method:"POST",path:"/api/connectors/commands",headers:{"x-session-id":"session-1"},query:{},pathParameters:{},body,requestId:"request-1"})).statusCode,200);
+  assert.equal(external.application.execute("COMMAND",{operation:"SuspendIntegrationContract",integrationContractId:"contract-1",expectedVersion:1,reasonCode:"TECHNICAL_SUSPENSION",evidenceRef:"evidence:suspend:1",idempotencyKey:"idem-suspend"},"session-1").ok,true);
+  connector.close();external.close();external=createExternal();connector=createConnector(external);
+  const blocked=await connector.http.handle({method:"POST",path:"/api/connectors/commands",headers:{"x-session-id":"session-1"},query:{},pathParameters:{},body:{...body,observationId:"observation-2",idempotencyKey:"test-2"},requestId:"request-2"});
+  assert.equal(blocked.statusCode,403);
+  assert.equal(external.store.listObservations({tenantId:"tenant-1",scopeType:"SOURCE",scopeId:"source-1",connectorId:"connector-1",sourceId:"source-1"},"contract-1").length,1);
+  const read=await external.http.handle(request({operation:"ReadIntegrationContract",integrationContractId:"contract-1"}));assert.equal(read.statusCode,200);assert.match(JSON.stringify(read.body),/SUSPENDED/u);
+ }finally{connector.close();external.close();}
+});
