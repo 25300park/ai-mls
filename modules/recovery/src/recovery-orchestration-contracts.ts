@@ -92,6 +92,12 @@ export interface RecoveryAuthorizationBinding {
   readonly authorizedAt: string;
 }
 
+export interface RecoveryExecutionRecord {
+  readonly recoveryId: string;
+  readonly fingerprint: string;
+  readonly resultJson?: string;
+}
+
 export interface CreateRecoveryCaseInput {
   readonly resourceType: string;
   readonly resourceId: string;
@@ -120,6 +126,9 @@ export interface RecoveryOrchestrationStore {
     tenantId: string;
     scopeRef: string;
   }>): RecoveryCaseRecord | undefined;
+  findRecoveryExecution(input: Readonly<{ recoveryId: string; fingerprint: string }>): RecoveryExecutionRecord | undefined;
+  claimRecoveryExecution(input: Readonly<{ recoveryId: string; fingerprint: string }>): Readonly<{ replay: boolean; record: RecoveryExecutionRecord }>;
+  completeRecoveryExecution(input: Readonly<{ recoveryId: string; fingerprint: string; resultJson: string }>): Readonly<{ replay: boolean; record: RecoveryExecutionRecord }>;
   recordFinding(input: Readonly<{
     recoveryCaseId: string;
     expectedVersion: number;

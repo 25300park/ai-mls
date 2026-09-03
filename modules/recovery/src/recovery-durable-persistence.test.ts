@@ -126,8 +126,9 @@ test("F19-B durable configuration and nested origin lineage fail closed", () => 
   assert.throws(() => new DurableRecoveryOrchestrationStore({ databasePath: ":memory:" }), /durable recovery database path/i);
   withDatabase((databasePath) => {
     const store = new DurableRecoveryOrchestrationStore({ databasePath });
+    try {
     const parent = create(store);
-    const child = store.createCase({
+    assert.throws(() => store.createCase({
       resourceType: "ConnectorInvocation",
       resourceId: "invocation-child",
       originDomain: "CONNECTOR",
@@ -138,11 +139,12 @@ test("F19-B durable configuration and nested origin lineage fail closed", () => 
       evidenceRefs: ["evidence:child:1"],
       createdBy: "service-evidence-2",
       createdAt,
-    });
-    assert.equal(child.parentRecoveryCaseId, parent.recoveryCaseId);
+    }), (error) => error instanceof RecoveryStoreError && error.code === "INVALID_STATE");
     assert.equal(store.findCase(parent.recoveryCaseId)?.version, 1);
     assert.throws(() => store.createCase({ resourceType: "ConnectorInvocation", resourceId: "cross-tenant", originDomain: "CONNECTOR", originIdentity: { invocationId: "cross-tenant" }, tenantId: "tenant-2", scopeRef: "team:other", parentRecoveryCaseId: parent.recoveryCaseId, evidenceRefs: ["evidence:cross"], createdBy: "service-evidence-2", createdAt }), (error) => error instanceof RecoveryStoreError && error.code === "INVALID_STATE");
-    store.close();
+    } finally {
+      store.close();
+    }
   });
 });
 
@@ -184,4 +186,198 @@ test("F19-B rolls back finding, evidence and version when idempotency persistenc
   assert.equal(Number(raw.prepare("SELECT COUNT(*) AS count FROM recovery_evidence WHERE owner_type = 'FINDING'").get()?.["count"]), 0);
   raw.close();
   store.close();
+}));
+
+test("F19-F nested ambiguity accepts only the authorized X2 identity and preserves RC1 while RC2 stays independently open", () => withDatabase((databasePath) => {
+  const store = new DurableRecoveryOrchestrationStore({ databasePath });
+  let parent!: ReturnType<typeof create>;
+  let authorized!: ReturnType<DurableRecoveryOrchestrationStore["authorizeRecovery"]>["record"];
+  let immutableRc1!: ReturnType<DurableRecoveryOrchestrationStore["authorizeRecovery"]>["record"];
+  let child!: ReturnType<DurableRecoveryOrchestrationStore["createCase"]>;
+  try {
+  parent = create(store, "nested-f19-f");
+  store.recordFinding({
+    recoveryCaseId: parent.recoveryCaseId,
+    expectedVersion: 1,
+    finding: "CONFIRMED_NOT_EXECUTED",
+    reasonCode: "PROVIDER_CONFIRMED_NOT_EXECUTED",
+    evidenceRefs: ["evidence:f19-f:finding:rc1"],
+    decidedBy: "resolver-f19-f",
+    decidedAt: "2026-09-03T10:01:00.000Z",
+    idempotencyKey: "f19-f-finding-rc1",
+    fingerprint: "f19-f-finding-rc1",
+  });
+  authorized = store.authorizeRecovery({
+    recoveryCaseId: parent.recoveryCaseId,
+    expectedVersion: 2,
+    recoveryDisposition: "RECOVERY_AUTHORIZED",
+    recoveryActionType: "PUBLICATION_RECOVERY",
+    recoveryExecutionIdentity: { attemptId: "attempt-x2-f19-f", commandId: "command-x2-f19-f" },
+    evidenceRefs: ["evidence:f19-f:authorization:r1"],
+    decidedBy: "authorizer-f19-f",
+    decidedAt: "2026-09-03T10:02:00.000Z",
+    idempotencyKey: "f19-f-authorization-r1",
+    fingerprint: "f19-f-authorization-r1",
+  }).record;
+  immutableRc1 = structuredClone(authorized);
+
+  assert.throws(() => store.createCase({
+    resourceType: "Publication",
+    resourceId: "publication-nested-f19-f",
+    originDomain: "PUBLICATION",
+    originIdentity: parent.originIdentity,
+    tenantId: "tenant-1",
+    scopeRef: "team:team-1",
+    parentRecoveryCaseId: parent.recoveryCaseId,
+    evidenceRefs: ["evidence:f19-f:invalid-original-reuse"],
+    createdBy: "executor-f19-f",
+    createdAt: "2026-09-03T10:03:00.000Z",
+  }), (error) => error instanceof RecoveryStoreError && error.code === "INVALID_STATE");
+  assert.throws(() => store.createCase({
+    resourceType: "Publication",
+    resourceId: "publication-nested-f19-f",
+    originDomain: "PUBLICATION",
+    originIdentity: { reconciliationCaseId: "case-x3-f19-f", attemptId: "attempt-x3-f19-f" },
+    tenantId: "tenant-1",
+    scopeRef: "team:team-1",
+    parentRecoveryCaseId: parent.recoveryCaseId,
+    evidenceRefs: ["evidence:f19-f:invalid-x3"],
+    createdBy: "executor-f19-f",
+    createdAt: "2026-09-03T10:03:00.000Z",
+  }), (error) => error instanceof RecoveryStoreError && error.code === "INVALID_STATE");
+  assert.throws(() => store.createCase({
+    resourceType: "Publication",
+    resourceId: "publication-nested-f19-f",
+    originDomain: "PUBLICATION",
+    originIdentity: { reconciliationCaseId: "case-x2-f19-f", attemptId: "attempt-x2-f19-f" },
+    tenantId: "tenant-1",
+    scopeRef: "team:team-1",
+    parentRecoveryCaseId: "missing-parent-f19-f",
+    evidenceRefs: ["evidence:f19-f:missing-parent"],
+    createdBy: "executor-f19-f",
+    createdAt: "2026-09-03T10:03:00.000Z",
+  }), (error) => error instanceof RecoveryStoreError && error.code === "INVALID_STATE");
+
+  child = store.createCase({
+    resourceType: "Publication",
+    resourceId: "publication-nested-f19-f",
+    originDomain: "PUBLICATION",
+    originIdentity: { reconciliationCaseId: "case-x2-f19-f", attemptId: "attempt-x2-f19-f" },
+    tenantId: "tenant-1",
+    scopeRef: "team:team-1",
+    parentRecoveryCaseId: parent.recoveryCaseId,
+    evidenceRefs: ["evidence:f19-f:x2:ambiguous"],
+    createdBy: "executor-f19-f",
+    createdAt: "2026-09-03T10:03:00.000Z",
+  });
+
+  assert.equal(child.parentRecoveryCaseId, parent.recoveryCaseId);
+  assert.deepEqual(child.originIdentity, { reconciliationCaseId: "case-x2-f19-f", attemptId: "attempt-x2-f19-f" });
+  assert.equal(child.status, "OPEN");
+  assert.equal(child.version, 1);
+  assert.equal(child.finding, undefined);
+  assert.equal(child.disposition, undefined);
+  assert.equal(child.recovery, undefined);
+  assert.deepEqual(store.findCase(parent.recoveryCaseId), immutableRc1);
+  assert.throws(() => store.createCase({
+    resourceType: child.resourceType,
+    resourceId: child.resourceId,
+    originDomain: child.originDomain,
+    originIdentity: child.originIdentity,
+    tenantId: child.tenantId,
+    scopeRef: child.scopeRef,
+    parentRecoveryCaseId: parent.recoveryCaseId,
+    evidenceRefs: ["evidence:f19-f:overwrite-attempt"],
+    createdBy: "other-executor-f19-f",
+    createdAt: "2026-09-03T10:04:00.000Z",
+  }), (error) => error instanceof RecoveryStoreError && error.code === "DUPLICATE_ORIGIN");
+  assert.deepEqual(store.findCase(parent.recoveryCaseId), immutableRc1);
+  assert.deepEqual(store.findCase(child.recoveryCaseId), child);
+
+  } finally {
+    store.close();
+  }
+  const reopened = new DurableRecoveryOrchestrationStore({ databasePath });
+  try {
+    assert.deepEqual(reopened.findCase(parent.recoveryCaseId), immutableRc1);
+    assert.deepEqual(reopened.findCase(child.recoveryCaseId), child);
+  } finally {
+    reopened.close();
+  }
+
+  const raw = new DatabaseSync(databasePath);
+  try {
+    assert.throws(() => raw.prepare("UPDATE recovery_cases SET parent_recovery_case_id = NULL WHERE recovery_case_id = ?").run(child.recoveryCaseId), /immutable/i);
+    assert.throws(() => raw.prepare("UPDATE recovery_bindings SET execution_identity_json = '{}' WHERE recovery_id = ?").run(authorized.recovery!.recoveryId), /append-only/i);
+    assert.throws(() => raw.prepare("UPDATE recovery_evidence SET evidence_ref = 'overwritten' WHERE owner_id = ?").run(child.recoveryCaseId), /append-only/i);
+  } finally {
+    raw.close();
+  }
+}));
+
+test("F19-F recovery execution idempotency replays the authoritative result after restart and conflicts without mutation", () => withDatabase((databasePath) => {
+  const first = new DurableRecoveryOrchestrationStore({ databasePath });
+  const parent = create(first, "execution-idempotency-f19-f");
+  first.recordFinding({
+    recoveryCaseId: parent.recoveryCaseId,
+    expectedVersion: 1,
+    finding: "CONFIRMED_NOT_EXECUTED",
+    reasonCode: "PROVIDER_CONFIRMED_NOT_EXECUTED",
+    evidenceRefs: ["evidence:f19-f:execution:finding"],
+    decidedBy: "resolver-f19-f-execution",
+    decidedAt: "2026-09-03T11:01:00.000Z",
+    idempotencyKey: "f19-f-execution-finding",
+    fingerprint: "f19-f-execution-finding",
+  });
+  const authorized = first.authorizeRecovery({
+    recoveryCaseId: parent.recoveryCaseId,
+    expectedVersion: 2,
+    recoveryDisposition: "RECOVERY_AUTHORIZED",
+    recoveryActionType: "PUBLICATION_RECOVERY",
+    recoveryExecutionIdentity: { attemptId: "attempt-f19-f-execution-x2", commandId: "command-f19-f-execution-x2" },
+    evidenceRefs: ["evidence:f19-f:execution:authorization"],
+    decidedBy: "authorizer-f19-f-execution",
+    decidedAt: "2026-09-03T11:02:00.000Z",
+    idempotencyKey: "f19-f-execution-authorization",
+    fingerprint: "f19-f-execution-authorization",
+  }).record;
+  const recoveryId = authorized.recovery!.recoveryId;
+  const identity = { recoveryId, fingerprint: "f19-f-authoritative-execution-fingerprint" } as const;
+  const resultJson = JSON.stringify({ ok: true, publicationId: "publication-execution-idempotency-f19-f", aggregateVersion: 7, decision: "RECOVERED", resultReference: "result:f19-f:authoritative", replayed: false });
+  const immutableRc1 = structuredClone(authorized);
+
+  const claim = first.claimRecoveryExecution(identity);
+  assert.equal(claim.replay, false);
+  assert.deepEqual(claim.record, identity);
+  assert.deepEqual(first.findRecoveryExecution(identity), identity);
+  const completion = first.completeRecoveryExecution({ ...identity, resultJson });
+  assert.equal(completion.replay, false);
+  assert.deepEqual(completion.record, { ...identity, resultJson });
+  assert.deepEqual(first.claimRecoveryExecution(identity), { replay: true, record: { ...identity, resultJson } });
+  assert.deepEqual(first.completeRecoveryExecution({ ...identity, resultJson: "attempted-overwrite" }), { replay: true, record: { ...identity, resultJson } });
+  assert.deepEqual(first.findCase(parent.recoveryCaseId), immutableRc1);
+  first.close();
+
+  const reopened = new DurableRecoveryOrchestrationStore({ databasePath });
+  try {
+    assert.deepEqual(reopened.findRecoveryExecution(identity), { ...identity, resultJson });
+    const beforeConflict = reopened.findCase(parent.recoveryCaseId);
+    assert.throws(() => reopened.findRecoveryExecution({ ...identity, fingerprint: "conflicting-fingerprint" }), (error) => error instanceof RecoveryStoreError && error.code === "IDEMPOTENCY_CONFLICT");
+    assert.throws(() => reopened.claimRecoveryExecution({ ...identity, fingerprint: "conflicting-fingerprint" }), (error) => error instanceof RecoveryStoreError && error.code === "IDEMPOTENCY_CONFLICT");
+    assert.throws(() => reopened.completeRecoveryExecution({ ...identity, fingerprint: "conflicting-fingerprint", resultJson: "conflicting-result" }), (error) => error instanceof RecoveryStoreError && error.code === "IDEMPOTENCY_CONFLICT");
+    assert.deepEqual(reopened.findCase(parent.recoveryCaseId), beforeConflict);
+    assert.deepEqual(reopened.findRecoveryExecution(identity), { ...identity, resultJson });
+  } finally {
+    reopened.close();
+  }
+
+  const raw = new DatabaseSync(databasePath);
+  try {
+    assert.equal(Number(raw.prepare("SELECT COUNT(*) AS count FROM recovery_execution_claims").get()?.["count"]), 1);
+    assert.equal(Number(raw.prepare("SELECT COUNT(*) AS count FROM recovery_execution_results").get()?.["count"]), 1);
+    assert.throws(() => raw.prepare("UPDATE recovery_execution_claims SET fingerprint = 'overwritten'").run(), /append-only/i);
+    assert.throws(() => raw.prepare("UPDATE recovery_execution_results SET result_json = 'overwritten'").run(), /append-only/i);
+  } finally {
+    raw.close();
+  }
 }));

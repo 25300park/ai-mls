@@ -12,7 +12,7 @@ import type { PublicationApprovedRetryPolicyResolver } from "./publication-durab
 import type { PublicationGovernanceContextStore } from "./publication-governance-context.js";
 import type { ListingProjectionRebuildAuthority } from "./listing-projection-rebuild.js";
 import type { PublicationOperationsRebuildAuthority, PublicationOperationsRetryAuthority, PublicationOperationsRetryStateResolver } from "./publication-operations-contracts.js";
-import type { PublicationRecoveryAuthorizationReader, PublicationRecoveryCaseWriter } from "./publication-reconciliation-service.js";
+import type { PublicationRecoveryAuthorizationReader, PublicationRecoveryCaseWriter, PublicationRecoveryExecutionStore } from "./publication-reconciliation-service.js";
 
 export interface PublicationInfrastructureConfiguration {
   readonly approvedRetryPolicy?: PublicationApprovedRetryPolicyResolver;
@@ -30,6 +30,7 @@ export interface PublicationInfrastructureConfiguration {
   readonly operationsRebuildAuthority?: PublicationOperationsRebuildAuthority;
   readonly recoveryAuthorizationReader?: PublicationRecoveryAuthorizationReader;
   readonly recoveryCaseWriter?: PublicationRecoveryCaseWriter;
+  readonly recoveryExecutionStore?: PublicationRecoveryExecutionStore;
 }
 
 export interface PublicationInfrastructureConfigurationInput {
@@ -48,6 +49,7 @@ export interface PublicationInfrastructureConfigurationInput {
   readonly operationsRebuildAuthority?: PublicationOperationsRebuildAuthority;
   readonly recoveryAuthorizationReader?: PublicationRecoveryAuthorizationReader;
   readonly recoveryCaseWriter?: PublicationRecoveryCaseWriter;
+  readonly recoveryExecutionStore?: PublicationRecoveryExecutionStore;
 }
 
 export function createPublicationInfrastructureConfiguration(
@@ -69,5 +71,6 @@ export function createPublicationInfrastructureConfiguration(
     ...(input.operationsRebuildAuthority === undefined ? {} : { operationsRebuildAuthority: input.operationsRebuildAuthority }),
     ...(input.recoveryAuthorizationReader === undefined ? {} : { recoveryAuthorizationReader: input.recoveryAuthorizationReader }),
     ...(input.recoveryCaseWriter === undefined ? {} : { recoveryCaseWriter: input.recoveryCaseWriter }),
+    ...(input.recoveryExecutionStore === undefined ? {} : { recoveryExecutionStore: input.recoveryExecutionStore }),
   });
 }

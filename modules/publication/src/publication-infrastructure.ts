@@ -259,6 +259,7 @@ function createPublicationInfrastructureWithPersistence(
     operations: operationsStatus,
     ...(configuration.recoveryAuthorizationReader === undefined ? {} : { recoveryAuthorizationReader: configuration.recoveryAuthorizationReader }),
     ...(configuration.recoveryCaseWriter === undefined ? {} : { recoveryCaseWriter: configuration.recoveryCaseWriter }),
+    ...(configuration.recoveryExecutionStore === undefined ? {} : { recoveryExecutionStore: configuration.recoveryExecutionStore }),
     coordination,
   });
   const inputPort = new PublicationInterfaceService(

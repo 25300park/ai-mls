@@ -5,6 +5,7 @@ import type {
   RecoveryAuthorizationBinding,
   RecoveryCaseRecord,
   RecoveryDispositionRecord,
+  RecoveryExecutionRecord,
   RecoveryFindingRecord,
   RecoveryOrchestrationStore,
   RecoveryOriginIdentity,
@@ -42,6 +43,7 @@ export class DurableRecoveryOrchestrationStore implements RecoveryOrchestrationS
       if (input.parentRecoveryCaseId) {
         const parent = requiredCase(this.#database, input.parentRecoveryCaseId);
         if (parent.tenantId !== input.tenantId || parent.scopeRef !== input.scopeRef) throw new RecoveryStoreError("INVALID_STATE");
+        assertChildLineage(parent, input);
       }
       const recoveryCaseId = stableId("recovery-case", [input.tenantId, input.scopeRef, input.originDomain, canonicalJson(input.originIdentity), input.parentRecoveryCaseId ?? "root"]);
       try {
@@ -95,6 +97,37 @@ export class DurableRecoveryOrchestrationStore implements RecoveryOrchestrationS
       && record.recovery.recoveryActionType === "CONNECTOR_REEXECUTION",
     );
     return matches.length === 1 ? matches[0] : undefined;
+  }
+
+  findRecoveryExecution(input: Parameters<RecoveryOrchestrationStore["findRecoveryExecution"]>[0]): RecoveryExecutionRecord | undefined {
+    this.#assertOpen();
+    const claim = this.#database.prepare("SELECT recovery_id, fingerprint FROM recovery_execution_claims WHERE recovery_id = ?").get(input.recoveryId);
+    if (!claim) return undefined;
+    if (text(claim["fingerprint"]) !== input.fingerprint) throw new RecoveryStoreError("IDEMPOTENCY_CONFLICT");
+    const result = this.#database.prepare("SELECT fingerprint, result_json FROM recovery_execution_results WHERE recovery_id = ?").get(input.recoveryId);
+    if (result && text(result["fingerprint"]) !== input.fingerprint) throw new Error("Recovery execution evidence is inconsistent.");
+    return Object.freeze({ recoveryId: input.recoveryId, fingerprint: input.fingerprint, ...(result ? { resultJson: text(result["result_json"]) } : {}) });
+  }
+
+  claimRecoveryExecution(input: Parameters<RecoveryOrchestrationStore["claimRecoveryExecution"]>[0]): ReturnType<RecoveryOrchestrationStore["claimRecoveryExecution"]> {
+    return this.#transaction(() => {
+      const existing = this.findRecoveryExecution(input);
+      if (existing) return Object.freeze({ replay: true, record: existing });
+      const binding = this.#database.prepare("SELECT recovery_id FROM recovery_bindings WHERE recovery_id = ?").get(input.recoveryId);
+      if (!binding || !input.fingerprint.trim()) throw new RecoveryStoreError("INVALID_STATE");
+      this.#database.prepare("INSERT INTO recovery_execution_claims (recovery_id, fingerprint) VALUES (?, ?)").run(input.recoveryId, input.fingerprint);
+      return Object.freeze({ replay: false, record: Object.freeze({ recoveryId: input.recoveryId, fingerprint: input.fingerprint }) });
+    });
+  }
+
+  completeRecoveryExecution(input: Parameters<RecoveryOrchestrationStore["completeRecoveryExecution"]>[0]): ReturnType<RecoveryOrchestrationStore["completeRecoveryExecution"]> {
+    return this.#transaction(() => {
+      const existing = this.findRecoveryExecution(input);
+      if (!existing || !input.resultJson.trim()) throw new RecoveryStoreError("INVALID_STATE");
+      if (existing.resultJson !== undefined) return Object.freeze({ replay: true, record: existing });
+      this.#database.prepare("INSERT INTO recovery_execution_results (recovery_id, fingerprint, result_json) VALUES (?, ?, ?)").run(input.recoveryId, input.fingerprint, input.resultJson);
+      return Object.freeze({ replay: false, record: Object.freeze({ recoveryId: input.recoveryId, fingerprint: input.fingerprint, resultJson: input.resultJson }) });
+    });
   }
 
   recordFinding(input: Parameters<RecoveryOrchestrationStore["recordFinding"]>[0]): ReturnType<RecoveryOrchestrationStore["recordFinding"]> {
@@ -257,6 +290,44 @@ function isExecutionIdentity(actionType: RecoveryAuthorizationBinding["recoveryA
     : keys === "invocationId" && typeof record["invocationId"] === "string" && record["invocationId"].length > 0;
 }
 
+function assertChildLineage(parent: RecoveryCaseRecord, child: CreateRecoveryCaseInput): void {
+  const binding = parent.recovery;
+  if (parent.status !== "RESOLVED"
+    || parent.finding?.finding !== "CONFIRMED_NOT_EXECUTED"
+    || parent.disposition?.recoveryDisposition !== "RECOVERY_AUTHORIZED"
+    || binding?.recoveryId !== parent.disposition.recoveryId
+    || binding?.recoveryCaseId !== parent.recoveryCaseId
+    || child.resourceType !== parent.resourceType) {
+    throw new RecoveryStoreError("INVALID_STATE");
+  }
+  const origin = child.originIdentity as Readonly<Record<string, unknown>>;
+  const original = parent.originIdentity as Readonly<Record<string, unknown>>;
+  const execution = binding.recoveryExecutionIdentity as Readonly<Record<string, unknown>>;
+  if (binding.recoveryActionType === "PUBLICATION_RECOVERY") {
+    if (child.originDomain !== "PUBLICATION"
+      || child.resourceId !== parent.resourceId
+      || Object.keys(origin).sort().join(",") !== "attemptId,reconciliationCaseId"
+      || typeof origin["reconciliationCaseId"] !== "string"
+      || !origin["reconciliationCaseId"].trim()
+      || origin["attemptId"] !== execution["attemptId"]
+      || origin["attemptId"] === original["attemptId"]) {
+      throw new RecoveryStoreError("INVALID_STATE");
+    }
+    return;
+  }
+  if (binding.recoveryActionType === "CONNECTOR_REEXECUTION") {
+    if (child.originDomain !== "CONNECTOR"
+      || Object.keys(origin).join(",") !== "invocationId"
+      || origin["invocationId"] !== execution["invocationId"]
+      || origin["invocationId"] === original["invocationId"]
+      || child.resourceId !== execution["invocationId"]) {
+      throw new RecoveryStoreError("INVALID_STATE");
+    }
+    return;
+  }
+  throw new RecoveryStoreError("INVALID_STATE");
+}
+
 function stableId(prefix: string, parts: readonly string[]): string {
   return `${prefix}-${createHash("sha256").update(parts.join("\u001f")).digest("hex").slice(0, 24)}`;
 }
@@ -274,7 +345,7 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
-const IMMUTABLE_TRIGGER_TABLES = ["recovery_evidence", "recovery_findings", "recovery_dispositions", "recovery_bindings", "recovery_idempotency"] as const;
+const IMMUTABLE_TRIGGER_TABLES = ["recovery_evidence", "recovery_findings", "recovery_dispositions", "recovery_bindings", "recovery_idempotency", "recovery_execution_claims", "recovery_execution_results"] as const;
 const IMMUTABLE_TRIGGERS = IMMUTABLE_TRIGGER_TABLES.map((table) => `
 CREATE TRIGGER IF NOT EXISTS ${table}_no_update BEFORE UPDATE ON ${table} BEGIN SELECT RAISE(ABORT, 'append-only'); END;
 CREATE TRIGGER IF NOT EXISTS ${table}_no_delete BEFORE DELETE ON ${table} BEGIN SELECT RAISE(ABORT, 'append-only'); END;`).join("\n");
@@ -294,6 +365,8 @@ CREATE TABLE IF NOT EXISTS recovery_findings (finding_record_id TEXT PRIMARY KEY
 CREATE TABLE IF NOT EXISTS recovery_dispositions (disposition_record_id TEXT PRIMARY KEY, recovery_id TEXT NOT NULL UNIQUE, recovery_case_id TEXT NOT NULL UNIQUE REFERENCES recovery_cases(recovery_case_id), recovery_disposition TEXT NOT NULL CHECK(recovery_disposition IN ('RECOVERY_AUTHORIZED','NO_RECOVERY_REQUIRED','RECOVERY_REJECTED')), recovery_action_type TEXT NOT NULL CHECK(recovery_action_type IN ('PUBLICATION_RECOVERY','CONNECTOR_REEXECUTION')), decided_by TEXT NOT NULL, decided_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS recovery_bindings (recovery_id TEXT PRIMARY KEY, recovery_case_id TEXT NOT NULL UNIQUE REFERENCES recovery_cases(recovery_case_id), original_origin_identity_json TEXT NOT NULL, decision_version INTEGER NOT NULL CHECK(decision_version > 0), finding_record_id TEXT NOT NULL REFERENCES recovery_findings(finding_record_id), disposition_record_id TEXT NOT NULL REFERENCES recovery_dispositions(disposition_record_id), action_type TEXT NOT NULL CHECK(action_type IN ('PUBLICATION_RECOVERY','CONNECTOR_REEXECUTION')), execution_identity_json TEXT NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, authorized_by TEXT NOT NULL, authorized_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS recovery_idempotency (idempotency_key TEXT PRIMARY KEY, operation TEXT NOT NULL, fingerprint TEXT NOT NULL, result_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS recovery_execution_claims (recovery_id TEXT PRIMARY KEY REFERENCES recovery_bindings(recovery_id), fingerprint TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS recovery_execution_results (recovery_id TEXT PRIMARY KEY REFERENCES recovery_execution_claims(recovery_id), fingerprint TEXT NOT NULL, result_json TEXT NOT NULL);
 CREATE TRIGGER IF NOT EXISTS recovery_cases_identity_no_update BEFORE UPDATE ON recovery_cases
 WHEN OLD.recovery_case_id IS NOT NEW.recovery_case_id OR OLD.resource_type IS NOT NEW.resource_type OR OLD.resource_id IS NOT NEW.resource_id OR OLD.origin_domain IS NOT NEW.origin_domain OR OLD.origin_identity_json IS NOT NEW.origin_identity_json OR OLD.tenant_id IS NOT NEW.tenant_id OR OLD.scope_ref IS NOT NEW.scope_ref OR OLD.parent_recovery_case_id IS NOT NEW.parent_recovery_case_id OR OLD.created_by IS NOT NEW.created_by OR OLD.created_at IS NOT NEW.created_at
 BEGIN SELECT RAISE(ABORT, 'immutable recovery case identity'); END;

@@ -23,6 +23,7 @@ export type ConnectorExecutionInput = Readonly<{
   readonly preparedAt: string;
   readonly startedAt: string;
   readonly completedAt: string;
+  readonly parentRecoveryCaseId?: string;
 }>;
 
 export type ConnectorExecutionResult =
@@ -40,6 +41,7 @@ export interface ConnectorAmbiguityCaseWriter {
     readonly evidenceRefs: readonly string[];
     readonly createdBy: string;
     readonly createdAt: string;
+    readonly parentRecoveryCaseId?: string;
   }>): void;
 }
 
@@ -60,7 +62,8 @@ export class ConnectorExecutionCoordinator {
       }
       const prior = this.dependencies.persistence.findInvocation(replayScope, input.invocationId);
       if (prior === undefined) throw new ConnectorPersistenceError("PERSISTENCE_UNAVAILABLE", "Connector invocation linkage is invalid.");
-      return resultFrom(prior);
+      const result = resultFrom(prior);
+      return result.status === "AMBIGUOUS" && input.parentRecoveryCaseId !== undefined ? this.#ambiguous(prior.invocationId, replayScope, input) : result;
     }
     if (this.dependencies.persistence.findInvocation(replayScope, input.invocationId) !== undefined) {
       throw new ConnectorPersistenceError("IDEMPOTENCY_CONFLICT", "Connector invocation identity conflicts.");
@@ -145,6 +148,7 @@ export class ConnectorExecutionCoordinator {
       evidenceRefs: Object.freeze([`connector-invocation:${invocationId}:ambiguous`]),
       createdBy: input.leaseOwnerId,
       createdAt: input.completedAt,
+      ...(input.parentRecoveryCaseId === undefined ? {} : { parentRecoveryCaseId: input.parentRecoveryCaseId }),
     }));
     return ambiguous(invocationId);
   }

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,6 +7,7 @@ import test from "node:test";
 
 import type { SessionContext } from "../../identity/src/session-service.js";
 import { DurableRecoveryOrchestrationStore } from "../../recovery/src/recovery-durable-persistence.js";
+import { RecoveryStoreError, type RecoveryExecutionRecord } from "../../recovery/src/recovery-orchestration-contracts.js";
 import { DurableConnectorExecutionUnitOfWork, type ConnectorExecutionScope } from "./connector-durable-persistence.js";
 import { ConnectorExecutionCoordinator, type ConnectorExecutionInput } from "./connector-execution-coordinator.js";
 import type { ConnectorInvocationPort, ConnectorInvocationRequest, ConnectorInvocationResponse } from "./connector-invocation-port.js";
@@ -15,6 +17,7 @@ import {
   ConnectorRecoveryExecutionHandoff,
   ConnectorRecoveryExecutionPlanner,
   type AuthorizedConnectorRecovery,
+  type ConnectorRecoveryExecutionStore,
   type ConnectorRecoveryExecutionRequest,
 } from "./connector-recovery-handoff.js";
 import type { ConnectorRuntimeAuthorizer, ConnectorTrustedRuntimeContext } from "./connector-runtime-application.js";
@@ -50,9 +53,18 @@ const contractBinding = Object.freeze({
 
 function authorized(overrides: Readonly<Record<string, unknown>> = {}): AuthorizedConnectorRecovery {
   return Object.freeze({
-    recoveryId, recoveryCaseId: "case-f19-d", originDomain: "CONNECTOR", originIdentity: Object.freeze({ invocationId: originalInvocationId }),
-    status: "RESOLVED", finding: "CONFIRMED_NOT_EXECUTED", recoveryDisposition: "RECOVERY_AUTHORIZED", recoveryActionType: "CONNECTOR_REEXECUTION",
-    recoveryExecutionIdentity: Object.freeze({ invocationId: recoveryInvocationId }), authorizedBy: "recovery-authorizer-f19-d", ...overrides,
+    recoveryId, recoveryCaseId: "case-f19-d", resourceType: "ConnectorInvocation", resourceId: originalInvocationId,
+    originDomain: "CONNECTOR", originIdentity: Object.freeze({ invocationId: originalInvocationId }), tenantId: scope.tenantId, scopeRef: `team:${scope.scopeId}`,
+    status: "RESOLVED", version: 3, evidenceRefs: Object.freeze(["evidence:ambiguous:f19-d"]), createdBy: "evidence-submitter-f19-d", createdAt: "2026-09-03T00:00:03.000Z",
+    findingRecordId: "finding-record-f19-d", finding: "CONFIRMED_NOT_EXECUTED", findingReasonCode: "PROVIDER_CONFIRMED_NOT_EXECUTED",
+    findingEvidenceRefs: Object.freeze(["evidence:finding:f19-d"]), findingDecidedBy: "resolver-f19-d", findingDecidedAt: "2026-09-03T00:04:00.000Z",
+    dispositionRecordId: "disposition-record-f19-d", recoveryDisposition: "RECOVERY_AUTHORIZED", recoveryActionType: "CONNECTOR_REEXECUTION",
+    dispositionEvidenceRefs: Object.freeze(["evidence:authorization:f19-d"]), dispositionDecidedBy: "recovery-authorizer-f19-d", dispositionDecidedAt: "2026-09-03T00:05:00.000Z",
+    bindingRecoveryCaseId: "case-f19-d", originalOriginIdentity: Object.freeze({ invocationId: originalInvocationId }), decisionVersion: 2,
+    reconciliationFindingRecordId: "finding-record-f19-d", recoveryDispositionRecordId: "disposition-record-f19-d", bindingRecoveryActionType: "CONNECTOR_REEXECUTION",
+    recoveryExecutionIdentity: Object.freeze({ invocationId: recoveryInvocationId }), recoveryIdempotencyKey: "authorization-f19-d",
+    recoveryEvidenceRefs: Object.freeze(["evidence:authorization:f19-d"]), authorizedBy: "recovery-authorizer-f19-d", recoveryAuthorizedAt: "2026-09-03T00:05:00.000Z",
+    ...overrides,
   });
 }
 
@@ -101,12 +113,46 @@ class CountingConnector implements ConnectorInvocationPort {
   }
 }
 
+class TestRecoveryExecutionStore implements ConnectorRecoveryExecutionStore {
+  readonly #records = new Map<string, RecoveryExecutionRecord>();
+
+  public constructor(private failuresRemaining = 0) {}
+
+  public findRecoveryExecution(input: Readonly<{ recoveryId: string; fingerprint: string }>): RecoveryExecutionRecord | undefined {
+    const existing = this.#records.get(input.recoveryId);
+    if (existing !== undefined && existing.fingerprint !== input.fingerprint) throw new RecoveryStoreError("IDEMPOTENCY_CONFLICT");
+    return existing;
+  }
+
+  public claimRecoveryExecution(input: Readonly<{ recoveryId: string; fingerprint: string }>): Readonly<{ replay: boolean; record: RecoveryExecutionRecord }> {
+    const existing = this.findRecoveryExecution(input);
+    if (existing !== undefined) return Object.freeze({ replay: true, record: existing });
+    const record = Object.freeze(input);
+    this.#records.set(input.recoveryId, record);
+    return Object.freeze({ replay: false, record });
+  }
+
+  public completeRecoveryExecution(input: Readonly<{ recoveryId: string; fingerprint: string; resultJson: string }>): Readonly<{ replay: boolean; record: RecoveryExecutionRecord }> {
+    if (this.failuresRemaining > 0) {
+      this.failuresRemaining -= 1;
+      throw new Error("injected F19 execution result persistence failure");
+    }
+    const existing = this.findRecoveryExecution(input);
+    if (existing === undefined) throw new RecoveryStoreError("INVALID_STATE");
+    if (existing.resultJson !== undefined) return Object.freeze({ replay: true, record: existing });
+    const record = Object.freeze(input);
+    this.#records.set(input.recoveryId, record);
+    return Object.freeze({ replay: false, record });
+  }
+}
+
 type HarnessOptions = Readonly<{
   context?: ConnectorTrustedRuntimeContext | null;
   recovery?: AuthorizedConnectorRecovery | null;
   runtimeAuthorized?: boolean;
   contractState?: "ACTIVE" | "SUSPENDED" | "MISSING";
   contractOverride?: Readonly<Partial<IntegrationContract>>;
+  recoveryExecutionStore?: ConnectorRecoveryExecutionStore | null;
 }>;
 
 function harness(options: HarnessOptions = {}) {
@@ -134,12 +180,14 @@ function harness(options: HarnessOptions = {}) {
   }
 
   const coordinator = new ConnectorExecutionCoordinator({ persistence, connector, admission: admissionGate(admissionAuthorizationLookups) });
+  const recoveryExecutionStore = options.recoveryExecutionStore === undefined ? new TestRecoveryExecutionStore() : options.recoveryExecutionStore ?? undefined;
   const handoff = new ConnectorRecoveryExecutionHandoff({
     authorizations: { findAuthorizedConnectorRecovery: (input) => { recoveryLookups.push(input); return options.recovery === null ? undefined : options.recovery ?? authorized(); } },
     planner: new ConnectorRecoveryExecutionPlanner(), persistence, coordinator: { execute: (input) => { coordinatorCalls += 1; return coordinator.execute(input); } },
     contextResolver: { resolve: () => options.context === null ? undefined : options.context ?? context },
     authorizer: { authorize: (input) => { runtimeAuthorizationLookups.push(input); return options.runtimeAuthorized ?? true; } },
     clock: () => serverNow,
+    ...(recoveryExecutionStore === undefined ? {} : { recoveryExecutionStore }),
     integrationContracts: {
       readContract: (input, integrationContractId) => {
         contractLookups.push(Object.freeze({ scope: input, integrationContractId }));
@@ -187,8 +235,37 @@ test("F19-D hands the authorized identity to the actual coordinator and exact re
   const callsBeforeReplay = value.connector.invocationCount;
   assert.deepEqual(value.handoff.execute(request()), first);
   assert.equal(value.connector.invocationCount - callsBeforeReplay, 0);
+  assert.equal(value.coordinatorCalls(), 1);
   assert.deepEqual(mutationSnapshot(value), beforeReplay);
 }));
+
+test("F19-F Connector recovery has no process-local execution authority when the durable execution store is missing", () => withHarness({ recoveryExecutionStore: null }, (value) => {
+  const before = mutationSnapshot(value);
+  assert.deepEqual(value.handoff.execute(request()), { status: "BLOCKED", reasonCode: "ADMISSION_DENIED" });
+  assert.equal(value.coordinatorCalls(), 0);
+  assert.equal(value.connector.invocationCount, 0);
+  assert.deepEqual(mutationSnapshot(value), before);
+}));
+
+test("F19-F Connector retry after F19 result persistence failure relies on existing F18 idempotency without a duplicate Connector call", () => {
+  const executionStore = new TestRecoveryExecutionStore(1);
+  withHarness({ recoveryExecutionStore: executionStore }, (value) => {
+    assert.throws(() => value.handoff.execute(request()), /injected F19 execution result persistence failure/i);
+    assert.equal(value.connector.invocationCount, 1);
+    assert.equal(value.coordinatorCalls(), 1);
+    const committed = mutationSnapshot(value);
+
+    const retry = value.handoff.execute(request());
+
+    assert.deepEqual(retry, { status: "SUCCEEDED", reasonCode: "CONFIRMED", invocationId: recoveryInvocationId, resultId: `${recoveryInvocationId}:result` });
+    assert.equal(value.connector.invocationCount, 1);
+    assert.equal(value.coordinatorCalls(), 2);
+    assert.deepEqual(mutationSnapshot(value), committed);
+    assert.deepEqual(value.handoff.execute(request()), retry);
+    assert.equal(value.connector.invocationCount, 1);
+    assert.equal(value.coordinatorCalls(), 2);
+  });
+});
 
 test("F19-D rejects expired, revoked, inactive, assurance-inconsistent, and wrong-team trusted context before handoff", () => {
   const cases: readonly Readonly<{ name: string; current: ConnectorTrustedRuntimeContext }>[] = [
@@ -295,10 +372,20 @@ test("F19-D ambiguity writer treats durable DUPLICATE_ORIGIN as idempotent and a
 
     store.recordFinding({ recoveryCaseId: created.recoveryCaseId, expectedVersion: 1, finding: "CONFIRMED_NOT_EXECUTED", reasonCode: "PROVIDER_CONFIRMED_NOT_EXECUTED", evidenceRefs: ["evidence:finding:f19-d"], decidedBy: "resolver-f19-d", decidedAt: "2026-09-03T00:04:00.000Z", idempotencyKey: "finding-f19-d", fingerprint: "finding-f19-d" });
     const durable = store.authorizeRecovery({ recoveryCaseId: created.recoveryCaseId, expectedVersion: 2, recoveryDisposition: "RECOVERY_AUTHORIZED", recoveryActionType: "CONNECTOR_REEXECUTION", recoveryExecutionIdentity: { invocationId: recoveryInvocationId }, evidenceRefs: ["evidence:authorization:f19-d"], decidedBy: "recovery-authorizer-f19-d", decidedAt: "2026-09-03T00:05:00.000Z", idempotencyKey: "authorization-f19-d", fingerprint: "authorization-f19-d" }).record;
-    const adapter = new ConnectorRecoveryAuthorizationAdapter(store as unknown as ConstructorParameters<typeof ConnectorRecoveryAuthorizationAdapter>[0]);
+    const adapter = new ConnectorRecoveryAuthorizationAdapter(store);
     assert.deepEqual(adapter.findAuthorizedConnectorRecovery({ recoveryId: durable.recovery!.recoveryId, tenantId: scope.tenantId, scopeRef: `team:${scope.scopeId}` }), {
-      recoveryId: durable.recovery!.recoveryId, recoveryCaseId: created.recoveryCaseId, originDomain: "CONNECTOR", originIdentity: { invocationId: originalInvocationId }, status: "RESOLVED",
-      finding: "CONFIRMED_NOT_EXECUTED", recoveryDisposition: "RECOVERY_AUTHORIZED", recoveryActionType: "CONNECTOR_REEXECUTION", recoveryExecutionIdentity: { invocationId: recoveryInvocationId }, authorizedBy: "recovery-authorizer-f19-d",
+      recoveryId: durable.recovery!.recoveryId, recoveryCaseId: created.recoveryCaseId, resourceType: "ConnectorInvocation", resourceId: originalInvocationId,
+      originDomain: "CONNECTOR", originIdentity: { invocationId: originalInvocationId }, tenantId: scope.tenantId, scopeRef: `team:${scope.scopeId}`,
+      status: "RESOLVED", version: durable.version, evidenceRefs: durable.evidenceRefs, createdBy: durable.createdBy, createdAt: durable.createdAt,
+      findingRecordId: durable.finding!.findingRecordId, finding: "CONFIRMED_NOT_EXECUTED", findingReasonCode: durable.finding!.reasonCode,
+      findingEvidenceRefs: durable.finding!.evidenceRefs, findingDecidedBy: durable.finding!.decidedBy, findingDecidedAt: durable.finding!.decidedAt,
+      dispositionRecordId: durable.disposition!.dispositionRecordId, recoveryDisposition: "RECOVERY_AUTHORIZED", recoveryActionType: "CONNECTOR_REEXECUTION",
+      dispositionEvidenceRefs: durable.disposition!.evidenceRefs, dispositionDecidedBy: durable.disposition!.decidedBy, dispositionDecidedAt: durable.disposition!.decidedAt,
+      bindingRecoveryCaseId: durable.recovery!.recoveryCaseId, originalOriginIdentity: { invocationId: originalInvocationId }, decisionVersion: durable.recovery!.decisionVersion,
+      reconciliationFindingRecordId: durable.recovery!.reconciliationFindingRecordId, recoveryDispositionRecordId: durable.recovery!.recoveryDispositionRecordId,
+      bindingRecoveryActionType: "CONNECTOR_REEXECUTION", recoveryExecutionIdentity: { invocationId: recoveryInvocationId },
+      recoveryIdempotencyKey: durable.recovery!.idempotencyKey, recoveryEvidenceRefs: durable.recovery!.evidenceRefs,
+      authorizedBy: "recovery-authorizer-f19-d", recoveryAuthorizedAt: durable.recovery!.authorizedAt,
     });
   } finally { store.close(); rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
 });
@@ -327,5 +414,134 @@ test("F19-D actual coordinator links one durable ambiguity case and exact replay
     assert.deepEqual(recovery.findCase(linked.recoveryCaseId), caseBeforeReplay);
   } finally {
     persistence.close(); recovery.close(); rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
+  }
+});
+
+test("F19-F ambiguous Connector recovery creates one independently open RC2 from authorized X2 and preserves the full lineage after restart", () => {
+  const directory = mkdtempSync(join(tmpdir(), "ai-mls-f19-f-connector-nested-"));
+  const connectorPath = join(directory, "connector.sqlite");
+  const recoveryPath = join(directory, "recovery.sqlite");
+  const externalPath = join(directory, "external.sqlite");
+  const persistence = new DurableConnectorExecutionUnitOfWork({ databasePath: connectorPath });
+  const recovery = new DurableRecoveryOrchestrationStore({ databasePath: recoveryPath });
+  const contracts = new DurableExternalIntegrationStore({ databasePath: externalPath });
+  const connector = new CountingConnector("THROW");
+  let child: ReturnType<DurableRecoveryOrchestrationStore["createCase"]> | undefined;
+  try {
+    persistence.acquireLease({ ...scope, leaseId: "lease-original-f19-f", ownerId: session.principalId, acquiredAt: "2026-09-03T00:00:00.000Z", expiresAt: "2026-09-03T00:05:00.000Z", expectedScopeRevision: 0 });
+    persistence.prepareInvocation({ ...scope, invocationId: originalInvocationId, leaseId: "lease-original-f19-f", idempotencyKey: "original-f19-f", inputFingerprint: "fingerprint-original-f19-f", inputReference: "evidence:original-input", inputVersion: 1, sourcePolicyVersion: 3, connectorVersion: 5, expectedCheckpointVersion: 0, preparedAt: "2026-09-03T00:00:01.000Z" });
+    persistence.markExecutionStarted(scope, originalInvocationId, "2026-09-03T00:00:02.000Z");
+    persistence.releaseLease(scope, "lease-original-f19-f", 1, "2026-09-03T00:00:03.000Z");
+    contracts.provisionContract(contractBinding);
+
+    const root = recovery.createCase({ resourceType: "ConnectorInvocation", resourceId: originalInvocationId, originDomain: "CONNECTOR", originIdentity: { invocationId: originalInvocationId }, tenantId: scope.tenantId, scopeRef: `team:${scope.scopeId}`, evidenceRefs: ["evidence:f19-f:connector:original-ambiguity"], createdBy: "evidence-submitter-f19-f", createdAt: "2026-09-03T00:00:03.000Z" });
+    recovery.recordFinding({ recoveryCaseId: root.recoveryCaseId, expectedVersion: 1, finding: "CONFIRMED_NOT_EXECUTED", reasonCode: "PROVIDER_CONFIRMED_NOT_EXECUTED", evidenceRefs: ["evidence:f19-f:connector:finding"], decidedBy: "resolver-f19-f", decidedAt: "2026-09-03T00:06:00.000Z", idempotencyKey: "finding-f19-f-connector-nested", fingerprint: "finding-f19-f-connector-nested" });
+    const authorizationKey = "authorization-f19-f-connector-nested";
+    const expectedRecoveryId = `recovery-${createHash("sha256").update([root.recoveryCaseId, authorizationKey].join("\u001f")).digest("hex").slice(0, 24)}`;
+    const plannedInvocationId = `connector-recovery:${expectedRecoveryId}`;
+    const authorizedRecord = recovery.authorizeRecovery({ recoveryCaseId: root.recoveryCaseId, expectedVersion: 2, recoveryDisposition: "RECOVERY_AUTHORIZED", recoveryActionType: "CONNECTOR_REEXECUTION", recoveryExecutionIdentity: { invocationId: plannedInvocationId }, evidenceRefs: ["evidence:f19-f:connector:authorization"], decidedBy: "recovery-authorizer-f19-f", decidedAt: "2026-09-03T00:07:00.000Z", idempotencyKey: authorizationKey, fingerprint: "authorization-f19-f-connector-nested" }).record;
+    assert.equal(authorizedRecord.recovery?.recoveryId, expectedRecoveryId);
+    const immutableRc1 = structuredClone(authorizedRecord);
+    const durableWriter = new ConnectorAmbiguityRecoveryCaseWriterAdapter({ createCase(input) {
+      const record = recovery.createCase(input);
+      if ((input as typeof input & { readonly parentRecoveryCaseId?: string }).parentRecoveryCaseId !== undefined) child = record;
+      return record;
+    } });
+    let writerCalls = 0;
+    const writer = Object.freeze({
+      linkAmbiguousInvocation(input: Parameters<typeof durableWriter.linkAmbiguousInvocation>[0]): void {
+        writerCalls += 1;
+        if (writerCalls === 1) throw new Error("injected RC2 ambiguity writer crash");
+        durableWriter.linkAmbiguousInvocation(input);
+      },
+    });
+    const durableAuthorizations = new ConnectorRecoveryAuthorizationAdapter(recovery);
+    let overwriteAuthorizationEvidence = false;
+    const authorizations = Object.freeze({
+      findAuthorizedConnectorRecovery(input: Parameters<typeof durableAuthorizations.findAuthorizedConnectorRecovery>[0]): AuthorizedConnectorRecovery | undefined {
+        const record = durableAuthorizations.findAuthorizedConnectorRecovery(input);
+        if (record === undefined || !overwriteAuthorizationEvidence) return record;
+        return Object.freeze({ ...record, recoveryEvidenceRefs: Object.freeze(["evidence:f19-f:connector:attempted-overwrite"]) });
+      },
+    });
+    const coordinator = new ConnectorExecutionCoordinator({ persistence, connector, admission: admissionGate(), ambiguityCaseWriter: writer });
+    const handoff = new ConnectorRecoveryExecutionHandoff({
+      authorizations,
+      planner: new ConnectorRecoveryExecutionPlanner(), persistence, coordinator,
+      contextResolver: { resolve: () => context }, authorizer: { authorize: () => true }, clock: () => serverNow,
+      integrationContracts: contracts,
+      recoveryExecutionStore: recovery,
+    });
+    const recoveryRequest = request({ recoveryId: expectedRecoveryId, leaseId: "lease-recovery-f19-f", expectedScopeRevision: 2 });
+
+    assert.throws(() => handoff.execute(recoveryRequest), /injected RC2 ambiguity writer crash/u);
+    const immutableX2 = structuredClone(persistence.findInvocation(scope, plannedInvocationId));
+    assert.ok(immutableX2);
+    assert.equal(connector.invocationCount, 1);
+    assert.equal(writerCalls, 1);
+    assert.equal(child, undefined);
+    assert.equal(persistence.findCheckpoint(scope), undefined);
+    assert.deepEqual(recovery.findCase(root.recoveryCaseId), immutableRc1);
+
+    const result = handoff.execute(recoveryRequest);
+    assert.deepEqual(result, { status: "AMBIGUOUS", reasonCode: "RECONCILIATION_REQUIRED", invocationId: plannedInvocationId });
+    assert.equal(connector.invocationCount, 1);
+    assert.equal(writerCalls, 2);
+    const childRecord = child as ReturnType<DurableRecoveryOrchestrationStore["createCase"]> | undefined;
+    assert.ok(childRecord);
+    assert.equal(childRecord.parentRecoveryCaseId, root.recoveryCaseId);
+    assert.deepEqual(childRecord.originIdentity, { invocationId: plannedInvocationId });
+    assert.equal(childRecord.status, "OPEN");
+    assert.equal(childRecord.finding, undefined);
+    assert.equal(childRecord.disposition, undefined);
+    assert.equal(childRecord.recovery, undefined);
+    assert.deepEqual(recovery.findCase(root.recoveryCaseId), immutableRc1);
+    assert.deepEqual(persistence.findInvocation(scope, plannedInvocationId), immutableX2);
+    const immutableRc2 = structuredClone(childRecord);
+
+    assert.deepEqual(handoff.execute(recoveryRequest), result);
+    assert.equal(connector.invocationCount, 1);
+    assert.equal(writerCalls, 2);
+    assert.equal(persistence.findCheckpoint(scope), undefined);
+    assert.deepEqual(recovery.findCase(root.recoveryCaseId), immutableRc1);
+    assert.deepEqual(persistence.findInvocation(scope, plannedInvocationId), immutableX2);
+    assert.deepEqual(recovery.findCase(childRecord.recoveryCaseId), immutableRc2);
+    const immutableEvidence = structuredClone(persistence.listEvidence(scope));
+
+    overwriteAuthorizationEvidence = true;
+    assert.throws(() => handoff.execute(recoveryRequest), (error: unknown) => error instanceof RecoveryStoreError && error.code === "IDEMPOTENCY_CONFLICT");
+    assert.equal(connector.invocationCount, 1);
+    assert.equal(writerCalls, 2);
+    assert.equal(persistence.findCheckpoint(scope), undefined);
+    assert.deepEqual(persistence.listEvidence(scope), immutableEvidence);
+    assert.deepEqual(recovery.findCase(root.recoveryCaseId), immutableRc1);
+    assert.deepEqual(recovery.findCase(childRecord.recoveryCaseId), immutableRc2);
+    assert.deepEqual(persistence.findInvocation(scope, plannedInvocationId), immutableX2);
+
+    recovery.close();
+    const reopened = new DurableRecoveryOrchestrationStore({ databasePath: recoveryPath });
+    try {
+      assert.deepEqual(reopened.findCase(root.recoveryCaseId), immutableRc1);
+      assert.deepEqual(reopened.findCase(childRecord.recoveryCaseId), immutableRc2);
+      const reopenedHandoff = new ConnectorRecoveryExecutionHandoff({
+        authorizations: new ConnectorRecoveryAuthorizationAdapter(reopened),
+        planner: new ConnectorRecoveryExecutionPlanner(), persistence, coordinator,
+        contextResolver: { resolve: () => context }, authorizer: { authorize: () => true }, clock: () => serverNow,
+        integrationContracts: contracts,
+        recoveryExecutionStore: reopened,
+      });
+      assert.deepEqual(reopenedHandoff.execute(recoveryRequest), result);
+      assert.equal(connector.invocationCount, 1);
+      assert.equal(writerCalls, 2);
+      assert.deepEqual(reopened.findCase(root.recoveryCaseId), immutableRc1);
+      assert.deepEqual(reopened.findCase(childRecord.recoveryCaseId), immutableRc2);
+    } finally {
+      reopened.close();
+    }
+  } finally {
+    persistence.close();
+    recovery.close();
+    contracts.close();
+    rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
   }
 });

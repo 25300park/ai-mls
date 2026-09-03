@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
+import { DurableRecoveryOrchestrationStore, RecoveryStoreError, type RecoveryExecutionRecord } from "../../recovery/src/index.js";
 import type { PublicationExecutionContext, PublicationReconciliationRequest } from "./publication-application-contracts.js";
 import { PublicationAggregate } from "./publication-aggregate.js";
 import { createTestPublicationAuthorizationConfiguration } from "./publication-authorization-test-support.test.js";
@@ -9,7 +13,7 @@ import type { PublicationBinding, PublicationIdentity, PublicationSnapshot } fro
 import { composePublicationApplication } from "./publication-composition-root.js";
 import { createPublicationInfrastructure } from "./publication-infrastructure.js";
 import { PublicationRecoveryExecutionPlanner } from "./publication-recovery-execution-planner.js";
-import type { PublicationAuthorizedRecoveryCase, PublicationRecoveryAuthorizationReader, PublicationRecoveryCaseWriter } from "./publication-reconciliation-service.js";
+import type { PublicationAuthorizedRecoveryCase, PublicationRecoveryAuthorizationReader, PublicationRecoveryCaseWriter, PublicationRecoveryExecutionStore } from "./publication-reconciliation-service.js";
 
 const occurredAt = "2026-08-03T14:00:00.000Z";
 const identity: PublicationIdentity = { publicationId: "publication-reconciliation-1", tenantScopeId: "team-a" };
@@ -52,11 +56,15 @@ function infrastructure(options: {
   readonly eventSourceVersion?: number;
   readonly recoveryAuthorizationReader?: PublicationRecoveryAuthorizationReader;
   readonly recoveryCaseWriter?: PublicationRecoveryCaseWriter;
+  readonly recoveryExecutionStore?: PublicationRecoveryExecutionStore | null;
 } = {}) {
   const base = createTestPublicationAuthorizationConfiguration(new FixedClock(occurredAt), "team-a", options.eventSourceVersion ?? 2);
   const recoveryCaseWriter = options.recoveryCaseWriter ?? (options.recoveryAuthorizationReader === undefined ? undefined : {
     createCase: () => Object.freeze({ recoveryCaseId: "test-child-recovery-case" }),
   });
+  const recoveryExecutionStore = options.recoveryExecutionStore === undefined && options.recoveryAuthorizationReader !== undefined
+    ? new TestRecoveryExecutionStore()
+    : options.recoveryExecutionStore ?? undefined;
   return createPublicationInfrastructure({
     ...base,
     ...(options.authorizationReason !== undefined ? {
@@ -103,7 +111,35 @@ function infrastructure(options: {
     }),
     ...(options.recoveryAuthorizationReader === undefined ? {} : { recoveryAuthorizationReader: options.recoveryAuthorizationReader }),
     ...(recoveryCaseWriter === undefined ? {} : { recoveryCaseWriter }),
+    ...(recoveryExecutionStore === undefined ? {} : { recoveryExecutionStore }),
   });
+}
+
+class TestRecoveryExecutionStore implements PublicationRecoveryExecutionStore {
+  readonly #records = new Map<string, RecoveryExecutionRecord>();
+
+  public findRecoveryExecution(input: Readonly<{ recoveryId: string; fingerprint: string }>): RecoveryExecutionRecord | undefined {
+    const existing = this.#records.get(input.recoveryId);
+    if (existing !== undefined && existing.fingerprint !== input.fingerprint) throw new RecoveryStoreError("IDEMPOTENCY_CONFLICT");
+    return existing;
+  }
+
+  public claimRecoveryExecution(input: Readonly<{ recoveryId: string; fingerprint: string }>): Readonly<{ replay: boolean; record: RecoveryExecutionRecord }> {
+    const existing = this.findRecoveryExecution(input);
+    if (existing !== undefined) return Object.freeze({ replay: true, record: existing });
+    const record = Object.freeze(input);
+    this.#records.set(input.recoveryId, record);
+    return Object.freeze({ replay: false, record });
+  }
+
+  public completeRecoveryExecution(input: Readonly<{ recoveryId: string; fingerprint: string; resultJson: string }>): Readonly<{ replay: boolean; record: RecoveryExecutionRecord }> {
+    const existing = this.findRecoveryExecution(input);
+    if (existing === undefined) throw new RecoveryStoreError("INVALID_STATE");
+    if (existing.resultJson !== undefined) return Object.freeze({ replay: true, record: existing });
+    const record = Object.freeze(input);
+    this.#records.set(input.recoveryId, record);
+    return Object.freeze({ replay: false, record });
+  }
 }
 
 function authorizedRecoveryCase(caseId: string, attemptId: string, commandId: string, overrides: Partial<PublicationAuthorizedRecoveryCase> = {}): PublicationAuthorizedRecoveryCase {
@@ -440,6 +476,104 @@ test("F19-C conflicting identity for the same recoveryId is rejected without mut
   if (!conflict.ok) assert.equal(conflict.error.code, "IDEMPOTENCY_CONFLICT");
   assert.equal(dispatchCount, 1);
   assert.deepEqual(app.repository.find(identity), committed);
+});
+
+test("F19-F conflicting immutable recovery evidence for the same recoveryId is rejected without replay or mutation", () => {
+  const caseId = "case-recovery-evidence-conflict";
+  const snapshot = resolvedInitialNoEffect(caseId);
+  const planned = new PublicationRecoveryExecutionPlanner().plan({ identity, recoveryCaseId: `recovery-${caseId}`, reconciliationCaseId: caseId, originalAttemptId: `attempt-${caseId}`, originalCommandId: `command-${caseId}` });
+  let candidate = authorizedRecoveryCase(caseId, planned.attemptId, planned.commandId);
+  let dispatchCount = 0;
+  const app = infrastructure({ recoveryAuthorizationReader: { findAuthorizedPublicationRecovery: () => candidate }, connectorOutcome: "CONFIRMED", onDispatch: () => { dispatchCount += 1; } });
+  app.repository.save(snapshot);
+  const action = request(snapshot, "recovery-evidence-conflict", { input: { expectedAggregateVersion: snapshot.aggregateVersion, caseId, category: "CONFIRMED_FAILURE", evidenceRefs: ["caller-evidence"], command: domain("recovery-evidence-conflict") } });
+  const first = app.reconciliation.recover(action);
+  assert.equal(first.ok, true, JSON.stringify(first));
+  const committed = app.repository.find(identity)!;
+  candidate = authorizedRecoveryCase(caseId, planned.attemptId, planned.commandId, {
+    recovery: { ...candidate.recovery!, evidenceRefs: Object.freeze(["evidence:attempted-overwrite"]) },
+  });
+
+  const conflict = app.reconciliation.recover(action);
+
+  assert.equal(conflict.ok, false);
+  if (!conflict.ok) assert.equal(conflict.error.code, "IDEMPOTENCY_CONFLICT");
+  assert.equal(dispatchCount, 1);
+  assert.deepEqual(app.repository.find(identity), committed);
+});
+
+test("F19-F durable recovery replay survives restart and overrides empty process-local domain history with provider call zero", () => {
+  const directory = mkdtempSync(join(tmpdir(), "ai-mls-f19-f-publication-replay-"));
+  const databasePath = join(directory, "recovery.sqlite");
+  const caseId = "case-f19-f-durable-replay";
+  const snapshot = resolvedInitialNoEffect(caseId);
+  const first = new DurableRecoveryOrchestrationStore({ databasePath });
+  const created = first.createCase({
+    resourceType: "Publication",
+    resourceId: identity.publicationId,
+    originDomain: "PUBLICATION",
+    originIdentity: { reconciliationCaseId: caseId, attemptId: `attempt-${caseId}` },
+    tenantId: identity.tenantScopeId,
+    scopeRef: identity.tenantScopeId,
+    evidenceRefs: ["evidence:f19-f:original-ambiguity"],
+    createdBy: "evidence-submitter-independent",
+    createdAt: occurredAt,
+  });
+  first.recordFinding({ recoveryCaseId: created.recoveryCaseId, expectedVersion: 1, finding: "CONFIRMED_NOT_EXECUTED", reasonCode: "PROVIDER_CONFIRMED_NOT_EXECUTED", evidenceRefs: ["evidence:f19-f:finding"], decidedBy: "resolver-independent", decidedAt: occurredAt, idempotencyKey: "finding-f19-f-durable-replay", fingerprint: "finding-f19-f-durable-replay" });
+  const planned = new PublicationRecoveryExecutionPlanner().plan({ identity, recoveryCaseId: created.recoveryCaseId, reconciliationCaseId: caseId, originalAttemptId: `attempt-${caseId}`, originalCommandId: `command-${caseId}` });
+  const authorized = first.authorizeRecovery({ recoveryCaseId: created.recoveryCaseId, expectedVersion: 2, recoveryDisposition: "RECOVERY_AUTHORIZED", recoveryActionType: "PUBLICATION_RECOVERY", recoveryExecutionIdentity: planned, evidenceRefs: ["evidence:f19-f:authorization"], decidedBy: "authorizer-independent", decidedAt: occurredAt, idempotencyKey: "authorization-f19-f-durable-replay", fingerprint: "authorization-f19-f-durable-replay" }).record;
+  const recovery = authorized.recovery!;
+  const fingerprint = JSON.stringify([
+    authorized.recoveryCaseId, authorized.resourceType, authorized.resourceId, authorized.tenantId, authorized.scopeRef, authorized.status, authorized.version, authorized.createdBy,
+    authorized.finding?.finding, authorized.finding?.decidedBy,
+    authorized.disposition?.recoveryId, authorized.disposition?.recoveryDisposition, authorized.disposition?.recoveryActionType, authorized.disposition?.decidedBy,
+    recovery.recoveryId, recovery.recoveryCaseId, ["PUBLICATION", caseId, `attempt-${caseId}`], recovery.decisionVersion, recovery.recoveryActionType,
+    ["PUBLICATION", planned.attemptId, planned.commandId], recovery.evidenceRefs, recovery.authorizedBy,
+  ]);
+  const authoritative = { ok: true as const, publicationId: identity.publicationId, aggregateVersion: snapshot.aggregateVersion + 2, decision: "RECOVERED" as const, resultReference: "result:f19-f:durable-publication", replayed: false };
+  first.claimRecoveryExecution({ recoveryId: recovery.recoveryId, fingerprint });
+  first.completeRecoveryExecution({ recoveryId: recovery.recoveryId, fingerprint, resultJson: JSON.stringify(authoritative) });
+  first.close();
+
+  const reopened = new DurableRecoveryOrchestrationStore({ databasePath });
+  try {
+    let dispatchCount = 0;
+    const app = infrastructure({
+      recoveryAuthorizationReader: { findAuthorizedPublicationRecovery: () => reopened.findAuthorizedPublicationRecovery({ tenantId: identity.tenantScopeId, scopeRef: identity.tenantScopeId, resourceType: "Publication", resourceId: identity.publicationId, reconciliationCaseId: caseId }) },
+      recoveryCaseWriter: { createCase: (input) => reopened.createCase(input) },
+      recoveryExecutionStore: reopened,
+      connectorOutcome: "CONFIRMED",
+      onDispatch: () => { dispatchCount += 1; },
+    });
+    app.repository.save(snapshot);
+    const action = request(snapshot, "f19-f-durable-replay", { input: { expectedAggregateVersion: snapshot.aggregateVersion, caseId, category: "CONFIRMED_FAILURE", evidenceRefs: ["caller-evidence"], command: domain("f19-f-durable-replay") } });
+
+    const replay = app.reconciliation.recover(action);
+
+    assert.deepEqual(replay, { ...authoritative, replayed: true });
+    assert.equal(dispatchCount, 0);
+    assert.deepEqual(app.repository.find(identity), snapshot);
+  } finally {
+    reopened.close();
+    rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
+  }
+});
+
+test("F19-F Publication recovery has no process-local execution authority when the durable execution store is missing", () => {
+  const caseId = "case-f19-f-missing-durable-execution";
+  const snapshot = resolvedInitialNoEffect(caseId);
+  const planned = new PublicationRecoveryExecutionPlanner().plan({ identity, recoveryCaseId: `recovery-${caseId}`, reconciliationCaseId: caseId, originalAttemptId: `attempt-${caseId}`, originalCommandId: `command-${caseId}` });
+  const authorized = authorizedRecoveryCase(caseId, planned.attemptId, planned.commandId);
+  let dispatchCount = 0;
+  const app = infrastructure({ recoveryAuthorizationReader: { findAuthorizedPublicationRecovery: () => authorized }, recoveryExecutionStore: null, connectorOutcome: "CONFIRMED", onDispatch: () => { dispatchCount += 1; } });
+  app.repository.save(snapshot);
+
+  const result = app.reconciliation.recover(request(snapshot, "f19-f-missing-durable-execution", { input: { expectedAggregateVersion: snapshot.aggregateVersion, caseId, category: "CONFIRMED_FAILURE", evidenceRefs: ["caller-evidence"], command: domain("f19-f-missing-durable-execution") } }));
+
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.code, "RECOVERY_EXECUTION_UNAVAILABLE");
+  assert.equal(dispatchCount, 0);
+  assert.deepEqual(app.repository.find(identity), snapshot);
 });
 
 test("F19-C UNKNOWN recovery creates one child recovery case and exact replay never resends or duplicates lineage", () => {

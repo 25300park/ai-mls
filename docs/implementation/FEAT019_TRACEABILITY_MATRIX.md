@@ -2,10 +2,10 @@
 
 | 항목 | 값 |
 |---|---|
-| Version | v0.6 |
+| Version | v0.7 |
 | Status | DRAFT |
 | Owner | Architecture Owner |
-| Current verified phase | F19-E |
+| Current verified phase | F19-F |
 
 이 문서는 F19에서 실제 구현·검증된 evidence만 누적한다. API-014, API-018, API-019의 domain truth를 F19 orchestration truth로 대체하지 않는다.
 
@@ -33,12 +33,16 @@
 | API-019 business handoff containment | F19-E Brief E2; Design §§3, 6, 9 | unresolved handoff starts `OPEN` without finding/disposition/recovery; recovery application permits only `UNRESOLVED` finding and rejects every `AUTHORIZE_RECOVERY` for `EXTERNAL_INTEGRATION` before identity validation | privileged-human terminal `CONFIRMED_EXECUTED`/`CONFIRMED_NOT_EXECUTED` and permissive-validator `CONNECTOR_REEXECUTION` attempts are rejected; case remains open/unresolved with disposition/binding 0 and identical API-019 snapshot | IMPLEMENTED_AND_VERIFIED |
 | Suspension, concealment and recovery-authority separation | F19-E Brief E2~E3; Design §§5~6, 8 | existing API-019 active-contract gate, F19 tenant/scope concealment and trusted-human authority remain authoritative | suspended contract read/review succeeds while new mapping/observation/reconciliation and reactivation remain blocked; wrong tenant/scope reads return `NOT_FOUND`; API-019 service recovery authorization returns `NOT_AUTHORIZED` | IMPLEMENTED_AND_VERIFIED |
 | F19-E verification gate | F19-E completion gate | F19-E-only source/recovery application composition and documentation changes; no API/state/authority/persistence/dependency addition | initial RED/GREEN 4/4 + 4/4; review RED 3 PASS / 4 expected FAIL then GREEN 7/7; affected 67/67; full lint/typecheck/clean build/diff check PASS; dependency/lockfile diff 0 | VERIFIED |
+| Canonical recovery execution idempotency | F19-F Brief F1, F4~F5; Design §§4, 7~8 | existing durable F19 SQLite store appends immutable recovery execution claim/result evidence bound by FK to the authorized `recoveryId`; Publication and Connector handoffs consult it before F17/F18 execution | exact duplicate returns prior authoritative result with provider/Connector/coordinator execution 0; conflicting fingerprint returns `IDEMPOTENCY_CONFLICT` with case/claim/result mutation 0; close/reopen retains claim/result | IMPLEMENTED_AND_VERIFIED |
+| Immutable nested ambiguity lineage | F19-F Brief F2~F4; Design §§2, 8 | existing `createCase()` validates terminal RC1 authorization and exact bound X2 origin; Connector recovery passes `parentRecoveryCaseId` through the existing coordinator/writer path | actual RC1→finding→`RECOVERY_AUTHORIZED`→R1→X2→ambiguous→RC2; RC2 parent/origin exact, independently `OPEN`, auto-recovery 0; RC1/R1/X2/evidence immutable across restart | IMPLEMENTED_AND_VERIFIED |
+| Domain idempotency second protection and process-local containment | F19-F Brief F4~F5 | F19 claim/result wraps rather than replaces existing F17 Publication and F18 Connector durable idempotency; missing injected F19 execution store fails closed with no in-memory fallback | Publication child-writer retry and Connector F19-result-write failure retry both reuse domain durable result with external call 0; restarted F19 result overrides empty process-local domain history; missing store call/mutation 0 | IMPLEMENTED_AND_VERIFIED |
+| F19-F verification gate | F19-F completion target | F19-F changes only existing recovery store and Publication/Connector recovery paths; no API/state/authority/orchestrator/persistence subsystem/dependency addition | Initial RED lineage 9/10, store API compile 10 errors, Publication/Connector port compile 1 error each, Connector child 11/12, Publication evidence conflict 22/23; review RED Connector writer crash 11/12 and authorization evidence tuple 11/12; GREEN focused 47/47, affected exact 11 files 124/124, restart 4/4, full 962/962; lint/typecheck/clean build PASS; dependency/lockfile diff 0 | VERIFIED |
 
 ## Deferred boundaries
 
 - F19-C Publication Resolve vs Recover semantic separation: `IMPLEMENTED_AND_VERIFIED`
 - F19-D Connector recovery handoff: `IMPLEMENTED_AND_VERIFIED` — focused/affected 55/55 (coordinator 14, handoff 9, architecture 2, admission 7, durable recovery 9, orchestration 5, API-018 6, composed API-018/API-019 3); approved F19-C lint-cleanup affected regression 22/22; full-repository lint/typecheck/build PASS; dependency/lockfile diff 0
 - F19-E API-019 business handoff: `IMPLEMENTED_AND_VERIFIED` — review round 1 GREEN 7/7; affected 67/67; full-repository lint/typecheck/clean build PASS; dependency/lockfile diff 0
-- F19-F nested ambiguity/idempotency hardening beyond the F19-B persistence invariants: `NOT_STARTED`
+- F19-F recovery idempotency/nested ambiguity hardening: `IMPLEMENTED_AND_VERIFIED` — review RED writer-crash 11/12 and authorization tuple 11/12; focused 47/47, affected exact 11 files 124/124, restart 4/4, full 962/962; lint/typecheck/clean build PASS; dependency/lockfile diff 0
 - F19-G Runtime/API-017: `DEFERRED / API-017 NOT_REQUIRED`
 - F19-H final integration: `NOT_STARTED`
