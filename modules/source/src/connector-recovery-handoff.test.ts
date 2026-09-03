@@ -149,6 +149,7 @@ class TestRecoveryExecutionStore implements ConnectorRecoveryExecutionStore {
 type HarnessOptions = Readonly<{
   context?: ConnectorTrustedRuntimeContext | null;
   recovery?: AuthorizedConnectorRecovery | null;
+  authorizations?: Pick<ConnectorRecoveryAuthorizationAdapter, "findAuthorizedConnectorRecovery">;
   runtimeAuthorized?: boolean;
   contractState?: "ACTIVE" | "SUSPENDED" | "MISSING";
   contractOverride?: Readonly<Partial<IntegrationContract>>;
@@ -182,7 +183,7 @@ function harness(options: HarnessOptions = {}) {
   const coordinator = new ConnectorExecutionCoordinator({ persistence, connector, admission: admissionGate(admissionAuthorizationLookups) });
   const recoveryExecutionStore = options.recoveryExecutionStore === undefined ? new TestRecoveryExecutionStore() : options.recoveryExecutionStore ?? undefined;
   const handoff = new ConnectorRecoveryExecutionHandoff({
-    authorizations: { findAuthorizedConnectorRecovery: (input) => { recoveryLookups.push(input); return options.recovery === null ? undefined : options.recovery ?? authorized(); } },
+    authorizations: options.authorizations ?? { findAuthorizedConnectorRecovery: (input) => { recoveryLookups.push(input); return options.recovery === null ? undefined : options.recovery ?? authorized(); } },
     planner: new ConnectorRecoveryExecutionPlanner(), persistence, coordinator: { execute: (input) => { coordinatorCalls += 1; return coordinator.execute(input); } },
     contextResolver: { resolve: () => options.context === null ? undefined : options.context ?? context },
     authorizer: { authorize: (input) => { runtimeAuthorizationLookups.push(input); return options.runtimeAuthorized ?? true; } },
@@ -238,6 +239,39 @@ test("F19-D hands the authorized identity to the actual coordinator and exact re
   assert.equal(value.coordinatorCalls(), 1);
   assert.deepEqual(mutationSnapshot(value), beforeReplay);
 }));
+
+test("F19-H durable Connector authorization separates both finding resolver and recovery authorizer from executor", () => {
+  const directory = mkdtempSync(join(tmpdir(), "ai-mls-f19-h-connector-sod-"));
+  const recovery = new DurableRecoveryOrchestrationStore({ databasePath: join(directory, "recovery.sqlite") });
+  try {
+    const root = recovery.createCase({ resourceType: "ConnectorInvocation", resourceId: originalInvocationId, originDomain: "CONNECTOR", originIdentity: { invocationId: originalInvocationId }, tenantId: scope.tenantId, scopeRef: `team:${scope.scopeId}`, evidenceRefs: ["evidence:f19-h:sod:ambiguity"], createdBy: "evidence-submitter-f19-h", createdAt: "2026-09-03T00:00:03.000Z" });
+    recovery.recordFinding({ recoveryCaseId: root.recoveryCaseId, expectedVersion: 1, finding: "CONFIRMED_NOT_EXECUTED", reasonCode: "PROVIDER_CONFIRMED_NOT_EXECUTED", evidenceRefs: ["evidence:f19-h:sod:finding"], decidedBy: session.principalId, decidedAt: "2026-09-03T00:04:00.000Z", idempotencyKey: "finding-f19-h-sod", fingerprint: "finding-f19-h-sod" });
+    const authorizationKey = "authorization-f19-h-sod";
+    const expectedRecoveryId = `recovery-${createHash("sha256").update([root.recoveryCaseId, authorizationKey].join("\u001f")).digest("hex").slice(0, 24)}`;
+    const plannedInvocationId = `connector-recovery:${expectedRecoveryId}`;
+    recovery.authorizeRecovery({ recoveryCaseId: root.recoveryCaseId, expectedVersion: 2, recoveryDisposition: "RECOVERY_AUTHORIZED", recoveryActionType: "CONNECTOR_REEXECUTION", recoveryExecutionIdentity: { invocationId: plannedInvocationId }, evidenceRefs: ["evidence:f19-h:sod:authorization"], decidedBy: "recovery-authorizer-f19-h", decidedAt: "2026-09-03T00:05:00.000Z", idempotencyKey: authorizationKey, fingerprint: "authorization-f19-h-sod" });
+    const authorizations = new ConnectorRecoveryAuthorizationAdapter(recovery);
+    const recoveryRequest = request({ recoveryId: expectedRecoveryId });
+
+    withHarness({ authorizations }, (value) => {
+      const before = structuredClone({ checkpoint: value.persistence.findCheckpoint(scope), evidence: value.persistence.listEvidence(scope), invocation: value.persistence.findInvocation(scope, plannedInvocationId), idempotency: value.persistence.findIdempotency(scope, `connector-recovery:${expectedRecoveryId}`) });
+      assert.deepEqual(value.handoff.execute(recoveryRequest), { status: "BLOCKED", reasonCode: "ADMISSION_DENIED" });
+      assert.equal(value.coordinatorCalls(), 0);
+      assert.equal(value.connector.invocationCount, 0);
+      assert.deepEqual(structuredClone({ checkpoint: value.persistence.findCheckpoint(scope), evidence: value.persistence.listEvidence(scope), invocation: value.persistence.findInvocation(scope, plannedInvocationId), idempotency: value.persistence.findIdempotency(scope, `connector-recovery:${expectedRecoveryId}`) }), before);
+    });
+
+    const independentContext = Object.freeze({ ...context, session: Object.freeze({ ...session, principalId: "connector-executor-independent-f19-h" }) });
+    withHarness({ authorizations, context: independentContext }, (value) => {
+      assert.equal(value.handoff.execute(recoveryRequest).status, "SUCCEEDED");
+      assert.equal(value.coordinatorCalls(), 1);
+      assert.equal(value.connector.invocationCount, 1);
+    });
+  } finally {
+    recovery.close();
+    rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
+  }
+});
 
 test("F19-F Connector recovery has no process-local execution authority when the durable execution store is missing", () => withHarness({ recoveryExecutionStore: null }, (value) => {
   const before = mutationSnapshot(value);

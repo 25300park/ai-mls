@@ -205,7 +205,7 @@ export class ConnectorRecoveryExecutionHandoff {
       scopeRef: `${admission.scope.scopeType.toLowerCase()}:${admission.scope.scopeId}`,
     });
     if (!matchesAuthorizedRecovery(recovery, request.recoveryId, admission.tenantId, `${admission.scope.scopeType.toLowerCase()}:${admission.scope.scopeId}`)) return blocked();
-    if (recovery.authorizedBy === context.session.principalId) return blocked();
+    if (recovery.authorizedBy === context.session.principalId || recovery.findingDecidedBy === context.session.principalId) return blocked();
     try { if (!this.dependencies.authorizer.authorize({ context, operation: "SubmitCaptureBatch", resourceId: recovery.originIdentity.invocationId })) return blocked(); }
     catch { return blocked(); }
     const contract = this.dependencies.integrationContracts.readContract({ tenantId: context.tenantId, scopeType: context.scope.scopeType, scopeId: context.scope.scopeId, connectorId: context.connectorId, sourceId: context.sourceId }, request.integrationContractId);

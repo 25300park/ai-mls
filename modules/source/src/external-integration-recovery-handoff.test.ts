@@ -47,8 +47,8 @@ function createUnresolved(value:ReturnType<typeof harness>,withObservation=false
  const created=value.technical.execute("COMMAND",register,technicalSession.id);assert.equal(created.ok,true);
  const mappingId=created.ok?String(created.data["mappingId"]):"";
  let observation:ReturnType<ExternalIntegrationEvidenceApplication["execute"]>|undefined;
- if(withObservation)observation=value.technical.execute("COMMAND",{operation:"SubmitProviderObservation",integrationContractId:binding.integrationContractId,observationId:"observation-f19-e",providerNamespace:binding.providerNamespace,externalObjectId:"external-f19-e",connectorId:scope.connectorId,sourceId:scope.sourceId,observationType:"STATUS",normalizedFields:{active:true},observedAt:now,idempotencyKey:"observation-f19-e",expectedMappingVersion:1},technicalSession.id);
- const command=Object.freeze({operation:"ReconcileIntegrationEvidence",integrationContractId:binding.integrationContractId,mappingId,expectedVersion:1,proofType:"SAME_EXTERNAL_IDENTITY",evidenceRefs:Object.freeze(["evidence:unproven:f19-e"]),observationIds:Object.freeze(withObservation?["observation-f19-e"]:[]),idempotencyKey:"reconciliation-f19-e"});
+ if(withObservation)observation=value.technical.execute("COMMAND",{operation:"SubmitProviderObservation",integrationContractId:binding.integrationContractId,observationId:"observation-f19-e",providerNamespace:binding.providerNamespace,externalObjectId:"external-f19-e",connectorId:scope.connectorId,sourceId:scope.sourceId,observationType:"STATUS",normalizedFields:{active:true},observedAt:now,idempotencyKey:"test-key-1",expectedMappingVersion:1},technicalSession.id);
+ const command=Object.freeze({operation:"ReconcileIntegrationEvidence",integrationContractId:binding.integrationContractId,mappingId,expectedVersion:1,proofType:"SAME_EXTERNAL_IDENTITY",evidenceRefs:Object.freeze(["evidence:unproven:f19-e"]),observationIds:Object.freeze(withObservation?["observation-f19-e"]:[]),idempotencyKey:"test-key-2"});
  const reconciliation=value.technical.execute("COMMAND",command,technicalSession.id);assert.equal(reconciliation.ok,true);
  const linked=value.linked();assert.ok(linked);
  return {mappingId,observation,command,reconciliation,linked};
@@ -82,10 +82,10 @@ test("F19-E rejects missing and cross-mapping observations before technical evid
   if(scenario==="cross-mapping"){
    const second=value.technical.execute("COMMAND",{...register,externalObjectId:"external-other-f19-e",internalResourceId:"source-other-f19-e",idempotencyKey:"mapping-other-f19-e",evidenceRef:"evidence:mapping:other:f19-e"},technicalSession.id);assert.equal(second.ok,true);
    observationId="observation-other-f19-e";
-   assert.equal(value.technical.execute("COMMAND",{operation:"SubmitProviderObservation",integrationContractId:binding.integrationContractId,observationId,providerNamespace:binding.providerNamespace,externalObjectId:"external-other-f19-e",connectorId:scope.connectorId,sourceId:scope.sourceId,observationType:"STATUS",normalizedFields:{active:true},observedAt:now,idempotencyKey:"observation-other-f19-e",expectedMappingVersion:1},technicalSession.id).ok,true);
+   assert.equal(value.technical.execute("COMMAND",{operation:"SubmitProviderObservation",integrationContractId:binding.integrationContractId,observationId,providerNamespace:binding.providerNamespace,externalObjectId:"external-other-f19-e",connectorId:scope.connectorId,sourceId:scope.sourceId,observationType:"STATUS",normalizedFields:{active:true},observedAt:now,idempotencyKey:"test-key-6",expectedMappingVersion:1},technicalSession.id).ok,true);
   }
   const before=externalSnapshot(value,mappingId);
-  const denied=value.technical.execute("COMMAND",{operation:"ReconcileIntegrationEvidence",integrationContractId:binding.integrationContractId,mappingId,expectedVersion:1,proofType:"SAME_EXTERNAL_IDENTITY",evidenceRefs:["evidence:unproven:f19-e"],observationIds:[observationId],idempotencyKey:`reconciliation-${scenario}-f19-e`},technicalSession.id);
+  const denied=value.technical.execute("COMMAND",{operation:"ReconcileIntegrationEvidence",integrationContractId:binding.integrationContractId,mappingId,expectedVersion:1,proofType:"SAME_EXTERNAL_IDENTITY",evidenceRefs:["evidence:unproven:f19-e"],observationIds:[observationId],idempotencyKey:scenario==="missing"?"test-key-3":"test-key-4"},technicalSession.id);
   assert.equal(denied.ok,false);if(!denied.ok)assert.equal(denied.error.code,scenario==="missing"?"NOT_FOUND":"CONFLICT");
   assert.deepEqual(externalSnapshot(value,mappingId),before);assert.equal(value.linked(),undefined);
  });
@@ -95,7 +95,7 @@ test("F19-E rejects terminal findings for External Integration after allowed UNR
  for(const finding of ["CONFIRMED_EXECUTED","CONFIRMED_NOT_EXECUTED"] as const)withHarness((value)=>{
   const result=createUnresolved(value,true);
   const technicalEvidenceId=String(result.reconciliation.ok?result.reconciliation.data["technicalEvidenceId"]:"");
-  assert.equal(value.recoveryApplication.execute("COMMAND",{operation:"RESOLVE_RECOVERY_CASE",recoveryCaseId:result.linked.recoveryCaseId,expectedVersion:1,finding:"UNRESOLVED",reasonCode:"BUSINESS_JUDGMENT_REQUIRED",evidenceRefs:[technicalEvidenceId],idempotencyKey:"unresolved-review-f19-e"},resolverSession.id).ok,true);
+  assert.equal(value.recoveryApplication.execute("COMMAND",{operation:"RESOLVE_RECOVERY_CASE",recoveryCaseId:result.linked.recoveryCaseId,expectedVersion:1,finding:"UNRESOLVED",reasonCode:"BUSINESS_JUDGMENT_REQUIRED",evidenceRefs:[technicalEvidenceId],idempotencyKey:"test-key-5"},resolverSession.id).ok,true);
   const beforeExternal=externalSnapshot(value,result.mappingId);const beforeCase=recoverySnapshot(value,result.linked.recoveryCaseId);
   const denied=value.recoveryApplication.execute("COMMAND",{operation:"RESOLVE_RECOVERY_CASE",recoveryCaseId:result.linked.recoveryCaseId,expectedVersion:2,finding,reasonCode:"FORGED_TERMINAL_TECHNICAL_TRUTH",evidenceRefs:[technicalEvidenceId],idempotencyKey:`terminal-${finding}-f19-e`},resolverSession.id);
   assert.deepEqual(denied,{ok:false,error:{code:"INVALID_STATE",message:"Recovery operation could not be completed."}});
@@ -117,7 +117,7 @@ test("F19-E rejects executable disposition for a legacy terminal External Integr
 test("F19-E business review appends UNRESOLVED lineage only and rejects every direct API-019 mutation with zero side effects",()=>withHarness((value)=>{
  const result=createUnresolved(value,true);
  const beforeDecision=externalSnapshot(value,result.mappingId);
- const decision=value.recoveryApplication.execute("COMMAND",{operation:"RESOLVE_RECOVERY_CASE",recoveryCaseId:result.linked.recoveryCaseId,expectedVersion:1,finding:"UNRESOLVED",reasonCode:"BUSINESS_JUDGMENT_REQUIRED",evidenceRefs:[String(result.reconciliation.ok?result.reconciliation.data["technicalEvidenceId"]:"")],idempotencyKey:"unresolved-decision-f19-e"},resolverSession.id);
+ const decision=value.recoveryApplication.execute("COMMAND",{operation:"RESOLVE_RECOVERY_CASE",recoveryCaseId:result.linked.recoveryCaseId,expectedVersion:1,finding:"UNRESOLVED",reasonCode:"BUSINESS_JUDGMENT_REQUIRED",evidenceRefs:[String(result.reconciliation.ok?result.reconciliation.data["technicalEvidenceId"]:"")],idempotencyKey:"test-key-7"},resolverSession.id);
  assert.equal(decision.ok,true);
  assert.deepEqual(externalSnapshot(value,result.mappingId),beforeDecision);
  const afterDecision=value.recovery.findCase(result.linked.recoveryCaseId);assert.equal(afterDecision?.finding?.finding,"UNRESOLVED");assert.equal(afterDecision?.status,"OPEN");assert.equal(afterDecision?.disposition,undefined);assert.equal(afterDecision?.recovery,undefined);
