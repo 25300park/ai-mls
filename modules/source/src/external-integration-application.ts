@@ -8,11 +8,13 @@ export interface ExternalIntegrationContextResolver{resolve(sessionId:string):Ex
 export interface ExternalIntegrationAuthorizer{authorize(input:Readonly<{context:ExternalIntegrationTrustedContext;operation:ExternalIntegrationOperation;resourceId:string}>):boolean;}
 export type GovernedIntegrationBinding=Readonly<{integrationContractId:string;providerNamespace:string;connectorId:string;sourceId?:string;governedBindingRef:string;evidenceRef:string}>;
 export interface GovernedIntegrationBindingResolver{resolve(input:Readonly<{context:ExternalIntegrationTrustedContext;integrationContractId:string}>):GovernedIntegrationBinding|undefined;}
+export type ExternalIntegrationUnresolvedConflictLink=Readonly<{integrationContractId:string;mappingId:string;observationId?:string;conflictEvidenceId:string;tenantId:string;scopeRef:string;evidenceRefs:readonly string[];createdBy:string;createdAt:string}>;
+export interface ExternalIntegrationUnresolvedConflictCaseWriter{linkUnresolvedConflict(input:ExternalIntegrationUnresolvedConflictLink):void;}
 export type ExternalIntegrationErrorCode="VALIDATION_FAILED"|"UNAUTHENTICATED"|"FORBIDDEN"|"NOT_FOUND"|"VERSION_CONFLICT"|"IDEMPOTENCY_CONFLICT"|"CONFLICT"|"INTERNAL_ERROR";
 export type ExternalIntegrationApplicationResult=Readonly<{ok:true;operation:ExternalIntegrationOperation;data:Readonly<Record<string,unknown>>}>|Readonly<{ok:false;error:Readonly<{code:ExternalIntegrationErrorCode;message:string}>}>;
 
 export class ExternalIntegrationEvidenceApplication{
- public constructor(private readonly dependencies:Readonly<{store:DurableExternalIntegrationStore;contextResolver:ExternalIntegrationContextResolver;authorizer:ExternalIntegrationAuthorizer;bindingResolver:GovernedIntegrationBindingResolver;clock:()=>string}>){}
+ public constructor(private readonly dependencies:Readonly<{store:DurableExternalIntegrationStore;contextResolver:ExternalIntegrationContextResolver;authorizer:ExternalIntegrationAuthorizer;bindingResolver:GovernedIntegrationBindingResolver;clock:()=>string;unresolvedConflictCaseWriter:ExternalIntegrationUnresolvedConflictCaseWriter}>){}
  public execute(kind:ExternalIntegrationRequestKind,input:unknown,sessionId:string):ExternalIntegrationApplicationResult{
   let request:ExternalIntegrationRequest;try{request=parseExternalIntegrationRequest(kind,input);}catch{return error("VALIDATION_FAILED");}
   const now=this.dependencies.clock();let context:ExternalIntegrationTrustedContext|undefined;try{context=this.dependencies.contextResolver.resolve(sessionId);}catch{context=undefined;}
@@ -39,6 +41,7 @@ export class ExternalIntegrationEvidenceApplication{
    }
    case "ReconcileIntegrationEvidence":{
     const value=this.dependencies.store.reconcileEvidence({...scope,integrationContractId:contractId,mappingId:stringValue(request,"mappingId")!,expectedVersion:numberValue(request,"expectedVersion")!,proofType:stringValue(request,"proofType")!,evidenceRefs:request["evidenceRefs"] as readonly string[],observationIds:(request["observationIds"] as readonly string[]|undefined)??[],idempotencyKey:stringValue(request,"idempotencyKey")!,inputFingerprint:fingerprint,recordedAt:now});
+    if(value.reconciliationStatus==="UNRESOLVED_CONFLICT")this.dependencies.unresolvedConflictCaseWriter.linkUnresolvedConflict(Object.freeze({integrationContractId:value.integrationContractId,mappingId:value.mappingId,...(value.observationId===undefined?{}:{observationId:value.observationId}),conflictEvidenceId:value.technicalEvidenceId,tenantId:context.tenantId,scopeRef:`${context.scopeType.toLowerCase()}:${context.scopeId}`,evidenceRefs:Object.freeze([value.technicalEvidenceId]),createdBy:context.session.principalId,createdAt:now}));
     return success(request.operation,value);
    }
    case "SuspendIntegrationContract":{const value=this.dependencies.store.suspendContract({...scope,integrationContractId:contractId,expectedVersion:numberValue(request,"expectedVersion")!,idempotencyKey:stringValue(request,"idempotencyKey")!,inputFingerprint:fingerprint,reasonCode:stringValue(request,"reasonCode")!,evidenceRef:stringValue(request,"evidenceRef")!,recordedAt:now});return success(request.operation,contractView(value));}

@@ -2,10 +2,10 @@
 
 | 항목 | 값 |
 |---|---|
-| Version | v0.4 |
+| Version | v0.6 |
 | Status | DRAFT |
 | Owner | Architecture Owner |
-| Current verified phase | F19-D |
+| Current verified phase | F19-E |
 
 이 문서는 F19에서 실제 구현·검증된 evidence만 누적한다. API-014, API-018, API-019의 domain truth를 F19 orchestration truth로 대체하지 않는다.
 
@@ -29,12 +29,16 @@
 | Connector finding / authorization containment | F19-D Brief D2~D3; Design §§3~4, 8 | `findAuthorizedConnectorRecovery` and `ConnectorRecoveryExecutionHandoff` require exact terminal authorized binding and planner identity | real durable adapter lookup; unresolved, confirmed-executed, unapproved, original identity reuse, wrong recovery and conflicting planned identity rejected with Connector call/mutation 0 | IMPLEMENTED_AND_VERIFIED |
 | Live revalidation and authoritative checkpoint preservation | F19-D Brief D4~D5 | handoff derives executor/source/scope/purpose from trusted Connector runtime context, validates Session expiry against injected server clock, requires existing authorizer, resolver/executor SoD and durable active exact Integration Contract before the existing coordinator; coordinator owns F18-B admission/lease/result/checkpoint | expired/revoked/inactive/assurance/team and forged earlier `startedAt`, authorizer and contract denial call/mutation 0; actual coordinator exact replay call 0; input/reference/checkpoint/contract identity conflicts call/mutation 0 | IMPLEMENTED_AND_VERIFIED |
 | F19 direct Connector isolation | F19-D Brief; Design §§1, 9 | recovery module has no Connector invocation-port dependency; source handoff delegates only to existing coordinator | architecture assertion and focused source/recovery tests | IMPLEMENTED_AND_VERIFIED |
+| API-019 unresolved technical evidence linkage | F19-E Brief E1, E4; Design §§1~2, 7~8 | API-019 reconciliation validates stored observation binding and returns existing immutable `technicalEvidenceId` plus applicable `observationId`; adapter references existing F19 `createCase()` with `integrationContractId + mappingId + observationId + conflictEvidenceId` | real API-019/F19 durable stores create one exact-lineage `EXTERNAL_INTEGRATION` case; missing/cross-mapping observation is rejected before technical evidence/case mutation; exact replay preserves both stores | IMPLEMENTED_AND_VERIFIED |
+| API-019 business handoff containment | F19-E Brief E2; Design §§3, 6, 9 | unresolved handoff starts `OPEN` without finding/disposition/recovery; recovery application permits only `UNRESOLVED` finding and rejects every `AUTHORIZE_RECOVERY` for `EXTERNAL_INTEGRATION` before identity validation | privileged-human terminal `CONFIRMED_EXECUTED`/`CONFIRMED_NOT_EXECUTED` and permissive-validator `CONNECTOR_REEXECUTION` attempts are rejected; case remains open/unresolved with disposition/binding 0 and identical API-019 snapshot | IMPLEMENTED_AND_VERIFIED |
+| Suspension, concealment and recovery-authority separation | F19-E Brief E2~E3; Design §§5~6, 8 | existing API-019 active-contract gate, F19 tenant/scope concealment and trusted-human authority remain authoritative | suspended contract read/review succeeds while new mapping/observation/reconciliation and reactivation remain blocked; wrong tenant/scope reads return `NOT_FOUND`; API-019 service recovery authorization returns `NOT_AUTHORIZED` | IMPLEMENTED_AND_VERIFIED |
+| F19-E verification gate | F19-E completion gate | F19-E-only source/recovery application composition and documentation changes; no API/state/authority/persistence/dependency addition | initial RED/GREEN 4/4 + 4/4; review RED 3 PASS / 4 expected FAIL then GREEN 7/7; affected 67/67; full lint/typecheck/clean build/diff check PASS; dependency/lockfile diff 0 | VERIFIED |
 
 ## Deferred boundaries
 
 - F19-C Publication Resolve vs Recover semantic separation: `IMPLEMENTED_AND_VERIFIED`
 - F19-D Connector recovery handoff: `IMPLEMENTED_AND_VERIFIED` — focused/affected 55/55 (coordinator 14, handoff 9, architecture 2, admission 7, durable recovery 9, orchestration 5, API-018 6, composed API-018/API-019 3); approved F19-C lint-cleanup affected regression 22/22; full-repository lint/typecheck/build PASS; dependency/lockfile diff 0
-- F19-E API-019 business handoff: `NOT_STARTED`
+- F19-E API-019 business handoff: `IMPLEMENTED_AND_VERIFIED` — review round 1 GREEN 7/7; affected 67/67; full-repository lint/typecheck/clean build PASS; dependency/lockfile diff 0
 - F19-F nested ambiguity/idempotency hardening beyond the F19-B persistence invariants: `NOT_STARTED`
 - F19-G Runtime/API-017: `DEFERRED / API-017 NOT_REQUIRED`
 - F19-H final integration: `NOT_STARTED`

@@ -232,6 +232,7 @@ export class RecoveryOrchestrationApplication {
     const record = this.#governedRecord(request.recoveryCaseId, context);
     if (!record) return notFoundFailure();
     if (!this.#isPrivilegedHuman(context) || record.createdBy === context.session.principalId || !this.#authorizeContext(context, request.operation, record)) return authorizationFailure();
+    if (record.originDomain === "EXTERNAL_INTEGRATION" && request.finding !== "UNRESOLVED") return this.#mapStoreError(new RecoveryStoreError("INVALID_STATE"));
     try {
       const result = this.#dependencies.store.recordFinding({ ...request, decidedBy: context.session.principalId, decidedAt: this.#dependencies.clock.now(), fingerprint: fingerprint(request) });
       const finding = result.record.finding;
@@ -245,6 +246,7 @@ export class RecoveryOrchestrationApplication {
     const record = this.#governedRecord(request.recoveryCaseId, context);
     if (!record) return notFoundFailure();
     if (!this.#isPrivilegedHuman(context) || !this.#authorizeContext(context, request.operation, record)) return authorizationFailure();
+    if (record.originDomain === "EXTERNAL_INTEGRATION") return this.#mapStoreError(new RecoveryStoreError("INVALID_STATE"));
     if (request.recoveryExecutionIdentity && !this.#dependencies.executionIdentityValidator.validate({ recoveryCase: record, recoveryActionType: request.recoveryActionType, recoveryExecutionIdentity: request.recoveryExecutionIdentity })) return validationFailure();
     try {
       const result = this.#dependencies.store.authorizeRecovery({ ...request, decidedBy: context.session.principalId, decidedAt: this.#dependencies.clock.now(), fingerprint: fingerprint(request) });

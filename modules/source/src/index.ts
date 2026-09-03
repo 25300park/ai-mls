@@ -10,6 +10,7 @@ export * from "./connector-application-host.js";
 export * from "./external-integration-api-contracts.js";
 export * from "./external-integration-durable-persistence.js";
 export * from "./external-integration-application.js";
+export * from "./external-integration-recovery-handoff.js";
 export * from "./external-integration-runtime.js";
 export * from "./external-integration-application-host.js";
 export * from "./source-ingestion-admission.js";
