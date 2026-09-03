@@ -113,10 +113,18 @@ export class PublicationCoordinationService {
   }
 
   public publish(request: PublishPublicationCoordinationRequest): PublicationCoordinationResult {
+    return this.coordinateExecution(request, false);
+  }
+
+  public recover(request: PublishPublicationCoordinationRequest): PublicationCoordinationResult {
+    return this.coordinateExecution(request, true);
+  }
+
+  private coordinateExecution(request: PublishPublicationCoordinationRequest, recoveryAuthorized: boolean): PublicationCoordinationResult {
     const { identity } = request;
     const before = this.dependencies.repository.find(identity);
     const repeatedAttempt = before?.attempts.some((attempt) => attempt.commandId === request.attempt.commandId) === true;
-    const newRetry = before !== undefined && before.attempts.length > 0 && !repeatedAttempt;
+    const newRetry = !recoveryAuthorized && before !== undefined && before.attempts.length > 0 && !repeatedAttempt;
     const retryExecution = newRetry || (before !== undefined && before.attempts.length > 1 && repeatedAttempt
       && this.dependencies.executionJournal.findIntent(identity, request.attempt.commandId) !== undefined
       && this.dependencies.executionJournal.recoveryDisposition(identity, request.attempt.commandId).condition === "PRE_DISPATCH");

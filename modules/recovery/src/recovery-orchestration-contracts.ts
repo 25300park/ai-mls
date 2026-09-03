@@ -108,6 +108,13 @@ export interface CreateRecoveryCaseInput {
 export interface RecoveryOrchestrationStore {
   createCase(input: CreateRecoveryCaseInput): RecoveryCaseRecord;
   findCase(recoveryCaseId: string): RecoveryCaseRecord | undefined;
+  findAuthorizedPublicationRecovery(input: Readonly<{
+    tenantId: string;
+    scopeRef: string;
+    resourceType: "Publication";
+    resourceId: string;
+    reconciliationCaseId: string;
+  }>): RecoveryCaseRecord | undefined;
   recordFinding(input: Readonly<{
     recoveryCaseId: string;
     expectedVersion: number;

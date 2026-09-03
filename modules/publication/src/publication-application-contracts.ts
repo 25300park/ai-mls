@@ -80,6 +80,7 @@ export type PublicationCoordinationResult = PublicationCoordinationSuccessResult
 export interface PublicationCoordinationPort {
   create(request: CreatePublicationCoordinationRequest): PublicationApplicationResult;
   publish(request: PublishPublicationCoordinationRequest): PublicationCoordinationResult;
+  recover(request: PublishPublicationCoordinationRequest): PublicationCoordinationResult;
 }
 
 export interface PublicationLifecycleRequest<Input extends PublicationModificationCommand> {

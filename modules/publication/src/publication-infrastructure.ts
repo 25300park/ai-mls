@@ -257,6 +257,9 @@ function createPublicationInfrastructureWithPersistence(
     audit: unitOfWork.audit,
     clock: configuration.clock,
     operations: operationsStatus,
+    ...(configuration.recoveryAuthorizationReader === undefined ? {} : { recoveryAuthorizationReader: configuration.recoveryAuthorizationReader }),
+    ...(configuration.recoveryCaseWriter === undefined ? {} : { recoveryCaseWriter: configuration.recoveryCaseWriter }),
+    coordination,
   });
   const inputPort = new PublicationInterfaceService(
     application,

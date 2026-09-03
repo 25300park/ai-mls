@@ -12,6 +12,7 @@ import type { PublicationApprovedRetryPolicyResolver } from "./publication-durab
 import type { PublicationGovernanceContextStore } from "./publication-governance-context.js";
 import type { ListingProjectionRebuildAuthority } from "./listing-projection-rebuild.js";
 import type { PublicationOperationsRebuildAuthority, PublicationOperationsRetryAuthority, PublicationOperationsRetryStateResolver } from "./publication-operations-contracts.js";
+import type { PublicationRecoveryAuthorizationReader, PublicationRecoveryCaseWriter } from "./publication-reconciliation-service.js";
 
 export interface PublicationInfrastructureConfiguration {
   readonly approvedRetryPolicy?: PublicationApprovedRetryPolicyResolver;
@@ -27,6 +28,8 @@ export interface PublicationInfrastructureConfiguration {
   readonly operationsRetryAuthority?: PublicationOperationsRetryAuthority;
   readonly operationsRetryStateResolver?: PublicationOperationsRetryStateResolver;
   readonly operationsRebuildAuthority?: PublicationOperationsRebuildAuthority;
+  readonly recoveryAuthorizationReader?: PublicationRecoveryAuthorizationReader;
+  readonly recoveryCaseWriter?: PublicationRecoveryCaseWriter;
 }
 
 export interface PublicationInfrastructureConfigurationInput {
@@ -43,6 +46,8 @@ export interface PublicationInfrastructureConfigurationInput {
   readonly operationsRetryAuthority?: PublicationOperationsRetryAuthority;
   readonly operationsRetryStateResolver?: PublicationOperationsRetryStateResolver;
   readonly operationsRebuildAuthority?: PublicationOperationsRebuildAuthority;
+  readonly recoveryAuthorizationReader?: PublicationRecoveryAuthorizationReader;
+  readonly recoveryCaseWriter?: PublicationRecoveryCaseWriter;
 }
 
 export function createPublicationInfrastructureConfiguration(
@@ -62,5 +67,7 @@ export function createPublicationInfrastructureConfiguration(
     ...(input.operationsRetryAuthority === undefined ? {} : { operationsRetryAuthority: input.operationsRetryAuthority }),
     ...(input.operationsRetryStateResolver === undefined ? {} : { operationsRetryStateResolver: input.operationsRetryStateResolver }),
     ...(input.operationsRebuildAuthority === undefined ? {} : { operationsRebuildAuthority: input.operationsRebuildAuthority }),
+    ...(input.recoveryAuthorizationReader === undefined ? {} : { recoveryAuthorizationReader: input.recoveryAuthorizationReader }),
+    ...(input.recoveryCaseWriter === undefined ? {} : { recoveryCaseWriter: input.recoveryCaseWriter }),
   });
 }

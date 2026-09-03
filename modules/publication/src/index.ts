@@ -83,6 +83,7 @@ export * from "./publication-service.js";
 export * from "./publication-provider-test-adapter.js";
 export * from "./publication-lifecycle-service.js";
 export * from "./publication-reconciliation-service.js";
+export * from "./publication-recovery-execution-planner.js";
 export * from "./publication-event-error.js";
 export * from "./publication-event-contracts.js";
 export * from "./publication-event-journal.js";

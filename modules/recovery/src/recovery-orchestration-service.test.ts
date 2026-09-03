@@ -11,6 +11,7 @@ import {
   type RecoveryOrchestrationStore,
   type RecoveryTrustedContext,
 } from "./recovery-orchestration-service.js";
+import { PublicationRecoveryExecutionIdentityValidator, PublicationRecoveryExecutionPlanner } from "../../publication/src/publication-recovery-execution-planner.js";
 
 const now = "2026-09-02T10:00:00.000Z";
 
@@ -206,6 +207,64 @@ test("F19-B rejects a non-new domain execution identity with zero disposition mu
     assert.deepEqual(result, { ok: false, error: { code: "VALIDATION_FAILED", message: "Recovery operation could not be completed." } });
     assert.equal(store.findCase(created.recoveryCaseId)?.version, 2);
     assert.equal(store.findCase(created.recoveryCaseId)?.disposition, undefined);
+  } finally {
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("F19-C trusted Publication planner rejects caller substitution before durable recovery authorization binding", () => {
+  const directory = mkdtempSync(join(tmpdir(), "ai-mls-f19-c-planner-handoff-"));
+  const store = new DurableRecoveryOrchestrationStore({ databasePath: join(directory, "recovery.sqlite") });
+  try {
+    const created = store.createCase({
+      resourceType: "Publication",
+      resourceId: "publication-planner-handoff",
+      originDomain: "PUBLICATION",
+      originIdentity: { reconciliationCaseId: "publication-case-planner-handoff", attemptId: "attempt-original-planner-handoff" },
+      tenantId: "tenant-planner-handoff",
+      scopeRef: "team:planner-handoff",
+      evidenceRefs: ["evidence:planner-handoff"],
+      createdBy: "submitter-planner-handoff",
+      createdAt: now,
+    });
+    store.recordFinding({ recoveryCaseId: created.recoveryCaseId, expectedVersion: 1, finding: "CONFIRMED_NOT_EXECUTED", reasonCode: "PROVIDER_CONFIRMED_NOT_EXECUTED", evidenceRefs: ["evidence:trusted:planner-handoff"], decidedBy: "resolver-planner-handoff", decidedAt: now, idempotencyKey: "finding-key-planner-handoff", fingerprint: "finding-fingerprint-planner-handoff" });
+    const planningInput = {
+      identity: { publicationId: "publication-planner-handoff", tenantScopeId: "tenant-planner-handoff" },
+      recoveryCaseId: created.recoveryCaseId,
+      reconciliationCaseId: "publication-case-planner-handoff",
+      originalAttemptId: "attempt-original-planner-handoff",
+      originalCommandId: "command-original-planner-handoff",
+    };
+    const planned = new PublicationRecoveryExecutionPlanner().plan(planningInput);
+    const validator = new PublicationRecoveryExecutionIdentityValidator({
+      findOriginalExecution(input) {
+        return input.identity.publicationId === planningInput.identity.publicationId
+          && input.identity.tenantScopeId === planningInput.identity.tenantScopeId
+          && input.reconciliationCaseId === planningInput.reconciliationCaseId
+          && input.attemptId === planningInput.originalAttemptId
+          ? { commandId: planningInput.originalCommandId }
+          : undefined;
+      },
+    });
+    const application = new RecoveryOrchestrationApplication({
+      store,
+      contextResolver: { resolve: () => context({ tenantId: "tenant-planner-handoff", scopeRef: "team:planner-handoff", session: session({ principalId: "authorizer-planner-handoff", principalType: "HUMAN", roles: ["OPS"], assurance: "MFA", isMfaVerified: true }) }) },
+      authorizer: { authorize: () => true },
+      executionIdentityValidator: validator,
+      clock: { now: () => now },
+    });
+
+    const forged = application.execute("COMMAND", { operation: "AUTHORIZE_RECOVERY", recoveryCaseId: created.recoveryCaseId, expectedVersion: 2, recoveryDisposition: "RECOVERY_AUTHORIZED", recoveryActionType: "PUBLICATION_RECOVERY", recoveryExecutionIdentity: { attemptId: "caller-authored-attempt", commandId: "caller-authored-command" }, evidenceRefs: ["evidence:authorization:forged"], idempotencyKey: "authorize-key-forged" }, "session-1");
+
+    assert.deepEqual(forged, { ok: false, error: { code: "VALIDATION_FAILED", message: "Recovery operation could not be completed." } });
+    assert.equal(store.findCase(created.recoveryCaseId)?.version, 2);
+    assert.equal(store.findCase(created.recoveryCaseId)?.disposition, undefined);
+
+    const authorized = application.execute("COMMAND", { operation: "AUTHORIZE_RECOVERY", recoveryCaseId: created.recoveryCaseId, expectedVersion: 2, recoveryDisposition: "RECOVERY_AUTHORIZED", recoveryActionType: "PUBLICATION_RECOVERY", recoveryExecutionIdentity: planned, evidenceRefs: ["evidence:authorization:planned"], idempotencyKey: "authorize-key-planned" }, "session-1");
+
+    assert.equal(authorized.ok, true);
+    assert.deepEqual(store.findCase(created.recoveryCaseId)?.recovery?.recoveryExecutionIdentity, planned);
   } finally {
     store.close();
     rmSync(directory, { recursive: true, force: true });

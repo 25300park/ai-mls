@@ -64,6 +64,23 @@ export class DurableRecoveryOrchestrationStore implements RecoveryOrchestrationS
     return row ? decodeCase(this.#database, row) : undefined;
   }
 
+  findAuthorizedPublicationRecovery(input: Parameters<RecoveryOrchestrationStore["findAuthorizedPublicationRecovery"]>[0]): RecoveryCaseRecord | undefined {
+    this.#assertOpen();
+    const rows = this.#database.prepare(`SELECT * FROM recovery_cases
+      WHERE tenant_id = ? AND scope_ref = ? AND resource_type = ? AND resource_id = ? AND origin_domain = 'PUBLICATION'`)
+      .all(input.tenantId, input.scopeRef, input.resourceType, input.resourceId);
+    const matches = rows.map((row) => decodeCase(this.#database, row)).filter((record) => {
+      const origin = record.originIdentity as Readonly<Record<string, unknown>>;
+      return origin["reconciliationCaseId"] === input.reconciliationCaseId
+        && record.status === "RESOLVED"
+        && record.finding?.finding === "CONFIRMED_NOT_EXECUTED"
+        && record.disposition?.recoveryDisposition === "RECOVERY_AUTHORIZED"
+        && record.disposition.recoveryActionType === "PUBLICATION_RECOVERY"
+        && record.recovery?.recoveryActionType === "PUBLICATION_RECOVERY";
+    });
+    return matches.length === 1 ? matches[0] : undefined;
+  }
+
   recordFinding(input: Parameters<RecoveryOrchestrationStore["recordFinding"]>[0]): ReturnType<RecoveryOrchestrationStore["recordFinding"]> {
     return this.#transaction(() => {
       const replay = readIdempotency(this.#database, input.idempotencyKey, "RESOLVE_RECOVERY_CASE", input.fingerprint);

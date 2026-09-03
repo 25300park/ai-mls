@@ -1,5 +1,6 @@
 import { PublicationApplicationError, mapPublicationApplicationError } from "./publication-application-error.js";
 import type {
+  PublicationCoordinationPort,
   PublicationExecutionContext,
   PublicationReconciliationPort,
   PublicationReconciliationRequest,
@@ -9,7 +10,7 @@ import type {
 import { PUBLICATION_RECOVERY_CATEGORIES } from "./publication-application-contracts.js";
 import type { PublicationApplicationService } from "./publication-application-service.js";
 import type { PublicationAuditRecord, PublicationAuditStore } from "./publication-audit-store.js";
-import type { PublicationAuthorizationGuard } from "./publication-authorization.js";
+import type { PublicationAuthorizationCommandType, PublicationAuthorizationGuard } from "./publication-authorization.js";
 import type { PublicationClock } from "./publication-clock.js";
 import {
   immutableDomain,
@@ -24,6 +25,7 @@ import type { PublicationRepository } from "./publication-repository.js";
 import { requireEffectivePublicationApproval, type PublicationEffectiveApprovalPort } from "./publication-service.js";
 import type { PublicationUnitOfWork } from "./publication-unit-of-work.js";
 import type { PublicationOperationsObserver } from "./publication-operations-contracts.js";
+import { PublicationRecoveryExecutionPlanner } from "./publication-recovery-execution-planner.js";
 
 export interface PublicationReconciliationDependencies {
   readonly application: PublicationApplicationService;
@@ -35,10 +37,48 @@ export interface PublicationReconciliationDependencies {
   readonly audit: PublicationAuditStore;
   readonly clock: PublicationClock;
   readonly operations?: PublicationOperationsObserver;
+  readonly recoveryAuthorizationReader?: PublicationRecoveryAuthorizationReader;
+  readonly recoveryCaseWriter?: PublicationRecoveryCaseWriter;
+  readonly coordination?: PublicationCoordinationPort;
+}
+
+export interface PublicationAuthorizedRecoveryCase {
+  readonly recoveryCaseId: string;
+  readonly resourceType: string;
+  readonly resourceId: string;
+  readonly tenantId: string;
+  readonly scopeRef: string;
+  readonly status: "OPEN" | "RESOLVED";
+  readonly version: number;
+  readonly createdBy: string;
+  readonly finding?: Readonly<{ readonly finding: "CONFIRMED_EXECUTED" | "CONFIRMED_NOT_EXECUTED" | "UNRESOLVED"; readonly decidedBy: string }>;
+  readonly disposition?: Readonly<{ readonly recoveryId: string; readonly recoveryDisposition: "RECOVERY_AUTHORIZED" | "NO_RECOVERY_REQUIRED" | "RECOVERY_REJECTED"; readonly recoveryActionType: "PUBLICATION_RECOVERY" | "CONNECTOR_REEXECUTION"; readonly decidedBy: string }>;
+  readonly recovery?: Readonly<{ readonly recoveryId: string; readonly recoveryCaseId: string; readonly originalOriginIdentity: Readonly<{ readonly reconciliationCaseId: string; readonly attemptId: string }> | Readonly<Record<string, string>>; readonly decisionVersion: number; readonly recoveryActionType: "PUBLICATION_RECOVERY" | "CONNECTOR_REEXECUTION"; readonly recoveryExecutionIdentity: Readonly<{ readonly attemptId: string; readonly commandId: string }> | Readonly<{ readonly invocationId: string }>; readonly evidenceRefs: readonly string[]; readonly authorizedBy: string }>;
+}
+
+export interface PublicationRecoveryAuthorizationReader {
+  findAuthorizedPublicationRecovery(input: Readonly<{ tenantId: string; scopeRef: string; resourceType: "Publication"; resourceId: string; reconciliationCaseId: string }>): PublicationAuthorizedRecoveryCase | undefined;
+}
+
+export interface PublicationRecoveryCaseWriter {
+  createCase(input: Readonly<{
+    resourceType: "Publication";
+    resourceId: string;
+    originDomain: "PUBLICATION";
+    originIdentity: Readonly<{ reconciliationCaseId: string; attemptId: string }>;
+    tenantId: string;
+    scopeRef: string;
+    parentRecoveryCaseId: string;
+    evidenceRefs: readonly string[];
+    createdBy: string;
+    createdAt: string;
+  }>): Readonly<{ recoveryCaseId: string }>;
 }
 
 interface AuthorizedRecovery {
   readonly actorId: string;
+  readonly tenantId: string;
+  readonly scopeRef: string;
   readonly snapshot: PublicationSnapshot;
 }
 
@@ -50,7 +90,70 @@ export class PublicationReconciliationService implements PublicationReconciliati
   }
 
   public recover(request: PublicationReconciliationRequest): PublicationReconciliationResult {
-    return this.coordinate(request);
+    try {
+      validateRecoveryExecutionRequest(request);
+      const authorized = this.authorizeAndLoad(request, true, "BEGIN_INITIAL_EXECUTION");
+      const recovery = this.dependencies.recoveryAuthorizationReader?.findAuthorizedPublicationRecovery({
+        tenantId: authorized.tenantId,
+        scopeRef: authorized.scopeRef,
+        resourceType: "Publication",
+        resourceId: request.identity.publicationId,
+        reconciliationCaseId: request.input.caseId,
+      });
+      if (recovery === undefined) {
+        throw new PublicationApplicationError("RECOVERY_AUTHORIZATION_REQUIRED", "DOMAIN_REJECTION", "Publication recovery authorization is required.");
+      }
+      const executionFingerprint = recoveryExecutionFingerprint(recovery);
+      const priorExecution = recovery.recovery === undefined ? undefined : this.dependencies.idempotency.find({
+        tenantScopeId: request.identity.tenantScopeId,
+        aggregateId: request.identity.publicationId,
+        commandKey: `${recovery.recovery.recoveryId}:publish`,
+      });
+      if (priorExecution !== undefined && priorExecution.fingerprint !== `${executionFingerprint}:publish`) {
+        throw new PublicationApplicationError("IDEMPOTENCY_CONFLICT", "CONFLICT", "Publication recovery identity conflicts with durable history.");
+      }
+      const binding = requirePublicationRecoveryBinding(recovery, request, authorized);
+      const coordination = this.dependencies.coordination;
+      if (coordination === undefined) throw new PublicationApplicationError("RECOVERY_EXECUTION_UNAVAILABLE", "INFRASTRUCTURE", "Publication recovery execution is unavailable.");
+      if (this.dependencies.recoveryCaseWriter === undefined) throw new PublicationApplicationError("RECOVERY_EXECUTION_UNAVAILABLE", "INFRASTRUCTURE", "Publication recovery case linkage is unavailable.");
+      const result = coordination.recover({
+        identity: request.identity,
+        context: immutableDomain({ ...request.context, idempotencyKey: binding.recoveryId, intentFingerprint: executionFingerprint }),
+        command: request.input.command,
+        attempt: immutableDomain({ id: binding.attemptId, commandId: binding.commandId, operation: "INITIAL_PUBLISH" as const, occurredAt: request.input.command.occurredAt, evidenceRefs: recovery.recovery?.evidenceRefs ?? [] }),
+        expectedAggregateVersion: authorized.snapshot.aggregateVersion,
+      });
+      if (!result.ok) {
+        if (result.error.code === "CONNECTOR_OUTCOME_UNKNOWN") {
+          const snapshot = this.dependencies.repository.find(request.identity);
+          const reconciliation = snapshot?.reconciliationCases.find(({ attemptId, status }) => attemptId === binding.attemptId && status === "OPEN");
+          const attempt = snapshot?.attempts.find(({ id }) => id === binding.attemptId);
+          if (reconciliation === undefined || attempt?.outcome !== "UNKNOWN") {
+            throw new PublicationApplicationError("RECOVERY_EXECUTION_UNAVAILABLE", "INFRASTRUCTURE", "Publication recovery ambiguity could not be linked.");
+          }
+          try {
+            this.dependencies.recoveryCaseWriter.createCase({
+              resourceType: "Publication",
+              resourceId: request.identity.publicationId,
+              originDomain: "PUBLICATION",
+              originIdentity: immutableDomain({ reconciliationCaseId: reconciliation.id, attemptId: binding.attemptId }),
+              tenantId: authorized.tenantId,
+              scopeRef: authorized.scopeRef,
+              parentRecoveryCaseId: recovery.recoveryCaseId,
+              evidenceRefs: attempt.evidenceRefs,
+              createdBy: authorized.actorId,
+              createdAt: this.dependencies.clock.now(),
+            });
+          } catch (error) {
+            if (!isDuplicateRecoveryCase(error)) throw error;
+          }
+        }
+        return result;
+      }
+      return immutableDomain({ ok: true as const, publicationId: result.publicationId, aggregateVersion: result.aggregateVersion, decision: "RECOVERED" as const, resultReference: JSON.stringify([recovery.disposition?.recoveryId, binding.commandId, result.aggregateVersion]), replayed: result.replayed });
+    } catch (error) {
+      return mapPublicationApplicationError(error, false);
+    }
   }
 
   public execute(request: PublicationReconciliationRequest): PublicationReconciliationResult {
@@ -131,12 +234,12 @@ export class PublicationReconciliationService implements PublicationReconciliati
     }
   }
 
-  private authorizeAndLoad(request: PublicationReconciliationRequest, replayCandidate: boolean): AuthorizedRecovery {
+  private authorizeAndLoad(request: PublicationReconciliationRequest, replayCandidate: boolean, commandType: PublicationAuthorizationCommandType = "RESOLVE_RECONCILIATION"): AuthorizedRecovery {
     let snapshot = replayCandidate ? this.dependencies.repository.find(request.identity) : undefined;
     const expectedAggregateVersion = snapshot?.aggregateVersion ?? request.input.expectedAggregateVersion;
     const authorization = this.dependencies.authorization.authorize({
       ...(request.context.sessionId === undefined ? {} : { sessionId: request.context.sessionId }),
-      commandType: "RESOLVE_RECONCILIATION",
+      commandType,
       actorIdClaim: request.context.actorId,
       tenantId: request.identity.tenantScopeId,
       teamId: request.identity.tenantScopeId,
@@ -159,7 +262,7 @@ export class PublicationReconciliationService implements PublicationReconciliati
       authorization.actor.principalId,
       snapshot.binding,
     );
-    return immutableDomain({ actorId: authorization.actor.principalId, snapshot });
+    return immutableDomain({ actorId: authorization.actor.principalId, tenantId: request.identity.tenantScopeId, scopeRef: authorization.actor.teamId ?? "", snapshot });
   }
 
   private recordDecision(
@@ -239,6 +342,67 @@ function validateRequest(request: PublicationReconciliationRequest): void {
     || (input.resolution === "EFFECT_CONFIRMED" && (input.externalObjectReference === undefined || input.externalObjectReference.trim().length === 0))) {
     throw invalidRecoveryRequest();
   }
+}
+
+function validateRecoveryExecutionRequest(request: PublicationReconciliationRequest): void {
+  const required = [request.identity.publicationId, request.identity.tenantScopeId, request.context.correlationId, request.context.idempotencyKey, request.context.intentFingerprint, request.input.caseId, request.input.command.authorityContext, request.input.command.reason, request.input.command.correlationId, request.input.command.occurredAt];
+  if (required.some((value) => value.trim().length === 0)
+    || !Number.isSafeInteger(request.input.expectedAggregateVersion)
+    || request.input.expectedAggregateVersion <= 0
+    || request.input.command.correlationId !== request.context.correlationId) throw invalidRecoveryRequest();
+}
+
+function requirePublicationRecoveryBinding(recovery: PublicationAuthorizedRecoveryCase, request: PublicationReconciliationRequest, authorized: AuthorizedRecovery): Readonly<{ recoveryId: string; attemptId: string; commandId: string }> {
+  const publicationCase = authorized.snapshot.reconciliationCases.find(({ id }) => id === request.input.caseId);
+  const originalAttempt = publicationCase === undefined ? undefined : authorized.snapshot.attempts.find(({ id }) => id === publicationCase.attemptId);
+  const disposition = recovery.disposition;
+  const binding = recovery.recovery;
+  const executionIdentity = binding?.recoveryExecutionIdentity;
+  const originIdentity = binding?.originalOriginIdentity as Readonly<Record<string, unknown>> | undefined;
+  const plannedIdentity = publicationCase === undefined || originalAttempt === undefined
+    ? undefined
+    : new PublicationRecoveryExecutionPlanner().plan({
+      identity: request.identity,
+      recoveryCaseId: recovery.recoveryCaseId,
+      reconciliationCaseId: publicationCase.id,
+      originalAttemptId: originalAttempt.id,
+      originalCommandId: originalAttempt.commandId,
+    });
+  if (recovery.resourceType !== "Publication" || recovery.resourceId !== request.identity.publicationId || recovery.tenantId !== authorized.tenantId || recovery.scopeRef !== authorized.scopeRef
+    || publicationCase?.status !== "RESOLVED" || originalAttempt?.outcome !== "UNKNOWN" || originalAttempt.operation !== "INITIAL_PUBLISH"
+    || recovery.status !== "RESOLVED" || recovery.version !== (binding?.decisionVersion ?? -2) + 1 || recovery.finding?.finding !== "CONFIRMED_NOT_EXECUTED"
+    || disposition?.recoveryDisposition !== "RECOVERY_AUTHORIZED" || disposition.recoveryActionType !== "PUBLICATION_RECOVERY"
+    || binding?.recoveryActionType !== "PUBLICATION_RECOVERY" || binding.recoveryCaseId !== recovery.recoveryCaseId || binding.recoveryId !== disposition.recoveryId
+    || originIdentity?.["reconciliationCaseId"] !== request.input.caseId || originIdentity?.["attemptId"] !== originalAttempt.id
+    || executionIdentity === undefined || !("attemptId" in executionIdentity) || !("commandId" in executionIdentity)
+    || !executionIdentity.attemptId.trim() || !executionIdentity.commandId.trim() || executionIdentity.attemptId === originalAttempt.id || executionIdentity.commandId === originalAttempt.commandId
+    || plannedIdentity === undefined || executionIdentity.attemptId !== plannedIdentity.attemptId || executionIdentity.commandId !== plannedIdentity.commandId
+    || [recovery.createdBy, recovery.finding.decidedBy, disposition.decidedBy, binding.authorizedBy].includes(authorized.actorId)) {
+    throw new PublicationApplicationError("RECOVERY_AUTHORIZATION_INVALID", "DOMAIN_REJECTION", "Publication recovery authorization is invalid.");
+  }
+  const existingRecoveryAttempt = authorized.snapshot.attempts.find(({ id, commandId }) => id === executionIdentity.attemptId || commandId === executionIdentity.commandId);
+  if (existingRecoveryAttempt === undefined && authorized.snapshot.aggregateVersion !== request.input.expectedAggregateVersion) {
+    throw new PublicationApplicationError("PUBLICATION_VERSION_CONFLICT", "CONFLICT", "Publication version conflict.");
+  }
+  if (existingRecoveryAttempt !== undefined && (existingRecoveryAttempt.id !== executionIdentity.attemptId || existingRecoveryAttempt.commandId !== executionIdentity.commandId)) {
+    throw new PublicationApplicationError("IDEMPOTENCY_CONFLICT", "CONFLICT", "Publication recovery identity conflicts with durable history.");
+  }
+  return immutableDomain({ recoveryId: binding.recoveryId, attemptId: executionIdentity.attemptId, commandId: executionIdentity.commandId });
+}
+
+function isDuplicateRecoveryCase(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "DUPLICATE_ORIGIN";
+}
+
+function recoveryExecutionFingerprint(recovery: PublicationAuthorizedRecoveryCase): string {
+  const binding = recovery.recovery;
+  const identity = binding?.recoveryExecutionIdentity;
+  const canonicalIdentity = identity === undefined
+    ? undefined
+    : "attemptId" in identity
+      ? ["PUBLICATION", identity.attemptId, identity.commandId]
+      : ["CONNECTOR", identity.invocationId];
+  return JSON.stringify([binding?.recoveryId, binding?.recoveryCaseId, binding?.decisionVersion, canonicalIdentity]);
 }
 
 function requestedDecision(category: PublicationReconciliationRequest["input"]["category"], resolution: ReconciliationResolution | undefined): PublicationRecoveryDecision {

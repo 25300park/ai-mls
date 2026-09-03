@@ -2,10 +2,10 @@
 
 | 항목 | 값 |
 |---|---|
-| Version | v0.1 |
+| Version | v0.2 |
 | Status | DRAFT |
 | Owner | Architecture Owner |
-| Current verified phase | F19-B |
+| Current verified phase | F19-C |
 
 이 문서는 F19에서 실제 구현·검증된 evidence만 누적한다. API-014, API-018, API-019의 domain truth를 F19 orchestration truth로 대체하지 않는다.
 
@@ -15,14 +15,20 @@
 | Closed internal commands and safe views | Design §5 | `recovery-orchestration-service.ts` | closed request/unknown-field, response-key 및 architecture tests | IMPLEMENTED_AND_VERIFIED |
 | Separate append-only finding/disposition | Design §3~4 | `recovery-durable-persistence.ts` | unresolved→terminal append, raw update/delete rejection tests | IMPLEMENTED_AND_VERIFIED |
 | Trusted Session, authority, MFA and SoD | Design §6 | `recovery-orchestration-service.ts` | trusted human success, evidence-submitter/weak-assurance/body-claim/wrong-scope rejection tests | IMPLEMENTED_AND_VERIFIED |
-| Domain-owned new execution identity | Design §4 | injected `RecoveryExecutionIdentityValidator` boundary | validator rejection with zero disposition mutation | IMPLEMENTED_AND_VERIFIED |
+| Domain-owned new execution identity | Design §4 | injected `RecoveryExecutionIdentityValidator` boundary with `PublicationRecoveryExecutionIdentityValidator` planner adapter | caller-substituted Publication identity rejection with zero disposition mutation; exact trusted planner identity binding | IMPLEMENTED_AND_VERIFIED |
 | Atomic recovery binding | Design §4, §7~8 | SQLite transaction binds origin, decision version, finding, disposition, execution identity, idempotency and evidence | restart replay/conflict and injected idempotency-failure rollback tests | IMPLEMENTED_AND_VERIFIED |
 | Domain truth and external-effect isolation | Design §1, §9 | `modules/recovery` has no Publication/Connector/API-019 repository or provider dependency | architecture assertion and affected 52/52 regression | IMPLEMENTED_AND_VERIFIED |
 | Full regression and dependency gate | F19-B completion gate | production change confined to `modules/recovery`; dependency/lockfile change 0 | focused 12/12; affected 52/52; total 921/921; lint/typecheck/build PASS; production audit 0; full audit 기존 승인 dev-only High 4; new unapproved High/Critical 0 | VERIFIED |
+| Resolve / Recover semantic separation | F19-C Brief §§2~3, §9 | `publication-reconciliation-service.ts` keeps `reconcile()` effect-free and routes authorized `recover()` through the existing F17 coordination boundary | resolve provider-call 0; missing/invalid durable authorization denial; confirmed recovery execution tests | IMPLEMENTED_AND_VERIFIED |
+| Trusted durable recovery binding | F19-C Brief §§4~5, §7~8 | `recovery-durable-persistence.ts#findAuthorizedPublicationRecovery`, injected reader/writer boundaries and `PublicationRecoveryExecutionPlanner` | restart lookup/concealment, exact planner-bound identity, caller substitution, original identity reuse, stale version, tenant/scope and SoD rejection tests | IMPLEMENTED_AND_VERIFIED |
+| Recovery durability and idempotency | F19-C Brief §§6, 10~12 | existing F17 durable UoW plus canonical recoveryId/fingerprint staging; additive attempt history | exact replay, conflicting identity, stable property-order-independent fingerprint, prior history and provider-call assertions | IMPLEMENTED_AND_VERIFIED |
+| Nested ambiguity lineage | F19-C Brief §§13, 15 | UNKNOWN recovery uses the existing F19 `createCase` boundary with parent recovery case and new Publication attempt/case identity | writer failure exact retry creates the missing child once; parent/original attempt preserved; replay provider-call 0 and duplicate child 0 | IMPLEMENTED_AND_VERIFIED |
+| Live recovery admission | F19-C Brief §§7, 16~18 | session-derived authorization, F17 eligibility, API-013 effective approval and closed API-014 HTTP schema remain authoritative | capability/MFA/SoD/verification/permission/target/channel/suspension rejection and caller-evidence HTTP regression | IMPLEMENTED_AND_VERIFIED |
+| F19-C verification gate | F19-C completion gate | F19-C-only Publication/Recovery changes; API-018/API-019 and dependency manifests unchanged | focused 11/11; affected 122/122; total 932/932; lint/typecheck/build/verify PASS; Architecture 153/153; Gitleaks 0; production audit 0; full audit existing approved dev-only `brace-expansion` High 4; new unapproved High/Critical 0 | VERIFIED |
 
 ## Deferred boundaries
 
-- F19-C Publication Resolve vs Recover semantic separation: `NOT_STARTED`
+- F19-C Publication Resolve vs Recover semantic separation: `IMPLEMENTED_AND_VERIFIED`
 - F19-D Connector recovery handoff: `NOT_STARTED`
 - F19-E API-019 business handoff: `NOT_STARTED`
 - F19-F nested ambiguity/idempotency hardening beyond the F19-B persistence invariants: `NOT_STARTED`

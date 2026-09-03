@@ -92,6 +92,22 @@ test("F19-B recovery authorization atomically binds immutable execution identity
   reopened.close();
 }));
 
+test("F19-C authorized Publication recovery binding is found by trusted origin after restart and remains concealed outside its scope", () => withDatabase((databasePath) => {
+  const first = new DurableRecoveryOrchestrationStore({ databasePath });
+  const created = create(first, "lookup");
+  first.recordFinding({ recoveryCaseId: created.recoveryCaseId, expectedVersion: 1, finding: "CONFIRMED_NOT_EXECUTED", reasonCode: "PROVIDER_CONFIRMED_NOT_EXECUTED", evidenceRefs: ["evidence:trusted:lookup"], decidedBy: "resolver-lookup", decidedAt: createdAt, idempotencyKey: "finding-key-lookup", fingerprint: "finding-fingerprint-lookup" });
+  const authorized = first.authorizeRecovery({ recoveryCaseId: created.recoveryCaseId, expectedVersion: 2, recoveryDisposition: "RECOVERY_AUTHORIZED", recoveryActionType: "PUBLICATION_RECOVERY", recoveryExecutionIdentity: { attemptId: "attempt-recovery-lookup", commandId: "command-recovery-lookup" }, evidenceRefs: ["evidence:authorization:lookup"], decidedBy: "authorizer-lookup", decidedAt: createdAt, idempotencyKey: "authorization-key-lookup", fingerprint: "authorization-fingerprint-lookup" }).record;
+  first.close();
+
+  const reopened = new DurableRecoveryOrchestrationStore({ databasePath });
+  const query = { tenantId: "tenant-1", scopeRef: "team:team-1", resourceType: "Publication", resourceId: "publication-lookup", reconciliationCaseId: "publication-case-lookup" } as const;
+  assert.deepEqual(reopened.findAuthorizedPublicationRecovery(query), authorized);
+  assert.equal(reopened.findAuthorizedPublicationRecovery({ ...query, tenantId: "tenant-other" }), undefined);
+  assert.equal(reopened.findAuthorizedPublicationRecovery({ ...query, scopeRef: "team:other" }), undefined);
+  assert.equal(reopened.findAuthorizedPublicationRecovery({ ...query, resourceId: "publication-other" }), undefined);
+  reopened.close();
+}));
+
 test("F19-B durable configuration and nested origin lineage fail closed", () => {
   assert.throws(() => new DurableRecoveryOrchestrationStore({ databasePath: "" }), /durable recovery database path/i);
   assert.throws(() => new DurableRecoveryOrchestrationStore({ databasePath: ":memory:" }), /durable recovery database path/i);
