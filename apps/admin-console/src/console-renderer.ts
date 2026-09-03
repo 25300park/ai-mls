@@ -10,6 +10,10 @@ const pageTitles: Readonly<Record<ConsolePage, string>> = Object.freeze({
   "UI-036": "Role & Policy Administration",
   PROJECTION: "Projection Status",
   OPERATIONS: "Operations / Health",
+  CONNECTOR: "Connector Operations",
+  EXTERNAL_INTEGRATION: "External Integration",
+  RECOVERY_CASE: "Recovery Case",
+  EVIDENCE: "Audit / Evidence",
 });
 
 const navigation = Object.freeze([
@@ -89,6 +93,10 @@ export function renderConsoleResult(result: ConsoleReadResult): string {
     case "UI-036": return renderControlledAdministration(data);
     case "PROJECTION": return renderProjection(data);
     case "OPERATIONS": return renderOperations(data);
+    case "CONNECTOR": return definitionGrid(data);
+    case "EXTERNAL_INTEGRATION": return definitionGrid(data);
+    case "RECOVERY_CASE": return definitionGrid(data);
+    case "EVIDENCE": return definitionGrid(data);
   }
 }
 

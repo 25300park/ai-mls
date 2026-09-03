@@ -10,6 +10,8 @@ import type {
   PublicationQueryRequest,
   PublicationQueryResponse,
 } from "../../api/src/publication-api-contracts.js";
+import type { ConnectorApplicationResult } from "../../../modules/source/src/connector-runtime-application.js";
+import type { ExternalIntegrationApplicationResult } from "../../../modules/source/src/external-integration-application.js";
 
 export const CONSOLE_PAGES = Object.freeze([
   "DASHBOARD",
@@ -21,6 +23,10 @@ export const CONSOLE_PAGES = Object.freeze([
   "UI-036",
   "PROJECTION",
   "OPERATIONS",
+  "CONNECTOR",
+  "EXTERNAL_INTEGRATION",
+  "RECOVERY_CASE",
+  "EVIDENCE",
 ] as const);
 
 export type ConsolePage = typeof CONSOLE_PAGES[number];
@@ -32,6 +38,14 @@ export interface ConsoleReadRequest {
   readonly tenantId: string;
   readonly teamId: string;
   readonly publicationId?: string;
+  readonly connectorId?: string;
+  readonly sourceId?: string;
+  readonly batchId?: string;
+  readonly mappingId?: string;
+  readonly integrationContractId?: string;
+  readonly recoveryCaseId?: string;
+  readonly auditTargetId?: string;
+  readonly auditEventType?: string;
   readonly correlationId: string;
 }
 
@@ -58,6 +72,30 @@ interface ConsoleAuthorizationEvaluator {
   evaluate(request: AuthorizationRequest): AuthorizationDecision;
 }
 
+interface ConsoleConnectorQueryPort {
+  execute(kind: "QUERY", input: unknown): ConnectorApplicationResult;
+}
+
+interface ConsoleExternalIntegrationQueryPort {
+  execute(kind: "HTTP_QUERY", input: unknown, sessionId: string): ExternalIntegrationApplicationResult;
+}
+
+type ConsoleRecoveryQueryResult =
+  | Readonly<{ ok: true; operation: "READ_RECOVERY_CASE"; data: Readonly<Record<string, unknown>> }>
+  | Readonly<{ ok: false; error: Readonly<{ code: string; message: string }> }>;
+
+interface ConsoleRecoveryQueryPort {
+  execute(kind: "QUERY", input: unknown, sessionId: string): ConsoleRecoveryQueryResult;
+}
+
+type ConsoleAuditQueryResult =
+  | Readonly<{ ok: true; data: readonly unknown[]; meta: Readonly<Record<string, unknown>> }>
+  | Readonly<{ ok: false; error: Readonly<{ code: string; message: string }>; meta: Readonly<Record<string, unknown>> }>;
+
+interface ConsoleAuditQueryPort {
+  queryAudit(input: unknown): ConsoleAuditQueryResult;
+}
+
 interface ConsoleReadAdapterDependencies {
   readonly queryPort: ConsolePublicationQueryPort;
   readonly operationsRead: PublicationOperationsReadPort;
@@ -65,9 +103,13 @@ interface ConsoleReadAdapterDependencies {
   readonly sessionResolver: PublicationSessionResolver;
   readonly authorizationEvaluator: ConsoleAuthorizationEvaluator;
   readonly clock: PublicationClock;
+  readonly connectorQueryPort?: ConsoleConnectorQueryPort;
+  readonly externalIntegrationQueryPort?: ConsoleExternalIntegrationQueryPort;
+  readonly recoveryQueryPort?: ConsoleRecoveryQueryPort;
+  readonly auditQueryPort?: ConsoleAuditQueryPort;
 }
 
-const publicationOperations: Readonly<Record<Exclude<ConsolePage, "DASHBOARD" | "ADMINISTRATION" | "UI-036" | "PROJECTION" | "OPERATIONS">, PublicationQueryRequest["operation"]>> = Object.freeze({
+const publicationOperations: Readonly<Record<Exclude<ConsolePage, "DASHBOARD" | "ADMINISTRATION" | "UI-036" | "PROJECTION" | "OPERATIONS" | "CONNECTOR" | "EXTERNAL_INTEGRATION" | "RECOVERY_CASE" | "EVIDENCE">, PublicationQueryRequest["operation"]>> = Object.freeze({
   "UI-031": "GET_PUBLICATION_OPERATIONS_VIEW",
   "UI-032": "GET_PUBLICATION_REVALIDATION_VIEW",
   "UI-033": "GET_PUBLICATION_RECOVERY_VIEW",
@@ -85,6 +127,10 @@ export class ConsoleReadAdapter {
         case "UI-036": return immutableConsole({ page: request.page, state: "UNAVAILABLE" as const, message: "Controlled administration is unavailable." });
         case "PROJECTION": return this.readProjection(request);
         case "OPERATIONS": return this.readOperations(request);
+        case "CONNECTOR": return this.readConnector(request);
+        case "EXTERNAL_INTEGRATION": return this.readExternalIntegration(request);
+        case "RECOVERY_CASE": return this.readRecoveryCase(request);
+        case "EVIDENCE": return this.readEvidence(request);
         case "UI-031":
         case "UI-032":
         case "UI-033":
@@ -186,6 +232,114 @@ export class ConsoleReadAdapter {
     });
   }
 
+  private readConnector(request: ConsoleReadRequest): ConsoleReadResult {
+    if (this.dependencies.connectorQueryPort === undefined) {
+      return immutableConsole({ page: request.page, state: "UNAVAILABLE" as const, message: "Connector operations data is unavailable." });
+    }
+    if (!this.hasVisibleTenant(request) || !hasValues(request.connectorId, request.sourceId, request.batchId)) {
+      return emptyResult(request.page, "No authorized Connector batch is currently available.");
+    }
+    const result = this.dependencies.connectorQueryPort.execute("QUERY", {
+      operation: "ReadBatchStatus",
+      sessionId: request.sessionId,
+      connectorId: request.connectorId,
+      sourceId: request.sourceId,
+      batchId: request.batchId,
+    });
+    if (!result.ok) {
+      return result.error.code === "NOT_FOUND" || result.error.code === "UNAUTHENTICATED" || result.error.code === "FORBIDDEN"
+        ? emptyResult(request.page, "No authorized Connector batch is currently available.")
+        : this.safeError(request);
+    }
+    return immutableConsole({
+      page: request.page,
+      state: "READY" as const,
+      data: selectFields(result.data, [
+        "batchId", "invocationId", "technicalStatus", "normalizedOutcome", "currentVersion",
+        "evidenceRef", "updatedAt", "checkpointReference", "checkpointVersion",
+      ]),
+    });
+  }
+
+  private readExternalIntegration(request: ConsoleReadRequest): ConsoleReadResult {
+    if (this.dependencies.externalIntegrationQueryPort === undefined) {
+      return immutableConsole({ page: request.page, state: "UNAVAILABLE" as const, message: "External Integration data is unavailable." });
+    }
+    if (!this.hasVisibleTenant(request)) return emptyResult(request.page, "No authorized External Integration record is currently available.");
+    const query = request.mappingId?.trim()
+      ? Object.freeze({ operation: "ReadExternalMapping", mappingId: request.mappingId })
+      : request.integrationContractId?.trim()
+        ? Object.freeze({ operation: "ReadIntegrationContract", integrationContractId: request.integrationContractId })
+        : undefined;
+    if (query === undefined) return emptyResult(request.page, "No authorized External Integration record is currently available.");
+    const result = this.dependencies.externalIntegrationQueryPort.execute("HTTP_QUERY", query, request.sessionId);
+    if (!result.ok) {
+      return result.error.code === "NOT_FOUND" || result.error.code === "UNAUTHENTICATED" || result.error.code === "FORBIDDEN"
+        ? emptyResult(request.page, "No authorized External Integration record is currently available.")
+        : this.safeError(request);
+    }
+    const fields = result.operation === "ReadExternalMapping"
+      ? ["mappingId", "providerNamespace", "externalObjectId", "internalResourceType", "internalResourceId", "state", "version", "evidenceRef", "createdAt", "updatedAt"]
+      : ["integrationContractId", "technicalStatus", "providerNamespace", "connectorId", "sourceId", "version", "evidenceRef", "createdAt", "updatedAt"];
+    return immutableConsole({ page: request.page, state: "READY" as const, data: selectFields(result.data, fields) });
+  }
+
+  private readRecoveryCase(request: ConsoleReadRequest): ConsoleReadResult {
+    if (this.dependencies.recoveryQueryPort === undefined) {
+      return immutableConsole({ page: request.page, state: "UNAVAILABLE" as const, message: "Recovery Case data is unavailable." });
+    }
+    if (!this.hasVisibleTenant(request) || !hasValues(request.recoveryCaseId)) {
+      return emptyResult(request.page, "No authorized Recovery Case is currently available.");
+    }
+    const result = this.dependencies.recoveryQueryPort.execute("QUERY", {
+      operation: "READ_RECOVERY_CASE",
+      recoveryCaseId: request.recoveryCaseId,
+    }, request.sessionId);
+    if (!result.ok) {
+      return ["NOT_FOUND", "AUTHENTICATION_REQUIRED", "NOT_AUTHORIZED"].includes(result.error.code)
+        ? emptyResult(request.page, "No authorized Recovery Case is currently available.")
+        : this.safeError(request);
+    }
+    return immutableConsole({
+      page: request.page,
+      state: "READY" as const,
+      data: selectFields(result.data, [
+        "recoveryCaseId", "originDomain", "originIdentity", "status", "finding", "recoveryId",
+        "evidenceRefs", "version", "createdAt", "resolvedAt",
+      ]),
+    });
+  }
+
+  private readEvidence(request: ConsoleReadRequest): ConsoleReadResult {
+    if (this.dependencies.auditQueryPort === undefined) {
+      return immutableConsole({ page: request.page, state: "UNAVAILABLE" as const, message: "Audit evidence is unavailable." });
+    }
+    if (!this.hasVisibleTenant(request)) return emptyResult(request.page, "No authorized Audit evidence is currently available.");
+    const result = this.dependencies.auditQueryPort.queryAudit({
+      context: {
+        requestId: `console-${request.correlationId}`,
+        correlationId: request.correlationId,
+        sessionId: request.sessionId,
+      },
+      purpose: "OPERATIONS_AUDIT",
+      ...(request.auditTargetId?.trim() ? { targetId: request.auditTargetId } : {}),
+      ...(request.auditEventType?.trim() ? { eventType: request.auditEventType } : {}),
+    });
+    if (!result.ok) return this.safeError(request);
+    const events = result.data.flatMap((event) => {
+      const projected = safeAuditEvent(event);
+      return projected === undefined ? [] : [projected];
+    });
+    return events.length === 0
+      ? emptyResult(request.page, "No authorized Audit evidence is currently available.")
+      : immutableConsole({ page: request.page, state: "READY" as const, data: { events } });
+  }
+
+  private hasVisibleTenant(request: ConsoleReadRequest): boolean {
+    const session = this.resolveCurrentSession(request);
+    return session !== undefined && request.teamId === request.tenantId && session.teamId === request.tenantId;
+  }
+
   private authorizeOperationalRead(request: ConsoleReadRequest, resourceType: string, resourceId: string): boolean {
     const session = this.resolveCurrentSession(request);
     if (session === undefined || request.teamId !== request.tenantId || session.teamId !== request.tenantId) return false;
@@ -236,6 +390,52 @@ function concealedResult(page: ConsolePage): ConsoleReadResult {
 
 function recordOf(value: object): Readonly<Record<string, unknown>> {
   return structuredClone(value) as Readonly<Record<string, unknown>>;
+}
+
+function hasValues(...values: readonly (string | undefined)[]): boolean {
+  return values.every((value) => value !== undefined && value.trim().length > 0);
+}
+
+function selectFields(value: Readonly<Record<string, unknown>>, fields: readonly string[]): Readonly<Record<string, unknown>> {
+  return Object.freeze(Object.fromEntries(fields.flatMap((field) => {
+    const item = value[field];
+    if (item === undefined) return [];
+    if ((field === "evidenceRef" || field === "evidenceRefs") && !isSafeEvidence(item)) {
+      throw new Error("UNSAFE_CONSOLE_EVIDENCE");
+    }
+    return [[field, structuredClone(item)]];
+  })));
+}
+
+function isSafeEvidence(value: unknown): boolean {
+  const values = typeof value === "string" ? [value] : Array.isArray(value) && value.every((item) => typeof item === "string") ? value : [];
+  return values.length > 0 && values.every((item) => item.length <= 512
+    && !/[\r\n\u0000-\u001f]/u.test(item)
+    && !/(?:authorization|bearer|cookie|credential|password|private.?key|secret|session.?token|token)/iu.test(item));
+}
+
+function safeAuditEvent(value: unknown): Readonly<Record<string, unknown>> | undefined {
+  if (!isRecord(value) || !isRecord(value["principal"]) || !isRecord(value["target"])) return undefined;
+  return selectFields({
+    eventId: value["id"],
+    eventType: value["eventType"],
+    actorId: value["principal"]["id"],
+    actorType: value["principal"]["type"],
+    action: value["action"],
+    resourceType: value["target"]["type"],
+    resourceId: value["target"]["id"],
+    decision: value["decision"],
+    outcome: value["outcome"],
+    correlationId: value["correlationId"],
+    occurredAt: value["occurredAt"],
+    evidenceRefs: Array.isArray(value["evidenceRefs"]) && value["evidenceRefs"].every((item) => typeof item === "string")
+      ? value["evidenceRefs"]
+      : undefined,
+  }, ["eventId", "eventType", "actorId", "actorType", "action", "resourceType", "resourceId", "decision", "outcome", "correlationId", "occurredAt", "evidenceRefs"]);
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function safeCorrelationId(value: string): string {
