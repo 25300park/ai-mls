@@ -376,7 +376,7 @@ function requirePublicationRecoveryBinding(recovery: PublicationAuthorizedRecove
     || originIdentity?.["reconciliationCaseId"] !== request.input.caseId || originIdentity?.["attemptId"] !== originalAttempt.id
     || executionIdentity === undefined || !("attemptId" in executionIdentity) || !("commandId" in executionIdentity)
     || !executionIdentity.attemptId.trim() || !executionIdentity.commandId.trim() || executionIdentity.attemptId === originalAttempt.id || executionIdentity.commandId === originalAttempt.commandId
-    || plannedIdentity === undefined || executionIdentity.attemptId !== plannedIdentity.attemptId || executionIdentity.commandId !== plannedIdentity.commandId
+    || executionIdentity.attemptId !== plannedIdentity?.attemptId || executionIdentity.commandId !== plannedIdentity?.commandId
     || [recovery.createdBy, recovery.finding.decidedBy, disposition.decidedBy, binding.authorizedBy].includes(authorized.actorId)) {
     throw new PublicationApplicationError("RECOVERY_AUTHORIZATION_INVALID", "DOMAIN_REJECTION", "Publication recovery authorization is invalid.");
   }

@@ -108,6 +108,19 @@ test("F19-C authorized Publication recovery binding is found by trusted origin a
   reopened.close();
 }));
 
+test("F19-D durable Connector recovery binding is found only for its exact recovery, tenant, scope and original invocation", () => withDatabase((databasePath) => {
+  const store = new DurableRecoveryOrchestrationStore({ databasePath });
+  const created = store.createCase({ resourceType: "ConnectorInvocation", resourceId: "invocation-f19-d", originDomain: "CONNECTOR", originIdentity: { invocationId: "invocation-f19-d" }, tenantId: "tenant-f19-d", scopeRef: "team:team-f19-d", evidenceRefs: ["evidence:ambiguous:f19-d"], createdBy: "executor-f19-d", createdAt });
+  store.recordFinding({ recoveryCaseId: created.recoveryCaseId, expectedVersion: 1, finding: "CONFIRMED_NOT_EXECUTED", reasonCode: "PROVIDER_CONFIRMED_NOT_EXECUTED", evidenceRefs: ["evidence:finding:f19-d"], decidedBy: "resolver-f19-d", decidedAt: createdAt, idempotencyKey: "finding-f19-d", fingerprint: "finding-f19-d" });
+  const authorized = store.authorizeRecovery({ recoveryCaseId: created.recoveryCaseId, expectedVersion: 2, recoveryDisposition: "RECOVERY_AUTHORIZED", recoveryActionType: "CONNECTOR_REEXECUTION", recoveryExecutionIdentity: { invocationId: "connector-recovery:recovery-f19-d" }, evidenceRefs: ["evidence:authorization:f19-d"], decidedBy: "authorizer-f19-d", decidedAt: createdAt, idempotencyKey: "authorization-f19-d", fingerprint: "authorization-f19-d" }).record;
+  const query = { recoveryId: authorized.recovery!.recoveryId, tenantId: "tenant-f19-d", scopeRef: "team:team-f19-d" } as const;
+  assert.deepEqual(store.findAuthorizedConnectorRecovery(query), authorized);
+  assert.equal(store.findAuthorizedConnectorRecovery({ ...query, recoveryId: "recovery-other" }), undefined);
+  assert.equal(store.findAuthorizedConnectorRecovery({ ...query, tenantId: "tenant-other" }), undefined);
+  assert.equal(store.findAuthorizedConnectorRecovery({ ...query, scopeRef: "team:other" }), undefined);
+  store.close();
+}));
+
 test("F19-B durable configuration and nested origin lineage fail closed", () => {
   assert.throws(() => new DurableRecoveryOrchestrationStore({ databasePath: "" }), /durable recovery database path/i);
   assert.throws(() => new DurableRecoveryOrchestrationStore({ databasePath: ":memory:" }), /durable recovery database path/i);

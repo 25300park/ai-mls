@@ -73,7 +73,7 @@ export class PublicationRecoveryExecutionIdentityValidator {
       reconciliationCaseId: recoveryCase.originIdentity.reconciliationCaseId,
       attemptId: recoveryCase.originIdentity.attemptId,
     });
-    if (original === undefined || !original.commandId.trim()) return false;
+    if (!original?.commandId.trim()) return false;
     try {
       const planned = this.planner.plan({
         identity,

@@ -81,6 +81,22 @@ export class DurableRecoveryOrchestrationStore implements RecoveryOrchestrationS
     return matches.length === 1 ? matches[0] : undefined;
   }
 
+  findAuthorizedConnectorRecovery(input: Parameters<RecoveryOrchestrationStore["findAuthorizedConnectorRecovery"]>[0]): RecoveryCaseRecord | undefined {
+    this.#assertOpen();
+    const rows = this.#database.prepare(`SELECT * FROM recovery_cases
+      WHERE tenant_id = ? AND scope_ref = ? AND origin_domain = 'CONNECTOR'`)
+      .all(input.tenantId, input.scopeRef);
+    const matches = rows.map((row) => decodeCase(this.#database, row)).filter((record) =>
+      record.status === "RESOLVED"
+      && record.finding?.finding === "CONFIRMED_NOT_EXECUTED"
+      && record.disposition?.recoveryDisposition === "RECOVERY_AUTHORIZED"
+      && record.disposition.recoveryActionType === "CONNECTOR_REEXECUTION"
+      && record.recovery?.recoveryId === input.recoveryId
+      && record.recovery.recoveryActionType === "CONNECTOR_REEXECUTION",
+    );
+    return matches.length === 1 ? matches[0] : undefined;
+  }
+
   recordFinding(input: Parameters<RecoveryOrchestrationStore["recordFinding"]>[0]): ReturnType<RecoveryOrchestrationStore["recordFinding"]> {
     return this.#transaction(() => {
       const replay = readIdempotency(this.#database, input.idempotencyKey, "RESOLVE_RECOVERY_CASE", input.fingerprint);

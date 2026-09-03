@@ -80,9 +80,11 @@ test("F18-D production composition requires durable configuration, rejects conne
   const context: ConnectorTrustedRuntimeContext = Object.freeze({ session, tenantId: "tenant-1", scope: Object.freeze({ scopeType: "TEAM", scopeId: "team-1" }), sourceId: "source-1", connectorId: "connector-1", purpose: "LISTING_DISCOVERY", sourcePolicyVersion: 3, connectorVersion: 5, correlationId: "correlation-1" });
   const base = { databasePath: join(directory, "connector.sqlite"), contextResolver: { resolve: () => context }, authorizer: { authorize: () => true }, admission: { evaluate: () => Object.freeze({ status: "BLOCKED" as const, reasonCode: "ADMISSION_DENIED" as const }) }, clock: () => now, externalObservationSink: { submit: () => Object.freeze({ ok: true as const, operation: "SubmitProviderObservation" as const, data: Object.freeze({ evidenceRef: "evidence:observation:1", mappingState: "ACTIVE" }) }) } };
   try {
-    assert.throws(() => createProductionConnectorApi018Composition({ ...base, databasePath: "" }), /configuration/iu);
-    assert.throws(() => createProductionConnectorApi018Composition({ ...base, connector: { invoke: () => ({}) } } as never), /not approved/iu);
-    const composition = createProductionConnectorApi018Composition(base);
+    assert.throws(() => createProductionConnectorApi018Composition(base), /ambiguity.*writer/i);
+    const configured = { ...base, ambiguityCaseWriter: { linkAmbiguousInvocation(): void { void 0; } } };
+    assert.throws(() => createProductionConnectorApi018Composition({ ...configured, databasePath: "" }), /configuration/iu);
+    assert.throws(() => createProductionConnectorApi018Composition({ ...configured, connector: { invoke: () => ({}) } } as never), /not approved/iu);
+    const composition = createProductionConnectorApi018Composition(configured);
     const response = await composition.http.handle(http(validBodies["SubmitCaptureBatch"]));
     assert.equal(response.statusCode, 503);
     assert.equal(composition.persistence.findTechnicalState({ tenantId: "tenant-1", scopeType: "TEAM", scopeId: "team-1", sourceId: "source-1", connectorId: "connector-1" }, "CAPTURE_BATCH", "batch-1"), undefined);

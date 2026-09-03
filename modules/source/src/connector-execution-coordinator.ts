@@ -30,11 +30,25 @@ export type ConnectorExecutionResult =
   | Readonly<{ readonly status: "SUCCEEDED" | "FAILED"; readonly reasonCode: string; readonly invocationId: string; readonly resultId: string }>
   | Readonly<{ readonly status: "AMBIGUOUS"; readonly reasonCode: "RECONCILIATION_REQUIRED"; readonly invocationId: string }>;
 
+export interface ConnectorAmbiguityCaseWriter {
+  linkAmbiguousInvocation(input: Readonly<{
+    readonly invocationId: string;
+    readonly tenantId: string;
+    readonly scopeRef: string;
+    readonly sourceId: string;
+    readonly connectorId: string;
+    readonly evidenceRefs: readonly string[];
+    readonly createdBy: string;
+    readonly createdAt: string;
+  }>): void;
+}
+
 export class ConnectorExecutionCoordinator {
   public constructor(private readonly dependencies: Readonly<{
     readonly persistence: DurableConnectorExecutionUnitOfWork;
     readonly connector: ConnectorInvocationPort;
     readonly admission: Pick<SourceIngestionAdmissionGate, "evaluate">;
+    readonly ambiguityCaseWriter?: ConnectorAmbiguityCaseWriter;
   }>) {}
 
   public execute(input: ConnectorExecutionInput): ConnectorExecutionResult {
@@ -96,22 +110,43 @@ export class ConnectorExecutionCoordinator {
     });
     let response: ReturnType<ConnectorInvocationPort["invoke"]>;
     try { response = this.dependencies.connector.invoke(connectorRequest); }
-    catch { return ambiguous(intent.invocationId); }
+    catch { return this.#ambiguous(intent.invocationId, scope, input); }
 
     const resultId = `${intent.invocationId}:result`;
     const normalized = normalizeResponse(response, intent.invocationId);
-    const completed = this.dependencies.persistence.completeInvocation({
-      ...scope,
-      invocationId: intent.invocationId,
-      resultId,
-      outcome: normalized.outcome,
-      reasonCode: normalized.reasonCode,
-      safeEvidenceReference: normalized.safeEvidenceReference,
-      ...(normalized.checkpointReference === undefined ? {} : { checkpointReference: normalized.checkpointReference }),
-      expectedCheckpointVersion: intent.expectedCheckpointVersion,
-      completedAt: input.completedAt,
-    });
-    return resultFrom(completed);
+    let completed: ConnectorInvocation;
+    try {
+      completed = this.dependencies.persistence.completeInvocation({
+        ...scope,
+        invocationId: intent.invocationId,
+        resultId,
+        outcome: normalized.outcome,
+        reasonCode: normalized.reasonCode,
+        safeEvidenceReference: normalized.safeEvidenceReference,
+        ...(normalized.checkpointReference === undefined ? {} : { checkpointReference: normalized.checkpointReference }),
+        expectedCheckpointVersion: intent.expectedCheckpointVersion,
+        completedAt: input.completedAt,
+      });
+    } catch (error) {
+      this.#ambiguous(intent.invocationId, scope, input);
+      throw error;
+    }
+    const result = resultFrom(completed);
+    return result.status === "AMBIGUOUS" ? this.#ambiguous(intent.invocationId, scope, input) : result;
+  }
+
+  #ambiguous(invocationId: string, scope: ConnectorExecutionScope, input: ConnectorExecutionInput): Extract<ConnectorExecutionResult, { readonly status: "AMBIGUOUS" }> {
+    this.dependencies.ambiguityCaseWriter?.linkAmbiguousInvocation(Object.freeze({
+      invocationId,
+      tenantId: scope.tenantId,
+      scopeRef: `${scope.scopeType.toLowerCase()}:${scope.scopeId}`,
+      sourceId: scope.sourceId,
+      connectorId: scope.connectorId,
+      evidenceRefs: Object.freeze([`connector-invocation:${invocationId}:ambiguous`]),
+      createdBy: input.leaseOwnerId,
+      createdAt: input.completedAt,
+    }));
+    return ambiguous(invocationId);
   }
 }
 

@@ -49,7 +49,7 @@ export class ConnectorRuntimeApplication {
     const now = this.dependencies.clock();
     let context: ConnectorTrustedRuntimeContext | undefined;
     try { context = this.dependencies.contextResolver.resolve(stringField(request, "sessionId")); } catch { context = undefined; }
-    if (!validContext(context, now)) return error("UNAUTHENTICATED", "Authentication is required.");
+    if (!isValidConnectorTrustedRuntimeContext(context, now)) return error("UNAUTHENTICATED", "Authentication is required.");
     if ((optionalString(request, "sourceId") !== undefined && optionalString(request, "sourceId") !== context.sourceId)
       || (optionalString(request, "connectorId") !== undefined && optionalString(request, "connectorId") !== context.connectorId)) {
       return error("FORBIDDEN", "Connector operation is not permitted.");
@@ -132,7 +132,7 @@ export class ConnectorRuntimeApplication {
   }
 }
 
-function validContext(context: ConnectorTrustedRuntimeContext | undefined, now: string): context is ConnectorTrustedRuntimeContext {
+export function isValidConnectorTrustedRuntimeContext(context: ConnectorTrustedRuntimeContext | undefined, now: string): context is ConnectorTrustedRuntimeContext {
   return context?.session.state === "ACTIVE" && context.session.id.trim().length > 0
     && Date.parse(context.session.expiresAt) > Date.parse(now) && Date.parse(context.session.absoluteExpiresAt) > Date.parse(now)
     && isAuthenticationAssuranceConsistent(context.session) && context.tenantId.trim().length > 0 && context.scope.scopeId.trim().length > 0

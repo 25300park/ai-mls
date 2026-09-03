@@ -27,15 +27,15 @@ test("F18-H classifies API-017 as scheduling-only with no Connector Runtime bypa
   assert.equal(connectorBoundary.match(/new ConnectorExecutionCoordinator/g)?.length, 1);
 });
 
-test("F18-H keeps F19 recovery and business reconciliation unimplemented", () => {
+test("F19-D keeps recovery outside the Connector port and API-018 operation surface", () => {
   const sourceFiles = productionTypescriptFiles("modules/source/src");
   const sourceIndex = readFileSync("modules/source/src/index.ts", "utf8");
+  const recoveryFiles = productionTypescriptFiles("modules/recovery/src").map((path) => readFileSync(path, "utf8")).join("\n");
 
-  assert.deepEqual(
-    sourceFiles.filter((path) => /(?:f19|recovery|reconciliation)/iu.test(path)),
-    [],
-  );
-  assert.doesNotMatch(sourceIndex, /recovery|reconciliation/iu);
+  assert.deepEqual(sourceFiles.filter((path) => path.endsWith("connector-recovery-handoff.ts")).length, 1);
+  assert.match(sourceIndex, /connector-recovery-handoff/u);
+  assert.doesNotMatch(readFileSync("modules/source/src/connector-recovery-handoff.ts", "utf8"), /connector\.invoke|ConnectorInvocationPort/u);
+  assert.doesNotMatch(recoveryFiles, /connector-invocation-port|\.invoke\(/u);
   assert.match(
     readFileSync("modules/source/src/external-integration-durable-persistence.ts", "utf8"),
     /F19_HANDOFF_REQUIRED/u,

@@ -115,6 +115,11 @@ export interface RecoveryOrchestrationStore {
     resourceId: string;
     reconciliationCaseId: string;
   }>): RecoveryCaseRecord | undefined;
+  findAuthorizedConnectorRecovery(input: Readonly<{
+    recoveryId: string;
+    tenantId: string;
+    scopeRef: string;
+  }>): RecoveryCaseRecord | undefined;
   recordFinding(input: Readonly<{
     recoveryCaseId: string;
     expectedVersion: number;

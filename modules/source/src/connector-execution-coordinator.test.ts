@@ -98,8 +98,9 @@ function coordinator(
   store: DurableConnectorExecutionUnitOfWork,
   connector: ConnectorInvocationPort,
   decision: SourceIngestionAdmissionDecision = eligible,
+  ambiguityCaseWriter?: Readonly<{ linkAmbiguousInvocation(input: Readonly<{ invocationId: string; tenantId: string; scopeRef: string; sourceId: string; connectorId: string; evidenceRefs: readonly string[]; createdBy: string; createdAt: string }>): void }>,
 ): ConnectorExecutionCoordinator {
-  return new ConnectorExecutionCoordinator({ persistence: store, connector, admission: { evaluate: () => decision } });
+  return new ConnectorExecutionCoordinator({ persistence: store, connector, admission: { evaluate: () => decision }, ambiguityCaseWriter: ambiguityCaseWriter ?? { linkAmbiguousInvocation(): void { void 0; } } });
 }
 
 test("F18-C blocked admission creates zero lease, invocation, checkpoint, evidence, and connector call", () => withStore((store) => {
@@ -112,6 +113,18 @@ test("F18-C blocked admission creates zero lease, invocation, checkpoint, eviden
   assert.equal(store.findInvocation(scope, "invocation-f18-c-coordinator"), undefined);
   assert.equal(store.findCheckpoint(scope), undefined);
   assert.deepEqual(store.listEvidence(scope), []);
+  store.close();
+}));
+
+test("F19-D links exactly one immutable Connector-origin recovery case for an ambiguous original invocation", () => withStore((store) => {
+  const linked: unknown[] = [];
+  const writer = { linkAmbiguousInvocation(input: unknown) { linked.push(input); } };
+  const adapter = new DeterministicConnectorTestAdapter({ outcome: "THROW", safeEvidenceReference: "unused" });
+  const execution = coordinator(store, adapter, eligible, writer);
+  assert.equal(execution.execute(input()).status, "AMBIGUOUS");
+  assert.equal(execution.execute(input({ expectedScopeRevision: 1 })).status, "AMBIGUOUS");
+  assert.equal(adapter.invocationCount, 1);
+  assert.deepEqual(linked, [Object.freeze({ invocationId: "invocation-f18-c-coordinator", tenantId: "tenant-f18-c", scopeRef: "team:team-f18-c", sourceId: "source-f18-c", connectorId: "connector-f18-c", evidenceRefs: Object.freeze(["connector-invocation:invocation-f18-c-coordinator:ambiguous"]), createdBy: "worker-f18-c", createdAt: "2026-09-01T00:00:03.000Z" })]);
   store.close();
 }));
 
@@ -267,8 +280,11 @@ test("F18-F crash after connector response but before local completion reopens a
     },
   });
   const firstAdapter = new DeterministicConnectorTestAdapter({ outcome: "SUCCEEDED", safeEvidenceReference: "provider-confirmed", checkpointReference: "checkpoint-1" });
-  assert.throws(() => coordinator(persistence, firstAdapter).execute(input()), /simulated local completion failure/);
+  const linked: unknown[] = [];
+  const writer = { linkAmbiguousInvocation(input: unknown) { linked.push(input); } };
+  assert.throws(() => coordinator(persistence, firstAdapter, eligible, writer).execute(input()), /simulated local completion failure/);
   assert.equal(firstAdapter.invocationCount, 1);
+  assert.equal(linked.length, 1);
   store.close();
 
   const reopened = new DurableConnectorExecutionUnitOfWork({ databasePath });

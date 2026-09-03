@@ -2,10 +2,10 @@
 
 | 항목 | 값 |
 |---|---|
-| Version | v0.2 |
+| Version | v0.4 |
 | Status | DRAFT |
 | Owner | Architecture Owner |
-| Current verified phase | F19-C |
+| Current verified phase | F19-D |
 
 이 문서는 F19에서 실제 구현·검증된 evidence만 누적한다. API-014, API-018, API-019의 domain truth를 F19 orchestration truth로 대체하지 않는다.
 
@@ -25,11 +25,15 @@
 | Nested ambiguity lineage | F19-C Brief §§13, 15 | UNKNOWN recovery uses the existing F19 `createCase` boundary with parent recovery case and new Publication attempt/case identity | writer failure exact retry creates the missing child once; parent/original attempt preserved; replay provider-call 0 and duplicate child 0 | IMPLEMENTED_AND_VERIFIED |
 | Live recovery admission | F19-C Brief §§7, 16~18 | session-derived authorization, F17 eligibility, API-013 effective approval and closed API-014 HTTP schema remain authoritative | capability/MFA/SoD/verification/permission/target/channel/suspension rejection and caller-evidence HTTP regression | IMPLEMENTED_AND_VERIFIED |
 | F19-C verification gate | F19-C completion gate | F19-C-only Publication/Recovery changes; API-018/API-019 and dependency manifests unchanged | focused 11/11; affected 122/122; total 932/932; lint/typecheck/build/verify PASS; Architecture 153/153; Gitleaks 0; production audit 0; full audit existing approved dev-only `brace-expansion` High 4; new unapproved High/Critical 0 | VERIFIED |
+| Connector ambiguity case linkage | F19-D Brief D1; Design §§2, 8 | `connector-execution-coordinator.ts` emits one immutable Connector-origin case-link request after ambiguous original execution; adapter consumes durable F19 `DUPLICATE_ORIGIN` idempotently | actual coordinator + real durable recovery store: link 1, initial connector call 1, exact replay call 0, checkpoint unchanged; duplicate case/version/evidence unchanged | IMPLEMENTED_AND_VERIFIED |
+| Connector finding / authorization containment | F19-D Brief D2~D3; Design §§3~4, 8 | `findAuthorizedConnectorRecovery` and `ConnectorRecoveryExecutionHandoff` require exact terminal authorized binding and planner identity | real durable adapter lookup; unresolved, confirmed-executed, unapproved, original identity reuse, wrong recovery and conflicting planned identity rejected with Connector call/mutation 0 | IMPLEMENTED_AND_VERIFIED |
+| Live revalidation and authoritative checkpoint preservation | F19-D Brief D4~D5 | handoff derives executor/source/scope/purpose from trusted Connector runtime context, validates Session expiry against injected server clock, requires existing authorizer, resolver/executor SoD and durable active exact Integration Contract before the existing coordinator; coordinator owns F18-B admission/lease/result/checkpoint | expired/revoked/inactive/assurance/team and forged earlier `startedAt`, authorizer and contract denial call/mutation 0; actual coordinator exact replay call 0; input/reference/checkpoint/contract identity conflicts call/mutation 0 | IMPLEMENTED_AND_VERIFIED |
+| F19 direct Connector isolation | F19-D Brief; Design §§1, 9 | recovery module has no Connector invocation-port dependency; source handoff delegates only to existing coordinator | architecture assertion and focused source/recovery tests | IMPLEMENTED_AND_VERIFIED |
 
 ## Deferred boundaries
 
 - F19-C Publication Resolve vs Recover semantic separation: `IMPLEMENTED_AND_VERIFIED`
-- F19-D Connector recovery handoff: `NOT_STARTED`
+- F19-D Connector recovery handoff: `IMPLEMENTED_AND_VERIFIED` — focused/affected 55/55 (coordinator 14, handoff 9, architecture 2, admission 7, durable recovery 9, orchestration 5, API-018 6, composed API-018/API-019 3); approved F19-C lint-cleanup affected regression 22/22; full-repository lint/typecheck/build PASS; dependency/lockfile diff 0
 - F19-E API-019 business handoff: `NOT_STARTED`
 - F19-F nested ambiguity/idempotency hardening beyond the F19-B persistence invariants: `NOT_STARTED`
 - F19-G Runtime/API-017: `DEFERRED / API-017 NOT_REQUIRED`
