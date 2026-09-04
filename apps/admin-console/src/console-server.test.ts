@@ -16,6 +16,7 @@ import type { AdministrationConsoleCommandRequest } from "./administration-conso
 const approvedRoutes = Object.freeze([
   "/", "/publication/operations", "/publication/revalidation", "/publication/recovery",
   "/publication/audit", "/administration", "/administration/governance", "/system/projection", "/system/operations",
+  "/connector/operations",
 ]);
 
 test("POST-F15-CONSOLE Node server renders every approved browser route and bounded read endpoint", async () => {
@@ -45,6 +46,37 @@ test("POST-F15-CONSOLE Node server renders every approved browser route and boun
   const payload = JSON.parse(view.body) as { readonly html?: string };
   assert.equal(payload.html?.includes("No Publication records are currently available."), true);
   assert.equal(readCalls, 1);
+  await server.stop();
+});
+
+test("F20-D Node server passes only bounded Connector read identities to the existing Console adapter", async () => {
+  const reads: ConsoleReadRequest[] = [];
+  const server = createAdminConsoleServer({
+    host: "127.0.0.1",
+    port: 0,
+    sessionId: "console-session",
+    tenantId: "team-a",
+    readAdapter: {
+      read: (input) => {
+        reads.push(input);
+        return Object.freeze({ page: input.page, state: "EMPTY", message: "No authorized Connector batch is currently available." });
+      },
+    },
+  });
+  await server.start();
+
+  const shell = await send(server.port, "GET", "/connector/operations?connectorId=connector-1&sourceId=source-1&batchId=batch-1");
+  const view = await send(server.port, "GET", "/api/console/view?page=CONNECTOR&connectorId=connector-1&sourceId=source-1&batchId=batch-1");
+
+  assert.equal(shell.statusCode, 200);
+  assert.equal(shell.body.includes('data-console-page="CONNECTOR"'), true);
+  assert.equal(view.statusCode, 200);
+  assert.equal(reads.length, 1);
+  assert.equal(reads[0]?.page, "CONNECTOR");
+  assert.equal(reads[0]?.connectorId, "connector-1");
+  assert.equal(reads[0]?.sourceId, "source-1");
+  assert.equal(reads[0]?.batchId, "batch-1");
+  assert.equal("checkpointCandidate" in (reads[0] ?? {}), false);
   await server.stop();
 });
 

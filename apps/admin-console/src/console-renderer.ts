@@ -28,6 +28,9 @@ const navigation = Object.freeze([
     { page: "ADMINISTRATION" as const, label: "Overview", path: "/administration" },
     { page: "UI-036" as const, label: "Role & Policy Administration", path: "/administration/governance" },
   ]) }),
+  Object.freeze({ section: "Integration", items: Object.freeze([
+    { page: "CONNECTOR" as const, label: "Connector Operations", path: "/connector/operations" },
+  ]) }),
   Object.freeze({ section: "System", items: Object.freeze([
     { page: "PROJECTION" as const, label: "Projection", path: "/system/projection" },
     { page: "OPERATIONS" as const, label: "Operations / Health", path: "/system/operations" },
@@ -93,7 +96,7 @@ export function renderConsoleResult(result: ConsoleReadResult): string {
     case "UI-036": return renderControlledAdministration(data);
     case "PROJECTION": return renderProjection(data);
     case "OPERATIONS": return renderOperations(data);
-    case "CONNECTOR": return definitionGrid(data);
+    case "CONNECTOR": return renderConnectorOperations(data);
     case "EXTERNAL_INTEGRATION": return definitionGrid(data);
     case "RECOVERY_CASE": return definitionGrid(data);
     case "EVIDENCE": return definitionGrid(data);
@@ -256,6 +259,13 @@ function renderOperations(data: Readonly<Record<string, unknown>>): string {
   <section><div class="section-heading"><div><p class="eyebrow">BOUNDED METRICS</p><h2>Operational evidence</h2></div></div>${definitionGrid(metrics)}</section>`;
 }
 
+function renderConnectorOperations(data: Readonly<Record<string, unknown>>): string {
+  return `<section><div class="section-heading"><div><p class="eyebrow">API-018 · READ ONLY</p><h2>Connector Batch</h2></div>${statusBadge(data["technicalStatus"])}</div>${definitionGrid(select(data, ["batchId", "invocationId", "currentVersion", "updatedAt"]))}</section>
+  <section><div class="section-heading"><h2>Source Binding</h2></div>${definitionGrid(select(data, ["connectorId", "sourceId"]))}</section>
+  <section><div class="section-heading"><h2>Technical Outcome</h2></div>${definitionGrid(select(data, ["technicalStatus", "normalizedOutcome", "evidenceRef"]))}</section>
+  <section><div class="section-heading"><h2>Checkpoint</h2></div>${definitionGrid(select(data, ["checkpointReference", "checkpointVersion"]))}<p class="scope-note">Checkpoint advancement and Connector execution controls are not exposed.</p></section>`;
+}
+
 function historySection(title: string, entries: readonly unknown[]): string {
   if (entries.length === 0) return `<section><h2>${escapeHtml(title)}</h2><p class="empty-inline">No entries are currently available.</p></section>`;
   return `<section><h2>${escapeHtml(title)}</h2><div class="table-wrap"><table><tbody>${entries.map((entry) => `<tr><td>${isRecord(entry) ? definitionGrid(entry) : escapeHtml(entry)}</td></tr>`).join("")}</tbody></table></div></section>`;
@@ -339,6 +349,10 @@ export const CONSOLE_BROWSER_CLIENT = String.raw`(() => {
     const request = new URLSearchParams({ page });
     const publicationId = query.get("publicationId");
     if (publicationId) request.set("publicationId", publicationId);
+    for (const name of ["connectorId", "sourceId", "batchId"]) {
+      const value = query.get(name);
+      if (value) request.set(name, value);
+    }
     return fetch("/api/console/view?" + request.toString(), { headers: { accept: "application/json" } })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("SAFE_HTTP_FAILURE")))
       .then((payload) => setHtml(payload.html))

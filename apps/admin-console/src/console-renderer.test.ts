@@ -15,10 +15,12 @@ test("POST-F15-CONSOLE shell renders the approved accessible navigation and load
   for (const label of [
     "AI-MLS ADMIN", "Dashboard", "Operations", "Revalidation", "Recovery",
     "Audit / History", "Administration", "Projection", "Operations / Health", "Loading...",
+    "Connector Operations",
   ]) assert.equal(html.includes(label), true, label);
   for (const path of [
     "/", "/publication/operations", "/publication/revalidation", "/publication/recovery",
     "/publication/audit", "/administration", "/system/projection", "/system/operations",
+    "/connector/operations",
   ]) assert.equal(html.includes(`href=\"${path}`), true, path);
   assert.equal(html.includes("<nav"), true);
   assert.equal(html.includes("<main"), true);
@@ -27,6 +29,9 @@ test("POST-F15-CONSOLE shell renders the approved accessible navigation and load
   assert.equal(CONSOLE_BROWSER_CLIENT.includes("fetch("), true);
   assert.equal(CONSOLE_BROWSER_CLIENT.includes("/api/console/administration/command"), true);
   assert.equal(/publication\/(commands|execute)|PUBLISH_PUBLICATION/u.test(CONSOLE_BROWSER_CLIENT), false);
+  for (const queryName of ["connectorId", "sourceId", "batchId"]) {
+    assert.equal(CONSOLE_BROWSER_CLIENT.includes(queryName), true, queryName);
+  }
 });
 
 test("POST-F15-CONSOLE UI-031 renders bounded fields and diagnostic actions as non-executable", () => {
@@ -161,6 +166,27 @@ test("POST-F15-CONSOLE Operations renders Health and Readiness as separate conce
   assert.equal(html.includes("Mutation Readiness"), true);
   assert.equal(html.includes("NOT_READY"), true);
   assert.equal(html.includes("API_RUNTIME_HOST"), true);
+});
+
+test("F20-D renders bounded Connector batch operations without force checkpoint or execution controls", () => {
+  const html = renderConsoleResult(ready("CONNECTOR", {
+    connectorId: "connector-1",
+    sourceId: "source-1",
+    batchId: "batch-1",
+    invocationId: "invocation-1",
+    technicalStatus: "SUCCEEDED",
+    normalizedOutcome: "CONFIRMED",
+    currentVersion: 3,
+    evidenceRef: "evidence:batch:1",
+    updatedAt: "2026-09-04T00:00:00.000Z",
+    checkpointReference: "checkpoint-3",
+    checkpointVersion: 3,
+  }));
+
+  for (const expected of ["Connector Batch", "Source Binding", "Technical Outcome", "Checkpoint", "batch-1", "source-1", "CONFIRMED", "checkpoint-3"]) {
+    assert.equal(html.includes(expected), true, expected);
+  }
+  assert.equal(/Force checkpoint|AdvanceCheckpoint|<form|data-command|onclick=/iu.test(html), false);
 });
 
 test("POST-F15-CONSOLE renders meaningful empty and safe error states without raw detail", () => {

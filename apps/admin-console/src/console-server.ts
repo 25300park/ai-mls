@@ -41,6 +41,7 @@ const browserRoutes: Readonly<Record<string, ConsolePage>> = Object.freeze({
   "/system/projection": "PROJECTION",
   "/administration/governance": "UI-036",
   "/system/operations": "OPERATIONS",
+  "/connector/operations": "CONNECTOR",
 });
 
 export function createAdminConsoleServer(configuration: AdminConsoleServerConfiguration): AdminConsoleServer {
@@ -82,13 +83,19 @@ export function createAdminConsoleServer(configuration: AdminConsoleServerConfig
             writeJson(response, 400, { success: false, error: { code: "INVALID_CONSOLE_REQUEST", message: "The Console request is invalid." } });
             return;
           }
-          const publicationId = safePublicationId(url.searchParams.get("publicationId"));
+          const publicationId = safeIdentifier(url.searchParams.get("publicationId"));
+          const connectorId = safeIdentifier(url.searchParams.get("connectorId"));
+          const sourceId = safeIdentifier(url.searchParams.get("sourceId"));
+          const batchId = safeIdentifier(url.searchParams.get("batchId"));
           const baseReadRequest: ConsoleReadRequest = {
             page,
             sessionId: configuration.sessionId,
             tenantId: configuration.tenantId,
             teamId: configuration.tenantId,
             ...(publicationId === undefined ? {} : { publicationId }),
+            ...(connectorId === undefined ? {} : { connectorId }),
+            ...(sourceId === undefined ? {} : { sourceId }),
+            ...(batchId === undefined ? {} : { batchId }),
             correlationId: `console-read-${String(requestSequence)}`,
           };
           if (page === "UI-036" && configuration.administrationSelectorScopes === undefined) {
@@ -118,7 +125,7 @@ export function createAdminConsoleServer(configuration: AdminConsoleServerConfig
           writeJson(response, 404, { success: false, error: { code: "ROUTE_NOT_FOUND", message: "The Console route was not found." } });
           return;
         }
-        const publicationId = safePublicationId(url.searchParams.get("publicationId"));
+        const publicationId = safeIdentifier(url.searchParams.get("publicationId"));
         writeHtml(response, renderConsoleShell(page, publicationId));
       });
       server = created;
@@ -150,7 +157,7 @@ function parsePage(value: string | null): ConsolePage | undefined {
   return value !== null && CONSOLE_PAGES.includes(value as ConsolePage) ? value as ConsolePage : undefined;
 }
 
-function safePublicationId(value: string | null): string | undefined {
+function safeIdentifier(value: string | null): string | undefined {
   if (value === null || !/^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/u.test(value)) return undefined;
   return value;
 }
@@ -159,7 +166,7 @@ function validateConfiguration(configuration: AdminConsoleServerConfiguration): 
   if (configuration.host !== "127.0.0.1" || !Number.isSafeInteger(configuration.port) || configuration.port < 0 || configuration.port > 65_535) {
     throw new Error("CONSOLE_SERVER_CONFIGURATION_INVALID");
   }
-  if (safePublicationId(configuration.sessionId) === undefined || safePublicationId(configuration.tenantId) === undefined) {
+  if (safeIdentifier(configuration.sessionId) === undefined || safeIdentifier(configuration.tenantId) === undefined) {
     throw new Error("CONSOLE_SERVER_CONFIGURATION_INVALID");
   }
 }

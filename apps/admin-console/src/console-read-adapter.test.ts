@@ -374,6 +374,8 @@ test("F20-B projects API-018 batch status through the read boundary without raw 
     page: "CONNECTOR",
     state: "READY",
     data: {
+      connectorId: "connector-1",
+      sourceId: "source-1",
       batchId: "batch-1",
       invocationId: "invocation-1",
       technicalStatus: "SUCCEEDED",

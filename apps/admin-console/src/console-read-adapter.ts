@@ -313,10 +313,14 @@ export class ConsoleReadAdapter {
     return immutableConsole({
       page: request.page,
       state: "READY" as const,
-      data: selectFields(result.data, [
-        "batchId", "invocationId", "technicalStatus", "normalizedOutcome", "currentVersion",
-        "evidenceRef", "updatedAt", "checkpointReference", "checkpointVersion",
-      ]),
+      data: {
+        connectorId: request.connectorId,
+        sourceId: request.sourceId,
+        ...selectFields(result.data, [
+          "batchId", "invocationId", "technicalStatus", "normalizedOutcome", "currentVersion",
+          "evidenceRef", "updatedAt", "checkpointReference", "checkpointVersion",
+        ]),
+      },
     });
   }
 
