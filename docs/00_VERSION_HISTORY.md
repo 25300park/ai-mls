@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-007 |
-| 문서 버전 | v1.11 |
+| 문서 버전 | v1.12 |
 | 상태 | FROZEN |
 | 소유 역할 | Architecture Owner |
 
@@ -43,6 +43,7 @@ Architecture Bible과 운영 문서의 release-level 변경 이력을 관리한�
 | 2026-08-24 | v1.9 | IN REVIEW | F16-PHASE-9 Runtime / HTTP API-015 | Phase 9A Role Assignment successor semantics, single Administration application composition, closed command/bodyless-query HTTP transport, live authority concealment 및 existing Node server loopback을 구현·검증; DOC-CORE-001 v3.0, DOC-CORE-007 v1.9, DOC-DEV-017 v0.6 및 DOC-REVIEW-095 반영 | F16-PHASE-9/9A Architecture Owner approval; independent review READY |
 | 2026-08-29 | v1.10 | IN REVIEW | F16-R3 RTM / Traceability Closure | Phase 5~12 및 F16-R1/R2의 approved implementation evidence를 current FEAT-016 RTM으로 정렬하고 stale partial-gap 표현을 historical context로 교정; R1 durable persistence, R2 exact 10-operation execution, canonical exclusions 및 Final Gate retry boundary를 검증; DOC-CORE-001 v3.1, DOC-CORE-007 v1.10, DOC-DEV-017 v0.7 및 DOC-REV-084 반영 | F16-R3 Brief; independent review Critical/Important/Minor 0/0/0 READY; Architecture Owner review pending |
 | 2026-08-29 | v1.11 | IN REVIEW | F16 Final Gate Retry / Feature Closure | R1 durable production persistence·atomic evidence·idempotency, R2 exact 10-operation API-015 execution, R3 RTM closure, canonical scope, authorization/isolation, Console/HTTP integration 및 full 774/774 regression을 재검증하고 FEAT-016 Final Gate를 승인; DOC-CORE-001 v3.2, DOC-CORE-007 v1.11, DOC-DEV-017 v0.8 및 DOC-REV-085 반영 | F16 Final Gate Retry Brief; production audit 0; full audit approved dev-only High 4; independent review Critical/Important/Minor 0/0/0 READY |
+| 2026-09-04 | v1.12 | APPROVED | Canonical FEAT-016–020 Governance Identity & Evidence Alignment | Frozen FEAT-016–020 identity를 보존하고 historical F16–F20 execution-wave evidence를 실제 canonical owner에 귀속; TRACE-016과 IMP-015–021 overlay, affected RTM, Decision/CR/Index evidence를 DEC-115/CR-027 delta로 정렬; DOC-CORE-001 v3.3, DOC-CORE-007 v1.12, DOC-CORE-020 v1.6, DOC-CORE-021 v1.5, DOC-CORE-035 v1.6, DOC-CORE-036–038 v0.3, DOC-ROADMAP-004 v1.3, DOC-ROADMAP-016 v1.4, DOC-DEV-017 v0.9, DOC-DEV-021–024 및 DOC-REVIEW-098 반영 | Architecture Owner mapping design approval; DEC-115; CR-027; immutable Architecture v1.1 checksum baseline preserved |
 
 ## 기록 규칙
 

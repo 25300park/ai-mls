@@ -2,10 +2,12 @@
 
 | 항목 | 값 |
 |---|---|
-| 버전 | v0.3 |
-| 상태 | DRAFT |
+| Document ID | DOC-DEV-021 |
+| 버전 | v0.4 |
+| 상태 | APPROVED |
 | 범위 | `EPIC-007` / `FEAT-015` / `DEV-015` / `IMP-015` |
-| 기준 | Architecture Bible v1.1 |
+| 기준 | Architecture Bible v1.1 + `DEC-115` / `CR-027` |
+| Evidence attribution | Historical F17 Publication execution wave → canonical FEAT-015 |
 
 ## 1. End-to-End Trace
 
@@ -131,7 +133,7 @@ Phase 13-4~13-14에서 추가된 Application부터 Node HTTP Server까지의 fou
 
 Fresh Final Validation #3에서 `F15-TASK-013`을 포함한 mandatory implementation trace를 재검증했다. `F15-TASK-001–013`은 `IMPLEMENTED_AND_VERIFIED`, `F15-TASK-011A`는 `SUPPORTING_REMEDIATION_VERIFIED`이며 mandatory gap은 0이다. Physical infrastructure와 product 선택은 [Deferred Decisions](FEAT015_DEFERRED_DECISIONS.md)에 따라 계속 `DEFERRED`다.
 
-## 4.5 F17-D Runtime / Host / HTTP Evidence
+## 4.5 Historical F17 Publication Execution Wave — F17-D Runtime / Host / HTTP Evidence
 
 | Trace | Implementation evidence | Validation | Status |
 |---|---|---|---|
@@ -140,7 +142,7 @@ Fresh Final Validation #3에서 `F15-TASK-013`을 포함한 mandatory implementa
 | Durable Production execution | `composeProductionPublicationApi014NodeHttpServer`, F17-C `createProductionPublicationInfrastructure`와 `DurablePublicationUnitOfWork` 단일 graph | missing durable configuration fail closed; command persistence와 read-only query; restart `DISPATCH_STARTED` ambiguity → `RECONCILIATION_REQUIRED`; provider blind resend 0 | VERIFIED |
 | Completion evidence | [F17-D Closed API-014 Runtime / Host / HTTP Report](../reviews/F17_D_CLOSED_API_014_RUNTIME_HTTP_IMPLEMENTATION_REPORT.md) | focused 11/11, affected 74/74, full 796/796, lint/typecheck/build/verify/checksum/Gitleaks/audit PASS 또는 승인 baseline 일치, independent review 0/0/0 | VERIFIED |
 
-## 4.6 F17-E Provider Boundary Evidence
+## 4.6 Historical F17 Publication Execution Wave — F17-E Provider Boundary Evidence
 
 | Trace | Implementation evidence | Validation | Status |
 |---|---|---|---|
@@ -152,7 +154,7 @@ Fresh Final Validation #3에서 `F15-TASK-013`을 포함한 mandatory implementa
 
 F17-E는 실제 provider, credential, sandbox contract, API-018/019 operation 또는 authority를 추가하지 않는다. Sandbox는 DEFERRED / NOT_APPLICABLE이며 F17-F/F18/F19는 NOT_STARTED이다.
 
-## 4.7 F17-F Failure / Retry Eligibility Evidence
+## 4.7 Historical F17 Publication Execution Wave — F17-F Failure / Retry Eligibility Evidence
 
 | Trace | Implementation evidence | Validation | Status |
 |---|---|---|---|
@@ -163,9 +165,9 @@ F17-E는 실제 provider, credential, sandbox contract, API-018/019 operation �
 
 F17-E 절의 NOT_STARTED는 당시 완료 시점의 역사적 상태다. F17-F는 승인된 범위의 구현·검증을 완료했으며 F17-H/F18/F19/F20/F21은 NOT_STARTED이다. 새 retry API/provider/recovery authority는 없다.
 
-## 4.8 F17-H Final Integration / Hardening Evidence (IN REVIEW)
+## 4.8 Historical F17 Publication Execution Wave — F17-H Final Integration / Hardening Evidence
 
-앞 절의 F17-H NOT_STARTED는 F17-F 완료 당시의 역사적 상태다. 현재 F17-H는 검증 및 최소 hardening 중이며 audit/독립 검토 완료 전 최종 승인을 주장하지 않는다.
+앞 절의 F17-H NOT_STARTED는 F17-F 완료 당시의 역사적 상태다. Historical F17 Publication execution wave는 final gate를 통과했으며 `DEC-115`/`CR-027`에 따라 canonical FEAT-015 evidence로 귀속된다. 이는 frozen FEAT-017 Audit identity의 완료를 주장하지 않는다.
 
 | 요구/경계 | Production 및 직접 assertion evidence | 결과 |
 |---|---|---|
@@ -178,7 +180,15 @@ F17-E 절의 NOT_STARTED는 당시 완료 시점의 역사적 상태다. F17-F�
 
 F17-G는 DEFERRED이며 F18/F19/F20/F21은 NOT_STARTED다. 18/18 API registration/dispatch 검증은 모든 operation의 새 성공 workflow 또는 실제 provider 활성화를 의미하지 않는다.
 
-## 5. 상호 참조
+## 5. CR-027 attribution result
+
+- Historical execution-wave label: F17 Publication.
+- Canonical Feature: `FEAT-015`.
+- Canonical trace: `TRACE-015`.
+- Frozen `FEAT-017`/`TRACE-017` identity change: 0.
+- Historical final-gate and test evidence rewrite: 0.
+
+## 6. 상호 참조
 
 - [Implementation Plan](FEAT015_IMPLEMENTATION_PLAN.md)
 - [Task Breakdown](FEAT015_TASK_BREAKDOWN.md)

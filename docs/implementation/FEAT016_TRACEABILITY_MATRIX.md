@@ -3,10 +3,10 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-DEV-017 |
-| 버전 | v0.8 |
-| 상태 | IN REVIEW |
+| 버전 | v0.9 |
+| 상태 | APPROVED |
 | 범위 | `EPIC-008` / `FEAT-016` / `DEV-016` / `IMP-016` |
-| 기준 | Architecture Bible v1.1 + `DEC-114` / `CR-026` |
+| 기준 | Architecture Bible v1.1 + `DEC-114` / `CR-026` + `DEC-115` / `CR-027` |
 | Execution status | `IMPLEMENTED_AND_VERIFIED` |
 | Phase 5 status | `CONTRACT_LAYER_RESOLVED` |
 | Phase 6 status | `LOGICAL_PERSISTENCE_BOUNDARY_VERIFIED` |
@@ -265,7 +265,11 @@ Architecture Owner가 승인한 Final Gate retry에서 F16-R1/R2/R3의 종료 �
 
 Previous blocker B1 durable persistence, B2 API-015 completeness, B3 RTM closure는 모두 `PASS`다. Unsupported `IMPLEMENTED_AND_VERIFIED` claim, stale current-state claim, unresolved F16 blocker는 각각 0이다. FEAT-016은 `IMPLEMENTED_AND_VERIFIED / FINAL_GATE_APPROVED / COMPLETE`로 판정한다.
 
-## 23. Next boundary
+## 23. CR-027 canonical closure alignment
+
+`DEC-115`/`CR-027`은 historical F16 Administration execution wave를 frozen FEAT-016에 귀속한다. `TRACE-016`과 `IMP-016` execution overlay는 verified final-gate evidence에 맞춰 각각 `VERIFIED`와 `DONE`으로 정렬됐다. Frozen FEAT-016 identity, API-015 ownership, authority 및 technical evidence는 변경하지 않았다.
+
+## 24. Next boundary
 
 F16 Final Gate가 완료되었다. Retention Policy와 Legal Hold는 계속 FEAT-016/API-015 비소유 범위이며 `SET_LEGAL_HOLD`는 operation surface에 없다. Source governance는 Source execution이 아니고 Publication Target governance는 Publication execution이 아니다.
 

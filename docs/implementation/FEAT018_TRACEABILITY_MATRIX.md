@@ -1,16 +1,17 @@
-# FEAT-018 Implementation Traceability Matrix
+# Historical F18 Source / Connector Execution-Wave Evidence Matrix
 
 | 항목 | 값 |
 |---|---|
-| Version | v1.0 |
+| Document ID | DOC-DEV-022 |
+| Version | v1.1 |
 | Status | APPROVED |
-| Scope | F18-A~F18-H implementation evidence |
-| Canonical authority | `TRACE-019`, `TRACE-020`, `API-017`, `API-018`, `API-019` |
+| Scope | Historical F18-A~F18-H implementation evidence |
+| Canonical attribution | `FEAT-019` / `TRACE-019` / `API-018`; `FEAT-020` / `TRACE-020` / `API-019`; API-017 is preserved but not claimed complete |
 | Baseline | `cd14c099b2dbc47fd78f553238686d50bc6bed46` |
 
 ## 1. Purpose
 
-FEAT-018 Source / Connector Runtime Integration의 canonical requirement, production execution boundary, direct test와 completion evidence를 연결한다. 이 문서는 implementation evidence이며 frozen [Canonical RTM](../00_CANONICAL_TRACEABILITY_MATRIX.md)의 identity, ownership 또는 status를 변경하지 않는다.
+Historical F18 Source / Connector Runtime execution wave의 production boundary, direct test와 completion evidence를 연결한다. `DEC-115`/`CR-027`에 따라 이 label은 canonical FEAT-018이 아니며, direct evidence만 FEAT-019/API-018 및 FEAT-020/API-019에 귀속된다. Frozen [Canonical RTM](../00_CANONICAL_TRACEABILITY_MATRIX.md)의 FEAT-018 Background Job/API-017 identity, ownership 또는 status는 변경하지 않는다.
 
 ## 2. Phase traceability
 
@@ -64,7 +65,9 @@ FEAT-018 Source / Connector Runtime Integration의 canonical requirement, produc
 | New unapproved High/Critical | 0 |
 | Dependency/lockfile changes | 0 |
 | F19 | NOT_STARTED |
-| FEAT-018 | COMPLETE |
+| Historical F18 execution wave | COMPLETE |
+| Canonical FEAT-018 completion claim | 0 |
+| Canonical FEAT-019/020 status effect | Partial direct evidence only; see Implementation Registry overlay |
 
 ## 5. Scope protection
 

@@ -1,13 +1,15 @@
-# FEAT-019 Traceability Matrix
+# Historical F19 Recovery / Reconciliation Execution-Wave Evidence Matrix
 
 | 항목 | 값 |
 |---|---|
-| Version | v1.0 |
+| Document ID | DOC-DEV-023 |
+| Version | v1.1 |
 | Status | APPROVED |
 | Owner | Architecture Owner |
-| Current verified phase | F19 FINAL GATE — COMPLETE |
+| Historical execution-wave status | F19 FINAL GATE — COMPLETE |
+| Canonical attribution | FEAT-015 / TRACE-015; FEAT-019 / TRACE-019; FEAT-020 / TRACE-020 where directly supported |
 
-이 문서는 F19에서 실제 구현·검증된 evidence만 누적한다. API-014, API-018, API-019의 domain truth를 F19 orchestration truth로 대체하지 않는다.
+이 문서는 historical F19 execution wave에서 실제 구현·검증된 evidence만 누적한다. `DEC-115`/`CR-027`에 따라 F19 label은 canonical FEAT-019 ID가 아니다. Evidence는 API-014/018/019의 실제 owner인 FEAT-015/019/020에만 직접 귀속되며 domain truth를 orchestration truth로 대체하지 않는다.
 
 | Requirement | Canonical source | Production evidence | Direct verification | Status |
 |---|---|---|---|---|
@@ -52,7 +54,8 @@
 ## Final closure
 
 - Final Recommendation: `APPROVE_F19_FINAL_GATE`.
-- FEAT-019 Status: `COMPLETE`.
+- Historical F19 execution-wave status: `COMPLETE`.
+- Canonical FEAT-019 whole-Feature completion claim: `0`; direct API-018 recovery evidence only.
 - F19-G: `NOT_APPLICABLE / DEFERRED`; API-017 recovery authority `0`.
 - Blind retry/resend, automatic recovery/recursive recovery/reactivation: `0`.
 - New API ID, lifecycle state, provider/network/credential activation 및 F20 Console mutation: `0`.

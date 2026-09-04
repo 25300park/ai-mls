@@ -3,10 +3,10 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-001 |
-| 문서 버전 | v3.2 |
+| 문서 버전 | v3.3 |
 | 상태 | IN REVIEW |
 | 소유 역할 | Architecture Owner |
-| 기준일 | 2026-08-29 |
+| 기준일 | 2026-09-04 |
 
 이 문서는 Architecture Bible의 master navigation이자 계획 manifest다. `AVAILABLE`은 현재 파일이 존재함을, `PLANNED`는 해당 Brief에서 생성할 예정임을 뜻한다. 문서 상태(`DRAFT` 등)와 파일 존재 상태(`AVAILABLE` 등)는 서로 다른 값이다.
 
@@ -220,6 +220,9 @@
 | DOC-REVIEW-093 | [F16 Phase 7 Live Role Authority Integration](reviews/F16_PHASE_7_LIVE_ROLE_AUTHORITY_INTEGRATION_REPORT.md) | current Role resolution, live assignment, SoD/MFA 및 governed approval evidence 검증 | AVAILABLE |
 | DOC-REVIEW-094 | [F16 Phase 8 Policy / Source / Target Administration](reviews/F16_PHASE_8_POLICY_SOURCE_TARGET_ADMINISTRATION_IMPLEMENTATION_REPORT.md) | Policy, Source Registry, Publication Target governed workflow 및 validation evidence | AVAILABLE |
 | DOC-REVIEW-095 | [F16 Phase 9 Runtime / HTTP API-015](reviews/F16_PHASE_9_RUNTIME_HTTP_API_015_IMPLEMENTATION_REPORT.md) | API-015 single application composition, closed HTTP transport, live authorization 및 loopback evidence | AVAILABLE |
+| DOC-REVIEW-096 | [F16 Phase 10 UI-006 Administration Console](reviews/F16_PHASE_10_UI_006_ADMINISTRATION_CONSOLE_IMPLEMENTATION_REPORT.md) | UI-006 zero-dependency read Console 및 browser acceptance evidence | AVAILABLE |
+| DOC-REVIEW-097 | [F16 Phase 11A Canonical Admin Reads](reviews/F16_PHASE_11A_CANONICAL_ADMIN_READ_BOUNDARIES_IMPLEMENTATION_REPORT.md) | API-015 canonical list/read selector boundary evidence | AVAILABLE |
+| DOC-REVIEW-098 | [Canonical FEAT-016–020 Governance Alignment](reviews/CANONICAL_FEAT_016_TO_020_GOVERNANCE_ALIGNMENT_REPORT.md) | DEC-115/CR-027 identity-preserving execution-wave evidence attribution | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -461,6 +464,10 @@
 | DOC-DEV-015 | [Code Generation Policy](book-11/14_CODE_GENERATION_POLICY.md) | Codex/AI-assisted coding, human review와 ownership | AVAILABLE |
 | DOC-DEV-016 | [Developer Registry](book-11/15_DEVELOPER_REGISTRY.md) | DEV-001–024 complete cross-phase logical work packages | AVAILABLE |
 | DOC-DEV-017 | [FEAT-016 Implementation Traceability](implementation/FEAT016_TRACEABILITY_MATRIX.md) | FEAT-016 verified implementation coverage, R1/R2/R3 remediation evidence와 approved Final Gate closure | AVAILABLE |
+| DOC-DEV-021 | [FEAT-015 Implementation Traceability](implementation/FEAT015_TRACEABILITY_MATRIX.md) | FEAT-015 및 historical F17 Publication wave evidence | AVAILABLE |
+| DOC-DEV-022 | [Historical F18 Execution-Wave Evidence](implementation/FEAT018_TRACEABILITY_MATRIX.md) | FEAT-019/API-018와 FEAT-020/API-019 direct evidence attribution | AVAILABLE |
+| DOC-DEV-023 | [Historical F19 Execution-Wave Evidence](implementation/FEAT019_TRACEABILITY_MATRIX.md) | FEAT-015/019/020 recovery evidence attribution | AVAILABLE |
+| DOC-DEV-024 | [Historical F20 Execution-Wave Evidence](implementation/FEAT020_TRACEABILITY_MATRIX.md) | FEAT-016/017/019/020/021 partial UI/read evidence attribution | AVAILABLE |
 | DOC-REVIEW-019 | [Phase 12 Completion](reviews/PHASE12_COMPLETION.md) | Developer Bible completion evidence와 Phase 13 gate | AVAILABLE |
 
 ## Book 12 — Master Development Roadmap (Phase 13)
@@ -745,6 +752,11 @@
 | DOC-DEV-014 | Documentation Rules | [13_DOCUMENTATION_RULES.md](book-11/13_DOCUMENTATION_RULES.md) |
 | DOC-DEV-015 | Code Generation Policy | [14_CODE_GENERATION_POLICY.md](book-11/14_CODE_GENERATION_POLICY.md) |
 | DOC-DEV-016 | Developer Registry | [15_DEVELOPER_REGISTRY.md](book-11/15_DEVELOPER_REGISTRY.md) |
+| DOC-DEV-017 | FEAT-016 Implementation Traceability | [FEAT016_TRACEABILITY_MATRIX.md](implementation/FEAT016_TRACEABILITY_MATRIX.md) |
+| DOC-DEV-021 | FEAT-015 Implementation Traceability | [FEAT015_TRACEABILITY_MATRIX.md](implementation/FEAT015_TRACEABILITY_MATRIX.md) |
+| DOC-DEV-022 | Historical F18 Execution-Wave Evidence | [FEAT018_TRACEABILITY_MATRIX.md](implementation/FEAT018_TRACEABILITY_MATRIX.md) |
+| DOC-DEV-023 | Historical F19 Execution-Wave Evidence | [FEAT019_TRACEABILITY_MATRIX.md](implementation/FEAT019_TRACEABILITY_MATRIX.md) |
+| DOC-DEV-024 | Historical F20 Execution-Wave Evidence | [FEAT020_TRACEABILITY_MATRIX.md](implementation/FEAT020_TRACEABILITY_MATRIX.md) |
 | DOC-ROADMAP-001 | Master Development Roadmap Index | [00_MASTER_DEVELOPMENT_ROADMAP_INDEX.md](book-12/00_MASTER_DEVELOPMENT_ROADMAP_INDEX.md) |
 | DOC-ROADMAP-002 | Implementation Strategy | [01_IMPLEMENTATION_STRATEGY.md](book-12/01_IMPLEMENTATION_STRATEGY.md) |
 | DOC-ROADMAP-003 | Epic Breakdown | [02_EPIC_BREAKDOWN.md](book-12/02_EPIC_BREAKDOWN.md) |
@@ -870,6 +882,9 @@
 | DOC-REVIEW-093 | F16 Phase 7 Live Role Authority Integration Report | [F16_PHASE_7_LIVE_ROLE_AUTHORITY_INTEGRATION_REPORT.md](reviews/F16_PHASE_7_LIVE_ROLE_AUTHORITY_INTEGRATION_REPORT.md) |
 | DOC-REVIEW-094 | F16 Phase 8 Policy / Source / Target Administration Implementation Report | [F16_PHASE_8_POLICY_SOURCE_TARGET_ADMINISTRATION_IMPLEMENTATION_REPORT.md](reviews/F16_PHASE_8_POLICY_SOURCE_TARGET_ADMINISTRATION_IMPLEMENTATION_REPORT.md) |
 | DOC-REVIEW-095 | F16 Phase 9 Runtime / HTTP API-015 Implementation Report | [F16_PHASE_9_RUNTIME_HTTP_API_015_IMPLEMENTATION_REPORT.md](reviews/F16_PHASE_9_RUNTIME_HTTP_API_015_IMPLEMENTATION_REPORT.md) |
+| DOC-REVIEW-096 | F16 Phase 10 UI-006 Administration Console Implementation Report | [F16_PHASE_10_UI_006_ADMINISTRATION_CONSOLE_IMPLEMENTATION_REPORT.md](reviews/F16_PHASE_10_UI_006_ADMINISTRATION_CONSOLE_IMPLEMENTATION_REPORT.md) |
+| DOC-REVIEW-097 | F16 Phase 11A Canonical Administration Read Boundaries Report | [F16_PHASE_11A_CANONICAL_ADMIN_READ_BOUNDARIES_IMPLEMENTATION_REPORT.md](reviews/F16_PHASE_11A_CANONICAL_ADMIN_READ_BOUNDARIES_IMPLEMENTATION_REPORT.md) |
+| DOC-REVIEW-098 | Canonical FEAT-016–020 Governance Alignment Report | [CANONICAL_FEAT_016_TO_020_GOVERNANCE_ALIGNMENT_REPORT.md](reviews/CANONICAL_FEAT_016_TO_020_GOVERNANCE_ALIGNMENT_REPORT.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books

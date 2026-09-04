@@ -3,15 +3,15 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-038 |
-| 문서 버전 | v0.2 |
+| 문서 버전 | v0.3 |
 | 상태 | IN REVIEW |
 | 소유 역할 | Architecture Owner / Quality Owner |
-| 기준일 | 2026-07-24 |
+| 기준일 | 2026-09-04 |
 | Effective Version | Architecture v1.1 |
 
 ## Purpose
 
-DEC-100–DEC-112와 DEC-114를 Feature, API, Workflow, Security, Test와 RTM에 연결한다. 이 matrix는 기존 Registry ID를 변경하지 않으며 현재 존재하는 canonical Registry만 참조한다.
+DEC-100–DEC-112, DEC-114와 DEC-115를 Feature, API, Workflow, Security, Test와 RTM에 연결한다. 이 matrix는 기존 Registry ID를 변경하지 않으며 현재 존재하는 canonical Registry만 참조한다.
 
 ## Registry sources
 
@@ -44,6 +44,7 @@ DEC-100–DEC-112와 DEC-114를 Feature, API, Workflow, Security, Test와 RTM에
 | DT-111 | DEC-111 / AO-034 | FEAT-015 | API-013/014/018/019 | WF-009–012 | SEC-001/002/010/011/013–015/021–25/028/032 | TEST-021–025/033/049 | TRACE-014/015/019 | EVT-008 updates Projection only after confirmed effect | MAPPED |
 | DT-112 | DEC-112 / AO-035 | FEAT-015 | API-014/018/019 | WF-010–012 | SEC-001/002/013–15/021–24/028/032 | TEST-023/025/033/049 | TRACE-015/017/018/020/023/024 | PRJ-001~008 and EVT-001~012 registered | MAPPED |
 | DT-114 | DEC-114 / AO-16-01–05 | FEAT-016 | API-015; API-016 evidence query; API-003 candidate handoff | WF-001–012 | SEC-001–010/021–023/026/033 | TEST-005/034/037/048/053 | TRACE-016 | PRJ/Event N/A; FEAT-015 Event Journal and PRJ-002 excluded | MAPPED |
+| DT-115 | DEC-115 / Current Main Alignment | FEAT-015–021; historical F16–F20 labels are execution waves | API-014–019, ownership unchanged | Existing canonical workflows only | Existing controls unchanged; no authority transfer | Existing final-gate and RTM evidence only | TRACE-015–021 | Historical F17→FEAT-015; F18→FEAT-019/020; F19→FEAT-015/019/020; F20 partial read/UI→FEAT-016/017/019/020/021 | MAPPED |
 
 ## RTM alignment
 

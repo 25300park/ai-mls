@@ -3,11 +3,11 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-035 |
-| 문서 버전 | v1.5 |
+| 문서 버전 | v1.6 |
 | 상태 | IN REVIEW |
 | 소유 역할 | Architecture Owner / Quality Owner |
-| 기준일 | 2026-07-24 |
-| 승인 근거 | v1.2: Phase 15 correction authorization; v1.3: Phase 11-2 alignment candidate; v1.4: Phase 11-8 Event Registry alignment candidate |
+| 기준일 | 2026-09-04 |
+| 승인 근거 | v1.2: Phase 15 correction authorization; v1.3: Phase 11-2 alignment candidate; v1.4: Phase 11-8 Event Registry alignment candidate; v1.6: DEC-115/CR-027 execution evidence attribution |
 
 이 문서는 AI MLS Platform Architecture Bible의 단일 authoritative traceability record다. 기존 Book별 matrix와 registry는 각 domain의 상세 근거이며, end-to-end 연결의 존재 여부와 orphan 판정은 이 문서를 기준으로 한다. 연결 규칙은 [End-to-End Traceability Rule](00_TRACEABILITY_RULE.md)을 따른다.
 
@@ -39,7 +39,7 @@
 | TRACE-013 | REQ-CONST-002–004, REQ-CONST-010, REQ-CONST-013 | WF-007–011 | Permission, Approval History, Contact Channel | API-012 | UI-026, UI-028–032 | AI-007 — evidence support only; no approval authority | DEV-013 | SP-007 | REL-002 | TEST-003, TEST-012, TEST-020–022, TEST-024, TEST-032 | VERIFIED |
 | TRACE-014 | REQ-CONST-002–004, REQ-CONST-007, REQ-CONST-010, REQ-CONST-012, REQ-CONST-013 | WF-008, WF-009 | Client Proposal, Publication Approval, Immutable Representation Snapshot, Verification, Permission; Publication Target is read-only dependency only | API-013 | UI-025, UI-028–030 | N/A — human approval is mandatory | DEV-014 | SP-008 | REL-003 | TEST-021, TEST-022, TEST-033 SP-008 Approval/Effective Approval/Safe Boundary partition | VERIFIED |
 | TRACE-015 | REQ-CONST-002–007, REQ-CONST-009, REQ-CONST-012, REQ-CONST-013 | WF-010–012 | Publication, Publication Target, Published Listing Projection, Status History, System Error | API-014 | UI-031–033, UI-035 | N/A — publication authority is deterministic and human-approved | DEV-015 | `PENDING ARCHITECTURE OWNER DECISION` | REL-004 | TEST-002–004, TEST-008, TEST-011, TEST-012, TEST-023–025, TEST-033 FEAT-015 Delivery/Reconciliation/Publication Lifecycle partition, TEST-049 | VERIFIED |
-| TRACE-016 | REQ-CONST-006, REQ-CONST-007, REQ-CONST-010 | WF-001–012 | User identity administration reference, Role, Role Assignment, Team/organizational scope, Policy administration, Source Registry governance proposal/review/approval/status, Publication Target governance state, Decision History | API-015; API-016 evidence query only; API-003 candidate handoff only | UI-006, UI-036 | N/A — deterministic human administration; AI has no grant/approval authority | DEV-016 | SP-001 partial baseline; continuation requires separately authorized FEAT-016 phases | REL-001 | TEST-005, TEST-034, TEST-037, TEST-048, TEST-053 | PARTIALLY_VERIFIED |
+| TRACE-016 | REQ-CONST-006, REQ-CONST-007, REQ-CONST-010 | WF-001–012 | User identity administration reference, Role, Role Assignment, Team/organizational scope, Policy administration, Source Registry governance proposal/review/approval/status, Publication Target governance state, Decision History | API-015; API-016 evidence query only; API-003 candidate handoff only | UI-006, UI-036 | N/A — deterministic human administration; AI has no grant/approval authority | DEV-016 | SP-001 plus approved historical F16 Administration execution wave per DEC-115/CR-027 | REL-001 | TEST-005, TEST-034, TEST-037, TEST-048, TEST-053; F16 Final Gate 774/774 evidence | VERIFIED |
 | TRACE-017 | REQ-CONST-005–007, REQ-CONST-010 | WF-001–012 | Audit Event, User Action, Status History, Approval History | API-016 | UI-035, UI-036 | AI-001–007 metadata is audited; AI cannot alter audit truth | DEV-017 | SP-001 | REL-001 | TEST-004–006, TEST-017, TEST-022, TEST-025, TEST-034, TEST-046, TEST-049, TEST-051, TEST-053 | VERIFIED |
 | TRACE-018 | REQ-CONST-007, REQ-CONST-008, REQ-CONST-010 | WF-003, WF-006, WF-010–012 | AI Job, AI Result, System Error | API-017 | UI-034 | AI-001–007 | DEV-018 | SP-002 | REL-001 | TEST-016, TEST-024, TEST-025, TEST-035, TEST-039–043, TEST-045, TEST-051 | VERIFIED |
 | TRACE-019 | REQ-CONST-005, REQ-CONST-007, REQ-CONST-009, REQ-CONST-010 | WF-001–004, WF-009–012 | Collector, Raw Source, Source Provenance, Publication, System Error | API-018 | UI-009–013, UI-031, UI-033, UI-034 | AI-001–003, AI-007 | DEV-019 | SP-010 | REL-005 | TEST-008, TEST-014, TEST-023, TEST-036, TEST-037 | VERIFIED |
@@ -48,6 +48,18 @@
 | TRACE-022 | REQ-CONST-001, REQ-CONST-002, REQ-CONST-005, REQ-CONST-008, REQ-CONST-011 | WF-002–006 | AI Job, AI Result, Source Provenance, Requirement, Match Result | API-004–006, API-009, API-010, API-017 | UI-008, UI-011–018, UI-021, UI-023, UI-024 | AI-001–007 | DEV-022 | SP-003 | REL-001 | TEST-007, TEST-013, TEST-015–019, TEST-039–045 | VERIFIED |
 | TRACE-023 | REQ-CONST-002, REQ-CONST-005–007, REQ-CONST-010, REQ-CONST-013 | WF-001–012 | User, Role, Contact, Client, Retention Policy, Legal Hold, Audit Event, System Error | API-001–019 | UI-001–037 | AI-001–007 data access follows security controls | DEV-023 | SP-001 | REL-001 | TEST-046–053 | VERIFIED |
 | TRACE-024 | REQ-CONST-001–013 | WF-001–012 | All 52 entities in Book 3 Data Dictionary, including Raw Attachment, Listing Source, Building, Tower, Floor, Unit, Matching Preference, Verifier Assignment, Reverification Request, Retention Job | API-001–019 | UI-001–037 | AI-001–007 | DEV-024 | SP-000–010 | REL-001–005 | TEST-001–056 | VERIFIED |
+
+## CR-027 post-freeze execution evidence attribution
+
+`TRACE-015`–`TRACE-021`의 frozen identity와 meaning은 변경하지 않는다. 이 표의 `VERIFIED`는 canonical architecture trace completeness이며 later execution-wave label과 같은 번호의 Feature completion을 뜻하지 않는다.
+
+| Historical execution wave | Canonical trace destination | Evidence interpretation |
+|---|---|---|
+| F16 Administration | TRACE-016 | FEAT-016 implementation/final gate closes the prior partial execution status |
+| F17 Publication | TRACE-015 | FEAT-015 Publication/API-014 evidence; no TRACE-017 completion claim |
+| F18 Source / Connector | TRACE-019, TRACE-020 | API-018/API-019 evidence only; no TRACE-018 completion claim |
+| F19 Recovery / Reconciliation | TRACE-015, TRACE-019, TRACE-020 | Directly supported recovery evidence only |
+| F20 Operations Console | TRACE-016, TRACE-017, TRACE-019, TRACE-020, TRACE-021 | Partial UI/read verification only; no implicit whole-Feature closure |
 
 ## Phase 11-2 — AO-023–AO-035 requirement alignment candidate
 

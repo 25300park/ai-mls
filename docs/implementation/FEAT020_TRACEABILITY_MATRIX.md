@@ -1,17 +1,18 @@
-# FEAT-020 Operations Console Expansion Traceability Matrix
+# Historical F20 Operations Console Execution-Wave Evidence Matrix
 
 | 항목 | 값 |
 |---|---|
-| Document ID | FEAT020-RTM |
-| Version | v0.1 |
-| Status | IN REVIEW |
+| Document ID | DOC-DEV-024 |
+| Version | v0.2 |
+| Status | APPROVED |
 | Owner | Architecture Owner |
 | Evidence date | 2026-09-04 |
-| Final Recommendation | `APPROVE_F20_FINAL_GATE` |
+| Historical wave recommendation | `APPROVE_F20_FINAL_GATE` |
+| Canonical attribution | Partial verified UI/read evidence for FEAT-016/017/019/020/021 |
 
 ## 1. Objective
 
-F20 Continuous Execution Brief의 Console projection/control-surface 제한을 F20-A~H의 구현, 직접 검증, 독립 검토와 연결한다. 이 문서는 새로운 business authority 또는 API ownership을 생성하지 않는다.
+Historical F20 Operations Console execution wave의 projection/control-surface 제한을 F20-A~H 구현, 직접 검증과 독립 검토에 연결한다. `DEC-115`/`CR-027`에 따라 F20 label은 canonical FEAT-020 ID가 아니며 evidence는 실제로 사용한 FEAT-016/017/019/020/021 UI/read owner에 부분 귀속된다. 새로운 business authority, API ownership 또는 whole canonical Feature completion을 생성하지 않는다.
 
 ## 2. End-to-end traceability
 
@@ -40,4 +41,4 @@ F20 Continuous Execution Brief의 Console projection/control-surface 제한을 F
 
 ## 4. Verification result
 
-`APPROVE_F20_FINAL_GATE`. FEAT-020은 기존 canonical backend authority 위의 read-oriented Operations Console 범위에서 complete로 판정한다. F21은 시작하지 않는다.
+`APPROVE_F20_FINAL_GATE`는 historical F20 Operations Console execution wave의 완료 판정이다. Frozen canonical FEAT-020 External Integration lifecycle의 whole-Feature closure를 의미하지 않는다. FEAT-016/017/019/020/021에는 직접 검증된 UI/read evidence만 귀속되며 canonical FEAT-021은 시작하지 않는다.

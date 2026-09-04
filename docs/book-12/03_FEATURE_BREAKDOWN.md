@@ -3,10 +3,10 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-ROADMAP-004 |
-| 문서 버전 | v1.2 |
+| 문서 버전 | v1.3 |
 | 상태 | FROZEN |
 | 소유 역할 | Product Owner / Development Owner |
-| 기준일 | 2026-07-15 |
+| 기준일 | 2026-09-04 |
 
 ## Feature rules
 
@@ -49,11 +49,23 @@ EPIC-001–010, FEAT-001–024와 DEV-001–024는 orphan 없이 연결된다. C
 
 `DEC-114`와 `CR-026`은 frozen planning row의 ID를 바꾸지 않고 FEAT-016 execution evidence와 ownership을 다음처럼 명확히 한다.
 
-- Execution status: `PARTIALLY_IMPLEMENTED_BASELINE`; SP-001 Role Assignment subset은 유효한 역사적 baseline이고 FEAT-016 전체는 incomplete다.
+- Execution status: `IMPLEMENTED_AND_VERIFIED`; SP-001 Role Assignment subset과 이후 승인된 F16 implementation wave의 durable persistence, complete API-015 execution, Console integration 및 final gate evidence가 `DEC-115`/`CR-027` 아래 FEAT-016 closure를 완성한다.
 - Owned administration scope: User/identity administration reference, Role, Role Assignment, Team/organizational scope, Policy administration, Source Registry governance state, Publication Target governance state와 Decision History/administration evidence.
 - Source Registry ownership은 governance proposal lifecycle, policy/review/approval/administrative status transition뿐이며 ingestion, crawler, parser 또는 connector execution을 포함하지 않는다. FEAT-004/API-003은 approved policy read와 non-authoritative candidate submission handoff만 소유하며 policy decision 또는 activation authority를 갖지 않는다.
 - Publication Target ownership은 governance policy/proposal/review/approval/administrative status뿐이며 Publication Aggregate/lifecycle/execution, connector dispatch, reconciliation, Event Journal 또는 PRJ-002 mutation을 포함하지 않는다.
 - Retention Policy/Legal Hold business authority는 Privacy/Data Governance/Legal/Security에 유지되며 core FEAT-016 scope가 아니다.
 - AI capability는 `N/A`; AI/service/connector/job은 administration approval 또는 authority activation을 수행하지 않는다.
 
-상세 trace와 implementation gap은 [FEAT-016 Implementation Traceability](../implementation/FEAT016_TRACEABILITY_MATRIX.md)를 따른다.
+상세 trace와 closure evidence는 [FEAT-016 Implementation Traceability](../implementation/FEAT016_TRACEABILITY_MATRIX.md)를 따른다.
+
+## Post-freeze execution-wave attribution overlay
+
+`DEC-115`와 `CR-027`은 아래 historical label을 canonical Feature ID가 아닌 execution-wave label로 해석한다. 위 frozen Registry row의 ID, 의미와 ownership은 변경하지 않는다.
+
+| Historical execution wave | Canonical evidence destination | Attribution rule |
+|---|---|---|
+| F16 Administration | FEAT-016 | Complete Administration/API-015 implementation and final-gate evidence |
+| F17 Publication | FEAT-015 | Publication/API-014 runtime, provider boundary and retry evidence; not canonical FEAT-017 |
+| F18 Source / Connector | FEAT-019, FEAT-020 | API-018 Source/Connector and API-019 external identity/evidence only; not canonical FEAT-018 |
+| F19 Recovery / Reconciliation | FEAT-015, FEAT-019, FEAT-020 | Domain-owned recovery evidence only where directly traced; not canonical FEAT-019 as a whole |
+| F20 Operations Console | FEAT-016, FEAT-017, FEAT-019, FEAT-020, FEAT-021 | Partial verified UI/read evidence only; it does not complete any frozen Feature except where separate closure evidence exists |

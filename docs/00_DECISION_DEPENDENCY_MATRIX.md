@@ -3,15 +3,15 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-037 |
-| 문서 버전 | v0.2 |
+| 문서 버전 | v0.3 |
 | 상태 | IN REVIEW |
 | 소유 역할 | Architecture Owner |
-| 기준일 | 2026-07-24 |
+| 기준일 | 2026-09-04 |
 | Effective Version | Architecture v1.1 |
 
 ## Purpose
 
-DEC-100–DEC-112와 DEC-114의 선행·후속 관계 및 scoped refinement를 정의하고 순환 의존성이 없는지 검증한다. Decision의 status와 내용은 [Decision Register](00_DECISION_REGISTER.md)가 authoritative source다.
+DEC-100–DEC-112, DEC-114와 DEC-115의 선행·후속 관계 및 scoped refinement를 정의하고 순환 의존성이 없는지 검증한다. Decision의 status와 내용은 [Decision Register](00_DECISION_REGISTER.md)가 authoritative source다.
 
 ## Dependency matrix
 
@@ -31,6 +31,7 @@ DEC-100–DEC-112와 DEC-114의 선행·후속 관계 및 scoped refinement를 �
 | DEC-111 | DEC-100–110 | DEC-100–110 | DEC-112 | Republish / API-013/014/018/019 | Refines DEC-100/101/104 |
 | DEC-112 | DEC-100–111 | DEC-100–111 | None in this Brief | Projection/event/read model / API-014/018/019 | None |
 | DEC-114 | DEC-053/076–079/082/084/092 | approved identity, authorization, audit, administration, security and post-freeze governance baseline | F16-PHASE-5 and later separately authorized FEAT-016 phases | FEAT-016 / API-015 / TRACE-016 / UI-006/036 | Clarifies partial execution and ownership; supersedes no prior Decision |
+| DEC-115 | DEC-077/078/082/084/092/096–114 | frozen Feature identity, approved ownership and historical final-gate evidence | Current Main exact-HEAD integrated validation | FEAT-015–021 evidence attribution / TRACE-015–021 / IMP execution overlay | Attribution-only; supersedes no Feature or Decision |
 
 ## Dependency order
 
@@ -52,7 +53,12 @@ DEC-096–099
 
 DEC-053/076–079/082/084/092
 → DEC-114
+
+DEC-077/078/082/084/092/096–114
+→ DEC-115
 ```
+
+DEC-115는 frozen identity/ownership과 승인된 historical evidence를 prerequisite로 사용하며, current-main exact-HEAD integrated validation을 downstream gate로 둔다. 기존 Decision을 supersede하거나 dependency 방향을 역전하지 않는다.
 
 AO-023은 기존 Publication Approval governance인 DEC-096–099를 선행 기준으로 사용한다. 이후 각 Decision은 자신보다 작은 DEC 번호에만 의존한다. DEC-109/111의 refinement edge도 선행 Decision을 향한 정의 보완이며 선행 Decision이 후속 Decision의 prerequisite인 관계를 역전시키지 않는다.
 
@@ -67,7 +73,7 @@ AO-023은 기존 Publication Approval governance인 DEC-096–099를 선행 기�
 
 ## Validation result
 
-- Decision nodes: 14 aligned nodes plus referenced existing prerequisite nodes
+- Decision nodes: 15 aligned nodes plus referenced existing prerequisite nodes
 - Direct dependency chain: complete
 - Missing prerequisite: 0
 - Circular dependency: 0

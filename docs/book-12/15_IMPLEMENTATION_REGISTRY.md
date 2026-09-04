@@ -3,10 +3,10 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-ROADMAP-016 |
-| 문서 버전 | v1.3 |
+| 문서 버전 | v1.4 |
 | 상태 | FROZEN |
 | 소유 역할 | Development Owner / Architecture Owner |
-| 기준일 | 2026-07-15 |
+| 기준일 | 2026-09-04 |
 
 > Phase 15 synchronization: `IMP-001–024`는 corresponding `DEV-*`와 [Canonical Traceability Matrix](../00_CANONICAL_TRACEABILITY_MATRIX.md)를 통해 REQ-to-TEST chain에 연결된다. Row status는 `PLANNED`다.
 
@@ -75,4 +75,10 @@ new implementation plan은 duplicate check 후 next ID를 발급한다. split/re
 |---|---|---|---|---|---|
 | IMP-024 | SP-000 | DONE | None | [Sprint 0 Completion](../development/SPRINT0_COMPLETION.md), [Sprint 0 Task Status](../development/SPRINT0_TASK_STATUS.md) | 2026-07-15 |
 | IMP-014 | SP-008 | COMPLETED_ACCEPTED_FROZEN | None | GOV-001 `c7ad5b0a2ad6bd243abe81cd3c00c3599a29ad1b`; SP-008 `0c9f2a519a3ea21d6f0de8d7b6e8c5a1ed64373a`; [SP-008 Test Evidence](../development/SP008_TEST_EVIDENCE.md), [SP-008 Completion](../reviews/SP-008_COMPLETION.md) | 2026-07-23 |
-| IMP-016 | SP-001 partial baseline | IN_PROGRESS | DEC-114/CR-026 governance alignment only; no production change | [SP-001 Completion](../reviews/SP-001_COMPLETION.md), [FEAT-016 Traceability](../implementation/FEAT016_TRACEABILITY_MATRIX.md); Role Assignment subset implemented, remaining API-015 operation families open | 2026-08-13 |
+| IMP-015 | Historical F17 Publication wave | DONE | DEC-115/CR-027 evidence attribution only; frozen FEAT-015 ownership unchanged | [FEAT-015 Traceability](../implementation/FEAT015_TRACEABILITY_MATRIX.md), [F17 Final Gate](../reviews/F17_FINAL_GATE_REPORT.md) | 2026-09-04 |
+| IMP-016 | SP-001 + historical F16 Administration wave | DONE | DEC-115/CR-027 closes stale execution status; frozen FEAT-016 identity unchanged | [FEAT-016 Traceability](../implementation/FEAT016_TRACEABILITY_MATRIX.md), [F16 Final Gate](../reviews/F16_FINAL_GATE_RETRY_FEATURE_CLOSURE_REPORT.md) | 2026-09-04 |
+| IMP-017 | Historical F20 partial UI/read evidence | IN_PROGRESS | Audit/API-016 frozen scope remains authoritative; F20 evidence is not canonical FEAT-017 completion | [F20 Traceability](../implementation/FEAT020_TRACEABILITY_MATRIX.md) | 2026-09-04 |
+| IMP-018 | No attributable completion evidence from historical F18 wave | PLANNED | Background Job/API-017 frozen scope remains authoritative; historical F18 label maps to IMP-019/020 | [F18 Traceability](../implementation/FEAT018_TRACEABILITY_MATRIX.md) | 2026-09-04 |
+| IMP-019 | Historical F18/F19/F20 supported slices | IN_PROGRESS | Verified API-018 runtime/recovery/read evidence only; no whole frozen Feature completion claim | [F18](../implementation/FEAT018_TRACEABILITY_MATRIX.md), [F19](../implementation/FEAT019_TRACEABILITY_MATRIX.md), [F20](../implementation/FEAT020_TRACEABILITY_MATRIX.md) traceability | 2026-09-04 |
+| IMP-020 | Historical F18/F19/F20 supported slices | IN_PROGRESS | Verified API-019 runtime/recovery/read evidence only; no whole frozen Feature completion claim | [F18](../implementation/FEAT018_TRACEABILITY_MATRIX.md), [F19](../implementation/FEAT019_TRACEABILITY_MATRIX.md), [F20](../implementation/FEAT020_TRACEABILITY_MATRIX.md) traceability | 2026-09-04 |
+| IMP-021 | Historical F20 partial UI/accessibility evidence | PLANNED | F20 Console evidence is supporting evidence only; canonical FEAT-021 remains not started as a whole | [F20 Traceability](../implementation/FEAT020_TRACEABILITY_MATRIX.md) | 2026-09-04 |

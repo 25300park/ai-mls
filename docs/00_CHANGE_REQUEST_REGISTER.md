@@ -3,10 +3,10 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-021 |
-| 문서 버전 | v1.4 |
+| 문서 버전 | v1.5 |
 | 상태 | FROZEN |
 | 소유 역할 | Architecture Owner |
-| 기준일 | 2026-07-13 |
+| 기준일 | 2026-09-04 |
 
 이 register는 Architecture Bible, governance control과 향후 architecture baseline에 대한 모든 요청 변경을 접수하고 disposition까지 추적한다. 변경은 이 register에 기록됐다는 이유만으로 승인되지 않으며 [Architecture Review Board](00_ARCHITECTURE_REVIEW_BOARD.md)와 [Approval Workflow](00_APPROVAL_WORKFLOW.md)를 거쳐야 한다.
 
@@ -60,6 +60,7 @@
 | CR-024 | Align Publication Approval SoD governance | actor-level conflict, role stacking, PUA authority, scheduler-only expiry, break-glass denial와 recovery/replay reauthorization을 security/test/UI/RTM mappings에 반영한다. | Architecture Owner | AO-021 accepted SoD rules를 SP-008 acceptance baseline으로 고정 | CRITICAL | Affected registries: security/test/UI/trace; affected tests: TEST-022 and TEST-033 SP-008 partition; no role, runtime authority or implementation change | DOC-CORE-020–021/035, DOC-UI-016, DOC-SEC-016, DOC-TEST-003/016 | GOV-001 / AO-021 | IMPLEMENTED | DEC-099 — APPROVED | NOT_REQUIRED — resolves ADR-004 open SoD detail without altering human-approval principle | 2026-07-23 |
 | CR-025 | Align FEAT-015 Publication Event contract v2 | Runtime이 사용하는 Publication Event schema/contract v2와 Canonical Event Registry의 version metadata를 일치시키고, immutable Projection provenance의 승인 근거를 Decision/RTM evidence에 연결한다. | Architecture Owner | F15-TASK-011A가 `publicationVersion`, `targetReference`, `channelReference`를 immutable v2 provenance로 도입했으나 Registry가 v1로 남아 있던 mismatch 해소 | CRITICAL | DOC-CORE-020/021/050과 FEAT-015 traceability만 변경; Event authority, business lifecycle, physical serialization, Event Bus/Queue/Store 선택은 변경하지 않음 | DOC-CORE-020, DOC-CORE-021, DOC-CORE-050, FEAT015_TRACEABILITY_MATRIX | FEAT-015 Final Closure Remediation / FCR-004 | IMPLEMENTED | DEC-113 — APPROVED | NOT_REQUIRED — 현재 Brief의 explicit Architecture Owner decision을 durable governance evidence로 정렬 | 2026-08-12 |
 | CR-026 | Align FEAT-016 administration scope and partial baseline | SP-001 Role Assignment subset을 FEAT-016 partial implementation baseline으로 보존하고, API-003/015의 상호 배타적 Source governance boundary, two-person approval, live-authority gate와 logical persistence boundary를 canonical trace에 정렬한다. | Architecture Owner | frozen planning row의 `PLANNED` 의미와 SP-001 partial implementation evidence, FEAT-016/API-015 entity scope 및 approver rule의 불일치 해소 | CRITICAL | Governance/traceability documentation only; no production behavior, physical database, ORM, migration, authentication provider, frontend framework, Publication execution, Event Journal or PRJ-002 change | DOC-CORE-001/007/020/021/035–038/044, DOC-DEV-016/017, DOC-ROADMAP-004/016 | F16-PHASE-4 / AO-16-01–05 | IMPLEMENTED | DEC-114 — APPROVED | NOT_REQUIRED — current Brief contains explicit Architecture Owner decisions and preserves existing ADR boundaries | 2026-08-13 |
+| CR-027 | Align FEAT-016–020 governance identity and execution-wave evidence | Frozen FEAT-016–020 meanings을 보존하면서 historical F16–F20 execution-wave evidence를 실제 canonical owner에 attribution하고 TRACE-016과 implementation progress overlay를 current verified evidence에 맞춘다. | Architecture Owner | Current Main Inventory Review가 frozen Feature identity와 later execution-wave label/status 간 충돌을 확인함 | CRITICAL | Governance/traceability documentation only; historical Git/final-gate evidence, production behavior, API authority, dependency와 immutable freeze checksum은 변경하지 않음 | DOC-CORE-001/007/020/021/035–038, DOC-ROADMAP-004/016, DOC-DEV-017/021–024, DOC-REVIEW-098 | Current Main Governance Alignment | IMPLEMENTED | DEC-115 — APPROVED | NOT_REQUIRED — attribution-only correction under existing identities; no architecture authority or ownership change | 2026-09-04 |
 
 ## 처리 절차
 
