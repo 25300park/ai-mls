@@ -2,7 +2,8 @@
 
 | 항목 | 값 |
 |---|---|
-| Document ID | F19-D-REPORT |
+| Document ID | DOC-REVIEW-106 |
+| Historical Artifact ID | F19-D-REPORT |
 | 문서 버전 | v0.2 |
 | 상태 | IN REVIEW |
 | 소유 역할 | Architecture Owner |

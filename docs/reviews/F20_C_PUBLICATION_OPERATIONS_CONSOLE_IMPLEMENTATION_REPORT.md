@@ -2,7 +2,8 @@
 
 | 항목 | 값 |
 |---|---|
-| Document ID | F20-C-REPORT |
+| Document ID | DOC-REVIEW-112 |
+| Historical Artifact ID | F20-C-REPORT |
 | Version | v0.1 |
 | Status | IN REVIEW |
 | Owner | Architecture Owner |

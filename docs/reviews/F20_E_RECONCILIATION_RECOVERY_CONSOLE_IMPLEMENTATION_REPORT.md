@@ -2,7 +2,8 @@
 
 | 항목 | 값 |
 |---|---|
-| Document ID | F20-E-REPORT |
+| Document ID | DOC-REVIEW-114 |
+| Historical Artifact ID | F20-E-REPORT |
 | Version | v0.1 |
 | Status | IN REVIEW |
 | Owner | Architecture Owner |

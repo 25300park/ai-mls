@@ -2,7 +2,8 @@
 
 | 항목 | 값 |
 |---|---|
-| Document ID | F19-C-REPORT |
+| Document ID | DOC-REVIEW-105 |
+| Historical Artifact ID | F19-C-REPORT |
 | 문서 버전 | v0.1 |
 | 상태 | IN REVIEW |
 | 기준 commit | `7ef0c809c5f1ec1c6d7791d4856662234831a37d` |

@@ -2,7 +2,8 @@
 
 | 항목 | 값 |
 |---|---|
-| Document ID | F19-D-PLAN |
+| Document ID | DOC-DEV-030 |
+| Historical Artifact ID | F19-D-PLAN |
 | 문서 버전 | v0.1 |
 | 상태 | DRAFT |
 | 소유 역할 | Architecture Owner |

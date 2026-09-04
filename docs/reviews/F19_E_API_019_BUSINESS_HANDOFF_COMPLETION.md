@@ -2,7 +2,8 @@
 
 | 항목 | 값 |
 |---|---|
-| Document ID | F19-E-REPORT |
+| Document ID | DOC-REVIEW-107 |
+| Historical Artifact ID | F19-E-REPORT |
 | Version | v0.2 |
 | Status | IN REVIEW |
 | Owner | Architecture Owner |

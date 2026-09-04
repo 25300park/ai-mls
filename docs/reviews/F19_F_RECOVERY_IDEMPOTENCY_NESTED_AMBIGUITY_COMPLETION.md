@@ -2,7 +2,8 @@
 
 | 항목 | 값 |
 |---|---|
-| Document ID | F19-F-REPORT |
+| Document ID | DOC-REVIEW-108 |
+| Historical Artifact ID | F19-F-REPORT |
 | Version | v0.1 |
 | Status | IN REVIEW |
 | Owner | Architecture Owner |

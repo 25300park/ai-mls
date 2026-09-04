@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-001 |
-| 문서 버전 | v3.3 |
+| 문서 버전 | v3.4 |
 | 상태 | IN REVIEW |
 | 소유 역할 | Architecture Owner |
 | 기준일 | 2026-09-04 |
@@ -223,6 +223,27 @@
 | DOC-REVIEW-096 | [F16 Phase 10 UI-006 Administration Console](reviews/F16_PHASE_10_UI_006_ADMINISTRATION_CONSOLE_IMPLEMENTATION_REPORT.md) | UI-006 zero-dependency read Console 및 browser acceptance evidence | AVAILABLE |
 | DOC-REVIEW-097 | [F16 Phase 11A Canonical Admin Reads](reviews/F16_PHASE_11A_CANONICAL_ADMIN_READ_BOUNDARIES_IMPLEMENTATION_REPORT.md) | API-015 canonical list/read selector boundary evidence | AVAILABLE |
 | DOC-REVIEW-098 | [Canonical FEAT-016–020 Governance Alignment](reviews/CANONICAL_FEAT_016_TO_020_GOVERNANCE_ALIGNMENT_REPORT.md) | DEC-115/CR-027 identity-preserving execution-wave evidence attribution | AVAILABLE |
+| DOC-REVIEW-099 | [F16-R1 Durable Administration Persistence](reviews/F16_R1_DURABLE_ADMINISTRATION_PERSISTENCE_IMPLEMENTATION_REPORT.md) | durable Administration UoW implementation evidence | AVAILABLE |
+| DOC-REVIEW-100 | [F16-R2 API-015 Execution Completeness](reviews/F16_R2_API_015_CLOSED_CONTRACT_EXECUTION_COMPLETENESS_IMPLEMENTATION_REPORT.md) | closed API-015 execution completeness evidence | AVAILABLE |
+| DOC-REVIEW-101 | [F16-R3 RTM Traceability Closure](reviews/F16_R3_RTM_TRACEABILITY_CLOSURE_REPORT.md) | F16 RTM and traceability closure evidence | AVAILABLE |
+| DOC-REVIEW-102 | [F16 Final Gate Retry Feature Closure](reviews/F16_FINAL_GATE_RETRY_FEATURE_CLOSURE_REPORT.md) | F16 final gate closure evidence | AVAILABLE |
+| DOC-REVIEW-103 | [F18-C Durable Connector Foundation](reviews/F18_C_DURABLE_CONNECTOR_FOUNDATION_IMPLEMENTATION_REPORT.md) | durable connector foundation evidence | AVAILABLE |
+| DOC-REVIEW-104 | [F18-D Closed API-018 Runtime HTTP](reviews/F18_D_CLOSED_API_018_RUNTIME_HTTP_IMPLEMENTATION_REPORT.md) | API-018 runtime and HTTP evidence | AVAILABLE |
+| DOC-REVIEW-105 | [F19-C Publication Resolve/Recover Separation](reviews/F19_C_PUBLICATION_RESOLVE_RECOVER_SEPARATION_IMPLEMENTATION_REPORT.md) | resolve versus recover separation evidence | AVAILABLE |
+| DOC-REVIEW-106 | [F19-D Connector Ambiguity Recovery Handoff](reviews/F19_D_CONNECTOR_AMBIGUITY_RECOVERY_HANDOFF_COMPLETION.md) | connector ambiguity recovery handoff evidence | AVAILABLE |
+| DOC-REVIEW-107 | [F19-E API-019 Business Handoff](reviews/F19_E_API_019_BUSINESS_HANDOFF_COMPLETION.md) | API-019 unresolved business handoff evidence | AVAILABLE |
+| DOC-REVIEW-108 | [F19-F Recovery Idempotency Hardening](reviews/F19_F_RECOVERY_IDEMPOTENCY_NESTED_AMBIGUITY_COMPLETION.md) | recovery idempotency and nested ambiguity evidence | AVAILABLE |
+| DOC-REVIEW-109 | [F19-H Final Integration Hardening](reviews/F19_H_FINAL_INTEGRATION_HARDENING_COMPLETION.md) | F19 final integration and hardening evidence | AVAILABLE |
+| DOC-REVIEW-110 | [F20-A Operations Console Inventory](reviews/F20_A_OPERATIONS_CONSOLE_INVENTORY_GAP_REPORT.md) | operations console inventory and gap evidence | AVAILABLE |
+| DOC-REVIEW-111 | [F20-B Operations Read Models](reviews/F20_B_OPERATIONS_READ_MODELS_API_PROJECTION_IMPLEMENTATION_REPORT.md) | operations read model and API projection evidence | AVAILABLE |
+| DOC-REVIEW-112 | [F20-C Publication Operations Console](reviews/F20_C_PUBLICATION_OPERATIONS_CONSOLE_IMPLEMENTATION_REPORT.md) | publication operations console evidence | AVAILABLE |
+| DOC-REVIEW-113 | [F20-D Connector Source Operations Console](reviews/F20_D_CONNECTOR_SOURCE_OPERATIONS_CONSOLE_IMPLEMENTATION_REPORT.md) | connector and source operations console evidence | AVAILABLE |
+| DOC-REVIEW-114 | [F20-E Reconciliation Recovery Console](reviews/F20_E_RECONCILIATION_RECOVERY_CONSOLE_IMPLEMENTATION_REPORT.md) | reconciliation and recovery console evidence | AVAILABLE |
+| DOC-REVIEW-115 | [F20-F Audit Evidence Lineage Integration](reviews/F20_F_AUDIT_EVIDENCE_LINEAGE_INTEGRATION_REPORT.md) | audit evidence lineage evidence | AVAILABLE |
+| DOC-REVIEW-116 | [F20-G UX Security Accessibility Hardening](reviews/F20_G_UX_SECURITY_ACCESSIBILITY_HARDENING_REPORT.md) | UX security and accessibility hardening evidence | AVAILABLE |
+| DOC-REVIEW-117 | [F20-H Final Integration Hardening](reviews/F20_H_FINAL_INTEGRATION_HARDENING_REPORT.md) | F20 final integration and hardening evidence | AVAILABLE |
+| DOC-REVIEW-118 | [SP-008 Completion](reviews/SP-008_COMPLETION.md) | SP-008 frozen completion evidence | AVAILABLE |
+| DOC-REVIEW-119 | [Current Main Document ID Governance Remediation](reviews/CURRENT_MAIN_DOCUMENT_ID_GOVERNANCE_REMEDIATION_REPORT.md) | Document ID and Master Index remediation evidence | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -464,10 +485,21 @@
 | DOC-DEV-015 | [Code Generation Policy](book-11/14_CODE_GENERATION_POLICY.md) | Codex/AI-assisted coding, human review와 ownership | AVAILABLE |
 | DOC-DEV-016 | [Developer Registry](book-11/15_DEVELOPER_REGISTRY.md) | DEV-001–024 complete cross-phase logical work packages | AVAILABLE |
 | DOC-DEV-017 | [FEAT-016 Implementation Traceability](implementation/FEAT016_TRACEABILITY_MATRIX.md) | FEAT-016 verified implementation coverage, R1/R2/R3 remediation evidence와 approved Final Gate closure | AVAILABLE |
+| DOC-DEV-018 | [F16-R1 Durable Administration Persistence Design](implementation/F16_R1_DURABLE_ADMINISTRATION_PERSISTENCE_DESIGN.md) | durable administration persistence design | AVAILABLE |
+| DOC-DEV-019 | [F16-R1 Durable Administration Persistence Implementation Plan](implementation/F16_R1_DURABLE_ADMINISTRATION_PERSISTENCE_IMPLEMENTATION_PLAN.md) | approved F16-R1 implementation plan | AVAILABLE |
+| DOC-DEV-020 | [F17-C Durable Publication Execution Design](implementation/F17_C_DURABLE_PUBLICATION_EXECUTION_DESIGN.md) | durable publication execution and side-effect ordering design | AVAILABLE |
 | DOC-DEV-021 | [FEAT-015 Implementation Traceability](implementation/FEAT015_TRACEABILITY_MATRIX.md) | FEAT-015 및 historical F17 Publication wave evidence | AVAILABLE |
 | DOC-DEV-022 | [Historical F18 Execution-Wave Evidence](implementation/FEAT018_TRACEABILITY_MATRIX.md) | FEAT-019/API-018와 FEAT-020/API-019 direct evidence attribution | AVAILABLE |
 | DOC-DEV-023 | [Historical F19 Execution-Wave Evidence](implementation/FEAT019_TRACEABILITY_MATRIX.md) | FEAT-015/019/020 recovery evidence attribution | AVAILABLE |
 | DOC-DEV-024 | [Historical F20 Execution-Wave Evidence](implementation/FEAT020_TRACEABILITY_MATRIX.md) | FEAT-016/017/019/020/021 partial UI/read evidence attribution | AVAILABLE |
+| DOC-DEV-025 | [SP-005 Implementation Plan](development/SP005_IMPLEMENTATION_PLAN.md) | SP-005 bounded implementation plan | AVAILABLE |
+| DOC-DEV-026 | [SP-006 Implementation Plan](development/SP006_IMPLEMENTATION_PLAN.md) | SP-006 bounded implementation plan | AVAILABLE |
+| DOC-DEV-027 | [SP-007 Implementation Plan](development/SP007_IMPLEMENTATION_PLAN.md) | SP-007 bounded implementation plan | AVAILABLE |
+| DOC-DEV-028 | [SP-008 Implementation Plan](development/SP008_IMPLEMENTATION_PLAN.md) | SP-008 bounded implementation plan | AVAILABLE |
+| DOC-DEV-029 | [SP-008 Test Evidence](development/SP008_TEST_EVIDENCE.md) | SP-008 frozen test evidence | AVAILABLE |
+| DOC-DEV-030 | [F19-D Connector Ambiguity Recovery Handoff Plan](implementation/F19_D_CONNECTOR_AMBIGUITY_RECOVERY_HANDOFF_IMPLEMENTATION_PLAN.md) | F19-D execution plan | AVAILABLE |
+| DOC-DEV-031 | [F19-E API-019 Business Handoff Plan](implementation/F19_E_API_019_BUSINESS_HANDOFF_IMPLEMENTATION_PLAN.md) | F19-E execution plan | AVAILABLE |
+| DOC-DEV-032 | [F19-F Recovery Idempotency Hardening Plan](implementation/F19_F_RECOVERY_IDEMPOTENCY_NESTED_AMBIGUITY_IMPLEMENTATION_PLAN.md) | F19-F execution plan | AVAILABLE |
 | DOC-REVIEW-019 | [Phase 12 Completion](reviews/PHASE12_COMPLETION.md) | Developer Bible completion evidence와 Phase 13 gate | AVAILABLE |
 
 ## Book 12 — Master Development Roadmap (Phase 13)
@@ -753,10 +785,21 @@
 | DOC-DEV-015 | Code Generation Policy | [14_CODE_GENERATION_POLICY.md](book-11/14_CODE_GENERATION_POLICY.md) |
 | DOC-DEV-016 | Developer Registry | [15_DEVELOPER_REGISTRY.md](book-11/15_DEVELOPER_REGISTRY.md) |
 | DOC-DEV-017 | FEAT-016 Implementation Traceability | [FEAT016_TRACEABILITY_MATRIX.md](implementation/FEAT016_TRACEABILITY_MATRIX.md) |
+| DOC-DEV-018 | F16-R1 Durable Administration Persistence Design | [F16_R1_DURABLE_ADMINISTRATION_PERSISTENCE_DESIGN.md](implementation/F16_R1_DURABLE_ADMINISTRATION_PERSISTENCE_DESIGN.md) |
+| DOC-DEV-019 | F16-R1 Durable Administration Persistence Implementation Plan | [F16_R1_DURABLE_ADMINISTRATION_PERSISTENCE_IMPLEMENTATION_PLAN.md](implementation/F16_R1_DURABLE_ADMINISTRATION_PERSISTENCE_IMPLEMENTATION_PLAN.md) |
+| DOC-DEV-020 | F17-C Durable Publication Execution Design | [F17_C_DURABLE_PUBLICATION_EXECUTION_DESIGN.md](implementation/F17_C_DURABLE_PUBLICATION_EXECUTION_DESIGN.md) |
 | DOC-DEV-021 | FEAT-015 Implementation Traceability | [FEAT015_TRACEABILITY_MATRIX.md](implementation/FEAT015_TRACEABILITY_MATRIX.md) |
 | DOC-DEV-022 | Historical F18 Execution-Wave Evidence | [FEAT018_TRACEABILITY_MATRIX.md](implementation/FEAT018_TRACEABILITY_MATRIX.md) |
 | DOC-DEV-023 | Historical F19 Execution-Wave Evidence | [FEAT019_TRACEABILITY_MATRIX.md](implementation/FEAT019_TRACEABILITY_MATRIX.md) |
 | DOC-DEV-024 | Historical F20 Execution-Wave Evidence | [FEAT020_TRACEABILITY_MATRIX.md](implementation/FEAT020_TRACEABILITY_MATRIX.md) |
+| DOC-DEV-025 | SP-005 Implementation Plan | [SP005_IMPLEMENTATION_PLAN.md](development/SP005_IMPLEMENTATION_PLAN.md) |
+| DOC-DEV-026 | SP-006 Implementation Plan | [SP006_IMPLEMENTATION_PLAN.md](development/SP006_IMPLEMENTATION_PLAN.md) |
+| DOC-DEV-027 | SP-007 Implementation Plan | [SP007_IMPLEMENTATION_PLAN.md](development/SP007_IMPLEMENTATION_PLAN.md) |
+| DOC-DEV-028 | SP-008 Implementation Plan | [SP008_IMPLEMENTATION_PLAN.md](development/SP008_IMPLEMENTATION_PLAN.md) |
+| DOC-DEV-029 | SP-008 Test Evidence | [SP008_TEST_EVIDENCE.md](development/SP008_TEST_EVIDENCE.md) |
+| DOC-DEV-030 | F19-D Connector Ambiguity Recovery Handoff Implementation Plan | [F19_D_CONNECTOR_AMBIGUITY_RECOVERY_HANDOFF_IMPLEMENTATION_PLAN.md](implementation/F19_D_CONNECTOR_AMBIGUITY_RECOVERY_HANDOFF_IMPLEMENTATION_PLAN.md) |
+| DOC-DEV-031 | F19-E API-019 Business Handoff Implementation Plan | [F19_E_API_019_BUSINESS_HANDOFF_IMPLEMENTATION_PLAN.md](implementation/F19_E_API_019_BUSINESS_HANDOFF_IMPLEMENTATION_PLAN.md) |
+| DOC-DEV-032 | F19-F Recovery Idempotency Hardening Implementation Plan | [F19_F_RECOVERY_IDEMPOTENCY_NESTED_AMBIGUITY_IMPLEMENTATION_PLAN.md](implementation/F19_F_RECOVERY_IDEMPOTENCY_NESTED_AMBIGUITY_IMPLEMENTATION_PLAN.md) |
 | DOC-ROADMAP-001 | Master Development Roadmap Index | [00_MASTER_DEVELOPMENT_ROADMAP_INDEX.md](book-12/00_MASTER_DEVELOPMENT_ROADMAP_INDEX.md) |
 | DOC-ROADMAP-002 | Implementation Strategy | [01_IMPLEMENTATION_STRATEGY.md](book-12/01_IMPLEMENTATION_STRATEGY.md) |
 | DOC-ROADMAP-003 | Epic Breakdown | [02_EPIC_BREAKDOWN.md](book-12/02_EPIC_BREAKDOWN.md) |
@@ -885,6 +928,27 @@
 | DOC-REVIEW-096 | F16 Phase 10 UI-006 Administration Console Implementation Report | [F16_PHASE_10_UI_006_ADMINISTRATION_CONSOLE_IMPLEMENTATION_REPORT.md](reviews/F16_PHASE_10_UI_006_ADMINISTRATION_CONSOLE_IMPLEMENTATION_REPORT.md) |
 | DOC-REVIEW-097 | F16 Phase 11A Canonical Administration Read Boundaries Report | [F16_PHASE_11A_CANONICAL_ADMIN_READ_BOUNDARIES_IMPLEMENTATION_REPORT.md](reviews/F16_PHASE_11A_CANONICAL_ADMIN_READ_BOUNDARIES_IMPLEMENTATION_REPORT.md) |
 | DOC-REVIEW-098 | Canonical FEAT-016–020 Governance Alignment Report | [CANONICAL_FEAT_016_TO_020_GOVERNANCE_ALIGNMENT_REPORT.md](reviews/CANONICAL_FEAT_016_TO_020_GOVERNANCE_ALIGNMENT_REPORT.md) |
+| DOC-REVIEW-099 | F16-R1 Durable Administration Persistence Implementation Report | [F16_R1_DURABLE_ADMINISTRATION_PERSISTENCE_IMPLEMENTATION_REPORT.md](reviews/F16_R1_DURABLE_ADMINISTRATION_PERSISTENCE_IMPLEMENTATION_REPORT.md) |
+| DOC-REVIEW-100 | F16-R2 API-015 Execution Completeness Implementation Report | [F16_R2_API_015_CLOSED_CONTRACT_EXECUTION_COMPLETENESS_IMPLEMENTATION_REPORT.md](reviews/F16_R2_API_015_CLOSED_CONTRACT_EXECUTION_COMPLETENESS_IMPLEMENTATION_REPORT.md) |
+| DOC-REVIEW-101 | F16-R3 RTM Traceability Closure Report | [F16_R3_RTM_TRACEABILITY_CLOSURE_REPORT.md](reviews/F16_R3_RTM_TRACEABILITY_CLOSURE_REPORT.md) |
+| DOC-REVIEW-102 | F16 Final Gate Retry Feature Closure Report | [F16_FINAL_GATE_RETRY_FEATURE_CLOSURE_REPORT.md](reviews/F16_FINAL_GATE_RETRY_FEATURE_CLOSURE_REPORT.md) |
+| DOC-REVIEW-103 | F18-C Durable Connector Foundation Implementation Report | [F18_C_DURABLE_CONNECTOR_FOUNDATION_IMPLEMENTATION_REPORT.md](reviews/F18_C_DURABLE_CONNECTOR_FOUNDATION_IMPLEMENTATION_REPORT.md) |
+| DOC-REVIEW-104 | F18-D Closed API-018 Runtime HTTP Implementation Report | [F18_D_CLOSED_API_018_RUNTIME_HTTP_IMPLEMENTATION_REPORT.md](reviews/F18_D_CLOSED_API_018_RUNTIME_HTTP_IMPLEMENTATION_REPORT.md) |
+| DOC-REVIEW-105 | F19-C Publication Resolve/Recover Separation Implementation Report | [F19_C_PUBLICATION_RESOLVE_RECOVER_SEPARATION_IMPLEMENTATION_REPORT.md](reviews/F19_C_PUBLICATION_RESOLVE_RECOVER_SEPARATION_IMPLEMENTATION_REPORT.md) |
+| DOC-REVIEW-106 | F19-D Connector Ambiguity Recovery Handoff Completion | [F19_D_CONNECTOR_AMBIGUITY_RECOVERY_HANDOFF_COMPLETION.md](reviews/F19_D_CONNECTOR_AMBIGUITY_RECOVERY_HANDOFF_COMPLETION.md) |
+| DOC-REVIEW-107 | F19-E API-019 Business Handoff Completion | [F19_E_API_019_BUSINESS_HANDOFF_COMPLETION.md](reviews/F19_E_API_019_BUSINESS_HANDOFF_COMPLETION.md) |
+| DOC-REVIEW-108 | F19-F Recovery Idempotency Hardening Completion | [F19_F_RECOVERY_IDEMPOTENCY_NESTED_AMBIGUITY_COMPLETION.md](reviews/F19_F_RECOVERY_IDEMPOTENCY_NESTED_AMBIGUITY_COMPLETION.md) |
+| DOC-REVIEW-109 | F19-H Final Integration Hardening Completion | [F19_H_FINAL_INTEGRATION_HARDENING_COMPLETION.md](reviews/F19_H_FINAL_INTEGRATION_HARDENING_COMPLETION.md) |
+| DOC-REVIEW-110 | F20-A Operations Console Inventory Gap Report | [F20_A_OPERATIONS_CONSOLE_INVENTORY_GAP_REPORT.md](reviews/F20_A_OPERATIONS_CONSOLE_INVENTORY_GAP_REPORT.md) |
+| DOC-REVIEW-111 | F20-B Operations Read Models API Projection Report | [F20_B_OPERATIONS_READ_MODELS_API_PROJECTION_IMPLEMENTATION_REPORT.md](reviews/F20_B_OPERATIONS_READ_MODELS_API_PROJECTION_IMPLEMENTATION_REPORT.md) |
+| DOC-REVIEW-112 | F20-C Publication Operations Console Report | [F20_C_PUBLICATION_OPERATIONS_CONSOLE_IMPLEMENTATION_REPORT.md](reviews/F20_C_PUBLICATION_OPERATIONS_CONSOLE_IMPLEMENTATION_REPORT.md) |
+| DOC-REVIEW-113 | F20-D Connector Source Operations Console Report | [F20_D_CONNECTOR_SOURCE_OPERATIONS_CONSOLE_IMPLEMENTATION_REPORT.md](reviews/F20_D_CONNECTOR_SOURCE_OPERATIONS_CONSOLE_IMPLEMENTATION_REPORT.md) |
+| DOC-REVIEW-114 | F20-E Reconciliation Recovery Console Report | [F20_E_RECONCILIATION_RECOVERY_CONSOLE_IMPLEMENTATION_REPORT.md](reviews/F20_E_RECONCILIATION_RECOVERY_CONSOLE_IMPLEMENTATION_REPORT.md) |
+| DOC-REVIEW-115 | F20-F Audit Evidence Lineage Integration Report | [F20_F_AUDIT_EVIDENCE_LINEAGE_INTEGRATION_REPORT.md](reviews/F20_F_AUDIT_EVIDENCE_LINEAGE_INTEGRATION_REPORT.md) |
+| DOC-REVIEW-116 | F20-G UX Security Accessibility Hardening Report | [F20_G_UX_SECURITY_ACCESSIBILITY_HARDENING_REPORT.md](reviews/F20_G_UX_SECURITY_ACCESSIBILITY_HARDENING_REPORT.md) |
+| DOC-REVIEW-117 | F20-H Final Integration Hardening Report | [F20_H_FINAL_INTEGRATION_HARDENING_REPORT.md](reviews/F20_H_FINAL_INTEGRATION_HARDENING_REPORT.md) |
+| DOC-REVIEW-118 | SP-008 Completion Report | [SP-008_COMPLETION.md](reviews/SP-008_COMPLETION.md) |
+| DOC-REVIEW-119 | Current Main Document ID Governance Remediation Report | [CURRENT_MAIN_DOCUMENT_ID_GOVERNANCE_REMEDIATION_REPORT.md](reviews/CURRENT_MAIN_DOCUMENT_ID_GOVERNANCE_REMEDIATION_REPORT.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books

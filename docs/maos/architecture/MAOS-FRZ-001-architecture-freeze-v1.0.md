@@ -2,7 +2,7 @@
 
 | 항목 | 값 |
 |---|---|
-| Document ID | MAOS-FRZ-001 |
+| Artifact ID | MAOS-FRZ-001 |
 | 문서 버전 | v0.1 |
 | 상태 | DRAFT |
 | 문서 유형 | PLACEHOLDER |

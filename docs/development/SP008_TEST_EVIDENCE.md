@@ -2,7 +2,8 @@
 
 | 항목 | 값 |
 |---|---|
-| Document ID | DOC-DEV-SP008-TEST-EVIDENCE |
+| Document ID | DOC-DEV-029 |
+| Historical Artifact ID | DOC-DEV-SP008-TEST-EVIDENCE |
 | 문서 버전 | v1.0 |
 | 상태 | FROZEN |
 | Sprint | SP-008 |

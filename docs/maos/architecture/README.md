@@ -2,7 +2,7 @@
 
 | 항목 | 값 |
 |---|---|
-| Document ID | MAOS-IDX-001 |
+| Artifact ID | MAOS-IDX-001 |
 | 문서 버전 | v0.1 |
 | 상태 | DRAFT |
 | 적용 범위 | MAOS namespace |

@@ -2,7 +2,8 @@
 
 | 항목 | 값 |
 |---|---|
-| Document ID | DOC-REV-082 |
+| Document ID | DOC-REVIEW-099 |
+| Historical Artifact ID | DOC-REV-082 |
 | Version | v0.1 |
 | Status | IN REVIEW |
 | Owner | Architecture Owner / Development Owner |

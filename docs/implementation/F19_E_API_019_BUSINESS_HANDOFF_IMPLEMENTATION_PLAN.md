@@ -2,7 +2,8 @@
 
 | 항목 | 값 |
 |---|---|
-| Document ID | F19-E-PLAN |
+| Document ID | DOC-DEV-031 |
+| Historical Artifact ID | F19-E-PLAN |
 | 문서 버전 | v0.2 |
 | 상태 | DRAFT |
 | 소유 역할 | Architecture Owner |

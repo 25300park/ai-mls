@@ -2,7 +2,7 @@
 
 | 항목 | 값 |
 |---|---|
-| Document ID | MAOS-P13-001 |
+| Artifact ID | MAOS-P13-001 |
 | 문서 버전 | v0.1 |
 | 상태 | DRAFT |
 | 소유 역할 | System Development Team |

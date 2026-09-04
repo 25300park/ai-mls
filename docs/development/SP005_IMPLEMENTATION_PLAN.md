@@ -2,7 +2,8 @@
 
 | 항목 | 값 |
 |---|---|
-| Document ID | DOC-DEV-SP005-PLAN |
+| Document ID | DOC-DEV-025 |
+| Historical Artifact ID | DOC-DEV-SP005-PLAN |
 | 문서 버전 | v0.1 |
 | 상태 | DRAFT |
 | Sprint | SP-005 |

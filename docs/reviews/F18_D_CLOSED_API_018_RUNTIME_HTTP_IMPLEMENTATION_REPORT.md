@@ -2,7 +2,8 @@
 
 | 항목 | 값 |
 |---|---|
-| Document ID | DOC-REVIEW-F18-D-001 |
+| Document ID | DOC-REVIEW-104 |
+| Historical Artifact ID | DOC-REVIEW-F18-D-001 |
 | 문서 버전 | v0.1 |
 | 상태 | IN REVIEW |
 | 소유 역할 | Architecture Owner |

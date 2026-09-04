@@ -2,7 +2,8 @@
 
 | 항목 | 값 |
 |---|---|
-| Document ID | DOC-REVIEW-F15-009 |
+| Document ID | DOC-REVIEW-079 |
+| Historical Artifact ID | DOC-REVIEW-F15-009 |
 | 문서 버전 | v0.1 |
 | 상태 | DRAFT |
 | 소유 역할 | Architecture Owner / Implementation Owner |

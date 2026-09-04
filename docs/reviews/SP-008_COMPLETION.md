@@ -2,7 +2,8 @@
 
 | 항목 | 값 |
 |---|---|
-| Document ID | DOC-REVIEW-SP008-COMPLETION |
+| Document ID | DOC-REVIEW-118 |
+| Historical Artifact ID | DOC-REVIEW-SP008-COMPLETION |
 | Version | v1.0 |
 | Status | FROZEN |
 | Sprint status | COMPLETED_ACCEPTED_FROZEN |
