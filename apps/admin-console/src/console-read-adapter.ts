@@ -363,13 +363,18 @@ export class ConsoleReadAdapter {
         ? emptyResult(request.page, "No authorized Recovery Case is currently available.")
         : this.safeError(request);
     }
+    const originIdentity = safeRecoveryOriginIdentity(result.data["originDomain"], result.data["originIdentity"]);
+    if (originIdentity === undefined) return this.safeError(request);
     return immutableConsole({
       page: request.page,
       state: "READY" as const,
-      data: selectFields(result.data, [
-        "recoveryCaseId", "originDomain", "originIdentity", "status", "finding", "recoveryId",
-        "evidenceRefs", "version", "createdAt", "resolvedAt",
-      ]),
+      data: {
+        ...selectFields(result.data, [
+          "recoveryCaseId", "originDomain", "status", "finding", "recoveryId",
+          "evidenceRefs", "version", "createdAt", "resolvedAt",
+        ]),
+        originIdentity,
+      },
     });
   }
 
@@ -495,6 +500,22 @@ function safeAuditEvent(value: unknown): Readonly<Record<string, unknown>> | und
       ? value["evidenceRefs"]
       : undefined,
   }, ["eventId", "eventType", "actorId", "actorType", "action", "resourceType", "resourceId", "decision", "outcome", "correlationId", "occurredAt", "evidenceRefs"]);
+}
+
+function safeRecoveryOriginIdentity(originDomain: unknown, value: unknown): Readonly<Record<string, string>> | undefined {
+  if (!isRecord(value)) return undefined;
+  if (originDomain === "PUBLICATION" && typeof value["reconciliationCaseId"] === "string" && typeof value["attemptId"] === "string") {
+    return Object.freeze({ reconciliationCaseId: value["reconciliationCaseId"], attemptId: value["attemptId"] });
+  }
+  if (originDomain === "CONNECTOR" && typeof value["invocationId"] === "string") {
+    return Object.freeze({ invocationId: value["invocationId"] });
+  }
+  if (originDomain === "EXTERNAL_INTEGRATION" && typeof value["integrationContractId"] === "string") {
+    return Object.freeze(Object.fromEntries([
+      "integrationContractId", "mappingId", "observationId", "conflictEvidenceId",
+    ].flatMap((key) => typeof value[key] === "string" ? [[key, value[key]]] : [])));
+  }
+  return undefined;
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {

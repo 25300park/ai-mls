@@ -538,7 +538,7 @@ test("F20-B projects F19 exact recovery case with finding and disposition kept s
             resourceType: "Publication",
             resourceId: publicationId,
             originDomain: "CONNECTOR",
-            originIdentity: Object.freeze({ invocationId: "invocation-1" }),
+            originIdentity: Object.freeze({ invocationId: "invocation-1", mappingId: "cross-domain-mapping", authorization: "Bearer test-sensitive-value" }),
             parentRecoveryCaseId: "recovery-parent-secret",
             status: "RESOLVED",
             finding: "CONFIRMED_NOT_EXECUTED",
@@ -588,6 +588,8 @@ test("F20-B projects F19 exact recovery case with finding and disposition kept s
   assert.equal(Object.hasOwn(result.data ?? {}, "resourceType"), false);
   assert.equal(Object.hasOwn(result.data ?? {}, "parentRecoveryCaseId"), false);
   assert.equal(JSON.stringify(result).includes("secret-provider-response"), false);
+  assert.equal(JSON.stringify(result).includes("test-sensitive-value"), false);
+  assert.equal(JSON.stringify(result).includes("cross-domain-mapping"), false);
 });
 
 test("F20-B projects API-016 audit events without details or internal evidence", () => {

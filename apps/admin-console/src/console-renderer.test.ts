@@ -16,11 +16,13 @@ test("POST-F15-CONSOLE shell renders the approved accessible navigation and load
     "AI-MLS ADMIN", "Dashboard", "Operations", "Revalidation", "Recovery",
     "Audit / History", "Administration", "Projection", "Operations / Health", "Loading...",
     "Connector Operations",
+    "Recovery Cases",
   ]) assert.equal(html.includes(label), true, label);
   for (const path of [
     "/", "/publication/operations", "/publication/revalidation", "/publication/recovery",
     "/publication/audit", "/administration", "/system/projection", "/system/operations",
     "/connector/operations",
+    "/recovery/cases",
   ]) assert.equal(html.includes(`href=\"${path}`), true, path);
   assert.equal(html.includes("<nav"), true);
   assert.equal(html.includes("<main"), true);
@@ -32,6 +34,7 @@ test("POST-F15-CONSOLE shell renders the approved accessible navigation and load
   for (const queryName of ["connectorId", "sourceId", "batchId"]) {
     assert.equal(CONSOLE_BROWSER_CLIENT.includes(queryName), true, queryName);
   }
+  assert.equal(CONSOLE_BROWSER_CLIENT.includes("recoveryCaseId"), true);
 });
 
 test("POST-F15-CONSOLE UI-031 renders bounded fields and diagnostic actions as non-executable", () => {
@@ -187,6 +190,26 @@ test("F20-D renders bounded Connector batch operations without force checkpoint 
     assert.equal(html.includes(expected), true, expected);
   }
   assert.equal(/Force checkpoint|AdvanceCheckpoint|<form|data-command|onclick=/iu.test(html), false);
+});
+
+test("F20-E renders an exact Recovery Case with finding, disposition, and lineage kept separate", () => {
+  const html = renderConsoleResult(ready("RECOVERY_CASE", {
+    recoveryCaseId: "recovery-case-1",
+    originDomain: "CONNECTOR",
+    originIdentity: { invocationId: "invocation-1" },
+    status: "RESOLVED",
+    finding: "CONFIRMED_NOT_EXECUTED",
+    recoveryId: "recovery-1",
+    evidenceRefs: ["evidence:recovery:1"],
+    version: 3,
+    createdAt: "2026-09-04T00:00:00.000Z",
+    resolvedAt: "2026-09-04T00:05:00.000Z",
+  }));
+
+  for (const expected of ["Recovery Case", "Origin", "Reconciliation Finding", "Recovery Disposition", "Case Lineage", "CONFIRMED_NOT_EXECUTED", "recovery-1", "UNAVAILABLE"]) {
+    assert.equal(html.includes(expected), true, expected);
+  }
+  assert.equal(/<form|data-command|onclick=|AUTHORIZE_RECOVERY|RESOLVE_RECOVERY_CASE/iu.test(html), false);
 });
 
 test("POST-F15-CONSOLE renders meaningful empty and safe error states without raw detail", () => {

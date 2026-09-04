@@ -42,6 +42,7 @@ const browserRoutes: Readonly<Record<string, ConsolePage>> = Object.freeze({
   "/administration/governance": "UI-036",
   "/system/operations": "OPERATIONS",
   "/connector/operations": "CONNECTOR",
+  "/recovery/cases": "RECOVERY_CASE",
 });
 
 export function createAdminConsoleServer(configuration: AdminConsoleServerConfiguration): AdminConsoleServer {
@@ -83,10 +84,12 @@ export function createAdminConsoleServer(configuration: AdminConsoleServerConfig
             writeJson(response, 400, { success: false, error: { code: "INVALID_CONSOLE_REQUEST", message: "The Console request is invalid." } });
             return;
           }
-          const publicationId = safeIdentifier(url.searchParams.get("publicationId"));
-          const connectorId = safeIdentifier(url.searchParams.get("connectorId"));
-          const sourceId = safeIdentifier(url.searchParams.get("sourceId"));
-          const batchId = safeIdentifier(url.searchParams.get("batchId"));
+          const publicationId = ["UI-031", "UI-032", "UI-033", "UI-035", "PROJECTION"].includes(page)
+            ? safeIdentifier(url.searchParams.get("publicationId")) : undefined;
+          const connectorId = page === "CONNECTOR" ? safeIdentifier(url.searchParams.get("connectorId")) : undefined;
+          const sourceId = page === "CONNECTOR" ? safeIdentifier(url.searchParams.get("sourceId")) : undefined;
+          const batchId = page === "CONNECTOR" ? safeIdentifier(url.searchParams.get("batchId")) : undefined;
+          const recoveryCaseId = page === "RECOVERY_CASE" ? safeIdentifier(url.searchParams.get("recoveryCaseId")) : undefined;
           const baseReadRequest: ConsoleReadRequest = {
             page,
             sessionId: configuration.sessionId,
@@ -96,6 +99,7 @@ export function createAdminConsoleServer(configuration: AdminConsoleServerConfig
             ...(connectorId === undefined ? {} : { connectorId }),
             ...(sourceId === undefined ? {} : { sourceId }),
             ...(batchId === undefined ? {} : { batchId }),
+            ...(recoveryCaseId === undefined ? {} : { recoveryCaseId }),
             correlationId: `console-read-${String(requestSequence)}`,
           };
           if (page === "UI-036" && configuration.administrationSelectorScopes === undefined) {

@@ -17,6 +17,7 @@ const approvedRoutes = Object.freeze([
   "/", "/publication/operations", "/publication/revalidation", "/publication/recovery",
   "/publication/audit", "/administration", "/administration/governance", "/system/projection", "/system/operations",
   "/connector/operations",
+  "/recovery/cases",
 ]);
 
 test("POST-F15-CONSOLE Node server renders every approved browser route and bounded read endpoint", async () => {
@@ -77,6 +78,38 @@ test("F20-D Node server passes only bounded Connector read identities to the exi
   assert.equal(reads[0]?.sourceId, "source-1");
   assert.equal(reads[0]?.batchId, "batch-1");
   assert.equal("checkpointCandidate" in (reads[0] ?? {}), false);
+  await server.stop();
+});
+
+test("F20-E Node server passes only the exact Recovery Case identity to the existing Console adapter", async () => {
+  const reads: ConsoleReadRequest[] = [];
+  const server = createAdminConsoleServer({
+    host: "127.0.0.1",
+    port: 0,
+    sessionId: "console-session",
+    tenantId: "team-a",
+    readAdapter: {
+      read: (input) => {
+        reads.push(input);
+        return Object.freeze({ page: input.page, state: "EMPTY", message: "No authorized Recovery Case is currently available." });
+      },
+    },
+  });
+  await server.start();
+
+  const shell = await send(server.port, "GET", "/recovery/cases?recoveryCaseId=recovery-case-1");
+  const view = await send(server.port, "GET", "/api/console/view?page=RECOVERY_CASE&recoveryCaseId=recovery-case-1&connectorId=connector-cross&sourceId=source-cross&batchId=batch-cross");
+
+  assert.equal(shell.statusCode, 200);
+  assert.equal(shell.body.includes('data-console-page="RECOVERY_CASE"'), true);
+  assert.equal(view.statusCode, 200);
+  assert.equal(reads.length, 1);
+  assert.equal(reads[0]?.page, "RECOVERY_CASE");
+  assert.equal(reads[0]?.recoveryCaseId, "recovery-case-1");
+  assert.equal(reads[0]?.connectorId, undefined);
+  assert.equal(reads[0]?.sourceId, undefined);
+  assert.equal(reads[0]?.batchId, undefined);
+  assert.equal("recoveryDisposition" in (reads[0] ?? {}), false);
   await server.stop();
 });
 

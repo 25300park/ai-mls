@@ -30,6 +30,7 @@ const navigation = Object.freeze([
   ]) }),
   Object.freeze({ section: "Integration", items: Object.freeze([
     { page: "CONNECTOR" as const, label: "Connector Operations", path: "/connector/operations" },
+    { page: "RECOVERY_CASE" as const, label: "Recovery Cases", path: "/recovery/cases" },
   ]) }),
   Object.freeze({ section: "System", items: Object.freeze([
     { page: "PROJECTION" as const, label: "Projection", path: "/system/projection" },
@@ -98,7 +99,7 @@ export function renderConsoleResult(result: ConsoleReadResult): string {
     case "OPERATIONS": return renderOperations(data);
     case "CONNECTOR": return renderConnectorOperations(data);
     case "EXTERNAL_INTEGRATION": return definitionGrid(data);
-    case "RECOVERY_CASE": return definitionGrid(data);
+    case "RECOVERY_CASE": return renderRecoveryCase(data);
     case "EVIDENCE": return definitionGrid(data);
   }
 }
@@ -266,6 +267,16 @@ function renderConnectorOperations(data: Readonly<Record<string, unknown>>): str
   <section><div class="section-heading"><h2>Checkpoint</h2></div>${definitionGrid(select(data, ["checkpointReference", "checkpointVersion"]))}<p class="scope-note">Checkpoint advancement and Connector execution controls are not exposed.</p></section>`;
 }
 
+function renderRecoveryCase(data: Readonly<Record<string, unknown>>): string {
+  const unavailable = `<span class="status-badge">UNAVAILABLE</span>`;
+  return `<section><div class="section-heading"><div><p class="eyebrow">F19 · EXACT READ</p><h2>Recovery Case</h2></div>${statusBadge(data["status"])}</div>${definitionGrid(select(data, ["recoveryCaseId", "status", "version", "createdAt", "resolvedAt"]))}</section>
+  <section><div class="section-heading"><h2>Origin</h2></div>${definitionGrid(select(data, ["originDomain", "originIdentity"]))}</section>
+  <section><div class="section-heading"><h2>Reconciliation Finding</h2></div>${data["finding"] === undefined ? unavailable : statusBadge(data["finding"])}</section>
+  <section><div class="section-heading"><h2>Recovery Disposition</h2></div>${unavailable}${definitionGrid(select(data, ["recoveryId"]))}<p class="scope-note">Disposition is not exposed by the current exact-case read contract.</p></section>
+  <section><div class="section-heading"><h2>Case Lineage</h2></div>${unavailable}<p class="scope-note">Parent and child case references are not exposed by the current exact-case read contract.</p></section>
+  <section><div class="section-heading"><h2>Safe Evidence</h2></div>${definitionGrid(select(data, ["evidenceRefs"]))}</section>`;
+}
+
 function historySection(title: string, entries: readonly unknown[]): string {
   if (entries.length === 0) return `<section><h2>${escapeHtml(title)}</h2><p class="empty-inline">No entries are currently available.</p></section>`;
   return `<section><h2>${escapeHtml(title)}</h2><div class="table-wrap"><table><tbody>${entries.map((entry) => `<tr><td>${isRecord(entry) ? definitionGrid(entry) : escapeHtml(entry)}</td></tr>`).join("")}</tbody></table></div></section>`;
@@ -349,7 +360,7 @@ export const CONSOLE_BROWSER_CLIENT = String.raw`(() => {
     const request = new URLSearchParams({ page });
     const publicationId = query.get("publicationId");
     if (publicationId) request.set("publicationId", publicationId);
-    for (const name of ["connectorId", "sourceId", "batchId"]) {
+    for (const name of ["connectorId", "sourceId", "batchId", "recoveryCaseId"]) {
       const value = query.get(name);
       if (value) request.set(name, value);
     }
