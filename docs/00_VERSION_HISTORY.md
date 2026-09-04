@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-007 |
-| 문서 버전 | v1.13 |
+| 문서 버전 | v1.14 |
 | 상태 | FROZEN |
 | 소유 역할 | Architecture Owner |
 
@@ -45,6 +45,7 @@ Architecture Bible과 운영 문서의 release-level 변경 이력을 관리한�
 | 2026-08-29 | v1.11 | IN REVIEW | F16 Final Gate Retry / Feature Closure | R1 durable production persistence·atomic evidence·idempotency, R2 exact 10-operation API-015 execution, R3 RTM closure, canonical scope, authorization/isolation, Console/HTTP integration 및 full 774/774 regression을 재검증하고 FEAT-016 Final Gate를 승인; DOC-CORE-001 v3.2, DOC-CORE-007 v1.11, DOC-DEV-017 v0.8 및 DOC-REVIEW-102 반영 | F16 Final Gate Retry Brief; production audit 0; full audit approved dev-only High 4; independent review Critical/Important/Minor 0/0/0 READY |
 | 2026-09-04 | v1.12 | APPROVED | Canonical FEAT-016–020 Governance Identity & Evidence Alignment | Frozen FEAT-016–020 identity를 보존하고 historical F16–F20 execution-wave evidence를 실제 canonical owner에 귀속; TRACE-016과 IMP-015–021 overlay, affected RTM, Decision/CR/Index evidence를 DEC-115/CR-027 delta로 정렬; DOC-CORE-001 v3.3, DOC-CORE-007 v1.12, DOC-CORE-020 v1.6, DOC-CORE-021 v1.5, DOC-CORE-035 v1.6, DOC-CORE-036–038 v0.3, DOC-ROADMAP-004 v1.3, DOC-ROADMAP-016 v1.4, DOC-DEV-017 v0.9, DOC-DEV-021–024 및 DOC-REVIEW-098 반영 | Architecture Owner mapping design approval; DEC-115; CR-027; immutable Architecture v1.1 checksum baseline preserved |
 | 2026-09-04 | v1.13 | IN REVIEW | Current Main Document ID Governance Remediation | 33개 invalid metadata ID를 canonical DEV/REVIEW ID 또는 별도 MAOS Artifact ID로 분류·교정하고 DOC-DEV-018–020 및 신규 DOC-DEV-025–032, DOC-REVIEW-099–119을 Master Index에 등록; historical artifact label과 내용·결과는 보존 | Current Main Document ID / Master Index Governance Remediation Brief; independent governance review Critical/Important/Minor 0/0/0 READY; immutable Architecture v1.1 checksum baseline preserved |
+| 2026-09-05 | v1.14 | IN REVIEW | Current Main Exact-HEAD Fresh Integrated Validation Retry | post-Document-ID-remediation source HEAD `e69e3cd`에서 governance, 982/982 regression, 246/246 cross-layer integration, architecture checksum, audits, Gitleaks 및 Browser 13/13을 fresh 검증하고 DOC-REVIEW-120을 등록 | Current Main Exact-HEAD Fresh Integrated Validation Retry Brief; independent review Critical/Important/Minor 0/0/0 READY; Architecture Owner baseline approval pending |
 
 ## 기록 규칙
 

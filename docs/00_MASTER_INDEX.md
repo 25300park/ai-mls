@@ -3,10 +3,10 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-001 |
-| 문서 버전 | v3.4 |
+| 문서 버전 | v3.5 |
 | 상태 | IN REVIEW |
 | 소유 역할 | Architecture Owner |
-| 기준일 | 2026-09-04 |
+| 기준일 | 2026-09-05 |
 
 이 문서는 Architecture Bible의 master navigation이자 계획 manifest다. `AVAILABLE`은 현재 파일이 존재함을, `PLANNED`는 해당 Brief에서 생성할 예정임을 뜻한다. 문서 상태(`DRAFT` 등)와 파일 존재 상태(`AVAILABLE` 등)는 서로 다른 값이다.
 
@@ -244,6 +244,7 @@
 | DOC-REVIEW-117 | [F20-H Final Integration Hardening](reviews/F20_H_FINAL_INTEGRATION_HARDENING_REPORT.md) | F20 final integration and hardening evidence | AVAILABLE |
 | DOC-REVIEW-118 | [SP-008 Completion](reviews/SP-008_COMPLETION.md) | SP-008 frozen completion evidence | AVAILABLE |
 | DOC-REVIEW-119 | [Current Main Document ID Governance Remediation](reviews/CURRENT_MAIN_DOCUMENT_ID_GOVERNANCE_REMEDIATION_REPORT.md) | Document ID and Master Index remediation evidence | AVAILABLE |
+| DOC-REVIEW-120 | [Current Main Exact-HEAD Fresh Integrated Validation Retry](reviews/CURRENT_MAIN_EXACT_HEAD_FRESH_INTEGRATED_VALIDATION_RETRY_REPORT.md) | post-remediation exact-head integrated baseline candidate evidence | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -949,6 +950,7 @@
 | DOC-REVIEW-117 | F20-H Final Integration Hardening Report | [F20_H_FINAL_INTEGRATION_HARDENING_REPORT.md](reviews/F20_H_FINAL_INTEGRATION_HARDENING_REPORT.md) |
 | DOC-REVIEW-118 | SP-008 Completion Report | [SP-008_COMPLETION.md](reviews/SP-008_COMPLETION.md) |
 | DOC-REVIEW-119 | Current Main Document ID Governance Remediation Report | [CURRENT_MAIN_DOCUMENT_ID_GOVERNANCE_REMEDIATION_REPORT.md](reviews/CURRENT_MAIN_DOCUMENT_ID_GOVERNANCE_REMEDIATION_REPORT.md) |
+| DOC-REVIEW-120 | Current Main Exact-HEAD Fresh Integrated Validation Retry Report | [CURRENT_MAIN_EXACT_HEAD_FRESH_INTEGRATED_VALIDATION_RETRY_REPORT.md](reviews/CURRENT_MAIN_EXACT_HEAD_FRESH_INTEGRATED_VALIDATION_RETRY_REPORT.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books
