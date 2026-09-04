@@ -275,12 +275,35 @@ test("POST-F15-CONSOLE renders meaningful empty and safe error states without ra
   assert.equal(unavailable.includes("Unavailable in current backend."), true);
   assert.equal(error.includes("CONSOLE_READ_UNAVAILABLE"), true);
   assert.equal(error.includes("safe-correlation"), true);
+  assert.equal(error.includes('role="alert"'), true);
   assert.equal(error.includes("stack"), false);
   assert.equal(error.includes("C:\\internal"), false);
   assert.equal(escaped.includes("<script>secret()"), false);
   assert.equal(escaped.includes("&lt;script&gt;secret()&lt;/script&gt;"), true);
   assert.equal(escaped.includes('onclick="secret()"'), false);
   assert.equal(escaped.includes("&quot; onclick=&quot;secret()"), true);
+});
+
+test("F20-G preserves read-only security and accessible responsive presentation across operations pages", () => {
+  const malicious = `<script>globalThis.compromised=true</script>`;
+  const pages = [
+    ready("CONNECTOR", { batchId: malicious, technicalStatus: "BLOCKED" }),
+    ready("RECOVERY_CASE", { recoveryCaseId: malicious, status: "OPEN", originDomain: "CONNECTOR", originIdentity: { invocationId: malicious } }),
+    ready("EXTERNAL_INTEGRATION", { mappingId: malicious, state: "ACTIVE", evidenceRef: "evidence:safe:1" }),
+    ready("EVIDENCE", { events: [{ eventId: malicious, outcome: "SUCCEEDED" }] }),
+  ];
+  for (const page of pages) {
+    const html = renderConsoleResult(page);
+    assert.equal(html.includes(malicious), false);
+    assert.equal(html.includes("&lt;script&gt;"), true);
+    assert.equal(/<form|data-command|onclick=|Force checkpoint|AdvanceCheckpoint|AUTHORIZE_RECOVERY|RESOLVE_RECOVERY_CASE/iu.test(html), false);
+  }
+  assert.equal(CONSOLE_STYLES.includes(":focus-visible"), true);
+  assert.equal(CONSOLE_STYLES.includes("overflow-x:auto"), true);
+  assert.equal(CONSOLE_STYLES.includes("@media(max-width:760px)"), true);
+  assert.equal(CONSOLE_BROWSER_CLIENT.includes("/api/console/publication/command"), false);
+  assert.equal(CONSOLE_BROWSER_CLIENT.includes("/api/console/connector/command"), false);
+  assert.equal(CONSOLE_BROWSER_CLIENT.includes("/api/console/recovery/command"), false);
 });
 
 test("F16-PHASE-10 UI-006 renders compact supported data and unavailable canonical sections without write controls", () => {

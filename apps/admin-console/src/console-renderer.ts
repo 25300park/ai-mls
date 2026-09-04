@@ -86,7 +86,7 @@ export function renderConsoleResult(result: ConsoleReadResult): string {
   if (result.state === "NOT_AUTHORIZED") return stateCard("NOT AUTHORIZED", result.message ?? "Not authorized.");
   if (result.state === "ERROR") {
     const error = result.error;
-    return `<section class="state-card error-state"><p class="eyebrow">SAFE ERROR</p><h2>${escapeHtml(error?.code ?? "CONSOLE_READ_UNAVAILABLE")}</h2><p>${escapeHtml(error?.message ?? "The requested Console view is unavailable.")}</p><p class="reference">Reference: ${escapeHtml(error?.correlationId ?? "console-correlation-unavailable")}</p></section>`;
+    return `<section class="state-card error-state" role="alert"><p class="eyebrow">SAFE ERROR</p><h2>${escapeHtml(error?.code ?? "CONSOLE_READ_UNAVAILABLE")}</h2><p>${escapeHtml(error?.message ?? "The requested Console view is unavailable.")}</p><p class="reference">Reference: ${escapeHtml(error?.correlationId ?? "console-correlation-unavailable")}</p></section>`;
   }
   const data = result.data ?? Object.freeze({});
   switch (result.page) {
@@ -361,7 +361,7 @@ export const CONSOLE_BROWSER_CLIENT = String.raw`(() => {
   if (!root || !page) return;
   let pendingForm = null;
   const safeFailure = () => {
-    root.innerHTML = "<section class=\"state-card error-state\"><h2>CONSOLE_READ_UNAVAILABLE</h2><p>The requested Console view is unavailable.</p></section>";
+    root.innerHTML = "<section class=\"state-card error-state\" role=\"alert\"><h2>CONSOLE_READ_UNAVAILABLE</h2><p>The requested Console view is unavailable.</p></section>";
     root.setAttribute("aria-busy", "false");
   };
   const setHtml = (html) => {
