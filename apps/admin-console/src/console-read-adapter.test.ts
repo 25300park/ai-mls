@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { PublicationApi } from "../../api/src/publication-api.js";
+import type { PublicationQueryResponse } from "../../api/src/publication-api-contracts.js";
 import { AuditLog } from "../../../modules/audit/src/audit-log.js";
 import { AuthorizationService, type RoleAssignment } from "../../../modules/authorization/src/authorization-service.js";
 import { PublicationAggregate } from "../../../modules/publication/src/publication-aggregate.js";
@@ -139,6 +140,121 @@ test("POST-F15-CONSOLE read adapter returns immutable UI-031 data through API-01
   assert.equal(setupResult.commandCalls, 0);
   assert.equal(Object.isFrozen(result), true);
   assert.equal(Object.isFrozen(result.data), true);
+});
+
+test("F20-C composes the existing API-014 operations, revalidation, recovery and audit reads without mutation", () => {
+  const setupResult = setup();
+  const operations: string[] = [];
+  const adapter = new ConsoleReadAdapter({
+    queryPort: {
+      executeQuery(input: unknown) {
+        const operation = (input as Readonly<Record<string, unknown>>)["operation"] as string;
+        operations.push(operation);
+        const views: Readonly<Record<string, Readonly<Record<string, unknown>>>> = Object.freeze({
+          GET_PUBLICATION_OPERATIONS_VIEW: Object.freeze({
+            screenId: "UI-031", publicationId, lifecycle: "RECONCILIATION_REQUIRED",
+            suspensionStatus: "NOT_SUSPENDED", aggregateVersion: 9,
+            target: Object.freeze({ id: "target-console-1", version: 5 }),
+            channel: Object.freeze({ id: "channel-console-1", policyVersion: "channel-policy-console-v1" }),
+            currentOperationState: "RECONCILIATION_REQUIRED",
+            prerequisiteSummary: Object.freeze({ approval: "APPROVED", verification: "VERIFIED", permission: "ACTIVE", policy: "publication-policy-v1", binding: "MATCHED", mfaReady: true, documentedReasonRequired: true }),
+            availableActions: Object.freeze([]), blockedActions: Object.freeze(["RECONCILIATION_REQUIRED"]), stale: false,
+          }),
+          GET_PUBLICATION_REVALIDATION_VIEW: Object.freeze({
+            screenId: "UI-032", publicationId, approvalStatus: "APPROVED", verificationStatus: "VERIFIED",
+            permissionStatus: "ACTIVE", policyStatus: "CURRENT", bindingStatus: "MATCHED",
+            stale: false, revalidationRequired: false, availableActions: Object.freeze([]),
+          }),
+          GET_PUBLICATION_RECOVERY_VIEW: Object.freeze({
+            screenId: "UI-033", publicationId, lifecycle: "RECONCILIATION_REQUIRED", reconciliationStatus: "OPEN",
+            caseId: "reconciliation-case-1", attemptId: "attempt-2", outcomeCategory: "UNKNOWN",
+            manualReviewRequired: true, availableActions: Object.freeze([]),
+            safeEvidenceSummary: Object.freeze({ referenceCount: 2, restricted: true }),
+          }),
+          GET_PUBLICATION_AUDIT_VIEW: Object.freeze({
+            screenId: "UI-035", historyKind: "PUBLICATION_AUDIT_HISTORY", publicationId, aggregateVersion: 9,
+            lifecycleHistory: Object.freeze([]),
+            attemptHistory: Object.freeze([
+              Object.freeze({ id: "attempt-1", sequence: 1, operation: "PUBLISH", outcome: "CONFIRMED", occurredAt: now }),
+              Object.freeze({ id: "attempt-2", sequence: 2, operation: "CORRECT", outcome: "UNKNOWN", occurredAt: now, rawProviderPayload: "Bearer leaked-secret" }),
+            ]),
+            reconciliationHistory: Object.freeze([]),
+            authorizationDecisionSummary: Object.freeze({ allowed: 2, denied: 1 }),
+            auditEntries: Object.freeze([Object.freeze({ id: "audit-safe-1", command: "CORRECT_PUBLICATION", timestamp: now, version: 9, result: "FAILED", failureCode: "COMMAND_FAILED" })]),
+          }),
+        });
+        return Object.freeze({
+          requestId: "f20-c-read", success: true as const, operation: operation as never,
+          result: Object.freeze({ view: views[operation]!, sourceVersion: 9, generatedAt: now, stale: false, provenance: Object.freeze({ source: "CANONICAL_PUBLICATION" as const }) }),
+          metadata: Object.freeze({ correlationId: "f20-c-correlation" }),
+        }) as unknown as PublicationQueryResponse;
+      },
+    },
+    operationsRead: setupResult.infrastructure.operationsRead,
+    projectionRead: setupResult.infrastructure.operationsProjectionRead,
+    sessionResolver: setupResult.session,
+    authorizationEvaluator: setupResult.authorization,
+    clock: setupResult.clock,
+  });
+
+  const result = adapter.read(request("UI-031"));
+
+  assert.deepEqual(operations, [
+    "GET_PUBLICATION_OPERATIONS_VIEW", "GET_PUBLICATION_REVALIDATION_VIEW",
+    "GET_PUBLICATION_RECOVERY_VIEW", "GET_PUBLICATION_AUDIT_VIEW",
+  ]);
+  assert.equal(result.state, "READY");
+  assert.deepEqual(result.data?.["latestAttempt"], {
+    id: "attempt-2", sequence: 2, operation: "CORRECT", outcome: "UNKNOWN", occurredAt: now,
+  });
+  assert.equal(result.data?.["latestNormalizedOutcome"], "UNKNOWN");
+  assert.deepEqual(result.data?.["recovery"], {
+    reconciliationStatus: "OPEN", caseId: "reconciliation-case-1", attemptId: "attempt-2",
+    manualReviewRequired: true, reconciliationFinding: "UNAVAILABLE", recoveryDisposition: "UNAVAILABLE",
+  });
+  assert.deepEqual(result.data?.["eligibility"], {
+    approvalStatus: "APPROVED", verificationStatus: "VERIFIED", permissionStatus: "ACTIVE",
+    policyStatus: "CURRENT", bindingStatus: "MATCHED", stale: false, revalidationRequired: false,
+  });
+  assert.deepEqual(result.data?.["safeEvidence"], {
+    referenceCount: 2, auditReferences: ["audit-safe-1"], restricted: true,
+  });
+  assert.equal(setupResult.commandCalls, 0);
+  assert.equal(Object.isFrozen(result.data?.["latestAttempt"]), true);
+  assert.equal(JSON.stringify(result).includes("provider"), false);
+  assert.equal(JSON.stringify(result).includes("leaked-secret"), false);
+});
+
+test("F20-C rejects a mixed-version Publication operations projection without retry or mutation", () => {
+  const setupResult = setup();
+  const api = new PublicationApi(setupResult.infrastructure);
+  let queryCalls = 0;
+  const adapter = new ConsoleReadAdapter({
+    queryPort: {
+      executeQuery(input: unknown): PublicationQueryResponse {
+        queryCalls += 1;
+        const response = api.executeQuery(input);
+        if (!response.success || response.operation !== "GET_PUBLICATION_AUDIT_VIEW") return response;
+        return Object.freeze({
+          ...response,
+          result: Object.freeze({ ...response.result, sourceVersion: response.result.sourceVersion + 1 }),
+        });
+      },
+    },
+    operationsRead: setupResult.infrastructure.operationsRead,
+    projectionRead: setupResult.infrastructure.operationsProjectionRead,
+    sessionResolver: setupResult.session,
+    authorizationEvaluator: setupResult.authorization,
+    clock: setupResult.clock,
+  });
+
+  const result = adapter.read(request("UI-031"));
+
+  assert.equal(result.state, "ERROR");
+  assert.equal(result.error?.code, "CONSOLE_READ_UNAVAILABLE");
+  assert.equal(queryCalls, 4);
+  assert.equal(setupResult.commandCalls, 0);
+  assert.equal(JSON.stringify(result).includes(publicationId), false);
 });
 
 test("POST-F15-CONSOLE read adapter exposes bounded Dashboard, Projection and Operations status", () => {
@@ -539,7 +655,7 @@ test("F20-B projects API-016 audit events without details or internal evidence",
     },
   });
   assert.equal(JSON.stringify(result).includes("secret-provider-response"), false);
-  assert.equal(Object.isFrozen((result.data?.["events"] as readonly unknown[])[0]), true);
+  assert.equal(Object.isFrozen((result.data?.events as readonly unknown[])[0]), true);
 });
 
 test("F20-B fails safely when an approved read port returns secret-like evidence", () => {

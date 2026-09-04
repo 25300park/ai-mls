@@ -52,6 +52,52 @@ test("POST-F15-CONSOLE UI-031 renders bounded fields and diagnostic actions as n
   assert.equal(/<form|onclick=|data-command=/u.test(html), false);
 });
 
+test("F20-C UI-031 renders canonical execution prerequisites and blockers without enabling mutations", () => {
+  const html = renderConsoleResult(ready("UI-031", {
+    screenId: "UI-031",
+    publicationId: "publication-operations-1",
+    lifecycle: "ACTIVE",
+    suspensionStatus: "NOT_SUSPENDED",
+    aggregateVersion: 7,
+    effectiveVersion: 6,
+    target: { id: "target-1", version: 3 },
+    channel: { id: "channel-1", policyVersion: "channel-policy-v4" },
+    currentOperationState: "ACTIVE",
+    prerequisiteSummary: {
+      approval: "APPROVED",
+      verification: "VERIFIED",
+      permission: "ACTIVE",
+      policy: "policy-v4",
+      binding: "MATCHED",
+      mfaReady: true,
+      documentedReasonRequired: true,
+    },
+    availableActions: ["SUSPEND_PUBLICATION"],
+    blockedActions: ["REQUEST_WITHDRAWAL:AUTHORIZATION_DENIED"],
+    latestAttempt: { id: "attempt-2", sequence: 2, operation: "CORRECT", outcome: "UNKNOWN", occurredAt: "2026-08-13T00:00:00.000Z" },
+    latestNormalizedOutcome: "UNKNOWN",
+    recovery: {
+      reconciliationStatus: "OPEN", caseId: "reconciliation-case-1", attemptId: "attempt-2",
+      manualReviewRequired: true, reconciliationFinding: "UNAVAILABLE", recoveryDisposition: "UNAVAILABLE",
+    },
+    eligibility: {
+      approvalStatus: "APPROVED", verificationStatus: "VERIFIED", permissionStatus: "ACTIVE",
+      policyStatus: "CURRENT", bindingStatus: "MATCHED", stale: false, revalidationRequired: false,
+    },
+    safeEvidence: { referenceCount: 2, auditReferences: ["audit-safe-1"], restricted: true },
+    stale: false,
+  }));
+
+  for (const expected of [
+    "Execution Prerequisites", "APPROVED", "VERIFIED", "MATCHED",
+    "Blocked Actions", "REQUEST_WITHDRAWAL:AUTHORIZATION_DENIED",
+    "SUSPEND_PUBLICATION", "NON-EXECUTABLE", "Latest Execution Attempt", "attempt-2",
+    "Latest Normalized Outcome", "UNKNOWN", "Reconciliation Finding", "Recovery Disposition",
+    "reconciliation-case-1", "Current Eligibility", "Safe Evidence / Audit References", "audit-safe-1",
+  ]) assert.equal(html.includes(expected), true, expected);
+  assert.equal(/<form|onclick=|data-command=|fetch\([^)]*publication\/command/iu.test(html), false);
+});
+
 test("POST-F15-CONSOLE Dashboard renders the five bounded component states without invented counts", () => {
   const html = renderConsoleResult(ready("DASHBOARD", {
     health: "HEALTHY",

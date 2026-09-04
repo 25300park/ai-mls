@@ -113,9 +113,23 @@ function renderDashboard(data: Readonly<Record<string, unknown>>): string {
 
 function renderPublicationOperations(data: Readonly<Record<string, unknown>>): string {
   const actions = arrayOf(data["availableActions"]);
+  const blockers = arrayOf(data["blockedActions"]);
+  const prerequisites = isRecord(data["prerequisiteSummary"])
+    ? data["prerequisiteSummary"]
+    : Object.freeze({});
+  const latestAttempt: Readonly<Record<string, unknown>> = isRecord(data["latestAttempt"]) ? data["latestAttempt"] : Object.freeze({});
+  const recovery: Readonly<Record<string, unknown>> = isRecord(data["recovery"]) ? data["recovery"] : Object.freeze({});
+  const eligibility: Readonly<Record<string, unknown>> = isRecord(data["eligibility"]) ? data["eligibility"] : Object.freeze({});
+  const evidence: Readonly<Record<string, unknown>> = isRecord(data["safeEvidence"]) ? data["safeEvidence"] : Object.freeze({});
   const fields = select(data, ["publicationId", "lifecycle", "suspensionStatus", "aggregateVersion", "publicationVersion", "effectiveVersion", "target", "channel", "currentOperationState", "stale"]);
   return `<section><div class="section-heading"><div><p class="eyebrow">UI-031 · API-014</p><h2>Publication Operations</h2></div>${statusBadge(data["lifecycle"])}</div>${definitionGrid(fields)}</section>
-  <section aria-labelledby="available-actions"><div class="section-heading"><div><p class="eyebrow">DIAGNOSTIC ONLY</p><h2 id="available-actions">Available Actions</h2></div><span class="mode-badge">NON-EXECUTABLE</span></div><div class="action-list">${actions.length === 0 ? "<p>No authorized actions are currently advertised.</p>" : actions.map((action) => `<button type="button" disabled aria-disabled="true">${escapeHtml(action)}</button>`).join("")}</div></section>`;
+  <section aria-labelledby="execution-prerequisites"><div class="section-heading"><div><p class="eyebrow">LIVE READ MODEL</p><h2 id="execution-prerequisites">Execution Prerequisites</h2></div>${statusBadge(data["stale"] === true ? "STALE" : "CURRENT")}</div>${definitionGrid(prerequisites)}</section>
+  <section aria-labelledby="latest-execution-attempt"><div class="section-heading"><div><p class="eyebrow">DURABLE HISTORY</p><h2 id="latest-execution-attempt">Latest Execution Attempt</h2></div>${statusBadge(data["latestNormalizedOutcome"])}</div>${definitionGrid(latestAttempt)}<div class="notice"><strong>Latest Normalized Outcome</strong><span>${escapeHtml(displayValue(data["latestNormalizedOutcome"]))}</span></div></section>
+  <section aria-labelledby="reconciliation-recovery"><div class="section-heading"><div><p class="eyebrow">READ ONLY</p><h2 id="reconciliation-recovery">Reconciliation / Recovery</h2></div>${statusBadge(recovery["reconciliationStatus"])}</div>${definitionGrid(select(recovery, ["caseId", "attemptId", "reconciliationStatus", "manualReviewRequired"]))}<div class="notice"><strong>Reconciliation Finding</strong><span>${escapeHtml(displayValue(recovery["reconciliationFinding"]))}</span></div><div class="notice"><strong>Recovery Disposition</strong><span>${escapeHtml(displayValue(recovery["recoveryDisposition"]))}</span></div></section>
+  <section aria-labelledby="current-eligibility"><div class="section-heading"><div><p class="eyebrow">LIVE REVALIDATION</p><h2 id="current-eligibility">Current Eligibility</h2></div>${statusBadge(eligibility["stale"] === true ? "STALE" : "CURRENT")}</div>${definitionGrid(eligibility)}</section>
+  <section aria-labelledby="safe-evidence"><div class="section-heading"><div><p class="eyebrow">BOUNDED REFERENCES</p><h2 id="safe-evidence">Safe Evidence / Audit References</h2></div><span class="mode-badge">RESTRICTED</span></div>${definitionGrid(evidence)}</section>
+  <section aria-labelledby="available-actions"><div class="section-heading"><div><p class="eyebrow">DIAGNOSTIC ONLY</p><h2 id="available-actions">Available Actions</h2></div><span class="mode-badge">NON-EXECUTABLE</span></div><div class="action-list">${actions.length === 0 ? "<p>No authorized actions are currently advertised.</p>" : actions.map((action) => `<button type="button" disabled aria-disabled="true">${escapeHtml(action)}</button>`).join("")}</div></section>
+  <section aria-labelledby="blocked-actions"><div class="section-heading"><div><p class="eyebrow">FAIL-CLOSED</p><h2 id="blocked-actions">Blocked Actions</h2></div></div><div class="action-list">${blockers.length === 0 ? "<p>No blocked actions are currently advertised.</p>" : blockers.map((action) => `<span class="mode-badge">${escapeHtml(action)}</span>`).join("")}</div></section>`;
 }
 
 function renderRevalidation(data: Readonly<Record<string, unknown>>): string {

@@ -153,26 +153,85 @@ export class ConsoleReadAdapter {
     if (request.publicationId === undefined || request.publicationId.trim().length === 0) {
       return emptyResult(request.page, "No Publication record is currently selected.");
     }
-    const response = this.dependencies.queryPort.executeQuery({
-      requestId: `console-${request.correlationId}`,
-      sessionId: request.sessionId,
-      operation: publicationOperations[request.page as keyof typeof publicationOperations],
-      tenantId: request.tenantId,
-      teamId: request.teamId,
-      purpose: "PUBLICATION_EXECUTION",
-      correlationId: request.correlationId,
-      publicationId: request.publicationId,
-      maxEntries: 50,
-    } satisfies PublicationQueryRequest);
+    const response = this.queryPublication(request, publicationOperations[request.page as keyof typeof publicationOperations]);
     if (!response.success) {
       return response.error.code === "NOT_FOUND"
         ? emptyResult(request.page, "No authorized Publication record is currently available.")
         : this.safeError(request);
     }
+    if (request.page === "UI-031") return this.readPublicationOperations(request, response);
     return immutableConsole({
       page: request.page,
       state: "READY" as const,
       data: recordOf(response.result.view),
+    });
+  }
+
+  private queryPublication(request: ConsoleReadRequest, operation: PublicationQueryRequest["operation"]): PublicationQueryResponse {
+    const publicationId = request.publicationId;
+    if (publicationId === undefined || publicationId.trim().length === 0) throw new Error("PUBLICATION_ID_REQUIRED");
+    return this.dependencies.queryPort.executeQuery({
+      requestId: `console-${request.correlationId}`,
+      sessionId: request.sessionId,
+      operation,
+      tenantId: request.tenantId,
+      teamId: request.teamId,
+      purpose: "PUBLICATION_EXECUTION",
+      correlationId: request.correlationId,
+      publicationId,
+      maxEntries: 50,
+    } satisfies PublicationQueryRequest);
+  }
+
+  private readPublicationOperations(request: ConsoleReadRequest, operationsResponse: Extract<PublicationQueryResponse, { readonly success: true }>): ConsoleReadResult {
+    const supplemental = [
+      this.queryPublication(request, "GET_PUBLICATION_REVALIDATION_VIEW"),
+      this.queryPublication(request, "GET_PUBLICATION_RECOVERY_VIEW"),
+      this.queryPublication(request, "GET_PUBLICATION_AUDIT_VIEW"),
+    ];
+    if (supplemental.some((response) => !response.success)) return this.safeError(request);
+    const [revalidationResponse, recoveryResponse, auditResponse] = supplemental as readonly Extract<PublicationQueryResponse, { readonly success: true }>[];
+    if (supplemental.some((response) => response.success && response.result.sourceVersion !== operationsResponse.result.sourceVersion)) {
+      return this.safeError(request);
+    }
+    const revalidation = recordOf(revalidationResponse!.result.view);
+    const recovery = recordOf(recoveryResponse!.result.view);
+    const audit = recordOf(auditResponse!.result.view);
+    const attempts = arrayOfRecords(audit["attemptHistory"]);
+    const latestAttempt = attempts.at(-1);
+    const safeLatestAttempt = latestAttempt === undefined
+      ? undefined
+      : selectFields(latestAttempt, ["id", "sequence", "operation", "outcome", "occurredAt"]);
+    const auditReferences = arrayOfRecords(audit["auditEntries"])
+      .map((entry) => entry["id"])
+      .filter((id): id is string => typeof id === "string" && isSafeEvidence(id));
+    const evidence: Readonly<Record<string, unknown>> = isRecord(recovery["safeEvidenceSummary"])
+      ? recovery["safeEvidenceSummary"]
+      : Object.freeze({});
+    return immutableConsole({
+      page: request.page,
+      state: "READY" as const,
+      data: {
+        ...recordOf(operationsResponse.result.view),
+        ...(safeLatestAttempt === undefined ? {} : { latestAttempt: safeLatestAttempt, latestNormalizedOutcome: safeLatestAttempt["outcome"] }),
+        recovery: selectFields({
+          reconciliationStatus: recovery["reconciliationStatus"],
+          caseId: recovery["caseId"],
+          attemptId: recovery["attemptId"],
+          manualReviewRequired: recovery["manualReviewRequired"],
+          reconciliationFinding: "UNAVAILABLE",
+          recoveryDisposition: "UNAVAILABLE",
+        }, ["reconciliationStatus", "caseId", "attemptId", "manualReviewRequired", "reconciliationFinding", "recoveryDisposition"]),
+        eligibility: selectFields(revalidation, [
+          "approvalStatus", "verificationStatus", "permissionStatus", "policyStatus",
+          "bindingStatus", "stale", "revalidationRequired",
+        ]),
+        safeEvidence: {
+          referenceCount: evidence["referenceCount"] ?? 0,
+          auditReferences,
+          restricted: true,
+        },
+      },
     });
   }
 
@@ -436,6 +495,10 @@ function safeAuditEvent(value: unknown): Readonly<Record<string, unknown>> | und
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function arrayOfRecords(value: unknown): readonly Readonly<Record<string, unknown>>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : Object.freeze([]);
 }
 
 function safeCorrelationId(value: string): string {
