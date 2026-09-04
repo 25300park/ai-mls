@@ -43,6 +43,8 @@ const browserRoutes: Readonly<Record<string, ConsolePage>> = Object.freeze({
   "/system/operations": "OPERATIONS",
   "/connector/operations": "CONNECTOR",
   "/recovery/cases": "RECOVERY_CASE",
+  "/integration/evidence": "EXTERNAL_INTEGRATION",
+  "/audit/evidence": "EVIDENCE",
 });
 
 export function createAdminConsoleServer(configuration: AdminConsoleServerConfiguration): AdminConsoleServer {
@@ -90,6 +92,14 @@ export function createAdminConsoleServer(configuration: AdminConsoleServerConfig
           const sourceId = page === "CONNECTOR" ? safeIdentifier(url.searchParams.get("sourceId")) : undefined;
           const batchId = page === "CONNECTOR" ? safeIdentifier(url.searchParams.get("batchId")) : undefined;
           const recoveryCaseId = page === "RECOVERY_CASE" ? safeIdentifier(url.searchParams.get("recoveryCaseId")) : undefined;
+          const mappingId = page === "EXTERNAL_INTEGRATION" ? safeIdentifier(url.searchParams.get("mappingId")) : undefined;
+          const integrationContractId = page === "EXTERNAL_INTEGRATION" ? safeIdentifier(url.searchParams.get("integrationContractId")) : undefined;
+          const auditTargetId = page === "EVIDENCE" ? safeIdentifier(url.searchParams.get("auditTargetId")) : undefined;
+          const auditEventType = page === "EVIDENCE" ? safeIdentifier(url.searchParams.get("auditEventType")) : undefined;
+          if (mappingId !== undefined && integrationContractId !== undefined) {
+            writeJson(response, 400, { success: false, error: { code: "INVALID_CONSOLE_REQUEST", message: "The Console request is invalid." } });
+            return;
+          }
           const baseReadRequest: ConsoleReadRequest = {
             page,
             sessionId: configuration.sessionId,
@@ -100,6 +110,10 @@ export function createAdminConsoleServer(configuration: AdminConsoleServerConfig
             ...(sourceId === undefined ? {} : { sourceId }),
             ...(batchId === undefined ? {} : { batchId }),
             ...(recoveryCaseId === undefined ? {} : { recoveryCaseId }),
+            ...(mappingId === undefined ? {} : { mappingId }),
+            ...(integrationContractId === undefined ? {} : { integrationContractId }),
+            ...(auditTargetId === undefined ? {} : { auditTargetId }),
+            ...(auditEventType === undefined ? {} : { auditEventType }),
             correlationId: `console-read-${String(requestSequence)}`,
           };
           if (page === "UI-036" && configuration.administrationSelectorScopes === undefined) {

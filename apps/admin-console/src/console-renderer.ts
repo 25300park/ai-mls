@@ -31,6 +31,8 @@ const navigation = Object.freeze([
   Object.freeze({ section: "Integration", items: Object.freeze([
     { page: "CONNECTOR" as const, label: "Connector Operations", path: "/connector/operations" },
     { page: "RECOVERY_CASE" as const, label: "Recovery Cases", path: "/recovery/cases" },
+    { page: "EXTERNAL_INTEGRATION" as const, label: "External Integration", path: "/integration/evidence" },
+    { page: "EVIDENCE" as const, label: "Audit Evidence", path: "/audit/evidence" },
   ]) }),
   Object.freeze({ section: "System", items: Object.freeze([
     { page: "PROJECTION" as const, label: "Projection", path: "/system/projection" },
@@ -98,9 +100,9 @@ export function renderConsoleResult(result: ConsoleReadResult): string {
     case "PROJECTION": return renderProjection(data);
     case "OPERATIONS": return renderOperations(data);
     case "CONNECTOR": return renderConnectorOperations(data);
-    case "EXTERNAL_INTEGRATION": return definitionGrid(data);
+    case "EXTERNAL_INTEGRATION": return renderExternalIntegration(data);
     case "RECOVERY_CASE": return renderRecoveryCase(data);
-    case "EVIDENCE": return definitionGrid(data);
+    case "EVIDENCE": return renderEvidence(data);
   }
 }
 
@@ -277,6 +279,18 @@ function renderRecoveryCase(data: Readonly<Record<string, unknown>>): string {
   <section><div class="section-heading"><h2>Safe Evidence</h2></div>${definitionGrid(select(data, ["evidenceRefs"]))}</section>`;
 }
 
+function renderExternalIntegration(data: Readonly<Record<string, unknown>>): string {
+  const isMapping = data["mappingId"] !== undefined;
+  return `<section><div class="section-heading"><div><p class="eyebrow">API-019 · READ ONLY</p><h2>${isMapping ? "External Mapping" : "Integration Contract"}</h2></div>${statusBadge(data["state"] ?? data["technicalStatus"])}</div>${definitionGrid(select(data, isMapping ? ["mappingId", "state", "version", "createdAt", "updatedAt"] : ["integrationContractId", "technicalStatus", "version", "createdAt", "updatedAt"]))}</section>
+  <section><div class="section-heading"><h2>Stable Identity</h2></div>${definitionGrid(select(data, isMapping ? ["providerNamespace", "externalObjectId", "internalResourceType", "internalResourceId"] : ["providerNamespace", "connectorId", "sourceId"]))}</section>
+  <section><div class="section-heading"><h2>Governance Evidence</h2></div>${definitionGrid(select(data, ["evidenceRef"]))}<p class="scope-note">This read-only view cannot change mappings, contracts, Sources, or Connector execution.</p></section>`;
+}
+
+function renderEvidence(data: Readonly<Record<string, unknown>>): string {
+  return `<section><div class="section-heading"><div><p class="eyebrow">API-016 · READ ONLY</p><h2>Audit Evidence</h2></div></div><p class="scope-note">Bounded governance provenance. Raw runtime and provider data are not exposed.</p></section>
+  <section><div class="section-heading"><h2>Provenance</h2></div>${historySection("Events", arrayOf(data["events"]))}</section>`;
+}
+
 function historySection(title: string, entries: readonly unknown[]): string {
   if (entries.length === 0) return `<section><h2>${escapeHtml(title)}</h2><p class="empty-inline">No entries are currently available.</p></section>`;
   return `<section><h2>${escapeHtml(title)}</h2><div class="table-wrap"><table><tbody>${entries.map((entry) => `<tr><td>${isRecord(entry) ? definitionGrid(entry) : escapeHtml(entry)}</td></tr>`).join("")}</tbody></table></div></section>`;
@@ -360,7 +374,7 @@ export const CONSOLE_BROWSER_CLIENT = String.raw`(() => {
     const request = new URLSearchParams({ page });
     const publicationId = query.get("publicationId");
     if (publicationId) request.set("publicationId", publicationId);
-    for (const name of ["connectorId", "sourceId", "batchId", "recoveryCaseId"]) {
+    for (const name of ["connectorId", "sourceId", "batchId", "recoveryCaseId", "mappingId", "integrationContractId", "auditTargetId", "auditEventType"]) {
       const value = query.get(name);
       if (value) request.set(name, value);
     }

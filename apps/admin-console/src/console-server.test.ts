@@ -18,6 +18,7 @@ const approvedRoutes = Object.freeze([
   "/publication/audit", "/administration", "/administration/governance", "/system/projection", "/system/operations",
   "/connector/operations",
   "/recovery/cases",
+  "/integration/evidence", "/audit/evidence",
 ]);
 
 test("POST-F15-CONSOLE Node server renders every approved browser route and bounded read endpoint", async () => {
@@ -110,6 +111,32 @@ test("F20-E Node server passes only the exact Recovery Case identity to the exis
   assert.equal(reads[0]?.sourceId, undefined);
   assert.equal(reads[0]?.batchId, undefined);
   assert.equal("recoveryDisposition" in (reads[0] ?? {}), false);
+  await server.stop();
+});
+
+test("F20-F Node server page-gates exact Integration and Audit evidence query inputs", async () => {
+  const reads: ConsoleReadRequest[] = [];
+  const server = createAdminConsoleServer({
+    host: "127.0.0.1", port: 0, sessionId: "console-session", tenantId: "team-a",
+    readAdapter: { read: (input) => { reads.push(input); return Object.freeze({ page: input.page, state: "EMPTY", message: "No authorized evidence is currently available." }); } },
+  });
+  await server.start();
+
+  const integrationShell = await send(server.port, "GET", "/integration/evidence?mappingId=mapping-1");
+  const integration = await send(server.port, "GET", "/api/console/view?page=EXTERNAL_INTEGRATION&mappingId=mapping-1&auditTargetId=ignored-target");
+  const auditShell = await send(server.port, "GET", "/audit/evidence?auditTargetId=resource-1&auditEventType=RECOVERY_READ");
+  const audit = await send(server.port, "GET", "/api/console/view?page=EVIDENCE&auditTargetId=resource-1&auditEventType=RECOVERY_READ&mappingId=ignored-mapping");
+  const ambiguous = await send(server.port, "GET", "/api/console/view?page=EXTERNAL_INTEGRATION&mappingId=mapping-1&integrationContractId=contract-1");
+
+  assert.equal(integrationShell.statusCode, 200);
+  assert.equal(auditShell.statusCode, 200);
+  assert.equal(integration.statusCode, 200);
+  assert.equal(audit.statusCode, 200);
+  assert.equal(ambiguous.statusCode, 400);
+  assert.deepEqual(reads.map((item) => ({ page: item.page, mappingId: item.mappingId, auditTargetId: item.auditTargetId, auditEventType: item.auditEventType })), [
+    { page: "EXTERNAL_INTEGRATION", mappingId: "mapping-1", auditTargetId: undefined, auditEventType: undefined },
+    { page: "EVIDENCE", mappingId: undefined, auditTargetId: "resource-1", auditEventType: "RECOVERY_READ" },
+  ]);
   await server.stop();
 });
 

@@ -17,12 +17,14 @@ test("POST-F15-CONSOLE shell renders the approved accessible navigation and load
     "Audit / History", "Administration", "Projection", "Operations / Health", "Loading...",
     "Connector Operations",
     "Recovery Cases",
+    "External Integration", "Audit Evidence",
   ]) assert.equal(html.includes(label), true, label);
   for (const path of [
     "/", "/publication/operations", "/publication/revalidation", "/publication/recovery",
     "/publication/audit", "/administration", "/system/projection", "/system/operations",
     "/connector/operations",
     "/recovery/cases",
+    "/integration/evidence", "/audit/evidence",
   ]) assert.equal(html.includes(`href=\"${path}`), true, path);
   assert.equal(html.includes("<nav"), true);
   assert.equal(html.includes("<main"), true);
@@ -35,6 +37,9 @@ test("POST-F15-CONSOLE shell renders the approved accessible navigation and load
     assert.equal(CONSOLE_BROWSER_CLIENT.includes(queryName), true, queryName);
   }
   assert.equal(CONSOLE_BROWSER_CLIENT.includes("recoveryCaseId"), true);
+  for (const queryName of ["mappingId", "integrationContractId", "auditTargetId", "auditEventType"]) {
+    assert.equal(CONSOLE_BROWSER_CLIENT.includes(queryName), true, queryName);
+  }
 });
 
 test("POST-F15-CONSOLE UI-031 renders bounded fields and diagnostic actions as non-executable", () => {
@@ -210,6 +215,42 @@ test("F20-E renders an exact Recovery Case with finding, disposition, and lineag
     assert.equal(html.includes(expected), true, expected);
   }
   assert.equal(/<form|data-command|onclick=|AUTHORIZE_RECOVERY|RESOLVE_RECOVERY_CASE/iu.test(html), false);
+});
+
+test("F20-F renders bounded API-019 mapping evidence without remap controls", () => {
+  const html = renderConsoleResult(ready("EXTERNAL_INTEGRATION", {
+    mappingId: "mapping-1", providerNamespace: "provider-safe", externalObjectId: "external-1",
+    internalResourceType: "Publication", internalResourceId: "publication-1", state: "ACTIVE",
+    version: 2, evidenceRef: "evidence:mapping:1", createdAt: "2026-09-04T00:00:00.000Z", updatedAt: "2026-09-04T00:05:00.000Z",
+  }));
+  for (const expected of ["External Mapping", "Stable Identity", "Governance Evidence", "mapping-1", "provider-safe", "evidence:mapping:1"]) {
+    assert.equal(html.includes(expected), true, expected);
+  }
+  assert.equal(/<form|data-command|onclick=|remap|override/iu.test(html), false);
+});
+
+test("F20-F renders the bounded API-019 Integration Contract branch", () => {
+  const html = renderConsoleResult(ready("EXTERNAL_INTEGRATION", {
+    integrationContractId: "contract-1", technicalStatus: "ACTIVE", providerNamespace: "provider-safe",
+    connectorId: "connector-1", sourceId: "source-1", version: 4,
+    evidenceRef: "evidence:contract:1", createdAt: "2026-09-04T00:00:00.000Z", updatedAt: "2026-09-04T00:05:00.000Z",
+  }));
+  for (const expected of ["Integration Contract", "contract-1", "connector-1", "source-1", "evidence:contract:1"]) {
+    assert.equal(html.includes(expected), true, expected);
+  }
+});
+
+test("F20-F renders bounded API-016 audit evidence with provenance and no raw details", () => {
+  const html = renderConsoleResult(ready("EVIDENCE", { events: [{
+    eventId: "event-1", eventType: "RECOVERY_CASE_READ", actorId: "operator-1", actorType: "USER",
+    action: "READ", resourceType: "RecoveryCase", resourceId: "recovery-case-1", decision: "ALLOW",
+    outcome: "SUCCEEDED", correlationId: "correlation-1", occurredAt: "2026-09-04T00:00:00.000Z",
+    evidenceRefs: ["evidence:audit:1"],
+  }] }));
+  for (const expected of ["Audit Evidence", "Provenance", "event-1", "operator-1", "recovery-case-1", "evidence:audit:1"]) {
+    assert.equal(html.includes(expected), true, expected);
+  }
+  assert.equal(/Authorization|Bearer|Cookie|SQL|database path|stack trace|raw provider/iu.test(html), false);
 });
 
 test("POST-F15-CONSOLE renders meaningful empty and safe error states without raw detail", () => {
