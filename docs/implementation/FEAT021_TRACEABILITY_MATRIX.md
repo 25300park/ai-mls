@@ -39,6 +39,17 @@ FEAT-021-A의 37-screen inventory와 identity reconciliation을 보존하면서 
 | Privileged-action consequence | UI-036 confirmation contract | existing dialog now states governed-state consequence and backend authority boundary | same focused FEAT-021-C test; Console regression | VERIFIED |
 | In-flight submission state | Form/Accessibility Guide | thin client sets form `aria-busy` and button disabled/`aria-disabled`, and clears on rejected/unavailable result | same focused FEAT-021-C test | VERIFIED |
 
+## 2.2 FEAT-021-D keyboard / AX / reflow / role UAT traceability
+
+| Requirement | Canonical source | Production/evidence boundary | Direct verification | Result |
+|---|---|---|---|---|
+| Current 13-route screen-reader shell | Accessibility Guide; TEST-038 | existing shared shell across all current `ConsolePage` values | `FEAT-021-D all current routes preserve the shared screen-reader shell contract`; server 13-route regression | VERIFIED |
+| Read-only versus controlled-write role boundary | FEAT-021-A role UAT; TEST-054/055 | existing UI-031 diagnostic-only actions and UI-036 fail-closed selector rendering | `FEAT-021-D role UAT preserves read-only and controlled-write presentation boundaries` | VERIFIED_BOUNDED |
+| Narrow reflow | Responsive Strategy; TEST-038 | 760px shell stacking plus 480px notice/badge wrapping | focused CSS assertion; existing browser narrow evidence | VERIFIED_BOUNDED |
+| Forced-colors status/current-route semantics | Accessibility Guide; WCAG 2.2 AA direction | forced-color-adjust, current-route outline and status-dot system border | `FEAT-021-D shared CSS preserves narrow reflow and forced-colors semantics` | VERIFIED_BOUNDED |
+| Actual accessibility tree / safe UI-036 | TEST-038/055 | development Console through existing server/renderer | in-app browser: Primary navigation, Breadcrumb, H1, one main, canonical UNAVAILABLE, forms 0, submit buttons 0, forbidden output 0 | VERIFIED |
+| Dependency-ready missing screens | FEAT-021-A 6/30/1 classification | no additional backend-ready screen exists beyond current mapped surfaces | inventory review; new route/screen diff 0 | NOT_APPLICABLE / PRESERVED |
+
 ## 3. Test Registry mapping
 
 | Test ID | FEAT-021-B evidence | Status |
@@ -48,6 +59,8 @@ FEAT-021-A의 37-screen inventory와 identity reconciliation을 보존하면서 
 | TEST-055 | current Administration/Operations Console shell, UI-006/UI-031~036 supporting routes and UI-036 controlled presentation | MAPPED / PASS — B Admin/Ops shared-primitives slice; missing Manager screens remain dependency-gated |
 
 FEAT-021-C adds direct TEST-038 evidence for the five rows above and bounded TEST-055 UI-036 evidence. It does not complete dependency-gated persona journeys.
+
+FEAT-021-D adds bounded current-route TEST-038 and TEST-055 evidence. TEST-054 role screens remain dependency-gated; no persona name is treated as authority.
 
 ## 4. Scope and preservation
 
@@ -67,3 +80,4 @@ FEAT-021-C adds direct TEST-038 evidence for the five rows above and bounded TES
 - [FEAT-021 identity reconciliation](../reviews/FEAT021_IDENTITY_ROADMAP_RECONCILIATION_REPORT.md)
 - [FEAT-021-B completion](../reviews/FEAT021_B_SHARED_SHELL_NAVIGATION_ACCESSIBILITY_PRIMITIVES_COMPLETION.md)
 - [FEAT-021-C completion](../reviews/FEAT021_C_CURRENT_ROUTE_ACCESSIBILITY_HARDENING_COMPLETION.md)
+- [FEAT-021-D completion](../reviews/FEAT021_D_KEYBOARD_AX_REFLOW_ROLE_UAT_COMPLETION.md)

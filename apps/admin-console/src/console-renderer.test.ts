@@ -548,6 +548,46 @@ test("FEAT-021-C governed forms expose required, consequence and in-flight seman
   assert.equal(CONSOLE_BROWSER_CLIENT.includes('button.setAttribute("aria-disabled", "true")'), true);
 });
 
+test("FEAT-021-D all current routes preserve the shared screen-reader shell contract", () => {
+  const pages: readonly ConsoleReadResult["page"][] = [
+    "DASHBOARD", "UI-031", "UI-032", "UI-033", "UI-035", "ADMINISTRATION", "UI-036",
+    "CONNECTOR", "RECOVERY_CASE", "EXTERNAL_INTEGRATION", "EVIDENCE", "PROJECTION", "OPERATIONS",
+  ];
+  for (const page of pages) {
+    const html = renderConsoleShell(page);
+    assert.equal((html.match(/<main\b/gu) ?? []).length, 1, page);
+    assert.equal(html.includes('aria-labelledby="console-page-title"'), true, page);
+    assert.equal(html.includes('aria-label="Primary"'), true, page);
+    assert.equal(html.includes('aria-label="Breadcrumb"'), true, page);
+    assert.equal(html.includes('aria-current="page"'), true, page);
+    assert.equal(html.includes('href="#console-content">Skip to main content</a>'), true, page);
+  }
+});
+
+test("FEAT-021-D role UAT preserves read-only and controlled-write presentation boundaries", () => {
+  const readOnly = renderConsoleResult(ready("UI-031", {
+    publicationId: "publication-1", lifecycle: "ACTIVE", availableActions: ["SUSPEND_PUBLICATION"], blockedActions: [],
+  }));
+  const unavailableControl = renderConsoleResult(ready("UI-036", { selectorOptions: {
+    roles: { items: [] }, teamScopes: { items: [] }, policies: { items: [] }, sourceGovernance: { items: [] },
+    publicationTargets: { items: [] }, roleAssignments: { items: [] }, proposals: { items: [] },
+  } }));
+  assert.equal(/<form|data-administration-command/u.test(readOnly), false);
+  assert.equal(readOnly.includes('disabled aria-disabled="true"'), true);
+  assert.equal(/<form|type="submit"/u.test(unavailableControl), false);
+  assert.equal(/name="(actor|actorId|role|capability|mfa|session|sessionId)"/iu.test(unavailableControl), false);
+});
+
+test("FEAT-021-D shared CSS preserves narrow reflow and forced-colors semantics", () => {
+  assert.equal(CONSOLE_STYLES.includes("@media(max-width:480px)"), true);
+  assert.equal(CONSOLE_STYLES.includes(".notice{flex-direction:column}"), true);
+  assert.equal(CONSOLE_STYLES.includes(".mode-badge,.status-badge{white-space:normal}"), true);
+  assert.equal(CONSOLE_STYLES.includes("@media(forced-colors:active)"), true);
+  assert.equal(CONSOLE_STYLES.includes("forced-color-adjust:auto"), true);
+  assert.equal(CONSOLE_STYLES.includes(".nav-link.active{outline:2px solid CanvasText}"), true);
+  assert.equal(CONSOLE_STYLES.includes(".status-dot{border:1px solid CanvasText}"), true);
+});
+
 function ready(page: ConsoleReadResult["page"], data: Readonly<Record<string, unknown>>): ConsoleReadResult {
   return Object.freeze({ page, state: "READY", data: Object.freeze(data) });
 }
