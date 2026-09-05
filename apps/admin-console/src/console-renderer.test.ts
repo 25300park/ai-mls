@@ -486,6 +486,68 @@ test("FEAT-021-B shared shell preserves AA contrast evidence and narrow navigati
   assert.equal(CONSOLE_STYLES.includes(".sidebar{display:none}"), false);
 });
 
+test("FEAT-021-C UI-036 unavailable selectors expose no executable form", () => {
+  const html = renderConsoleResult(ready("UI-036", { selectorOptions: {
+    roles: { state: "EMPTY", items: [] }, teamScopes: { state: "EMPTY", items: [] },
+    policies: { state: "EMPTY", items: [] }, sourceGovernance: { state: "EMPTY", items: [] },
+    publicationTargets: { state: "EMPTY", items: [] }, roleAssignments: { state: "EMPTY", items: [] },
+    proposals: { state: "EMPTY", items: [] },
+  } }));
+
+  assert.equal(html.includes("No authorized canonical options are available."), true);
+  assert.equal(html.includes("data-administration-command"), false);
+  assert.equal(html.includes('type="submit"'), false);
+
+  const proposalOnly = renderConsoleResult(ready("UI-036", { selectorOptions: {
+    roles: { items: [] }, teamScopes: { items: [] }, policies: { items: [] }, sourceGovernance: { items: [] },
+    publicationTargets: { items: [] }, roleAssignments: { items: [] },
+    proposals: { items: [{ id: "proposal-1", resourceType: "POLICY", resourceId: "policy-1", proposerReference: "actor-1", status: "PROPOSED", scopeType: "TEAM", scopeId: "team-1" }] },
+  } }));
+  assert.equal(proposalOnly.includes("data-administration-command"), false);
+  assert.equal(proposalOnly.includes("Required canonical selector data is unavailable."), true);
+
+  const assignmentOnly = renderConsoleResult(ready("UI-036", { selectorOptions: {
+    roles: { items: [] }, teamScopes: { items: [] }, policies: { items: [] }, sourceGovernance: { items: [] },
+    publicationTargets: { items: [] }, proposals: { items: [] },
+    roleAssignments: { items: [{ id: "assignment-1", subjectPrincipalReference: "principal-1", status: "ACTIVE", version: 1, scopeType: "TEAM", scopeId: "team-1" }] },
+  } }));
+  assert.equal(assignmentOnly.includes("data-administration-command"), false);
+  assert.equal(assignmentOnly.includes("Required canonical selector data is unavailable."), true);
+});
+
+test("FEAT-021-C history and evidence collections use a labelled list rather than a headerless table", () => {
+  const html = renderConsoleResult(ready("UI-035", {
+    publicationId: "publication-1", aggregateVersion: 2,
+    lifecycleHistory: [{ state: "ACTIVE", occurredAt: "2026-09-06T00:00:00.000Z" }],
+    attemptHistory: [{ id: "attempt-1", outcome: "CONFIRMED" }],
+    receiptHistory: [{ id: "receipt-1", evidenceRef: "safe-ref-1" }],
+    auditHistory: [{ id: "audit-1", outcome: "SUCCEEDED" }],
+  }));
+
+  assert.equal(html.includes('<ul class="history-list" aria-label="Lifecycle History">'), true);
+  assert.equal(html.includes('<table aria-label="Lifecycle History">'), false);
+});
+
+test("FEAT-021-C governed forms expose required, consequence and in-flight semantics", () => {
+  const html = renderConsoleResult(ready("UI-036", {
+    selectorOptions: {
+      roleAssignments: { items: [{ id: "assignment-1", subjectPrincipalReference: "principal-1", status: "ACTIVE", version: 1, scopeType: "TEAM", scopeId: "team-1" }] },
+      proposals: { items: [{ id: "proposal-1", resourceType: "POLICY", resourceId: "policy-1", proposerReference: "actor-1", status: "PROPOSED", scopeType: "TEAM", scopeId: "team-1" }] },
+      policies: { items: [{ id: "policy-1", status: "DRAFT", version: 1, scopeType: "TEAM", scopeId: "team-1" }] },
+      roles: { items: [{ id: "role-1", roleCode: "ADMIN", status: "ACTIVE" }] },
+      teamScopes: { items: [{ id: "team-1", status: "ACTIVE", version: 1, scopeType: "TEAM", scopeId: "team-1" }] },
+      sourceGovernance: { items: [] }, publicationTargets: { items: [] },
+    },
+    governedScopes: { policies: { scopeType: "TEAM", scopeId: "team-1" } },
+  }));
+
+  assert.equal(html.includes('<span class="required-indicator" aria-hidden="true">*</span><span class="sr-only"> required</span>'), true);
+  assert.equal(html.includes("This action requests a governed state change and cannot bypass backend authorization."), true);
+  assert.equal(CONSOLE_BROWSER_CLIENT.includes('form.setAttribute("aria-busy", "true")'), true);
+  assert.equal(CONSOLE_BROWSER_CLIENT.includes('form.setAttribute("aria-busy", "false")'), true);
+  assert.equal(CONSOLE_BROWSER_CLIENT.includes('button.setAttribute("aria-disabled", "true")'), true);
+});
+
 function ready(page: ConsoleReadResult["page"], data: Readonly<Record<string, unknown>>): ConsoleReadResult {
   return Object.freeze({ page, state: "READY", data: Object.freeze(data) });
 }
