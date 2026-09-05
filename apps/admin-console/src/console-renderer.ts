@@ -42,11 +42,14 @@ const navigation = Object.freeze([
 
 export function renderConsoleShell(page: ConsolePage, publicationId?: string): string {
   const selected = publicationId === undefined || publicationId.trim().length === 0 ? "" : publicationId;
+  const currentSection = navigation.find(({ items }) => items.some((item) => item.page === page));
+  const currentItem = currentSection?.items.find((item) => item.page === page);
   const navigationHtml = navigation.map(({ section, items }) => `
       <section class="nav-section" aria-labelledby="nav-${slug(section)}">
         <h2 id="nav-${slug(section)}">${escapeHtml(section)}</h2>
         ${items.map((item) => `<a class="nav-link${item.page === page ? " active" : ""}" href="${item.path}${selected === "" ? "" : `?publicationId=${encodeURIComponent(selected)}`}"${item.page === page ? " aria-current=\"page\"" : ""}>${escapeHtml(item.label)}</a>`).join("")}
       </section>`).join("");
+  const breadcrumbs = renderBreadcrumbs(page, currentSection?.section, currentItem?.label);
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -57,32 +60,46 @@ export function renderConsoleShell(page: ConsolePage, publicationId?: string): s
   <style>${CONSOLE_STYLES}</style>
 </head>
 <body data-console-page="${page}">
-  <a class="skip-link" href="#console-content">Skip to content</a>
+  <a class="skip-link" href="#console-content">Skip to main content</a>
   <div class="console-layout">
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark" aria-hidden="true">AI</span><strong>AI-MLS ADMIN</strong></div>
-      <nav aria-label="Admin Console">${navigationHtml}</nav>
+      <nav id="primary-navigation" aria-label="Primary">${navigationHtml}</nav>
       <div class="baseline"><span>Development Console</span><strong>feat-015-complete</strong></div>
     </aside>
-    <main id="console-content" class="content" tabindex="-1">
-      <header class="page-header">
-        <div><p class="eyebrow">${page === "UI-036" ? "CONTROLLED GOVERNANCE" : "READ-ONLY VISIBILITY"}</p><h1>${escapeHtml(pageTitles[page])}</h1></div>
+    <div class="content">
+      <header class="page-header" role="banner">
+        <div>${breadcrumbs}<p class="eyebrow">${page === "UI-036" ? "CONTROLLED GOVERNANCE" : "READ-ONLY VISIBILITY"}</p><h1 id="console-page-title" tabindex="-1">${escapeHtml(pageTitles[page])}</h1></div>
         <span class="mode-badge">${page === "UI-036" ? "BACKEND AUTHORIZED" : "NON-AUTHORITATIVE"}</span>
       </header>
-      <div id="console-view" aria-live="polite" aria-busy="true">
-        <section class="state-card loading-state"><span class="spinner" aria-hidden="true"></span><h2>Loading...</h2><p>Reading bounded FEAT-015 status.</p></section>
-      </div>
-    </main>
+      <main id="console-content" tabindex="-1" aria-labelledby="console-page-title">
+        <div id="console-announcements" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+        <div id="console-view" aria-busy="true">
+          <section class="state-card loading-state"><span class="spinner" aria-hidden="true"></span><h2>Loading...</h2><p>Reading bounded FEAT-015 status.</p></section>
+        </div>
+      </main>
+    </div>
   </div>
   <script>${CONSOLE_BROWSER_CLIENT}</script>
 </body>
 </html>`;
 }
 
+function renderBreadcrumbs(page: ConsolePage, section?: string, label?: string): string {
+  const current = escapeHtml(label ?? pageTitles[page]);
+  if (page === "DASHBOARD") {
+    return `<nav class="breadcrumbs" aria-label="Breadcrumb"><ol><li><span aria-current="page">${current}</span></li></ol></nav>`;
+  }
+  const sectionSegment = section === "Administration" && page === "UI-036"
+    ? '<li><a href="/administration">Administration</a></li>'
+    : section === undefined || section === label ? "" : `<li><span>${escapeHtml(section)}</span></li>`;
+  return `<nav class="breadcrumbs" aria-label="Breadcrumb"><ol><li><a href="/">Dashboard</a></li>${sectionSegment}<li><span aria-current="page">${current}</span></li></ol></nav>`;
+}
+
 export function renderConsoleResult(result: ConsoleReadResult): string {
   if (result.state === "LOADING") return stateCard("LOADING", result.message ?? "Reading bounded administration status.");
   if (result.state === "EMPTY") return stateCard("EMPTY", result.message ?? "No records are currently available.");
-  if (result.state === "UNAVAILABLE") return stateCard("READ_BOUNDARY_MISSING", result.message ?? "Not available in current backend.");
+  if (result.state === "UNAVAILABLE") return stateCard("UNAVAILABLE", result.message ?? "Not available in current backend.");
   if (result.state === "NOT_AUTHORIZED") return stateCard("NOT AUTHORIZED", result.message ?? "Not authorized.");
   if (result.state === "ERROR") {
     const error = result.error;
@@ -164,7 +181,7 @@ function renderAdministration(data: Readonly<Record<string, unknown>>): string {
   const rows = arrayOf(roleAssignments["items"]).filter(isRecord);
   return `<section aria-labelledby="administration-overview"><div class="section-heading"><div><p class="eyebrow">UI-006 · API-015</p><h2 id="administration-overview">Administration Overview</h2></div>${statusBadge(data["authorityStatus"])}</div><div class="card-grid administration-kpis">${metricCard("Visible Active", data["visibleActiveRoleAssignmentCount"])}${metricCard("Visible Assignments", data["visibleRoleAssignmentCount"])}${metricCard("Administration API", data["administrationApiStatus"])}${metricCard("Authority", data["authorityStatus"])}</div></section>
   ${unavailableAdministrationSection("Pending Proposals", data["pendingProposals"], "Not available through the current API-015 runtime read boundary.")}
-  <section aria-labelledby="role-assignments"><div class="section-heading"><div><p class="eyebrow">GOVERNED ACCESS</p><h2 id="role-assignments">Role Assignments</h2></div>${statusBadge(data["roleAssignmentsTruncated"] === true ? "PARTIAL" : roleAssignments["state"])}</div>${data["roleAssignmentsTruncated"] === true ? '<p class="empty-inline">Showing the first authorized page; more assignments are available.</p>' : ""}${rows.length === 0 ? '<p class="empty-inline">No role assignments are currently available.</p>' : `<div class="table-wrap"><table><thead><tr><th>Assignment</th><th>Subject</th><th>Role</th><th>Scope</th><th>Status</th><th>Version</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${escapeHtml(row["roleAssignmentId"])}</td><td>${escapeHtml(row["subjectPrincipalReference"])}</td><td>${escapeHtml(row["roleId"])}</td><td>${escapeHtml(`${displayValue(row["scopeType"])} · ${displayValue(row["scopeId"])}`)}</td><td>${statusBadge(row["status"])}</td><td class="numeric">${escapeHtml(displayValue(row["version"]))}</td></tr>`).join("")}</tbody></table></div>`}</section>
+  <section aria-labelledby="role-assignments"><div class="section-heading"><div><p class="eyebrow">GOVERNED ACCESS</p><h2 id="role-assignments">Role Assignments</h2></div>${statusBadge(data["roleAssignmentsTruncated"] === true ? "PARTIAL" : roleAssignments["state"])}</div>${data["roleAssignmentsTruncated"] === true ? '<p class="empty-inline">Showing the first authorized page; more assignments are available.</p>' : ""}${rows.length === 0 ? '<p class="empty-inline">No role assignments are currently available.</p>' : `<div class="table-wrap"><table aria-label="Role assignments"><thead><tr><th scope="col">Assignment</th><th scope="col">Subject</th><th scope="col">Role</th><th scope="col">Scope</th><th scope="col">Status</th><th scope="col">Version</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${escapeHtml(row["roleAssignmentId"])}</td><td>${escapeHtml(row["subjectPrincipalReference"])}</td><td>${escapeHtml(row["roleId"])}</td><td>${escapeHtml(`${displayValue(row["scopeType"])} · ${displayValue(row["scopeId"])}`)}</td><td>${statusBadge(row["status"])}</td><td class="numeric">${escapeHtml(displayValue(row["version"]))}</td></tr>`).join("")}</tbody></table></div>`}</section>
   <div class="governance-grid">${unavailableAdministrationSection("Policy Governance", data["policyGovernance"], "Select a canonical Policy ID to inspect status.")}${unavailableAdministrationSection("Source Governance", data["sourceGovernance"], "Select a canonical Source ID to inspect status.")}${unavailableAdministrationSection("Target Governance", data["targetGovernance"], "Select a canonical Target ID to inspect status.")}</div>
   ${unavailableAdministrationSection("Recent Decisions", data["recentDecisions"], "Not available through the current API-015 runtime read boundary.")}
   <p class="scope-note">Read-only governance visibility. UI-036 controlled write actions are not available.</p>`;
@@ -215,7 +232,7 @@ function controlledSection(title: string, items: readonly Readonly<Record<string
 
 function renderProposalActions(proposals: readonly Readonly<Record<string, unknown>>[], resources: Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>): string {
   if (proposals.length === 0) return `<section><div class="section-heading"><h2>Pending Proposals</h2>${statusBadge("EMPTY")}</div><p class="empty-inline">No authorized pending proposals are available.</p></section>`;
-  return `<section><div class="section-heading"><div><p class="eyebrow">TWO-PERSON CONTROL</p><h2>Pending Proposals</h2></div>${statusBadge("PROPOSED")}</div><p class="scope-note">Proposed by is shown for safe review. Approval requires an independent authorized actor. Confirmation required for privileged actions.</p><div class="table-wrap"><table><thead><tr><th>Proposal</th><th>Resource</th><th>Proposed by</th><th>Status</th><th>Governed actions</th></tr></thead><tbody>${proposals.map((proposal) => {
+  return `<section><div class="section-heading"><div><p class="eyebrow">TWO-PERSON CONTROL</p><h2>Pending Proposals</h2></div>${statusBadge("PROPOSED")}</div><p class="scope-note">Proposed by is shown for safe review. Approval requires an independent authorized actor. Confirmation required for privileged actions.</p><div class="table-wrap"><table aria-label="Pending administration proposals"><thead><tr><th scope="col">Proposal</th><th scope="col">Resource</th><th scope="col">Proposed by</th><th scope="col">Status</th><th scope="col">Governed actions</th></tr></thead><tbody>${proposals.map((proposal) => {
     const resourceType = displayValue(proposal["resourceType"]);
     const resourceId = displayValue(proposal["resourceId"]);
     const resourceItems = resourceType === "ROLE_ASSIGNMENT" ? resources["assignments"] : resourceType === "POLICY" ? resources["policies"] : resourceType === "SOURCE_REGISTRY" ? resources["sources"] : resources["targets"];
@@ -223,7 +240,7 @@ function renderProposalActions(proposals: readonly Readonly<Record<string, unkno
     const expectedVersion = resource?.["version"];
     const operations = decisionOperations(resourceType, displayValue(resource?.["status"]));
     return `<tr><td>${escapeHtml(proposal["id"])}</td><td>${escapeHtml(resourceType)} · ${escapeHtml(resourceId)}</td><td>${escapeHtml(proposal["proposerReference"])}</td><td>${statusBadge(proposal["status"])}</td><td><div class="action-list">${expectedVersion === undefined ? '<span class="scope-note">Current resource version unavailable.</span>' : operations.map((operation) => `<form class="inline-command-form" data-administration-command data-confirmation-required><input type="hidden" name="operation" value="${operation}"><input type="hidden" name="proposalId" value="${escapeHtml(proposal["id"])}"><input type="hidden" name="resourceType" value="${escapeHtml(resourceType)}"><input type="hidden" name="resourceId" value="${escapeHtml(resourceId)}"><input type="hidden" name="scopeType" value="${escapeHtml(proposal["scopeType"])}"><input type="hidden" name="scopeId" value="${escapeHtml(proposal["scopeId"])}"><input type="hidden" name="expectedVersion" value="${escapeHtml(expectedVersion)}"><label><span class="sr-only">Reason for ${escapeHtml(operation)}</span><input name="reason" required minlength="3" maxlength="512" placeholder="Reason"></label>${operation.startsWith("TRANSITION_") ? transitionSelect(resourceType) : ""}<button type="submit">${escapeHtml(operation)}</button></form>`).join("")}</div></td></tr>`;
-  }).join("")}</tbody></table></div><div class="confirmation-panel" hidden data-confirmation-panel><strong>Confirmation required</strong><p data-confirmation-summary></p><button type="button" data-confirm-command>Confirm governed action</button><button type="button" data-cancel-command>Cancel</button></div></section>`;
+  }).join("")}</tbody></table></div><div class="confirmation-panel" role="dialog" aria-modal="true" aria-labelledby="confirmation-title" hidden data-confirmation-panel><strong id="confirmation-title">Confirmation required</strong><p data-confirmation-summary></p><button type="button" data-confirm-command>Confirm governed action</button><button type="button" data-cancel-command>Cancel</button></div></section>`;
 }
 
 function decisionOperations(resourceType: string, resourceStatus: string): readonly string[] {
@@ -293,7 +310,7 @@ function renderEvidence(data: Readonly<Record<string, unknown>>): string {
 
 function historySection(title: string, entries: readonly unknown[]): string {
   if (entries.length === 0) return `<section><h2>${escapeHtml(title)}</h2><p class="empty-inline">No entries are currently available.</p></section>`;
-  return `<section><h2>${escapeHtml(title)}</h2><div class="table-wrap"><table><tbody>${entries.map((entry) => `<tr><td>${isRecord(entry) ? definitionGrid(entry) : escapeHtml(entry)}</td></tr>`).join("")}</tbody></table></div></section>`;
+  return `<section><h2>${escapeHtml(title)}</h2><div class="table-wrap"><table aria-label="${escapeHtml(title)}"><tbody>${entries.map((entry) => `<tr><td>${isRecord(entry) ? definitionGrid(entry) : escapeHtml(entry)}</td></tr>`).join("")}</tbody></table></div></section>`;
 }
 
 function definitionGrid(data: Readonly<Record<string, unknown>>): string {
@@ -308,7 +325,7 @@ function metricCard(label: string, value: unknown): string {
 
 function statusBadge(value: unknown): string {
   const display = displayValue(value);
-  return `<span class="status-badge" data-status="${escapeHtml(slug(display))}"><span class="status-dot" aria-hidden="true"></span>${escapeHtml(display)}</span>`;
+  return `<span class="status-badge" data-status="${escapeHtml(slug(display))}" aria-label="Status: ${escapeHtml(display)}"><span class="status-dot" aria-hidden="true"></span>${escapeHtml(display)}</span>`;
 }
 
 function stateCard(code: string, message: string): string {
@@ -357,16 +374,21 @@ function escapeHtml(value: unknown): string {
 export const CONSOLE_BROWSER_CLIENT = String.raw`(() => {
   "use strict";
   const root = document.getElementById("console-view");
+  const announcements = document.getElementById("console-announcements");
   const page = document.body.dataset.consolePage;
   if (!root || !page) return;
   let pendingForm = null;
+  let returnFocus = null;
+  let validationSequence = 0;
   const safeFailure = () => {
     root.innerHTML = "<section class=\"state-card error-state\" role=\"alert\"><h2>CONSOLE_READ_UNAVAILABLE</h2><p>The requested Console view is unavailable.</p></section>";
     root.setAttribute("aria-busy", "false");
+    if (announcements) announcements.textContent = "Console view unavailable.";
   };
   const setHtml = (html) => {
     root.innerHTML = typeof html === "string" ? html : "";
     root.setAttribute("aria-busy", "false");
+    if (announcements) announcements.textContent = "Console view updated.";
     wireForms();
   };
   const load = () => {
@@ -429,6 +451,7 @@ export const CONSOLE_BROWSER_CLIENT = String.raw`(() => {
     detail.textContent = result && result.state === "CONFIRMED" ? String(result.operation) + " · " + String(result.status) + " · v" + String(result.version) : String((result && result.message) || "The request could not be completed.");
     notice.append(title, detail);
     root.prepend(notice);
+    if (announcements) announcements.textContent = title.textContent + ". " + detail.textContent;
   };
   const submit = (form) => {
     const button = form.querySelector('button[type="submit"]');
@@ -447,27 +470,100 @@ export const CONSOLE_BROWSER_CLIENT = String.raw`(() => {
         feedback(payload.result);
       }).catch(() => { if (button) button.disabled = false; feedback({ state: "REJECTED", errorCode: "CONSOLE_READ_UNAVAILABLE", message: "The command outcome is unavailable. Retry uses the same idempotency key." }); });
   };
+  const clearValidation = (form) => {
+    form.querySelector("[data-form-error-summary]")?.remove();
+    form.querySelectorAll("[aria-invalid]").forEach((field) => { field.removeAttribute("aria-invalid"); field.removeAttribute("aria-describedby"); });
+    form.querySelectorAll("[data-field-error]").forEach((error) => error.remove());
+  };
+  const validateForm = (form) => {
+    clearValidation(form);
+    const invalid = Array.from(form.querySelectorAll("input,select,textarea")).filter((field) => !field.checkValidity());
+    if (invalid.length === 0) return true;
+    validationSequence += 1;
+    const summary = document.createElement("div");
+    summary.className = "form-error-summary";
+    summary.dataset.formErrorSummary = "";
+    summary.setAttribute("role", "alert");
+    summary.tabIndex = -1;
+    const summaryTitle = document.createElement("strong");
+    summaryTitle.textContent = "Check the highlighted fields.";
+    const errorList = document.createElement("ul");
+    summary.append(summaryTitle, errorList);
+    form.prepend(summary);
+    invalid.forEach((field, index) => {
+      const error = document.createElement("span");
+      const fieldId = field.id || "invalid-field-" + validationSequence + "-" + index;
+      const errorId = "field-error-" + validationSequence + "-" + index;
+      field.id = fieldId;
+      error.id = errorId;
+      error.className = "sr-only";
+      error.dataset.fieldError = "";
+      error.textContent = "This field needs attention.";
+      field.setAttribute("aria-invalid", "true");
+      field.setAttribute("aria-describedby", errorId);
+      field.insertAdjacentElement("afterend", error);
+      const item = document.createElement("li");
+      const link = document.createElement("a");
+      link.href = "#" + fieldId;
+      link.textContent = field.name || "Required field";
+      item.append(link);
+      errorList.append(item);
+    });
+    summary.focus();
+    return false;
+  };
+  const closeConfirmation = () => {
+    const panel = root.querySelector("[data-confirmation-panel]");
+    if (panel) panel.hidden = true;
+    root.querySelectorAll("[data-dialog-inert]").forEach((element) => { element.inert = false; delete element.dataset.dialogInert; });
+    pendingForm = null;
+    if (returnFocus && typeof returnFocus.focus === "function") returnFocus.focus();
+    returnFocus = null;
+  };
   const wireForms = () => {
     root.querySelectorAll("[data-administration-command]").forEach((form) => form.addEventListener("submit", (event) => {
       event.preventDefault();
-      if (!form.reportValidity()) return;
+      if (!validateForm(form)) return;
       if (form.hasAttribute("data-confirmation-required")) {
         pendingForm = form;
+        returnFocus = event.submitter || form.querySelector('button[type="submit"]');
         const panel = root.querySelector("[data-confirmation-panel]");
         const summary = root.querySelector("[data-confirmation-summary]");
         if (panel) panel.hidden = false;
+        if (panel) {
+          Array.from(root.children).forEach((element) => {
+            if (element === panel || element.contains(panel)) return;
+            element.inert = true;
+            element.dataset.dialogInert = "";
+          });
+          Array.from(panel.parentElement?.children ?? []).forEach((element) => {
+            if (element === panel) return;
+            element.inert = true;
+            element.dataset.dialogInert = "";
+          });
+        }
         if (summary) summary.textContent = String(new FormData(form).get("operation")) + " · " + String(new FormData(form).get("resourceId")) + " · v" + String(new FormData(form).get("expectedVersion"));
+        root.querySelector("[data-confirm-command]")?.focus();
         return;
       }
       submit(form);
     }));
-    root.querySelector("[data-confirm-command]")?.addEventListener("click", () => { if (pendingForm) submit(pendingForm); pendingForm = null; });
-    root.querySelector("[data-cancel-command]")?.addEventListener("click", () => { const panel = root.querySelector("[data-confirmation-panel]"); if (panel) panel.hidden = true; pendingForm = null; });
+    root.querySelector("[data-confirm-command]")?.addEventListener("click", () => { const form = pendingForm; closeConfirmation(); if (form) submit(form); });
+    root.querySelector("[data-cancel-command]")?.addEventListener("click", closeConfirmation);
+    root.querySelector("[data-confirmation-panel]")?.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") { event.preventDefault(); closeConfirmation(); return; }
+      if (event.key !== "Tab") return;
+      const focusableElements = Array.from(event.currentTarget.querySelectorAll("button:not([disabled]),[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex='-1'])"));
+      if (focusableElements.length === 0) return;
+      const first = focusableElements[0]; const last = focusableElements[focusableElements.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    });
   };
   void load();
 })();`;
 
 export const CONSOLE_STYLES = `
-:root{--radius:10px;--control-height:32px;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#15253a;background:#f3f6fa;font-synthesis:none}*{box-sizing:border-box}body{margin:0;min-width:320px}.skip-link{position:fixed;left:1rem;top:-4rem;z-index:10;background:#fff;padding:.75rem;border-radius:.5rem}.skip-link:focus{top:1rem}.console-layout{min-height:100vh;display:grid;grid-template-columns:240px 1fr}.sidebar{background:#10243e;color:#dbe8f6;padding:24px;display:flex;flex-direction:column;gap:1.5rem}.brand{display:flex;align-items:center;gap:.75rem}.brand-mark{display:grid;place-items:center;width:2.4rem;height:2.4rem;border-radius:.7rem;background:#3bd2b1;color:#092033;font-weight:800}.nav-section{margin-top:1rem}.nav-section h2{font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:#8198b3}.nav-link{display:block;color:#dbe8f6;text-decoration:none;padding:.7rem .8rem;margin:.2rem 0;border-radius:.5rem}.nav-link:hover,.nav-link.active{background:#1c3858;color:#fff}.nav-link:focus-visible,button:focus-visible{outline:3px solid #f4c95d;outline-offset:2px}.baseline{margin-top:auto;border-top:1px solid #31506e;padding-top:1rem;display:grid;gap:.3rem;font-size:.76rem;color:#9eb2c8}.content{padding:24px;min-width:0;max-width:1440px;width:100%;margin:0 auto}.page-header,.section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem}.page-header{height:48px;margin-bottom:16px}.page-header h1{font-size:1.45rem;line-height:1.2;margin:.1rem 0}.eyebrow{font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:#58718b;font-weight:750}.mode-badge,.status-badge{display:inline-flex;align-items:center;gap:.45rem;border:1px solid #c9d5e2;border-radius:999px;padding:.45rem .7rem;background:#fff;font-size:.72rem;font-weight:750;white-space:nowrap}.status-dot{width:.55rem;height:.55rem;border-radius:50%;background:#1ead86}[data-status="unavailable"] .status-dot{background:#8198b3}[data-status="revoked"] .status-dot,[data-status="rejected"] .status-dot,[data-status="blocked"] .status-dot{background:#b54444}[data-status="pending"] .status-dot,[data-status="proposed"] .status-dot{background:#a36a16}.content section,.development-card{background:#fff;border:1px solid #dce4ed;border-radius:var(--radius);padding:1.25rem;margin-bottom:16px;box-shadow:0 8px 24px rgba(38,63,89,.055)}.card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.75rem}.metric-card{border:1px solid #dce4ed;border-radius:.8rem;padding:1rem;display:grid;gap:.55rem}.metric-card span{font-size:.76rem;color:#64788d}.metric-card strong{font-size:1.05rem}.definition-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:.7rem;margin:1rem 0 0}.definition-grid>div{background:#f7f9fc;padding:.8rem;border-radius:.65rem;min-width:0}.definition-grid dt{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:#6a7c91}.definition-grid dd{margin:.35rem 0 0;overflow-wrap:anywhere;font-weight:650}.action-list{display:flex;flex-wrap:wrap;gap:.6rem}.action-list button{border:1px solid #c9d5e2;background:#eef2f6;color:#65768a;padding:.65rem .85rem;border-radius:.55rem}.notice{display:flex;justify-content:space-between;gap:1rem;border-left:4px solid #3a80d2;background:#f2f7fd;padding:.8rem 1rem;margin-top:.75rem}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:720px}th{text-align:left;font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:#607388;padding:.65rem .5rem;border-bottom:1px solid #dce4ed}td{border-top:1px solid #e2e8ef;padding:.5rem}.state-card{text-align:center;padding:2.5rem!important}.state-card h2{font-size:1.1rem}.error-state{border-color:#eab0b0!important}.numeric{font-variant-numeric:tabular-nums}.governance-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.governance-grid .compact-section{margin-bottom:0}.reference,.scope-note,.empty-inline{color:#607388;font-size:.86rem}.spinner{display:inline-block;width:1.4rem;height:1.4rem;border:3px solid #d5e0eb;border-top-color:#2978c8;border-radius:50%}@media(max-width:900px){.governance-grid{grid-template-columns:1fr}}@media(max-width:760px){.card-grid{grid-template-columns:1fr}.console-layout{grid-template-columns:1fr}.sidebar{position:static}.content{padding:1.2rem}.page-header{height:auto;align-items:flex-start;flex-direction:column}.baseline{margin-top:1rem}}
-.governed-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;align-items:end}.governed-form label,.inline-command-form label{display:grid;gap:5px;font-size:.76rem;color:#526a82}.governed-form input,.governed-form select,.inline-command-form input,.inline-command-form select{min-height:var(--control-height);border:1px solid #b9c8d8;border-radius:.45rem;background:#fff;color:#15253a;padding:.4rem .55rem;min-width:0}.governed-form button,.inline-command-form button,.confirmation-panel button{min-height:var(--control-height);border:1px solid #245f9d;border-radius:.45rem;background:#245f9d;color:#fff;padding:.4rem .7rem;font-weight:700}.inline-command-form{display:flex;gap:.4rem;align-items:end;flex-wrap:wrap}.inline-command-form button{font-size:.68rem}.selector-summary{grid-column:1/-1;border-top:1px solid #e2e8ef;margin-top:.75rem;padding-top:.75rem}.selector-chip{display:inline-flex;margin:.2rem .35rem .2rem 0;border:1px solid #d2dde8;border-radius:999px;padding:.3rem .55rem;font-size:.72rem}.confirmation-panel{border:1px solid #d6b267;background:#fff9e8;border-radius:.6rem;padding:1rem;margin-top:1rem}.confirmation-panel[hidden]{display:none}.command-feedback{margin-bottom:16px}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}@media(max-width:760px){.governed-form{grid-template-columns:1fr}.inline-command-form{display:grid;grid-template-columns:1fr}.governed-form button,.inline-command-form button{width:100%}}
+:root{--radius:10px;--control-height:32px;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#15253a;background:#f3f6fa;font-synthesis:none}*{box-sizing:border-box}body{margin:0;min-width:320px}.skip-link{position:fixed;left:1rem;top:-4rem;z-index:10;background:#fff;padding:.75rem;border-radius:.5rem}.skip-link:focus{top:1rem}.console-layout{min-height:100vh;display:grid;grid-template-columns:240px 1fr}.sidebar{background:#10243e;color:#dbe8f6;padding:24px;display:flex;flex-direction:column;gap:1.5rem}.brand{display:flex;align-items:center;gap:.75rem}.brand-mark{display:grid;place-items:center;width:2.4rem;height:2.4rem;border-radius:.7rem;background:#3bd2b1;color:#092033;font-weight:800}.nav-section{margin-top:1rem}.nav-section h2{font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:#8198b3}.nav-link{display:block;color:#dbe8f6;text-decoration:none;padding:.7rem .8rem;margin:.2rem 0;border-radius:.5rem}.nav-link:hover,.nav-link.active{background:#1c3858;color:#fff}.nav-link:focus-visible,button:focus-visible{outline:3px solid #f4c95d;outline-offset:2px}.baseline{margin-top:auto;border-top:1px solid #31506e;padding-top:1rem;display:grid;gap:.3rem;font-size:.76rem;color:#9eb2c8}.content{padding:24px;min-width:0;max-width:1440px;width:100%;margin:0 auto}.breadcrumbs{font-size:.75rem;color:#607388;margin-bottom:.2rem}.breadcrumbs ol{display:flex;align-items:center;gap:.4rem;list-style:none;margin:0;padding:0}.breadcrumbs li+li::before{content:"/";margin-right:.4rem;color:#8198b3}.breadcrumbs a{color:#315f8e}.page-header,.section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem}.page-header{min-height:48px;margin-bottom:16px}.page-header h1{font-size:1.45rem;line-height:1.2;margin:.1rem 0}.eyebrow{font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:#58718b;font-weight:750}.mode-badge,.status-badge{display:inline-flex;align-items:center;gap:.45rem;border:1px solid #c9d5e2;border-radius:999px;padding:.45rem .7rem;background:#fff;font-size:.72rem;font-weight:750;white-space:nowrap}.status-dot{width:.55rem;height:.55rem;border-radius:50%;background:#1ead86}[data-status="unavailable"] .status-dot{background:#8198b3}[data-status="revoked"] .status-dot,[data-status="rejected"] .status-dot,[data-status="blocked"] .status-dot{background:#b54444}[data-status="pending"] .status-dot,[data-status="proposed"] .status-dot{background:#a36a16}.content section,.development-card{background:#fff;border:1px solid #dce4ed;border-radius:var(--radius);padding:1.25rem;margin-bottom:16px;box-shadow:0 8px 24px rgba(38,63,89,.055)}.card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.75rem}.metric-card{border:1px solid #dce4ed;border-radius:.8rem;padding:1rem;display:grid;gap:.55rem}.metric-card span{font-size:.76rem;color:#64788d}.metric-card strong{font-size:1.05rem}.definition-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:.7rem;margin:1rem 0 0}.definition-grid>div{background:#f7f9fc;padding:.8rem;border-radius:.65rem;min-width:0}.definition-grid dt{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:#6a7c91}.definition-grid dd{margin:.35rem 0 0;overflow-wrap:anywhere;font-weight:650}.action-list{display:flex;flex-wrap:wrap;gap:.6rem}.action-list button{border:1px solid #c9d5e2;background:#eef2f6;color:#65768a;padding:.65rem .85rem;border-radius:.55rem}.notice{display:flex;justify-content:space-between;gap:1rem;border-left:4px solid #3a80d2;background:#f2f7fd;padding:.8rem 1rem;margin-top:.75rem}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:720px}th{text-align:left;font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:#607388;padding:.65rem .5rem;border-bottom:1px solid #dce4ed}td{border-top:1px solid #e2e8ef;padding:.5rem}.state-card{text-align:center;padding:2.5rem!important}.state-card h2{font-size:1.1rem}.error-state{border-color:#eab0b0!important}.numeric{font-variant-numeric:tabular-nums}.governance-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.governance-grid .compact-section{margin-bottom:0}.reference,.scope-note,.empty-inline{color:#607388;font-size:.86rem}.spinner{display:inline-block;width:1.4rem;height:1.4rem;border:3px solid #d5e0eb;border-top-color:#2978c8;border-radius:50%}@media(max-width:900px){.governance-grid{grid-template-columns:1fr}}@media(max-width:760px){.card-grid{grid-template-columns:1fr}.console-layout{grid-template-columns:1fr}.sidebar{position:static}.content{padding:1.2rem}.page-header{height:auto;align-items:flex-start;flex-direction:column}.baseline{margin-top:1rem}}
+a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #f4c95d;outline-offset:2px}.governed-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;align-items:end}.governed-form label,.inline-command-form label{display:grid;gap:5px;font-size:.76rem;color:#526a82}.governed-form input,.governed-form select,.inline-command-form input,.inline-command-form select{min-height:var(--control-height);border:1px solid #b9c8d8;border-radius:.45rem;background:#fff;color:#15253a;padding:.4rem .55rem;min-width:0}.governed-form button,.inline-command-form button,.confirmation-panel button{min-height:var(--control-height);border:1px solid #245f9d;border-radius:.45rem;background:#245f9d;color:#fff;padding:.4rem .7rem;font-weight:700}.inline-command-form{display:flex;gap:.4rem;align-items:end;flex-wrap:wrap}.inline-command-form button{font-size:.68rem}.selector-summary{grid-column:1/-1;border-top:1px solid #e2e8ef;margin-top:.75rem;padding-top:.75rem}.selector-chip{display:inline-flex;margin:.2rem .35rem .2rem 0;border:1px solid #d2dde8;border-radius:999px;padding:.3rem .55rem;font-size:.72rem}.confirmation-panel{border:1px solid #d6b267;background:#fff9e8;border-radius:.6rem;padding:1rem;margin-top:1rem}.confirmation-panel[hidden]{display:none}.command-feedback{margin-bottom:16px}.form-error-summary{grid-column:1/-1;border-left:4px solid #b54444;background:#fff1f1;color:#762b2b;padding:.7rem}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}@media(max-width:760px){.governed-form{grid-template-columns:1fr}.inline-command-form{display:grid;grid-template-columns:1fr}.governed-form button,.inline-command-form button{width:100%}}
 `;

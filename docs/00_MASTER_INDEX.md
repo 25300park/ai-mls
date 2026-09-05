@@ -247,6 +247,7 @@
 | DOC-REVIEW-120 | [Current Main Exact-HEAD Fresh Integrated Validation Retry](reviews/CURRENT_MAIN_EXACT_HEAD_FRESH_INTEGRATED_VALIDATION_RETRY_REPORT.md) | post-remediation exact-head integrated baseline candidate evidence | AVAILABLE |
 | DOC-REVIEW-121 | [FEAT-021-A Canonical UI/Accessibility Contract & Implemented-Screen Inventory](reviews/FEAT021_A_CANONICAL_UI_ACCESSIBILITY_CONTRACT_INVENTORY_REPORT.md) | FEAT-021 UI/accessibility contract and implemented-screen inventory evidence | AVAILABLE |
 | DOC-REVIEW-122 | [FEAT-021 Identity / Roadmap Reconciliation](reviews/FEAT021_IDENTITY_ROADMAP_RECONCILIATION_REPORT.md) | canonical FEAT-021 identity and roadmap reconciliation evidence | AVAILABLE |
+| DOC-REVIEW-123 | [FEAT-021-B Shared Shell / Navigation / Accessibility Primitives](reviews/FEAT021_B_SHARED_SHELL_NAVIGATION_ACCESSIBILITY_PRIMITIVES_COMPLETION.md) | current Console shared shell, navigation and bounded accessibility primitive evidence | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -503,6 +504,7 @@
 | DOC-DEV-030 | [F19-D Connector Ambiguity Recovery Handoff Plan](implementation/F19_D_CONNECTOR_AMBIGUITY_RECOVERY_HANDOFF_IMPLEMENTATION_PLAN.md) | F19-D execution plan | AVAILABLE |
 | DOC-DEV-031 | [F19-E API-019 Business Handoff Plan](implementation/F19_E_API_019_BUSINESS_HANDOFF_IMPLEMENTATION_PLAN.md) | F19-E execution plan | AVAILABLE |
 | DOC-DEV-032 | [F19-F Recovery Idempotency Hardening Plan](implementation/F19_F_RECOVERY_IDEMPOTENCY_NESTED_AMBIGUITY_IMPLEMENTATION_PLAN.md) | F19-F execution plan | AVAILABLE |
+| DOC-DEV-033 | [FEAT-021 UI / Accessibility Implementation Traceability](implementation/FEAT021_TRACEABILITY_MATRIX.md) | FEAT-021-B shared shell/navigation/accessibility requirement-to-evidence mapping | AVAILABLE |
 | DOC-REVIEW-019 | [Phase 12 Completion](reviews/PHASE12_COMPLETION.md) | Developer Bible completion evidence와 Phase 13 gate | AVAILABLE |
 
 ## Book 12 — Master Development Roadmap (Phase 13)
@@ -803,6 +805,7 @@
 | DOC-DEV-030 | F19-D Connector Ambiguity Recovery Handoff Implementation Plan | [F19_D_CONNECTOR_AMBIGUITY_RECOVERY_HANDOFF_IMPLEMENTATION_PLAN.md](implementation/F19_D_CONNECTOR_AMBIGUITY_RECOVERY_HANDOFF_IMPLEMENTATION_PLAN.md) |
 | DOC-DEV-031 | F19-E API-019 Business Handoff Implementation Plan | [F19_E_API_019_BUSINESS_HANDOFF_IMPLEMENTATION_PLAN.md](implementation/F19_E_API_019_BUSINESS_HANDOFF_IMPLEMENTATION_PLAN.md) |
 | DOC-DEV-032 | F19-F Recovery Idempotency Hardening Implementation Plan | [F19_F_RECOVERY_IDEMPOTENCY_NESTED_AMBIGUITY_IMPLEMENTATION_PLAN.md](implementation/F19_F_RECOVERY_IDEMPOTENCY_NESTED_AMBIGUITY_IMPLEMENTATION_PLAN.md) |
+| DOC-DEV-033 | FEAT-021 UI / Accessibility Implementation Traceability Matrix | [FEAT021_TRACEABILITY_MATRIX.md](implementation/FEAT021_TRACEABILITY_MATRIX.md) |
 | DOC-ROADMAP-001 | Master Development Roadmap Index | [00_MASTER_DEVELOPMENT_ROADMAP_INDEX.md](book-12/00_MASTER_DEVELOPMENT_ROADMAP_INDEX.md) |
 | DOC-ROADMAP-002 | Implementation Strategy | [01_IMPLEMENTATION_STRATEGY.md](book-12/01_IMPLEMENTATION_STRATEGY.md) |
 | DOC-ROADMAP-003 | Epic Breakdown | [02_EPIC_BREAKDOWN.md](book-12/02_EPIC_BREAKDOWN.md) |
@@ -955,6 +958,7 @@
 | DOC-REVIEW-120 | Current Main Exact-HEAD Fresh Integrated Validation Retry Report | [CURRENT_MAIN_EXACT_HEAD_FRESH_INTEGRATED_VALIDATION_RETRY_REPORT.md](reviews/CURRENT_MAIN_EXACT_HEAD_FRESH_INTEGRATED_VALIDATION_RETRY_REPORT.md) |
 | DOC-REVIEW-121 | FEAT-021-A Canonical UI/Accessibility Contract & Implemented-Screen Inventory Report | [FEAT021_A_CANONICAL_UI_ACCESSIBILITY_CONTRACT_INVENTORY_REPORT.md](reviews/FEAT021_A_CANONICAL_UI_ACCESSIBILITY_CONTRACT_INVENTORY_REPORT.md) |
 | DOC-REVIEW-122 | FEAT-021 Identity / Roadmap Reconciliation Report | [FEAT021_IDENTITY_ROADMAP_RECONCILIATION_REPORT.md](reviews/FEAT021_IDENTITY_ROADMAP_RECONCILIATION_REPORT.md) |
+| DOC-REVIEW-123 | FEAT-021-B Shared Shell / Navigation / Accessibility Primitives Completion | [FEAT021_B_SHARED_SHELL_NAVIGATION_ACCESSIBILITY_PRIMITIVES_COMPLETION.md](reviews/FEAT021_B_SHARED_SHELL_NAVIGATION_ACCESSIBILITY_PRIMITIVES_COMPLETION.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books

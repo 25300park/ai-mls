@@ -66,7 +66,8 @@ test("POST-F15-CONSOLE development composition starts a bounded empty-state Cons
   assert.equal(body.includes("Unavailable in current backend."), true);
   const administration = await fetch(`${composition.server.localUrl}/api/console/view?page=ADMINISTRATION`);
   const administrationBody = await administration.text();
-  assert.equal(administrationBody.includes("READ_BOUNDARY_MISSING"), true);
+  assert.equal(administrationBody.includes("UNAVAILABLE"), true);
+  assert.equal(administrationBody.includes("READ_BOUNDARY_MISSING"), false);
   assert.equal(administrationBody.includes("Publication reference"), false);
   await composition.server.stop();
 });

@@ -412,6 +412,80 @@ test("F16-PHASE-11 UI-036 renders bounded unavailable selector state without fak
   assert.equal(html.includes("No authorized canonical options are available."), true);
   assert.equal(/temporary-|hardcoded-|fixture-/u.test(html), false);
 });
+
+test("FEAT-021-B shell exposes the canonical landmark navigation and announcement contract", () => {
+  const html = renderConsoleShell("UI-036");
+
+  assert.equal(html.includes('class="skip-link" href="#console-content">Skip to main content</a>'), true);
+  assert.equal(html.indexOf('class="skip-link"') < html.indexOf('class="console-layout"'), true);
+  assert.equal(html.includes('<header class="page-header" role="banner">'), true);
+  assert.equal(html.includes('<nav id="primary-navigation" aria-label="Primary">'), true);
+  assert.equal(html.includes('<nav class="breadcrumbs" aria-label="Breadcrumb">'), true);
+  assert.equal(html.includes('href="/administration"'), true);
+  assert.equal(html.includes('aria-current="page"'), true);
+  assert.equal(html.includes('<main id="console-content" tabindex="-1" aria-labelledby="console-page-title">'), true);
+  assert.equal(html.includes('<h1 id="console-page-title" tabindex="-1">Role &amp; Policy Administration</h1>'), true);
+  assert.equal((html.match(/<main\b/gu) ?? []).length, 1);
+  assert.equal(html.includes('id="console-announcements" class="sr-only" role="status" aria-live="polite" aria-atomic="true"'), true);
+  assert.equal(html.includes('id="console-view" aria-busy="true"'), true);
+  assert.equal(html.includes('id="console-view" aria-live='), false);
+});
+
+test("FEAT-021-B confirmation dialog and controls preserve a visible keyboard focus contract", () => {
+  const html = renderConsoleResult(ready("UI-036", {
+    proposals: [{ id: "proposal-1", resourceType: "POLICY", resourceId: "policy-1", proposerReference: "actor-1", status: "PROPOSED", scopeType: "TEAM", scopeId: "team-1" }],
+    selectorOptions: { roleAssignments: { items: [] }, proposals: { items: [{ id: "proposal-1", resourceType: "POLICY", resourceId: "policy-1", proposerReference: "actor-1", status: "PROPOSED", scopeType: "TEAM", scopeId: "team-1" }] }, policies: { items: [{ id: "policy-1", status: "DRAFT", version: 1, scopeType: "TEAM", scopeId: "team-1" }] }, sourceGovernance: { items: [] }, publicationTargets: { items: [] }, roles: { items: [] }, teamScopes: { items: [] } },
+  }));
+
+  assert.equal(html.includes('role="dialog" aria-modal="true" aria-labelledby="confirmation-title"'), true);
+  assert.equal(html.includes('<strong id="confirmation-title">Confirmation required</strong>'), true);
+  for (const selector of ["a:focus-visible", "input:focus-visible", "select:focus-visible", "textarea:focus-visible"]) assert.equal(CONSOLE_STYLES.includes(selector), true);
+  assert.equal(CONSOLE_BROWSER_CLIENT.includes("let returnFocus = null"), true);
+  assert.equal(CONSOLE_BROWSER_CLIENT.includes('event.key === "Escape"'), true);
+  assert.equal(CONSOLE_BROWSER_CLIENT.includes('event.key !== "Tab"'), true);
+  assert.equal(CONSOLE_BROWSER_CLIENT.includes("focusableElements"), true);
+  assert.equal(CONSOLE_BROWSER_CLIENT.includes("returnFocus.focus()"), true);
+  assert.equal(CONSOLE_BROWSER_CLIENT.includes("data-dialog-inert"), true);
+});
+
+test("FEAT-021-B shared status, table, unavailable and validation primitives expose semantics", () => {
+  const unavailable = renderConsoleResult(Object.freeze({ page: "PROJECTION", state: "UNAVAILABLE", message: "Projection is unavailable." }));
+  const administration = renderConsoleResult(ready("ADMINISTRATION", {
+    roleAssignments: { state: "READY", items: [{ roleAssignmentId: "ra-1", subjectPrincipalReference: "subject-1", roleId: "role-1", scopeType: "TEAM", scopeId: "team-1", status: "ACTIVE", version: 1 }] },
+    policyAdministration: { state: "UNAVAILABLE" }, sourceGovernance: { state: "UNAVAILABLE" }, publicationTargetGovernance: { state: "UNAVAILABLE" }, pendingProposals: { state: "UNAVAILABLE" }, recentDecisions: { state: "UNAVAILABLE" },
+  }));
+
+  assert.equal(unavailable.includes('class="eyebrow">UNAVAILABLE</p>'), true);
+  assert.equal(unavailable.includes("READ_BOUNDARY_MISSING"), false);
+  assert.equal(administration.includes('aria-label="Status: ACTIVE"'), true);
+  assert.equal(administration.includes('<table aria-label="Role assignments">'), true);
+  assert.equal(administration.includes('<th scope="col">Assignment</th>'), true);
+  assert.equal(CONSOLE_BROWSER_CLIENT.includes("form-error-summary"), true);
+  assert.equal(CONSOLE_BROWSER_CLIENT.includes('aria-invalid'), true);
+  assert.equal(CONSOLE_BROWSER_CLIENT.includes('aria-describedby'), true);
+});
+
+test("FEAT-021-B shared shell preserves AA contrast evidence and narrow navigation access", () => {
+  const contrast = (foreground: string, background: string): number => {
+    const luminance = (hex: string): number => {
+      const channels = [1, 3, 5].map((start) => Number.parseInt(hex.slice(start, start + 2), 16) / 255)
+        .map((value) => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+      return 0.2126 * (channels[0] ?? 0) + 0.7152 * (channels[1] ?? 0) + 0.0722 * (channels[2] ?? 0);
+    };
+    const foregroundLuminance = luminance(foreground);
+    const backgroundLuminance = luminance(background);
+    return (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) / (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
+  };
+
+  for (const pair of [["#15253a", "#f3f6fa"], ["#607388", "#ffffff"], ["#dbe8f6", "#10243e"], ["#58718b", "#ffffff"], ["#762b2b", "#fff1f1"]] as const) {
+    assert.equal(contrast(pair[0], pair[1]) >= 4.5, true);
+  }
+  assert.equal(CONSOLE_STYLES.includes("@media(max-width:760px)"), true);
+  assert.equal(CONSOLE_STYLES.includes(".sidebar{position:static}"), true);
+  assert.equal(CONSOLE_STYLES.includes(".table-wrap{overflow-x:auto}"), true);
+  assert.equal(CONSOLE_STYLES.includes(".sidebar{display:none}"), false);
+});
+
 function ready(page: ConsoleReadResult["page"], data: Readonly<Record<string, unknown>>): ConsoleReadResult {
   return Object.freeze({ page, state: "READY", data: Object.freeze(data) });
 }
