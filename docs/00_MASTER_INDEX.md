@@ -245,6 +245,7 @@
 | DOC-REVIEW-118 | [SP-008 Completion](reviews/SP-008_COMPLETION.md) | SP-008 frozen completion evidence | AVAILABLE |
 | DOC-REVIEW-119 | [Current Main Document ID Governance Remediation](reviews/CURRENT_MAIN_DOCUMENT_ID_GOVERNANCE_REMEDIATION_REPORT.md) | Document ID and Master Index remediation evidence | AVAILABLE |
 | DOC-REVIEW-120 | [Current Main Exact-HEAD Fresh Integrated Validation Retry](reviews/CURRENT_MAIN_EXACT_HEAD_FRESH_INTEGRATED_VALIDATION_RETRY_REPORT.md) | post-remediation exact-head integrated baseline candidate evidence | AVAILABLE |
+| DOC-REVIEW-121 | [FEAT-021-A Canonical UI/Accessibility Contract & Implemented-Screen Inventory](reviews/FEAT021_A_CANONICAL_UI_ACCESSIBILITY_CONTRACT_INVENTORY_REPORT.md) | FEAT-021 UI/accessibility contract and implemented-screen inventory evidence | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -951,6 +952,7 @@
 | DOC-REVIEW-118 | SP-008 Completion Report | [SP-008_COMPLETION.md](reviews/SP-008_COMPLETION.md) |
 | DOC-REVIEW-119 | Current Main Document ID Governance Remediation Report | [CURRENT_MAIN_DOCUMENT_ID_GOVERNANCE_REMEDIATION_REPORT.md](reviews/CURRENT_MAIN_DOCUMENT_ID_GOVERNANCE_REMEDIATION_REPORT.md) |
 | DOC-REVIEW-120 | Current Main Exact-HEAD Fresh Integrated Validation Retry Report | [CURRENT_MAIN_EXACT_HEAD_FRESH_INTEGRATED_VALIDATION_RETRY_REPORT.md](reviews/CURRENT_MAIN_EXACT_HEAD_FRESH_INTEGRATED_VALIDATION_RETRY_REPORT.md) |
+| DOC-REVIEW-121 | FEAT-021-A Canonical UI/Accessibility Contract & Implemented-Screen Inventory Report | [FEAT021_A_CANONICAL_UI_ACCESSIBILITY_CONTRACT_INVENTORY_REPORT.md](reviews/FEAT021_A_CANONICAL_UI_ACCESSIBILITY_CONTRACT_INVENTORY_REPORT.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books
