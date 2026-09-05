@@ -11,7 +11,7 @@
 
 ## 1. Objective
 
-FEAT-021-A의 37-screen inventory와 identity reconciliation을 보존하면서 FEAT-021-B shared shell 및 FEAT-021-C current-route hardening 요구사항을 Production implementation, 직접 test, browser evidence와 completion evidence에 연결한다. 이 matrix는 current 13 Console route의 검증된 B/C evidence만 기록하며 dependency-gated screen을 구현 완료로 승격하지 않는다.
+FEAT-021-A의 37-screen inventory와 identity reconciliation을 보존하면서 FEAT-021-B shared shell, FEAT-021-C current-route hardening, FEAT-021-D bounded UAT 및 FEAT-021-E final evidence 요구사항을 Production implementation, 직접 test, browser evidence와 completion evidence에 연결한다. 이 matrix는 current 13 Console route의 검증된 B/C/D/E evidence만 기록하며 dependency-gated screen을 구현 완료로 승격하지 않는다.
 
 ## 2. FEAT-021-B end-to-end traceability
 
@@ -50,9 +50,20 @@ FEAT-021-A의 37-screen inventory와 identity reconciliation을 보존하면서 
 | Actual accessibility tree / safe UI-036 | TEST-038/055 | development Console through existing server/renderer | in-app browser: Primary navigation, Breadcrumb, H1, one main, canonical UNAVAILABLE, forms 0, submit buttons 0, forbidden output 0 | VERIFIED |
 | Dependency-ready missing screens | FEAT-021-A 6/30/1 classification | no additional backend-ready screen exists beyond current mapped surfaces | inventory review; new route/screen diff 0 | NOT_APPLICABLE / PRESERVED |
 
+## 2.3 FEAT-021-E traceability / evidence closure
+
+| Requirement | Canonical source | Production/evidence boundary | Direct verification | Result |
+|---|---|---|---|---|
+| Canonical screen boundary | FEAT-021-A 37-screen inventory | committed B/C/D implementation only; new screen/route 0 | final diff and inventory review | VERIFIED — 37/37 preserved; 6 UI-ready / 30 dependency-blocked / 1 POST-MVP |
+| Current-route regression | FEAT-021-A E phase gate; TEST-038/055 | seven existing Console test modules | Console focused 71/71; repository full gate 992/992 | VERIFIED |
+| Browser accessibility shell | Accessibility Guide; TEST-038 | compiled development Console through existing server/renderer | actual browser 13/13: Primary, Breadcrumb, H1 and one main; skip activation focuses `#console-content` | VERIFIED_BOUNDED |
+| Safe rendered evidence | Security Registry; UI State Standard | existing safe renderer/read boundaries | actual browser 13/13 forbidden stack/path/token/Session/raw-provider pattern findings 0 | VERIFIED |
+| WCAG target and claim boundary | Book 7 WCAG 2.2 AA target; FEAT-021-A | B/C/D primitives and committed current routes only | focused assertions, browser tree and independent review | VERIFIED_BOUNDED — full conformance not claimed |
+| Evidence closure | FEAT-021-A FEAT-021-E row | this RTM, DOC-REVIEW-126 and Master Index | Document ID/link validation, checksum/delta, Gitleaks, fresh review | VERIFIED |
+
 ## 3. Test Registry mapping
 
-| Test ID | FEAT-021-B evidence | Status |
+| Test ID | FEAT-021-B~E evidence | Status |
 |---|---|---|
 | TEST-038 | current 13 routes: landmarks, labels, skip/focus, status, form/dialog/table, responsive and shared contrast assertions | MAPPED / PASS — B shared-primitives slice; full UI-001~037 coverage remains dependency-gated |
 | TEST-054 | Collector/Agent/Reviewer owning screens inherit the shared primitive contract when implemented; no role authority inferred by UI | MAPPED / PASS — B shared contract; persona journey execution remains dependency-gated |
@@ -61,6 +72,8 @@ FEAT-021-A의 37-screen inventory와 identity reconciliation을 보존하면서 
 FEAT-021-C adds direct TEST-038 evidence for the five rows above and bounded TEST-055 UI-036 evidence. It does not complete dependency-gated persona journeys.
 
 FEAT-021-D adds bounded current-route TEST-038 and TEST-055 evidence. TEST-054 role screens remain dependency-gated; no persona name is treated as authority.
+
+FEAT-021-E reruns the committed current-route and repository gates and closes evidence only. It does not convert the remaining TEST-038/054/055 dependency-gated journeys into implemented screens or full WCAG conformance.
 
 ## 4. Scope and preservation
 
@@ -81,3 +94,4 @@ FEAT-021-D adds bounded current-route TEST-038 and TEST-055 evidence. TEST-054 r
 - [FEAT-021-B completion](../reviews/FEAT021_B_SHARED_SHELL_NAVIGATION_ACCESSIBILITY_PRIMITIVES_COMPLETION.md)
 - [FEAT-021-C completion](../reviews/FEAT021_C_CURRENT_ROUTE_ACCESSIBILITY_HARDENING_COMPLETION.md)
 - [FEAT-021-D completion](../reviews/FEAT021_D_KEYBOARD_AX_REFLOW_ROLE_UAT_COMPLETION.md)
+- [FEAT-021-E traceability / evidence closure](../reviews/FEAT021_E_TRACEABILITY_EVIDENCE_CLOSURE_REPORT.md)
