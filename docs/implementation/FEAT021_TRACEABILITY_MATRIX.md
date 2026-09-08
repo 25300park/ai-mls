@@ -61,19 +61,40 @@ FEAT-021-A의 37-screen inventory와 identity reconciliation을 보존하면서 
 | WCAG target and claim boundary | Book 7 WCAG 2.2 AA target; FEAT-021-A | B/C/D primitives and committed current routes only | focused assertions, browser tree and independent review | VERIFIED_BOUNDED — full conformance not claimed |
 | Evidence closure | FEAT-021-A FEAT-021-E row | this RTM, DOC-REVIEW-126 and Master Index | Document ID/link validation, checksum/delta, Gitleaks, fresh review | VERIFIED |
 
+## 2.4 FEAT-021 Final Gate traceability
+
+| Final Gate requirement | Canonical disposition | Verified evidence | Result |
+|---|---|---|---|
+| FG-01 Canonical Screen Integrity | `UI-001`~`UI-037` identity 37/37 preserved | FEAT-021-A inventory and final repository review | VERIFIED |
+| FG-02 Eligible Screen Implementation | current backend-ready screens 6개를 implemented/verified scope로 인정 | FEAT-021-B/C/D/E reports; Console focused 71/71; browser 13/13 | VERIFIED |
+| FG-03 Dependency Disposition | 30개는 owning backend/workflow가 준비될 때까지 `DEPENDENCY_BLOCKED` | FEAT-021-A inventory; fake operational implementation 0; new API 0 | VERIFIED |
+| FG-04 POST-MVP Boundary | `UI-007`은 MVP completion에서 제외 | FEAT-021-A inventory; screen identity preserved | VERIFIED |
+| FG-05~08 Accessibility | shared shell/navigation, keyboard/focus/reflow, semantic role와 bounded contrast | direct Console tests 71/71; actual browser landmarks/skip focus 13/13; sampled contrast >= 4.5:1 | VERIFIED_BOUNDED |
+| FG-09 TEST-038/054/055 | eligible scope PASS; blocked scope `NOT_APPLICABLE_PENDING_DEPENDENCY`; `UI-007` `OUT_OF_SCOPE` | 아래 Test Registry mapping과 FEAT-021-D/E evidence | VERIFIED |
+| FG-10 Browser Acceptance | implemented 13-route Console surface | actual browser 13/13; security finding 0 | VERIFIED |
+| FG-11 Security / Authority | business authority/API/provider/network/credential 추가 금지 | Production diff 0; new API/authority 0; rendered unsafe-output finding 0 | VERIFIED |
+| FG-12 Documentation | RTM, Document ID, local links | valid metadata IDs 393; duplicate/unregistered 0; local links 4,222; broken 0 | VERIFIED |
+| FG-13 Regression / Build | lint/typecheck/build/verify와 regression PASS | fresh full regression 992/992 PASS | VERIFIED |
+| FG-14 Architecture | immutable 153/153 checksum과 approved current delta 보존 | SHA-256 `76ad7f9de4e62ee2701baf52f9fd1e809edeacc93abdde9f216a8113bebed778`; current 149/153, CR-027 delta 4 | VERIFIED |
+| FG-15 Independent Review | Critical 0 / Important 0; READY | [FEAT-021 Final Gate](../reviews/FEAT021_FINAL_GATE_REPORT.md) | VERIFIED |
+
+Final Gate completion은 37개 화면 전체가 backend-operational이라는 뜻이 아니다. 현재 eligible UI/accessibility boundary와 non-eligible disposition의 완결을 뜻하며, full 37-screen WCAG 2.2 AA conformance는 주장하지 않는다.
+
 ## 3. Test Registry mapping
 
 | Test ID | FEAT-021-B~E evidence | Status |
 |---|---|---|
-| TEST-038 | current 13 routes: landmarks, labels, skip/focus, status, form/dialog/table, responsive and shared contrast assertions | MAPPED / PASS — B shared-primitives slice; full UI-001~037 coverage remains dependency-gated |
-| TEST-054 | Collector/Agent/Reviewer owning screens inherit the shared primitive contract when implemented; no role authority inferred by UI | MAPPED / PASS — B shared contract; persona journey execution remains dependency-gated |
-| TEST-055 | current Administration/Operations Console shell, UI-006/UI-031~036 supporting routes and UI-036 controlled presentation | MAPPED / PASS — B Admin/Ops shared-primitives slice; missing Manager screens remain dependency-gated |
+| TEST-038 | 37 identities와 `6 eligible / 30 DEPENDENCY_BLOCKED / 1 POST_MVP` disposition; current 13 routes landmarks, labels, skip/focus, status, form/dialog/table, responsive와 shared contrast | PASS — exact inventory/disposition preserved; unavailable backend screens need not become executable |
+| TEST-054 | eligible/implemented Collector/Agent/Reviewer surfaces의 applicable keyboard, semantic, focus, reflow, name/role/current-state evidence | PASS — eligible scope; blocked persona paths `NOT_APPLICABLE_PENDING_DEPENDENCY` |
+| TEST-055 | eligible Administration/Operations Console shell, UI-006/UI-031~036 supporting routes와 UI-036 controlled presentation | PASS — eligible persona paths; blocked paths `NOT_APPLICABLE_PENDING_DEPENDENCY`; `UI-007` `OUT_OF_SCOPE` |
 
 FEAT-021-C adds direct TEST-038 evidence for the five rows above and bounded TEST-055 UI-036 evidence. It does not complete dependency-gated persona journeys.
 
 FEAT-021-D adds bounded current-route TEST-038 and TEST-055 evidence. TEST-054 role screens remain dependency-gated; no persona name is treated as authority.
 
 FEAT-021-E reruns the committed current-route and repository gates and closes evidence only. It does not convert the remaining TEST-038/054/055 dependency-gated journeys into implemented screens or full WCAG conformance.
+
+The approved Final Gate amendment supersedes only the earlier assumption that dependency-blocked journey execution was required for FEAT-021 completion. It preserves every canonical identity and records `TEST-038/054/055` as PASS within the explicitly bounded eligible scope.
 
 ## 4. Scope and preservation
 
@@ -95,3 +116,4 @@ FEAT-021-E reruns the committed current-route and repository gates and closes ev
 - [FEAT-021-C completion](../reviews/FEAT021_C_CURRENT_ROUTE_ACCESSIBILITY_HARDENING_COMPLETION.md)
 - [FEAT-021-D completion](../reviews/FEAT021_D_KEYBOARD_AX_REFLOW_ROLE_UAT_COMPLETION.md)
 - [FEAT-021-E traceability / evidence closure](../reviews/FEAT021_E_TRACEABILITY_EVIDENCE_CLOSURE_REPORT.md)
+- [FEAT-021 Final Gate](../reviews/FEAT021_FINAL_GATE_REPORT.md)

@@ -78,3 +78,4 @@
 |---|---|---|---|---|
 | DEV-024 | SP-000 | DONE | [Sprint 0 Completion](../development/SPRINT0_COMPLETION.md), [Sprint 0 Task Status](../development/SPRINT0_TASK_STATUS.md) | 2026-07-15 |
 | DEV-016 | SP-001 partial baseline | IN_PROGRESS | [SP-001 Completion](../reviews/SP-001_COMPLETION.md), [SP-001 Test Evidence](../development/SP001_TEST_EVIDENCE.md), [DEC-114](../00_DECISION_REGISTER.md), [FEAT-016 Traceability](../implementation/FEAT016_TRACEABILITY_MATRIX.md); existing Role Assignment subset preserved, full FEAT-016 incomplete | 2026-08-13 |
+| DEV-021 | FEAT-021-A~E + Final Gate | DONE | [FEAT-021 Traceability](../implementation/FEAT021_TRACEABILITY_MATRIX.md), [FEAT-021 Final Gate](../reviews/FEAT021_FINAL_GATE_REPORT.md); 6 eligible screens verified, 30 dependency-blocked, UI-007 POST-MVP, bounded WCAG evidence only | 2026-09-06 |

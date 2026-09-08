@@ -251,6 +251,7 @@
 | DOC-REVIEW-124 | [FEAT-021-C Current Route Accessibility Hardening](reviews/FEAT021_C_CURRENT_ROUTE_ACCESSIBILITY_HARDENING_COMPLETION.md) | current 13-route collection/form/unavailable/in-flight accessibility evidence | AVAILABLE |
 | DOC-REVIEW-125 | [FEAT-021-D Keyboard / AX / Reflow / Role UAT](reviews/FEAT021_D_KEYBOARD_AX_REFLOW_ROLE_UAT_COMPLETION.md) | bounded current-route screen-reader shell, role, reflow and forced-colors evidence | AVAILABLE |
 | DOC-REVIEW-126 | [FEAT-021-E Traceability / Evidence Closure](reviews/FEAT021_E_TRACEABILITY_EVIDENCE_CLOSURE_REPORT.md) | final bounded FEAT-021 traceability, regression, browser and independent-review evidence | AVAILABLE |
+| DOC-REVIEW-127 | [FEAT-021 UI and Accessibility Boundary Final Gate](reviews/FEAT021_FINAL_GATE_REPORT.md) | approved screen disposition, bounded accessibility, regression and final completion evidence | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -507,7 +508,7 @@
 | DOC-DEV-030 | [F19-D Connector Ambiguity Recovery Handoff Plan](implementation/F19_D_CONNECTOR_AMBIGUITY_RECOVERY_HANDOFF_IMPLEMENTATION_PLAN.md) | F19-D execution plan | AVAILABLE |
 | DOC-DEV-031 | [F19-E API-019 Business Handoff Plan](implementation/F19_E_API_019_BUSINESS_HANDOFF_IMPLEMENTATION_PLAN.md) | F19-E execution plan | AVAILABLE |
 | DOC-DEV-032 | [F19-F Recovery Idempotency Hardening Plan](implementation/F19_F_RECOVERY_IDEMPOTENCY_NESTED_AMBIGUITY_IMPLEMENTATION_PLAN.md) | F19-F execution plan | AVAILABLE |
-| DOC-DEV-033 | [FEAT-021 UI / Accessibility Implementation Traceability](implementation/FEAT021_TRACEABILITY_MATRIX.md) | FEAT-021-B/C/D/E shared shell, current-route, bounded UAT and closure evidence mapping | AVAILABLE |
+| DOC-DEV-033 | [FEAT-021 UI / Accessibility Implementation Traceability](implementation/FEAT021_TRACEABILITY_MATRIX.md) | FEAT-021-A~E and Final Gate eligible-scope/disposition evidence mapping | AVAILABLE |
 | DOC-REVIEW-019 | [Phase 12 Completion](reviews/PHASE12_COMPLETION.md) | Developer Bible completion evidence와 Phase 13 gate | AVAILABLE |
 
 ## Book 12 — Master Development Roadmap (Phase 13)
@@ -965,6 +966,7 @@
 | DOC-REVIEW-124 | FEAT-021-C Current Route Accessibility Hardening Completion | [FEAT021_C_CURRENT_ROUTE_ACCESSIBILITY_HARDENING_COMPLETION.md](reviews/FEAT021_C_CURRENT_ROUTE_ACCESSIBILITY_HARDENING_COMPLETION.md) |
 | DOC-REVIEW-125 | FEAT-021-D Keyboard / AX / Reflow / Role UAT Completion | [FEAT021_D_KEYBOARD_AX_REFLOW_ROLE_UAT_COMPLETION.md](reviews/FEAT021_D_KEYBOARD_AX_REFLOW_ROLE_UAT_COMPLETION.md) |
 | DOC-REVIEW-126 | FEAT-021-E Traceability / Evidence Closure Report | [FEAT021_E_TRACEABILITY_EVIDENCE_CLOSURE_REPORT.md](reviews/FEAT021_E_TRACEABILITY_EVIDENCE_CLOSURE_REPORT.md) |
+| DOC-REVIEW-127 | FEAT-021 UI and Accessibility Boundary Final Gate Report | [FEAT021_FINAL_GATE_REPORT.md](reviews/FEAT021_FINAL_GATE_REPORT.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books
