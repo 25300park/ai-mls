@@ -138,8 +138,15 @@ test("TEST-004 routes validated AI result provenance to candidate handoff", () =
     actor: session("worker-1", "SVC", "SERVICE"), intakeId: requested.id,
     expectedVersion: requested.version, correlationId: "correlation-ai-route-success",
     validationDecision: validateAiResult({
-      capabilityId: "AI-001", schemaId: "AI_LISTING_PARSE_RESULT_V1", expectedInput,
-      result: { input: expectedInput, confidence: "MEDIUM", fields: [] },
+      capabilityId: "AI-001", schemaId: "urn:ai-mls:schema:listing-parser-output:v0.1", expectedInput,
+      inputClassifications: [requested.classification],
+      result: {
+        schemaVersion: "1.0", schemaId: "urn:ai-mls:schema:listing-parser-output:v0.1", capabilityId: "AI-001",
+        subjectRef: { entityType: expectedInput.type, entityId: expectedInput.id, version: String(expectedInput.version) },
+        provenance: [{ entityType: expectedInput.type, entityId: expectedInput.id, version: String(expectedInput.version) }],
+        inputChecksum: expectedInput.checksum, classification: requested.classification,
+        output: { capabilityId: "AI-001", inputRef: { entityType: expectedInput.type, entityId: expectedInput.id, version: String(expectedInput.version) }, fields: [], warnings: [], overallConfidence: { band: "MEDIUM", reasonCodes: ["EVIDENCE_BOUND"], policyVersion: "ai-policy-v1" } },
+      },
     }),
   });
   const registered = intake.review({

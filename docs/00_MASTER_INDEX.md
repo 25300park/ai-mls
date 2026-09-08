@@ -253,6 +253,7 @@
 | DOC-REVIEW-126 | [FEAT-021-E Traceability / Evidence Closure](reviews/FEAT021_E_TRACEABILITY_EVIDENCE_CLOSURE_REPORT.md) | final bounded FEAT-021 traceability, regression, browser and independent-review evidence | AVAILABLE |
 | DOC-REVIEW-127 | [FEAT-021 UI and Accessibility Boundary Final Gate](reviews/FEAT021_FINAL_GATE_REPORT.md) | approved screen disposition, bounded accessibility, regression and final completion evidence | AVAILABLE |
 | DOC-REVIEW-128 | [FEAT-022-A AI Advisory Canonical Inventory & Gap Report](reviews/FEAT022_A_AI_ADVISORY_CANONICAL_INVENTORY_GAP_REPORT.md) | canonical AI-001~007 inventory, executable-contract gaps and mandatory-stop evidence | AVAILABLE |
+| DOC-REVIEW-129 | [FEAT-022-B Canonical Output Contract / Validation Boundary Completion](reviews/FEAT022_B_CANONICAL_OUTPUT_CONTRACT_VALIDATION_COMPLETION.md) | exact AI-001~007 TypeScript contracts, strict recursive validation and bounded completion evidence | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -969,6 +970,7 @@
 | DOC-REVIEW-126 | FEAT-021-E Traceability / Evidence Closure Report | [FEAT021_E_TRACEABILITY_EVIDENCE_CLOSURE_REPORT.md](reviews/FEAT021_E_TRACEABILITY_EVIDENCE_CLOSURE_REPORT.md) |
 | DOC-REVIEW-127 | FEAT-021 UI and Accessibility Boundary Final Gate Report | [FEAT021_FINAL_GATE_REPORT.md](reviews/FEAT021_FINAL_GATE_REPORT.md) |
 | DOC-REVIEW-128 | FEAT-022-A AI Advisory Capability Canonical Inventory & Gap Report | [FEAT022_A_AI_ADVISORY_CANONICAL_INVENTORY_GAP_REPORT.md](reviews/FEAT022_A_AI_ADVISORY_CANONICAL_INVENTORY_GAP_REPORT.md) |
+| DOC-REVIEW-129 | FEAT-022-B Canonical Output Contract / Validation Boundary Completion | [FEAT022_B_CANONICAL_OUTPUT_CONTRACT_VALIDATION_COMPLETION.md](reviews/FEAT022_B_CANONICAL_OUTPUT_CONTRACT_VALIDATION_COMPLETION.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books

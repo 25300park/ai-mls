@@ -81,12 +81,16 @@ test("TEST-042/044/045 AI-004 and AI-006 remain closed-schema advisory validatio
   const { service } = fixture();
   const client = service.createClient({ ...context(), teamId: "team-a", assignedAgentId: "agent-client", contactRef: { entityType: "Contact", entityId: "contact-ai", version: 1 }, consentRefs: ["consent-ai"] });
   const draft = service.createRequirement({ ...context(), clientId: client.id, expectedClientVersion: 1, originalSourceRef: { entityType: "Communication", entityId: "communication-ai", version: 1 }, intent: "RENT", constraints: [], locations: [], validationGaps: [] });
-  const subjectRef = { entityType: "Requirement", entityId: draft.id, version: draft.version } as const;
-  const base = { schemaVersion: "1.0", subjectRef, provenance: [subjectRef], classification: "RESTRICTED_PERSONAL", confidence: { band: "MEDIUM", reasonCodes: ["HUMAN_CONFIRMATION_REQUIRED"], policyVersion: "confidence-bands-v1" } } as const;
+  const subjectRef = { entityType: "Requirement", entityId: draft.id, version: String(draft.version) } as const;
+  const confidence = { band: "MEDIUM", reasonCodes: ["HUMAN_CONFIRMATION_REQUIRED"], policyVersion: "confidence-bands-v1" } as const;
+  const base = { schemaVersion: "1.0", subjectRef, provenance: [subjectRef], classification: "RESTRICTED_PERSONAL" } as const;
 
-  const proposal = service.validateRequirementProposal({ ...context(), requirementId: draft.id, expectedVersion: 1, result: { ...base, capabilityId: "AI-004", output: { intent: "RENT", constraints: [], clarifications: [] } } });
-  const search = service.validateSearchInterpretation({ ...context(), requirementId: draft.id, expectedVersion: 1, result: { ...base, capabilityId: "AI-006", output: { intent: "REQUIREMENT_SEARCH", filters: [], resultClass: "REQUIREMENT", unresolved: [], warnings: [] } } });
-  const prohibited = service.validateRequirementProposal({ ...context(), requirementId: draft.id, expectedVersion: 1, result: { ...base, capabilityId: "AI-004", output: { intent: "RENT", constraints: [], clarifications: [], activate: true } } });
+  const proposalOutput = { capabilityId: "AI-004", inputRef: subjectRef, intent: "RENT", budget: { valueState: "MISSING", confidence }, locations: [], propertyTypes: [], preferences: [], clarificationNeeds: [], overallConfidence: confidence } as const;
+  const proposalEnvelope = { ...base, schemaId: "urn:ai-mls:schema:requirement-parser-output:v0.1", capabilityId: "AI-004", output: proposalOutput } as const;
+  const searchOutput = { capabilityId: "AI-006", intent: "REQUIREMENT_SEARCH", filters: [], sort: [], requestedResultClass: "INTERNAL_CANDIDATE", unresolvedTerms: [], warnings: [], confidence } as const;
+  const proposal = service.validateRequirementProposal({ ...context(), requirementId: draft.id, expectedVersion: 1, result: proposalEnvelope });
+  const search = service.validateSearchInterpretation({ ...context(), requirementId: draft.id, expectedVersion: 1, result: { ...base, schemaId: "urn:ai-mls:schema:search-interpretation-output:v0.1", capabilityId: "AI-006", output: searchOutput } });
+  const prohibited = service.validateRequirementProposal({ ...context(), requirementId: draft.id, expectedVersion: 1, result: { ...proposalEnvelope, output: { ...proposalOutput, activate: true } } });
 
   assert.deepEqual(proposal, { status: "VALID", route: "HUMAN_REVIEW_REQUIRED" });
   assert.deepEqual(search, { status: "VALID", route: "HUMAN_REVIEW_REQUIRED" });
