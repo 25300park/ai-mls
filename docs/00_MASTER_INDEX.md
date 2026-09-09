@@ -256,6 +256,7 @@
 | DOC-REVIEW-129 | [FEAT-022-B Canonical Output Contract / Validation Boundary Completion](reviews/FEAT022_B_CANONICAL_OUTPUT_CONTRACT_VALIDATION_COMPLETION.md) | exact AI-001~007 TypeScript contracts, strict recursive validation and bounded completion evidence | AVAILABLE |
 | DOC-REVIEW-130 | [FEAT-022-C AI Advisory Runtime Foundation Completion](reviews/FEAT022_C_AI_ADVISORY_RUNTIME_FOUNDATION_COMPLETION.md) | deterministic no-network runtime, prompt binding, durable evidence/idempotency and production fail-closed completion | AVAILABLE |
 | DOC-REVIEW-131 | [FEAT-022 AI Advisory Capability Final Gate](reviews/FEAT022_FINAL_GATE_REPORT.md) | approved A~C completion disposition, deferred boundaries, fresh regression and final closure evidence | AVAILABLE |
+| DOC-REVIEW-132 | [FEAT-023 Security / Privacy / Operations Canonical Inventory & Gap Report](reviews/FEAT023_SECURITY_PRIVACY_OPERATIONS_CANONICAL_INVENTORY_GAP_REPORT.md) | canonical control implementation inventory, runtime evidence gaps and next-phase blockers | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -981,6 +982,7 @@
 | DOC-REVIEW-129 | FEAT-022-B Canonical Output Contract / Validation Boundary Completion | [FEAT022_B_CANONICAL_OUTPUT_CONTRACT_VALIDATION_COMPLETION.md](reviews/FEAT022_B_CANONICAL_OUTPUT_CONTRACT_VALIDATION_COMPLETION.md) |
 | DOC-REVIEW-130 | FEAT-022-C AI Advisory Runtime Foundation Completion | [FEAT022_C_AI_ADVISORY_RUNTIME_FOUNDATION_COMPLETION.md](reviews/FEAT022_C_AI_ADVISORY_RUNTIME_FOUNDATION_COMPLETION.md) |
 | DOC-REVIEW-131 | FEAT-022 AI Advisory Capability Final Gate Report | [FEAT022_FINAL_GATE_REPORT.md](reviews/FEAT022_FINAL_GATE_REPORT.md) |
+| DOC-REVIEW-132 | FEAT-023 Security / Privacy / Operations Canonical Inventory & Gap Report | [FEAT023_SECURITY_PRIVACY_OPERATIONS_CANONICAL_INVENTORY_GAP_REPORT.md](reviews/FEAT023_SECURITY_PRIVACY_OPERATIONS_CANONICAL_INVENTORY_GAP_REPORT.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books
