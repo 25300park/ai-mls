@@ -255,6 +255,7 @@
 | DOC-REVIEW-128 | [FEAT-022-A AI Advisory Canonical Inventory & Gap Report](reviews/FEAT022_A_AI_ADVISORY_CANONICAL_INVENTORY_GAP_REPORT.md) | canonical AI-001~007 inventory, executable-contract gaps and mandatory-stop evidence | AVAILABLE |
 | DOC-REVIEW-129 | [FEAT-022-B Canonical Output Contract / Validation Boundary Completion](reviews/FEAT022_B_CANONICAL_OUTPUT_CONTRACT_VALIDATION_COMPLETION.md) | exact AI-001~007 TypeScript contracts, strict recursive validation and bounded completion evidence | AVAILABLE |
 | DOC-REVIEW-130 | [FEAT-022-C AI Advisory Runtime Foundation Completion](reviews/FEAT022_C_AI_ADVISORY_RUNTIME_FOUNDATION_COMPLETION.md) | deterministic no-network runtime, prompt binding, durable evidence/idempotency and production fail-closed completion | AVAILABLE |
+| DOC-REVIEW-131 | [FEAT-022 AI Advisory Capability Final Gate](reviews/FEAT022_FINAL_GATE_REPORT.md) | approved A~C completion disposition, deferred boundaries, fresh regression and final closure evidence | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -514,7 +515,7 @@
 | DOC-DEV-033 | [FEAT-021 UI / Accessibility Implementation Traceability](implementation/FEAT021_TRACEABILITY_MATRIX.md) | FEAT-021-A~E and Final Gate eligible-scope/disposition evidence mapping | AVAILABLE |
 | DOC-DEV-034 | [FEAT-022-C AI Advisory Runtime Foundation Design](implementation/FEAT022_C_AI_ADVISORY_RUNTIME_FOUNDATION_DESIGN.md) | approved runtime, prompt, durable evidence and provider-unavailable design | AVAILABLE |
 | DOC-DEV-035 | [FEAT-022-C AI Advisory Runtime Foundation Implementation Plan](implementation/FEAT022_C_AI_ADVISORY_RUNTIME_FOUNDATION_IMPLEMENTATION_PLAN.md) | approved RED-GREEN implementation and verification plan | AVAILABLE |
-| DOC-DEV-036 | [FEAT-022 Implementation Traceability](implementation/FEAT022_TRACEABILITY_MATRIX.md) | FEAT-022-A~C actual production/test/evidence mapping | AVAILABLE |
+| DOC-DEV-036 | [FEAT-022 Implementation Traceability](implementation/FEAT022_TRACEABILITY_MATRIX.md) | FEAT-022-A~C implementation and Final Gate closure evidence mapping | AVAILABLE |
 | DOC-REVIEW-019 | [Phase 12 Completion](reviews/PHASE12_COMPLETION.md) | Developer Bible completion evidence와 Phase 13 gate | AVAILABLE |
 
 ## Book 12 — Master Development Roadmap (Phase 13)
@@ -979,6 +980,7 @@
 | DOC-REVIEW-128 | FEAT-022-A AI Advisory Capability Canonical Inventory & Gap Report | [FEAT022_A_AI_ADVISORY_CANONICAL_INVENTORY_GAP_REPORT.md](reviews/FEAT022_A_AI_ADVISORY_CANONICAL_INVENTORY_GAP_REPORT.md) |
 | DOC-REVIEW-129 | FEAT-022-B Canonical Output Contract / Validation Boundary Completion | [FEAT022_B_CANONICAL_OUTPUT_CONTRACT_VALIDATION_COMPLETION.md](reviews/FEAT022_B_CANONICAL_OUTPUT_CONTRACT_VALIDATION_COMPLETION.md) |
 | DOC-REVIEW-130 | FEAT-022-C AI Advisory Runtime Foundation Completion | [FEAT022_C_AI_ADVISORY_RUNTIME_FOUNDATION_COMPLETION.md](reviews/FEAT022_C_AI_ADVISORY_RUNTIME_FOUNDATION_COMPLETION.md) |
+| DOC-REVIEW-131 | FEAT-022 AI Advisory Capability Final Gate Report | [FEAT022_FINAL_GATE_REPORT.md](reviews/FEAT022_FINAL_GATE_REPORT.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books
