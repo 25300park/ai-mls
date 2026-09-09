@@ -12,6 +12,11 @@ import {
 import { OperationalEvidenceError, type OperationalTelemetryRecord } from "./operational-telemetry-contracts.js";
 import type { OperationalStatusProjectionRequest, OperationalStatusSnapshot } from "./operational-status-projection.js";
 
+interface ScopedEvidenceStore {
+  appendScoped(record: OperationalTelemetryRecord, binding: Readonly<{ tenantId: string; scopeRef: string }>): OperationalTelemetryRecord;
+  listScoped(binding: Readonly<{ tenantId: string; scopeRef: string }>): readonly OperationalTelemetryRecord[];
+}
+
 function telemetry(overrides: Partial<OperationalTelemetryRecord> = {}): OperationalTelemetryRecord {
   return {
     telemetryEventId: "telemetry:evt-001",
@@ -212,5 +217,32 @@ test("FEAT-023-C operational status snapshots are append-only at the database bo
   try {
     assert.throws(() => raw.exec("UPDATE operational_status_snapshot SET health = 'UNHEALTHY' WHERE status_snapshot_id = 'status-snapshot:001'"), /append-only/iu);
     assert.throws(() => raw.exec("DELETE FROM operational_status_snapshot WHERE status_snapshot_id = 'status-snapshot:001'"), /append-only/iu);
+  } finally { raw.close(); }
+}));
+
+test("FEAT-023-D unbound evidence is concealed and tenant scope binding survives restart append-only", () => withDatabase((databasePath) => {
+  const first = new DurableOperationalEvidenceStore({ databasePath });
+  const scoped = first as unknown as ScopedEvidenceStore;
+  const binding = { tenantId: "tenant-001", scopeRef: "team-001" } as const;
+  const boundRecord = telemetry({ telemetryEventId: "telemetry:evt-023-d" });
+  try {
+    first.append(telemetry());
+    assert.deepEqual(scoped.listScoped(binding), []);
+    expectCode(() => scoped.appendScoped(telemetry(), binding), "TELEMETRY_IDENTITY_CONFLICT");
+    assert.deepEqual(scoped.listScoped(binding), []);
+    assert.deepEqual(scoped.appendScoped(boundRecord, binding), boundRecord);
+    assert.deepEqual(scoped.listScoped(binding), [boundRecord]);
+    assert.deepEqual(scoped.listScoped({ ...binding, tenantId: "tenant-002" }), []);
+    assert.deepEqual(scoped.listScoped({ ...binding, scopeRef: "team-002" }), []);
+  } finally { first.close(); }
+
+  const reopened = new DurableOperationalEvidenceStore({ databasePath }) as unknown as ScopedEvidenceStore & { close(): void };
+  assert.deepEqual(reopened.listScoped(binding), [boundRecord]);
+  reopened.close();
+
+  const raw = new DatabaseSync(databasePath);
+  try {
+    assert.throws(() => raw.exec("UPDATE operational_evidence_binding SET tenant_id = 'tenant-002' WHERE telemetry_event_id = 'telemetry:evt-023-d'"), /append-only/iu);
+    assert.throws(() => raw.exec("DELETE FROM operational_evidence_binding WHERE telemetry_event_id = 'telemetry:evt-023-d'"), /append-only/iu);
   } finally { raw.close(); }
 }));

@@ -19,7 +19,7 @@
 | FEAT-023-A | Canonical inventory / gap report | FEAT-023, DEV-023, IMP-023, TRACE-023, TEST-046~053 | Production changes `0` | `DOC-REVIEW-132` | COMPLETE |
 | FEAT-023-B | Structured telemetry / operational evidence | REQ-CONST-005/007/010; SEC-012/014/021/023/024; OPS-012/013; TEST-048/049/053 bounded telemetry partition only | `modules/operations/src/operational-telemetry-contracts.ts`; `durable-operational-evidence-store.ts` | canonical contract/store/architecture `13/13`; affected durable stores and final full regression | IMPLEMENTED_AND_VERIFIED |
 | FEAT-023-C | Health / readiness / freshness | approved amendment sections 4~7; OPS-012/024; TEST-048/049/053 bounded operational projection partition | `modules/operations/src/operational-status-projection.ts`; status snapshot extension in `durable-operational-evidence-store.ts` | exact contract/store/architecture `16/16`; Operations affected `20/20`; full regression `1040/1040` | IMPLEMENTED_AND_VERIFIED |
-| FEAT-023-D | Security / privacy operational controls | approved amendment sections 14~15/20/22 | none in B | not run | PLANNED |
+| FEAT-023-D | Security / privacy operational controls | approved amendment sections 14~15/20/22; SEC-012/014/021/023/024; TEST-048/049/053 bounded operational-security partition | shared value-aware sanitizer; append-only binding in `DurableOperationalEvidenceStore`; internal `SecurityPrivacyOperationalControlService` | focused security/audit/store/service `45/45`; affected security/AI/SoD regression `128/128`; full regression `1048/1048` | IMPLEMENTED_AND_VERIFIED |
 | FEAT-023-E | Alert / incident evidence projection | approved amendment sections 8~13 | none in B | not run | PLANNED |
 | FEAT-023-F | Deployment / backup / rollback readiness evidence | approved amendment sections 16~18 | none in B | not run | PLANNED |
 | FEAT-023-G | Operations Console / traceability integration | approved amendment section 19 | none in B | not run | PLANNED |
@@ -58,3 +58,16 @@
 | Append-only and authority-free | SQLite status triggers and architecture dependency test | raw update/delete rejected; action/network/authority imports absent | PASS |
 
 FEAT-023-C는 Health/Readiness/Freshness를 operational observation으로만 유지한다. Retry, recovery, remediation, reactivation, business mutation과 external monitoring activation은 모두 `0`이며 FEAT-023-D~H와 Final Gate는 시작하지 않았다.
+
+## 6. FEAT-023-D evidence chain
+
+| Requirement | Production | Test / assertion | Result |
+|---|---|---|---|
+| Tenant/scope-bound evidence access | existing SQLite store의 `appendScoped()` / `listScoped()` | unbound evidence concealment; cross-tenant/cross-scope empty result; binding reopen persistence | PASS |
+| Append-only binding | `operational_evidence_binding` triggers and transactional insert | raw update/delete rejection; existing unbound record의 retroactive binding rejection | PASS |
+| Fixed-purpose live control | `SecurityPrivacyOperationalControlService` | `audit.query` and `security.admin`; fixed `SECURITY_MONITORING`; process-local role ignored; live MFA required | PASS |
+| PII/secret/raw material minimization | shared value-aware detector, `sanitizeSecurityDetails()`, `AuditLog` | innocent key 아래 email/phone/token/Authorization/raw prompt/provider/CoT/stack/path redaction or rejection; safe checksum regression | PASS |
+| Existing SoD and AI privacy | unchanged Publication/recovery authorization and AdvisoryRuntime | actor-level SoD, tenant/scope, strict AI output and no prompt/provider/CoT leakage regression | PASS |
+| Authority-free security readiness | existing `projectStatus()` and canonical Health/Readiness values | `DEGRADED / NOT_READY / UNKNOWN` preserved; domain mutation and automatic remediation surface absent | PASS |
+
+상세 결과는 [FEAT-023-D Security / Privacy Operational Controls Completion](../reviews/FEAT023_D_SECURITY_PRIVACY_OPERATIONAL_CONTROLS_COMPLETION.md)에 기록한다. 새 API, authority, lifecycle state, privacy classification, dependency, external network 및 automatic remediation은 모두 `0`이다. FEAT-023-E~H와 Final Gate는 시작하지 않았다.

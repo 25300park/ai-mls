@@ -259,6 +259,7 @@
 | DOC-REVIEW-132 | [FEAT-023 Security / Privacy / Operations Canonical Inventory & Gap Report](reviews/FEAT023_SECURITY_PRIVACY_OPERATIONS_CANONICAL_INVENTORY_GAP_REPORT.md) | canonical control implementation inventory, runtime evidence gaps and next-phase blockers | AVAILABLE |
 | DOC-REVIEW-133 | [FEAT-023-B Structured Telemetry / Operational Evidence Foundation Completion](reviews/FEAT023_B_STRUCTURED_TELEMETRY_OPERATIONAL_EVIDENCE_COMPLETION.md) | safe telemetry contract, durable append-only operational evidence and bounded verification | AVAILABLE |
 | DOC-REVIEW-134 | [FEAT-023-C Health / Readiness / Freshness Completion](reviews/FEAT023_C_HEALTH_READINESS_FRESHNESS_COMPLETION.md) | exact operational status vocabularies, threshold-safe freshness and durable telemetry-correlated projection | AVAILABLE |
+| DOC-REVIEW-135 | [FEAT-023-D Security / Privacy Operational Controls Completion](reviews/FEAT023_D_SECURITY_PRIVACY_OPERATIONAL_CONTROLS_COMPLETION.md) | tenant/scope-bound operational security evidence, fixed-purpose live access and value-aware privacy sanitization | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -995,6 +996,7 @@
 | DOC-REVIEW-132 | FEAT-023 Security / Privacy / Operations Canonical Inventory & Gap Report | [FEAT023_SECURITY_PRIVACY_OPERATIONS_CANONICAL_INVENTORY_GAP_REPORT.md](reviews/FEAT023_SECURITY_PRIVACY_OPERATIONS_CANONICAL_INVENTORY_GAP_REPORT.md) |
 | DOC-REVIEW-133 | FEAT-023-B Structured Telemetry / Operational Evidence Foundation Completion | [FEAT023_B_STRUCTURED_TELEMETRY_OPERATIONAL_EVIDENCE_COMPLETION.md](reviews/FEAT023_B_STRUCTURED_TELEMETRY_OPERATIONAL_EVIDENCE_COMPLETION.md) |
 | DOC-REVIEW-134 | FEAT-023-C Health / Readiness / Freshness Completion | [FEAT023_C_HEALTH_READINESS_FRESHNESS_COMPLETION.md](reviews/FEAT023_C_HEALTH_READINESS_FRESHNESS_COMPLETION.md) |
+| DOC-REVIEW-135 | FEAT-023-D Security / Privacy Operational Controls Completion | [FEAT023_D_SECURITY_PRIVACY_OPERATIONAL_CONTROLS_COMPLETION.md](reviews/FEAT023_D_SECURITY_PRIVACY_OPERATIONAL_CONTROLS_COMPLETION.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books

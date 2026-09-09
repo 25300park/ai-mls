@@ -68,3 +68,23 @@ export interface AuditSink {
 export type Clock = () => Date;
 
 export type IdFactory = () => string;
+
+const sensitiveSecurityDetailKeyPattern =
+  /(?:authorization|chain.?of.?thought|cookie|credential|database.?path|email|filesystem.?path|mfa.?(?:code|key|secret|token)|pass(?:word)?|phone|private.?key|provider.?response|raw.?(?:body|message|payload|prompt|request|response)|reasoning|secret|session.?token|stack(?:trace)?|token)/iu;
+
+const unsafeSecurityDetailValuePatterns = Object.freeze([
+  /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu,
+  /(?:^|[^A-Za-z0-9])\+?\d(?:[\s().-]*\d){8,}(?:[^A-Za-z0-9]|$)/u,
+  /(?:^|[^a-z0-9])(?:api[-_ ]?key|authorization|bearer|cookie|credential|password|private[-_ ]?key|secret|session[-_ ]?token|token)(?:[^a-z0-9]|$)/iu,
+  /(?:raw\s+(?:body|message|payload|prompt|provider|model|request|response)|chain[- ]of[- ]thought|hidden\s+reasoning)/iu,
+  /(?:^|\n)\s*(?:[A-Za-z]*Error:.*\n\s*)?at\s+[^\n]+/u,
+  /(?:[A-Za-z]:\\(?:[^\\\r\n]+\\)+[^\\\r\n]+|\/(?:[^/\r\n]+\/)+[^/\r\n]+|\b[^\s/\\]+\.(?:db|sqlite|sqlite3)\b)/iu,
+]);
+
+export function isSensitiveSecurityDetailKey(value: string): boolean {
+  return sensitiveSecurityDetailKeyPattern.test(value);
+}
+
+export function isUnsafeSecurityDetailValue(value: string): boolean {
+  return unsafeSecurityDetailValuePatterns.some((pattern) => pattern.test(value));
+}

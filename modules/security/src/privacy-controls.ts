@@ -1,5 +1,7 @@
-import type {
-  DataClassification,
+import {
+  isSensitiveSecurityDetailKey,
+  isUnsafeSecurityDetailValue,
+  type DataClassification,
 } from "../../../packages/security-contracts/src/index.js";
 
 export type ClassificationInput = DataClassification | "UNKNOWN";
@@ -11,9 +13,6 @@ const classificationRank: Readonly<Record<DataClassification, number>> = {
   RESTRICTED_PERSONAL: 3,
   RESTRICTED_SECURITY: 4,
 };
-
-const sensitiveKeyPattern =
-  /(?:authorization|cookie|credential|mfa.?(?:code|key|secret|token)|pass(?:word)?|private.?key|secret|session.?token|token)/iu;
 
 function deepFreeze<T>(value: T): Readonly<T> {
   if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
@@ -63,13 +62,18 @@ function sanitizeValue(input: unknown): unknown {
   if (Array.isArray(input)) {
     return input.map((entry) => sanitizeValue(entry));
   }
+  if (typeof input === "string") {
+    return isUnsafeSecurityDetailValue(input)
+      ? "[REDACTED]"
+      : input;
+  }
   if (input === null || typeof input !== "object") {
     return input;
   }
 
   return Object.fromEntries(
     Object.entries(input)
-      .filter(([key]) => !sensitiveKeyPattern.test(key))
+      .filter(([key]) => !isSensitiveSecurityDetailKey(key))
       .map(([key, value]) => [key, sanitizeValue(value)]),
   );
 }

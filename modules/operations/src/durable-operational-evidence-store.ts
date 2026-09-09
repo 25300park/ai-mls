@@ -35,10 +35,17 @@ export interface OperationalStatusFilter {
   readonly limit?: number;
 }
 
+export interface OperationalEvidenceBinding {
+  readonly tenantId: string;
+  readonly scopeRef: string;
+}
+
 export interface OperationalEvidenceStore {
   append(record: OperationalTelemetryRecord): OperationalTelemetryRecord;
+  appendScoped(record: OperationalTelemetryRecord, binding: OperationalEvidenceBinding): OperationalTelemetryRecord;
   find(telemetryEventId: string): OperationalTelemetryRecord | undefined;
   list(filter?: OperationalEvidenceFilter): readonly OperationalTelemetryRecord[];
+  listScoped(binding: OperationalEvidenceBinding, filter?: OperationalEvidenceFilter): readonly OperationalTelemetryRecord[];
   projectStatus(request: OperationalStatusProjectionRequest): OperationalStatusSnapshot;
   findStatus(statusSnapshotId: string): OperationalStatusSnapshot | undefined;
   listStatuses(filter?: OperationalStatusFilter): readonly OperationalStatusSnapshot[];
@@ -91,6 +98,38 @@ export class DurableOperationalEvidenceStore implements OperationalEvidenceStore
     }
   }
 
+  public appendScoped(record: OperationalTelemetryRecord, binding: OperationalEvidenceBinding): OperationalTelemetryRecord {
+    this.#assertOpen();
+    const valid = validateOperationalTelemetryRecord(record);
+    const validBinding = validateBinding(binding);
+    const existing = this.find(valid.telemetryEventId);
+    if (existing !== undefined) {
+      const existingBinding = this.#findBinding(valid.telemetryEventId);
+      if (canonicalJson(existing) !== canonicalJson(valid)
+        || existingBinding === undefined
+        || canonicalJson(existingBinding) !== canonicalJson(validBinding)) {
+        throw new OperationalEvidenceError("TELEMETRY_IDENTITY_CONFLICT", "Operational telemetry identity is immutable.");
+      }
+      return existing;
+    }
+    try {
+      this.#database.exec("BEGIN IMMEDIATE");
+      this.#database.prepare(`INSERT INTO operational_telemetry
+        (telemetry_event_id, event_type, component, operation, resource_type, resource_ref, outcome, safe_error_code, correlation_id, occurred_at, payload_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(valid.telemetryEventId, valid.eventType, valid.component, valid.operation, valid.resourceType, valid.resourceRef,
+          valid.outcome, valid.safeErrorCode, valid.correlationId, valid.occurredAt, canonicalJson(valid));
+      this.#database.prepare("INSERT INTO operational_evidence_binding (telemetry_event_id, tenant_id, scope_ref) VALUES (?, ?, ?)")
+        .run(valid.telemetryEventId, validBinding.tenantId, validBinding.scopeRef);
+      this.#database.exec("COMMIT");
+      return immutableOperationalEvidence(valid);
+    } catch (error) {
+      try { this.#database.exec("ROLLBACK"); } catch { /* preserve original persistence failure */ }
+      if (error instanceof OperationalEvidenceError) throw error;
+      throw unavailable();
+    }
+  }
+
   public find(telemetryEventId: string): OperationalTelemetryRecord | undefined {
     this.#assertOpen();
     const identity = validateOperationalReference(telemetryEventId, "telemetry:");
@@ -118,6 +157,28 @@ export class DurableOperationalEvidenceStore implements OperationalEvidenceStore
     const where = clauses.length === 0 ? "" : ` WHERE ${clauses.join(" AND ")}`;
     try {
       const rows = this.#database.prepare(`SELECT payload_json FROM operational_telemetry${where} ORDER BY occurred_at, telemetry_event_id LIMIT ${limit}`).all(...values);
+      return immutableOperationalEvidence(rows.map(decode));
+    } catch (error) {
+      if (error instanceof OperationalEvidenceError) throw error;
+      throw unavailable();
+    }
+  }
+
+  public listScoped(binding: OperationalEvidenceBinding, filter: OperationalEvidenceFilter = {}): readonly OperationalTelemetryRecord[] {
+    this.#assertOpen();
+    const validBinding = validateBinding(binding);
+    validateFilter(filter);
+    const limit = filter.limit ?? 100;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw invalidTelemetry();
+    const clauses = ["binding.tenant_id = ?", "binding.scope_ref = ?"];
+    const values = [validBinding.tenantId, validBinding.scopeRef];
+    if (filter.component !== undefined) { values.push(validateOperationalCategory(filter.component)); clauses.push("telemetry.component = ?"); }
+    if (filter.resourceRef !== undefined) { values.push(validateOperationalResourceReference(filter.resourceRef)); clauses.push("telemetry.resource_ref = ?"); }
+    if (filter.correlationId !== undefined) { values.push(validateOperationalReference(filter.correlationId, "correlation:")); clauses.push("telemetry.correlation_id = ?"); }
+    try {
+      const rows = this.#database.prepare(`SELECT telemetry.payload_json FROM operational_telemetry AS telemetry
+        INNER JOIN operational_evidence_binding AS binding ON binding.telemetry_event_id = telemetry.telemetry_event_id
+        WHERE ${clauses.join(" AND ")} ORDER BY telemetry.occurred_at, telemetry.telemetry_event_id LIMIT ${limit}`).all(...values);
       return immutableOperationalEvidence(rows.map(decode));
     } catch (error) {
       if (error instanceof OperationalEvidenceError) throw error;
@@ -216,6 +277,11 @@ export class DurableOperationalEvidenceStore implements OperationalEvidenceStore
         || text(row["occurred_at"]) !== record.occurredAt
         || text(row["payload_json"]) !== canonicalJson(record)) throw unavailable();
     }
+    for (const row of this.#database.prepare("SELECT telemetry_event_id, tenant_id, scope_ref FROM operational_evidence_binding").all()) {
+      validateOperationalReference(text(row["telemetry_event_id"]), "telemetry:");
+      validateBinding({ tenantId: text(row["tenant_id"]), scopeRef: text(row["scope_ref"]) });
+      if (this.find(text(row["telemetry_event_id"])) === undefined) throw unavailable();
+    }
     for (const row of this.#database.prepare("SELECT * FROM operational_status_snapshot").all()) {
       const snapshot = decodeStatus(row);
       if (text(row["status_snapshot_id"]) !== snapshot.statusSnapshotId
@@ -234,6 +300,11 @@ export class DurableOperationalEvidenceStore implements OperationalEvidenceStore
       if (telemetry?.component !== snapshot.component || telemetry.resourceType !== snapshot.resourceType
         || telemetry.resourceRef !== snapshot.resourceRef || telemetry.occurredAt !== snapshot.evidenceOccurredAt) throw unavailable();
     }
+  }
+
+  #findBinding(telemetryEventId: string): OperationalEvidenceBinding | undefined {
+    const row = this.#database.prepare("SELECT tenant_id, scope_ref FROM operational_evidence_binding WHERE telemetry_event_id = ?").get(telemetryEventId);
+    return row === undefined ? undefined : validateBinding({ tenantId: text(row["tenant_id"]), scopeRef: text(row["scope_ref"]) });
   }
 
   #validateDatabaseControls(): void {
@@ -265,6 +336,18 @@ function validateStatusFilter(filter: unknown): asserts filter is OperationalSta
   if (typeof filter !== "object" || filter === null || Array.isArray(filter)
     || (Object.getPrototypeOf(filter) !== Object.prototype && Object.getPrototypeOf(filter) !== null)
     || Object.keys(filter).some((key) => !["component", "resourceRef", "limit"].includes(key))) throw invalidTelemetry();
+}
+
+function validateBinding(binding: unknown): OperationalEvidenceBinding {
+  if (typeof binding !== "object" || binding === null || Array.isArray(binding)
+    || (Object.getPrototypeOf(binding) !== Object.prototype && Object.getPrototypeOf(binding) !== null)
+    || Object.keys(binding).length !== 2 || !Object.hasOwn(binding, "tenantId") || !Object.hasOwn(binding, "scopeRef")) throw invalidTelemetry();
+  const value = binding as Readonly<Record<string, unknown>>;
+  for (const key of ["tenantId", "scopeRef"] as const) {
+    const item = value[key];
+    if (typeof item !== "string" || item.trim() !== item || item.length < 1 || item.length > 128 || !/^[A-Za-z0-9][A-Za-z0-9._:-]*$/u.test(item)) throw invalidTelemetry();
+  }
+  return immutableOperationalEvidence({ tenantId: value["tenantId"], scopeRef: value["scopeRef"] }) as OperationalEvidenceBinding;
 }
 
 function decode(row: Record<string, SQLOutputValue>): OperationalTelemetryRecord {
@@ -360,6 +443,15 @@ const STATUS_RESOURCE_INDEX_SQL = "CREATE INDEX IF NOT EXISTS operational_status
 const STATUS_UPDATE_TRIGGER_SQL = "CREATE TRIGGER IF NOT EXISTS operational_status_no_update BEFORE UPDATE ON operational_status_snapshot BEGIN SELECT RAISE(ABORT, 'append-only'); END";
 const STATUS_DELETE_TRIGGER_SQL = "CREATE TRIGGER IF NOT EXISTS operational_status_no_delete BEFORE DELETE ON operational_status_snapshot BEGIN SELECT RAISE(ABORT, 'append-only'); END";
 const STATUS_INSERT_TRIGGER_SQL = "CREATE TRIGGER IF NOT EXISTS operational_status_no_replace BEFORE INSERT ON operational_status_snapshot WHEN EXISTS (SELECT 1 FROM operational_status_snapshot WHERE status_snapshot_id = NEW.status_snapshot_id) BEGIN SELECT RAISE(ABORT, 'append-only'); END";
+const BINDING_TABLE_SQL = `CREATE TABLE IF NOT EXISTS operational_evidence_binding (
+  telemetry_event_id TEXT PRIMARY KEY REFERENCES operational_telemetry(telemetry_event_id),
+  tenant_id TEXT NOT NULL,
+  scope_ref TEXT NOT NULL
+)`;
+const BINDING_SCOPE_INDEX_SQL = "CREATE INDEX IF NOT EXISTS operational_evidence_binding_scope_idx ON operational_evidence_binding(tenant_id, scope_ref, telemetry_event_id)";
+const BINDING_UPDATE_TRIGGER_SQL = "CREATE TRIGGER IF NOT EXISTS operational_evidence_binding_no_update BEFORE UPDATE ON operational_evidence_binding BEGIN SELECT RAISE(ABORT, 'append-only'); END";
+const BINDING_DELETE_TRIGGER_SQL = "CREATE TRIGGER IF NOT EXISTS operational_evidence_binding_no_delete BEFORE DELETE ON operational_evidence_binding BEGIN SELECT RAISE(ABORT, 'append-only'); END";
+const BINDING_INSERT_TRIGGER_SQL = "CREATE TRIGGER IF NOT EXISTS operational_evidence_binding_no_replace BEFORE INSERT ON operational_evidence_binding WHEN EXISTS (SELECT 1 FROM operational_evidence_binding WHERE telemetry_event_id = NEW.telemetry_event_id) BEGIN SELECT RAISE(ABORT, 'append-only'); END";
 const SCHEMA_OBJECTS = Object.freeze({
   operational_telemetry: TABLE_SQL,
   operational_telemetry_component_idx: COMPONENT_INDEX_SQL,
@@ -374,5 +466,10 @@ const SCHEMA_OBJECTS = Object.freeze({
   operational_status_no_update: STATUS_UPDATE_TRIGGER_SQL,
   operational_status_no_delete: STATUS_DELETE_TRIGGER_SQL,
   operational_status_no_replace: STATUS_INSERT_TRIGGER_SQL,
+  operational_evidence_binding: BINDING_TABLE_SQL,
+  operational_evidence_binding_scope_idx: BINDING_SCOPE_INDEX_SQL,
+  operational_evidence_binding_no_update: BINDING_UPDATE_TRIGGER_SQL,
+  operational_evidence_binding_no_delete: BINDING_DELETE_TRIGGER_SQL,
+  operational_evidence_binding_no_replace: BINDING_INSERT_TRIGGER_SQL,
 });
 const SCHEMA = `${Object.values(SCHEMA_OBJECTS).join(";\n")};`;

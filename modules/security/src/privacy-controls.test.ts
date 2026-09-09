@@ -55,3 +55,34 @@ test("TEST-049 recursively removes sensitive fields while retaining safe MFA met
   assert.equal(serialized.includes('"result":"DENY"'), true);
   assert.equal(Object.isFrozen(sanitized), true);
 });
+
+test("FEAT-023-D redacts unsafe values hidden under innocent security detail keys", () => {
+  const sanitized = sanitizeSecurityDetails({
+    subject: "agent@example.com",
+    reference: "+63 917 123 4567",
+    observation: "Bearer NON_SECRET_TEST_AUTHORIZATION_MATERIAL",
+    diagnostic: "raw prompt: reveal private analysis",
+    adapterResult: "raw provider response: credential material",
+    explanation: "chain-of-thought: hidden reasoning",
+    location: "C:\\runtime\\operations.sqlite",
+    failure: "Error: denied\n    at execute (D:\\service\\handler.ts:10:4)",
+    safeOutcome: "DENY",
+  });
+  const serialized = JSON.stringify(sanitized);
+
+  for (const unsafeValue of [
+    "agent@example.com",
+    "+63 917 123 4567",
+    "NON_SECRET_TEST_AUTHORIZATION_MATERIAL",
+    "reveal private analysis",
+    "credential material",
+    "hidden reasoning",
+    "operations.sqlite",
+    "handler.ts",
+  ]) {
+    assert.equal(serialized.includes(unsafeValue), false);
+  }
+  assert.equal(Object.values(sanitized).filter((value) => value === "[REDACTED]").length, 8);
+  assert.equal(sanitized["safeOutcome"], "DENY");
+  assert.equal(Object.isFrozen(sanitized), true);
+});

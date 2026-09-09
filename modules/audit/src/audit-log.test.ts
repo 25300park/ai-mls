@@ -71,6 +71,40 @@ test("TEST-049 rejects sensitive audit detail keys", () => {
   );
 });
 
+test("FEAT-023-D rejects sensitive audit detail values hidden under innocent keys", () => {
+  const unsafeValues = [
+    "security@example.com",
+    "+63 917 123 4567",
+    "Bearer NON_SECRET_TEST_AUTHORIZATION_MATERIAL",
+    "raw prompt: private input",
+    "raw provider response: unsafe output",
+    "chain-of-thought: private reasoning",
+    "Error: denied\n    at execute (D:\\service\\handler.ts:10:4)",
+    "C:\\runtime\\audit.sqlite",
+  ];
+  for (const [index, unsafeValue] of unsafeValues.entries()) {
+    const auditLog = createAuditLog();
+    assert.throws(
+      () => auditLog.append({
+        eventType: "SECURITY_EVENT",
+        principal,
+        action: "security.observe",
+        target: { type: "SecurityEvidence", id: `security-evidence-${String(index)}` },
+        purpose: "SECURITY_MONITORING",
+        policyVersion: "security-v1",
+        classification: "RESTRICTED_SECURITY",
+        decision: "DENY",
+        outcome: "COMPLETED",
+        reason: "UNSAFE_DETAIL",
+        correlationId: `correlation-security-${String(index)}`,
+        details: { observation: unsafeValue },
+      }),
+      /SENSITIVE_AUDIT_DETAIL/,
+    );
+    assert.equal(auditLog.query({ requesterId: principal.id, purpose: "SECURITY_MONITORING" }).length, 0);
+  }
+});
+
 test("TEST-034 requires a purpose for audit queries", () => {
   const auditLog = createAuditLog();
 

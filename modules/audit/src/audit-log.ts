@@ -6,9 +6,10 @@ import type {
   Clock,
   IdFactory,
 } from "../../../packages/security-contracts/src/index.js";
-
-const sensitiveKeyPattern =
-  /(?:authorization|cookie|credential|mfa.?(?:code|key|secret|token)|pass(?:word)?|private.?key|secret|session.?token|token)/iu;
+import {
+  isSensitiveSecurityDetailKey,
+  isUnsafeSecurityDetailValue,
+} from "../../../packages/security-contracts/src/index.js";
 
 interface AuditLogDependencies {
   readonly clock: Clock;
@@ -40,11 +41,14 @@ function assertSafeDetails(value: unknown, path = "details"): void {
   }
 
   if (value === null || typeof value !== "object") {
+    if (typeof value === "string" && isUnsafeSecurityDetailValue(value)) {
+      throw new Error(`SENSITIVE_AUDIT_DETAIL:${path}`);
+    }
     return;
   }
 
   for (const [key, nestedValue] of Object.entries(value)) {
-    if (sensitiveKeyPattern.test(key)) {
+    if (isSensitiveSecurityDetailKey(key)) {
       throw new Error(`SENSITIVE_AUDIT_DETAIL:${path}.${key}`);
     }
     assertSafeDetails(nestedValue, `${path}.${key}`);
