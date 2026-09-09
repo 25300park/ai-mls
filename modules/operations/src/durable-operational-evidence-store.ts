@@ -9,6 +9,14 @@ import {
   validateOperationalTelemetryRecord,
   type OperationalTelemetryRecord,
 } from "./operational-telemetry-contracts.js";
+import {
+  OperationalStatusError,
+  deriveEvidenceFreshness,
+  validateOperationalStatusProjectionRequest,
+  validateOperationalStatusSnapshot,
+  type OperationalStatusProjectionRequest,
+  type OperationalStatusSnapshot,
+} from "./operational-status-projection.js";
 
 export interface DurableOperationalEvidenceStoreOptions {
   readonly databasePath: string;
@@ -21,10 +29,19 @@ export interface OperationalEvidenceFilter {
   readonly limit?: number;
 }
 
+export interface OperationalStatusFilter {
+  readonly component?: string;
+  readonly resourceRef?: string;
+  readonly limit?: number;
+}
+
 export interface OperationalEvidenceStore {
   append(record: OperationalTelemetryRecord): OperationalTelemetryRecord;
   find(telemetryEventId: string): OperationalTelemetryRecord | undefined;
   list(filter?: OperationalEvidenceFilter): readonly OperationalTelemetryRecord[];
+  projectStatus(request: OperationalStatusProjectionRequest): OperationalStatusSnapshot;
+  findStatus(statusSnapshotId: string): OperationalStatusSnapshot | undefined;
+  listStatuses(filter?: OperationalStatusFilter): readonly OperationalStatusSnapshot[];
   close(): void;
 }
 
@@ -108,6 +125,72 @@ export class DurableOperationalEvidenceStore implements OperationalEvidenceStore
     }
   }
 
+  public projectStatus(request: OperationalStatusProjectionRequest): OperationalStatusSnapshot {
+    this.#assertOpen();
+    const valid = validateOperationalStatusProjectionRequest(request);
+    const source = this.find(valid.telemetryEventId);
+    if (source === undefined) throw new OperationalStatusError("TELEMETRY_NOT_FOUND", "Referenced operational telemetry was not found.");
+    const snapshot = validateOperationalStatusSnapshot({
+      ...valid,
+      component: source.component,
+      resourceType: source.resourceType,
+      resourceRef: source.resourceRef,
+      freshness: deriveEvidenceFreshness(source.occurredAt, valid.evaluatedAt, valid.freshnessThresholdMs),
+      evidenceOccurredAt: source.occurredAt,
+    });
+    const existing = this.findStatus(snapshot.statusSnapshotId);
+    if (existing !== undefined) {
+      if (canonicalJson(existing) !== canonicalJson(snapshot)) {
+        throw new OperationalStatusError("OPERATIONAL_STATUS_IDENTITY_CONFLICT", "Operational status snapshot identity is immutable.");
+      }
+      return existing;
+    }
+    try {
+      this.#database.prepare(`INSERT INTO operational_status_snapshot
+        (status_snapshot_id, telemetry_event_id, component, resource_type, resource_ref, health, readiness, freshness,
+         evidence_occurred_at, evaluated_at, freshness_threshold_ms, payload_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(snapshot.statusSnapshotId, snapshot.telemetryEventId, snapshot.component, snapshot.resourceType, snapshot.resourceRef,
+          snapshot.health, snapshot.readiness, snapshot.freshness, snapshot.evidenceOccurredAt, snapshot.evaluatedAt,
+          snapshot.freshnessThresholdMs, canonicalJson(snapshot));
+      return immutableOperationalEvidence(snapshot);
+    } catch (error) {
+      if (error instanceof OperationalStatusError) throw error;
+      throw unavailable();
+    }
+  }
+
+  public findStatus(statusSnapshotId: string): OperationalStatusSnapshot | undefined {
+    this.#assertOpen();
+    const identity = validateOperationalReference(statusSnapshotId, "status-snapshot:");
+    try {
+      const row = this.#database.prepare("SELECT payload_json FROM operational_status_snapshot WHERE status_snapshot_id = ?").get(identity);
+      return row === undefined ? undefined : decodeStatus(row);
+    } catch (error) {
+      if (error instanceof OperationalEvidenceError || error instanceof OperationalStatusError) throw error;
+      throw unavailable();
+    }
+  }
+
+  public listStatuses(filter: OperationalStatusFilter = {}): readonly OperationalStatusSnapshot[] {
+    this.#assertOpen();
+    validateStatusFilter(filter);
+    const limit = filter.limit ?? 100;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw invalidTelemetry();
+    const clauses: string[] = [];
+    const values: string[] = [];
+    if (filter.component !== undefined) { values.push(validateOperationalCategory(filter.component)); clauses.push("component = ?"); }
+    if (filter.resourceRef !== undefined) { values.push(validateOperationalResourceReference(filter.resourceRef)); clauses.push("resource_ref = ?"); }
+    const where = clauses.length === 0 ? "" : ` WHERE ${clauses.join(" AND ")}`;
+    try {
+      const rows = this.#database.prepare(`SELECT payload_json FROM operational_status_snapshot${where} ORDER BY evaluated_at, status_snapshot_id LIMIT ${limit}`).all(...values);
+      return immutableOperationalEvidence(rows.map(decodeStatus));
+    } catch (error) {
+      if (error instanceof OperationalEvidenceError || error instanceof OperationalStatusError) throw error;
+      throw unavailable();
+    }
+  }
+
   public close(): void {
     if (this.#closed) return;
     this.#database.close();
@@ -132,6 +215,24 @@ export class DurableOperationalEvidenceStore implements OperationalEvidenceStore
         || nullableText(row["correlation_id"]) !== record.correlationId
         || text(row["occurred_at"]) !== record.occurredAt
         || text(row["payload_json"]) !== canonicalJson(record)) throw unavailable();
+    }
+    for (const row of this.#database.prepare("SELECT * FROM operational_status_snapshot").all()) {
+      const snapshot = decodeStatus(row);
+      if (text(row["status_snapshot_id"]) !== snapshot.statusSnapshotId
+        || text(row["telemetry_event_id"]) !== snapshot.telemetryEventId
+        || text(row["component"]) !== snapshot.component
+        || text(row["resource_type"]) !== snapshot.resourceType
+        || text(row["resource_ref"]) !== snapshot.resourceRef
+        || text(row["health"]) !== snapshot.health
+        || text(row["readiness"]) !== snapshot.readiness
+        || text(row["freshness"]) !== snapshot.freshness
+        || text(row["evidence_occurred_at"]) !== snapshot.evidenceOccurredAt
+        || text(row["evaluated_at"]) !== snapshot.evaluatedAt
+        || nullableNumber(row["freshness_threshold_ms"]) !== snapshot.freshnessThresholdMs
+        || text(row["payload_json"]) !== canonicalJson(snapshot)) throw unavailable();
+      const telemetry = this.find(snapshot.telemetryEventId);
+      if (telemetry?.component !== snapshot.component || telemetry.resourceType !== snapshot.resourceType
+        || telemetry.resourceRef !== snapshot.resourceRef || telemetry.occurredAt !== snapshot.evidenceOccurredAt) throw unavailable();
     }
   }
 
@@ -160,10 +261,22 @@ function validateFilter(filter: unknown): asserts filter is OperationalEvidenceF
   }
 }
 
+function validateStatusFilter(filter: unknown): asserts filter is OperationalStatusFilter {
+  if (typeof filter !== "object" || filter === null || Array.isArray(filter)
+    || (Object.getPrototypeOf(filter) !== Object.prototype && Object.getPrototypeOf(filter) !== null)
+    || Object.keys(filter).some((key) => !["component", "resourceRef", "limit"].includes(key))) throw invalidTelemetry();
+}
+
 function decode(row: Record<string, SQLOutputValue>): OperationalTelemetryRecord {
   const value = row["payload_json"];
   if (typeof value !== "string") throw unavailable();
   try { return validateOperationalTelemetryRecord(JSON.parse(value) as unknown); } catch { throw unavailable(); }
+}
+
+function decodeStatus(row: Record<string, SQLOutputValue>): OperationalStatusSnapshot {
+  const value = row["payload_json"];
+  if (typeof value !== "string") throw unavailable();
+  try { return validateOperationalStatusSnapshot(JSON.parse(value) as unknown); } catch { throw unavailable(); }
 }
 
 function text(value: SQLOutputValue | undefined): string {
@@ -174,6 +287,12 @@ function text(value: SQLOutputValue | undefined): string {
 function nullableText(value: SQLOutputValue | undefined): string | null {
   if (value === null) return null;
   return text(value);
+}
+
+function nullableNumber(value: SQLOutputValue | undefined): number | null {
+  if (value === null) return null;
+  if (typeof value !== "number") throw unavailable();
+  return value;
 }
 
 function canonicalJson(value: unknown): string {
@@ -193,6 +312,10 @@ function isFileDatabasePath(value: string): boolean {
 
 function unavailable(): OperationalEvidenceError {
   return new OperationalEvidenceError("PERSISTENCE_UNAVAILABLE", "Durable operational evidence persistence is unavailable.");
+}
+
+function invalidTelemetry(): OperationalEvidenceError {
+  return new OperationalEvidenceError("TELEMETRY_INPUT_INVALID", "Operational telemetry input is invalid.");
 }
 
 function normalizeSql(value: string): string {
@@ -218,6 +341,25 @@ const CORRELATION_INDEX_SQL = "CREATE INDEX IF NOT EXISTS operational_telemetry_
 const UPDATE_TRIGGER_SQL = "CREATE TRIGGER IF NOT EXISTS operational_telemetry_no_update BEFORE UPDATE ON operational_telemetry BEGIN SELECT RAISE(ABORT, 'append-only'); END";
 const DELETE_TRIGGER_SQL = "CREATE TRIGGER IF NOT EXISTS operational_telemetry_no_delete BEFORE DELETE ON operational_telemetry BEGIN SELECT RAISE(ABORT, 'append-only'); END";
 const INSERT_TRIGGER_SQL = "CREATE TRIGGER IF NOT EXISTS operational_telemetry_no_replace BEFORE INSERT ON operational_telemetry WHEN EXISTS (SELECT 1 FROM operational_telemetry WHERE telemetry_event_id = NEW.telemetry_event_id) BEGIN SELECT RAISE(ABORT, 'append-only'); END";
+const STATUS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS operational_status_snapshot (
+  status_snapshot_id TEXT PRIMARY KEY,
+  telemetry_event_id TEXT NOT NULL REFERENCES operational_telemetry(telemetry_event_id),
+  component TEXT NOT NULL,
+  resource_type TEXT NOT NULL,
+  resource_ref TEXT NOT NULL,
+  health TEXT NOT NULL,
+  readiness TEXT NOT NULL,
+  freshness TEXT NOT NULL,
+  evidence_occurred_at TEXT NOT NULL,
+  evaluated_at TEXT NOT NULL,
+  freshness_threshold_ms INTEGER,
+  payload_json TEXT NOT NULL
+)`;
+const STATUS_COMPONENT_INDEX_SQL = "CREATE INDEX IF NOT EXISTS operational_status_component_idx ON operational_status_snapshot(component, evaluated_at)";
+const STATUS_RESOURCE_INDEX_SQL = "CREATE INDEX IF NOT EXISTS operational_status_resource_idx ON operational_status_snapshot(resource_ref, evaluated_at)";
+const STATUS_UPDATE_TRIGGER_SQL = "CREATE TRIGGER IF NOT EXISTS operational_status_no_update BEFORE UPDATE ON operational_status_snapshot BEGIN SELECT RAISE(ABORT, 'append-only'); END";
+const STATUS_DELETE_TRIGGER_SQL = "CREATE TRIGGER IF NOT EXISTS operational_status_no_delete BEFORE DELETE ON operational_status_snapshot BEGIN SELECT RAISE(ABORT, 'append-only'); END";
+const STATUS_INSERT_TRIGGER_SQL = "CREATE TRIGGER IF NOT EXISTS operational_status_no_replace BEFORE INSERT ON operational_status_snapshot WHEN EXISTS (SELECT 1 FROM operational_status_snapshot WHERE status_snapshot_id = NEW.status_snapshot_id) BEGIN SELECT RAISE(ABORT, 'append-only'); END";
 const SCHEMA_OBJECTS = Object.freeze({
   operational_telemetry: TABLE_SQL,
   operational_telemetry_component_idx: COMPONENT_INDEX_SQL,
@@ -226,5 +368,11 @@ const SCHEMA_OBJECTS = Object.freeze({
   operational_telemetry_no_update: UPDATE_TRIGGER_SQL,
   operational_telemetry_no_delete: DELETE_TRIGGER_SQL,
   operational_telemetry_no_replace: INSERT_TRIGGER_SQL,
+  operational_status_snapshot: STATUS_TABLE_SQL,
+  operational_status_component_idx: STATUS_COMPONENT_INDEX_SQL,
+  operational_status_resource_idx: STATUS_RESOURCE_INDEX_SQL,
+  operational_status_no_update: STATUS_UPDATE_TRIGGER_SQL,
+  operational_status_no_delete: STATUS_DELETE_TRIGGER_SQL,
+  operational_status_no_replace: STATUS_INSERT_TRIGGER_SQL,
 });
 const SCHEMA = `${Object.values(SCHEMA_OBJECTS).join(";\n")};`;

@@ -18,7 +18,7 @@
 |---|---|---|---|---|---|
 | FEAT-023-A | Canonical inventory / gap report | FEAT-023, DEV-023, IMP-023, TRACE-023, TEST-046~053 | Production changes `0` | `DOC-REVIEW-132` | COMPLETE |
 | FEAT-023-B | Structured telemetry / operational evidence | REQ-CONST-005/007/010; SEC-012/014/021/023/024; OPS-012/013; TEST-048/049/053 bounded telemetry partition only | `modules/operations/src/operational-telemetry-contracts.ts`; `durable-operational-evidence-store.ts` | canonical contract/store/architecture `13/13`; affected durable stores and final full regression | IMPLEMENTED_AND_VERIFIED |
-| FEAT-023-C | Health / readiness / freshness | approved amendment sections 5~7 | none in B | not run | PLANNED |
+| FEAT-023-C | Health / readiness / freshness | approved amendment sections 4~7; OPS-012/024; TEST-048/049/053 bounded operational projection partition | `modules/operations/src/operational-status-projection.ts`; status snapshot extension in `durable-operational-evidence-store.ts` | exact contract/store/architecture `16/16`; Operations affected `20/20`; full regression `1040/1040` | IMPLEMENTED_AND_VERIFIED |
 | FEAT-023-D | Security / privacy operational controls | approved amendment sections 14~15/20/22 | none in B | not run | PLANNED |
 | FEAT-023-E | Alert / incident evidence projection | approved amendment sections 8~13 | none in B | not run | PLANNED |
 | FEAT-023-F | Deployment / backup / rollback readiness evidence | approved amendment sections 16~18 | none in B | not run | PLANNED |
@@ -45,3 +45,16 @@
 - Dependency/lockfile change: `0`
 - Complete domain object duplication: `0`
 - Alert, health, readiness, freshness, Console and remediation behavior in FEAT-023-B: `0`
+
+## 5. FEAT-023-C evidence chain
+
+| Requirement | Production | Test / assertion | Result |
+|---|---|---|---|
+| Exact, independent Health and Readiness vocabularies | `validateOperationalStatusSnapshot()` | cross-vocabulary, lowercase, unknown-field rejection; `HEALTHY + NOT_READY` accepted | PASS |
+| Undefined threshold means `UNKNOWN` | `validateOperationalStatusProjectionRequest()` and `deriveEvidenceFreshness()` | omitted, explicit `undefined`, and `null` normalize without a default TTL | PASS |
+| Approved threshold deterministic freshness | `deriveEvidenceFreshness()` | exact boundary `FRESH`, boundary+1ms `STALE`, future/invalid threshold rejection | PASS |
+| Existing telemetry correlation | `DurableOperationalEvidenceStore.projectStatus()` | missing telemetry rejected; component/resource/timestamp derived from durable source | PASS |
+| Durable safe projection | existing FEAT-023 store `operational_status_snapshot` partition | close/reopen, exact replay, identity conflict, materialized-state startup validation | PASS |
+| Append-only and authority-free | SQLite status triggers and architecture dependency test | raw update/delete rejected; action/network/authority imports absent | PASS |
+
+FEAT-023-C는 Health/Readiness/Freshness를 operational observation으로만 유지한다. Retry, recovery, remediation, reactivation, business mutation과 external monitoring activation은 모두 `0`이며 FEAT-023-D~H와 Final Gate는 시작하지 않았다.

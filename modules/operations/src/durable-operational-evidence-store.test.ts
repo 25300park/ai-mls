@@ -10,6 +10,7 @@ import {
   createProductionOperationalEvidenceStore,
 } from "./durable-operational-evidence-store.js";
 import { OperationalEvidenceError, type OperationalTelemetryRecord } from "./operational-telemetry-contracts.js";
+import type { OperationalStatusProjectionRequest, OperationalStatusSnapshot } from "./operational-status-projection.js";
 
 function telemetry(overrides: Partial<OperationalTelemetryRecord> = {}): OperationalTelemetryRecord {
   return {
@@ -25,6 +26,18 @@ function telemetry(overrides: Partial<OperationalTelemetryRecord> = {}): Operati
     evidenceRefs: ["evidence:publication:001"],
     occurredAt: "2026-09-09T01:00:00.000Z",
     attemptId: "attempt:001",
+    ...overrides,
+  };
+}
+
+function statusRequest(overrides: Partial<OperationalStatusProjectionRequest> = {}): OperationalStatusProjectionRequest {
+  return {
+    statusSnapshotId: "status-snapshot:001",
+    telemetryEventId: "telemetry:evt-001",
+    health: "HEALTHY",
+    readiness: "NOT_READY",
+    evaluatedAt: "2026-09-09T01:05:00.000Z",
+    freshnessThresholdMs: null,
     ...overrides,
   };
 }
@@ -150,4 +163,54 @@ test("FEAT-023-B list rejects unbounded or unsafe operational filters", () => wi
     const inherited = Object.create({ component: "CONNECTOR_RUNTIME" }) as never;
     expectCode(() => store.list(inherited), "TELEMETRY_INPUT_INVALID");
   } finally { store.close(); }
+}));
+
+test("FEAT-023-C persists a telemetry-correlated status snapshot across reopen", () => withDatabase((databasePath) => {
+  const first = new DurableOperationalEvidenceStore({ databasePath });
+  first.append(telemetry());
+  const projected = first.projectStatus(statusRequest());
+  assert.deepEqual(projected, {
+    statusSnapshotId: "status-snapshot:001",
+    telemetryEventId: "telemetry:evt-001",
+    component: "PUBLICATION_RUNTIME",
+    resourceType: "PUBLICATION",
+    resourceRef: `publication:sha256:${"a".repeat(64)}`,
+    health: "HEALTHY",
+    readiness: "NOT_READY",
+    freshness: "UNKNOWN",
+    evidenceOccurredAt: "2026-09-09T01:00:00.000Z",
+    evaluatedAt: "2026-09-09T01:05:00.000Z",
+    freshnessThresholdMs: null,
+  } satisfies OperationalStatusSnapshot);
+  first.close();
+
+  const reopened = new DurableOperationalEvidenceStore({ databasePath });
+  assert.deepEqual(reopened.findStatus("status-snapshot:001"), projected);
+  assert.deepEqual(reopened.listStatuses({ component: "PUBLICATION_RUNTIME" }), [projected]);
+  assert.equal(Object.isFrozen(reopened.listStatuses()), true);
+  reopened.close();
+}));
+
+test("FEAT-023-C status projection requires durable telemetry and immutable identity", () => withDatabase((databasePath) => {
+  const store = new DurableOperationalEvidenceStore({ databasePath });
+  try {
+    assert.throws(() => store.projectStatus(statusRequest()), { code: "TELEMETRY_NOT_FOUND" });
+    store.append(telemetry());
+    const first = store.projectStatus(statusRequest());
+    assert.deepEqual(store.projectStatus(structuredClone(statusRequest())), first);
+    assert.throws(() => store.projectStatus(statusRequest({ readiness: "READY" })), { code: "OPERATIONAL_STATUS_IDENTITY_CONFLICT" });
+    assert.equal(store.listStatuses().length, 1);
+  } finally { store.close(); }
+}));
+
+test("FEAT-023-C operational status snapshots are append-only at the database boundary", () => withDatabase((databasePath) => {
+  const store = new DurableOperationalEvidenceStore({ databasePath });
+  store.append(telemetry());
+  store.projectStatus(statusRequest());
+  store.close();
+  const raw = new DatabaseSync(databasePath);
+  try {
+    assert.throws(() => raw.exec("UPDATE operational_status_snapshot SET health = 'UNHEALTHY' WHERE status_snapshot_id = 'status-snapshot:001'"), /append-only/iu);
+    assert.throws(() => raw.exec("DELETE FROM operational_status_snapshot WHERE status_snapshot_id = 'status-snapshot:001'"), /append-only/iu);
+  } finally { raw.close(); }
 }));
