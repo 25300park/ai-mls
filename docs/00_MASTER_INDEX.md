@@ -254,6 +254,7 @@
 | DOC-REVIEW-127 | [FEAT-021 UI and Accessibility Boundary Final Gate](reviews/FEAT021_FINAL_GATE_REPORT.md) | approved screen disposition, bounded accessibility, regression and final completion evidence | AVAILABLE |
 | DOC-REVIEW-128 | [FEAT-022-A AI Advisory Canonical Inventory & Gap Report](reviews/FEAT022_A_AI_ADVISORY_CANONICAL_INVENTORY_GAP_REPORT.md) | canonical AI-001~007 inventory, executable-contract gaps and mandatory-stop evidence | AVAILABLE |
 | DOC-REVIEW-129 | [FEAT-022-B Canonical Output Contract / Validation Boundary Completion](reviews/FEAT022_B_CANONICAL_OUTPUT_CONTRACT_VALIDATION_COMPLETION.md) | exact AI-001~007 TypeScript contracts, strict recursive validation and bounded completion evidence | AVAILABLE |
+| DOC-REVIEW-130 | [FEAT-022-C AI Advisory Runtime Foundation Completion](reviews/FEAT022_C_AI_ADVISORY_RUNTIME_FOUNDATION_COMPLETION.md) | deterministic no-network runtime, prompt binding, durable evidence/idempotency and production fail-closed completion | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -511,6 +512,9 @@
 | DOC-DEV-031 | [F19-E API-019 Business Handoff Plan](implementation/F19_E_API_019_BUSINESS_HANDOFF_IMPLEMENTATION_PLAN.md) | F19-E execution plan | AVAILABLE |
 | DOC-DEV-032 | [F19-F Recovery Idempotency Hardening Plan](implementation/F19_F_RECOVERY_IDEMPOTENCY_NESTED_AMBIGUITY_IMPLEMENTATION_PLAN.md) | F19-F execution plan | AVAILABLE |
 | DOC-DEV-033 | [FEAT-021 UI / Accessibility Implementation Traceability](implementation/FEAT021_TRACEABILITY_MATRIX.md) | FEAT-021-A~E and Final Gate eligible-scope/disposition evidence mapping | AVAILABLE |
+| DOC-DEV-034 | [FEAT-022-C AI Advisory Runtime Foundation Design](implementation/FEAT022_C_AI_ADVISORY_RUNTIME_FOUNDATION_DESIGN.md) | approved runtime, prompt, durable evidence and provider-unavailable design | AVAILABLE |
+| DOC-DEV-035 | [FEAT-022-C AI Advisory Runtime Foundation Implementation Plan](implementation/FEAT022_C_AI_ADVISORY_RUNTIME_FOUNDATION_IMPLEMENTATION_PLAN.md) | approved RED-GREEN implementation and verification plan | AVAILABLE |
+| DOC-DEV-036 | [FEAT-022 Implementation Traceability](implementation/FEAT022_TRACEABILITY_MATRIX.md) | FEAT-022-A~C actual production/test/evidence mapping | AVAILABLE |
 | DOC-REVIEW-019 | [Phase 12 Completion](reviews/PHASE12_COMPLETION.md) | Developer Bible completion evidence와 Phase 13 gate | AVAILABLE |
 
 ## Book 12 — Master Development Roadmap (Phase 13)
@@ -812,6 +816,9 @@
 | DOC-DEV-031 | F19-E API-019 Business Handoff Implementation Plan | [F19_E_API_019_BUSINESS_HANDOFF_IMPLEMENTATION_PLAN.md](implementation/F19_E_API_019_BUSINESS_HANDOFF_IMPLEMENTATION_PLAN.md) |
 | DOC-DEV-032 | F19-F Recovery Idempotency Hardening Implementation Plan | [F19_F_RECOVERY_IDEMPOTENCY_NESTED_AMBIGUITY_IMPLEMENTATION_PLAN.md](implementation/F19_F_RECOVERY_IDEMPOTENCY_NESTED_AMBIGUITY_IMPLEMENTATION_PLAN.md) |
 | DOC-DEV-033 | FEAT-021 UI / Accessibility Implementation Traceability Matrix | [FEAT021_TRACEABILITY_MATRIX.md](implementation/FEAT021_TRACEABILITY_MATRIX.md) |
+| DOC-DEV-034 | FEAT-022-C AI Advisory Runtime Foundation Design | [FEAT022_C_AI_ADVISORY_RUNTIME_FOUNDATION_DESIGN.md](implementation/FEAT022_C_AI_ADVISORY_RUNTIME_FOUNDATION_DESIGN.md) |
+| DOC-DEV-035 | FEAT-022-C AI Advisory Runtime Foundation Implementation Plan | [FEAT022_C_AI_ADVISORY_RUNTIME_FOUNDATION_IMPLEMENTATION_PLAN.md](implementation/FEAT022_C_AI_ADVISORY_RUNTIME_FOUNDATION_IMPLEMENTATION_PLAN.md) |
+| DOC-DEV-036 | FEAT-022 Implementation Traceability Matrix | [FEAT022_TRACEABILITY_MATRIX.md](implementation/FEAT022_TRACEABILITY_MATRIX.md) |
 | DOC-ROADMAP-001 | Master Development Roadmap Index | [00_MASTER_DEVELOPMENT_ROADMAP_INDEX.md](book-12/00_MASTER_DEVELOPMENT_ROADMAP_INDEX.md) |
 | DOC-ROADMAP-002 | Implementation Strategy | [01_IMPLEMENTATION_STRATEGY.md](book-12/01_IMPLEMENTATION_STRATEGY.md) |
 | DOC-ROADMAP-003 | Epic Breakdown | [02_EPIC_BREAKDOWN.md](book-12/02_EPIC_BREAKDOWN.md) |
@@ -971,6 +978,7 @@
 | DOC-REVIEW-127 | FEAT-021 UI and Accessibility Boundary Final Gate Report | [FEAT021_FINAL_GATE_REPORT.md](reviews/FEAT021_FINAL_GATE_REPORT.md) |
 | DOC-REVIEW-128 | FEAT-022-A AI Advisory Capability Canonical Inventory & Gap Report | [FEAT022_A_AI_ADVISORY_CANONICAL_INVENTORY_GAP_REPORT.md](reviews/FEAT022_A_AI_ADVISORY_CANONICAL_INVENTORY_GAP_REPORT.md) |
 | DOC-REVIEW-129 | FEAT-022-B Canonical Output Contract / Validation Boundary Completion | [FEAT022_B_CANONICAL_OUTPUT_CONTRACT_VALIDATION_COMPLETION.md](reviews/FEAT022_B_CANONICAL_OUTPUT_CONTRACT_VALIDATION_COMPLETION.md) |
+| DOC-REVIEW-130 | FEAT-022-C AI Advisory Runtime Foundation Completion | [FEAT022_C_AI_ADVISORY_RUNTIME_FOUNDATION_COMPLETION.md](reviews/FEAT022_C_AI_ADVISORY_RUNTIME_FOUNDATION_COMPLETION.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books
