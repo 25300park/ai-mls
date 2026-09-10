@@ -265,6 +265,7 @@
 | DOC-REVIEW-138 | [FEAT-023-G Operations Console / Traceability Gap Matrix](reviews/FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_GAP_MATRIX.md) | pre-production telemetry/status/security/readiness Console integration gap analysis | AVAILABLE |
 | DOC-REVIEW-139 | [FEAT-023-G Operations Console / Traceability Integration Completion](reviews/FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_COMPLETION.md) | scoped operational reads, safe read-only Console projection and A~G evidence closure | AVAILABLE |
 | DOC-REVIEW-140 | [FEAT-023-H Final Integration / Hardening Completion](reviews/FEAT023_H_FINAL_INTEGRATION_HARDENING_COMPLETION.md) | A~G durability, isolation, privacy, truthfulness and read-only preservation gate | AVAILABLE |
+| DOC-REVIEW-141 | [FEAT-023 Security / Privacy / Operations Controls Final Gate](reviews/FEAT023_FINAL_GATE_REPORT.md) | A~H integration verification, preserved initial blocker and approved SQL/SQLite remediation closure | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -527,7 +528,7 @@
 | DOC-DEV-036 | [FEAT-022 Implementation Traceability](implementation/FEAT022_TRACEABILITY_MATRIX.md) | FEAT-022-A~C implementation and Final Gate closure evidence mapping | AVAILABLE |
 | DOC-DEV-037 | [FEAT-023-B Structured Telemetry / Operational Evidence Foundation Design](implementation/FEAT023_B_STRUCTURED_TELEMETRY_OPERATIONAL_EVIDENCE_DESIGN.md) | approved exact telemetry, durable projection and safety boundary | AVAILABLE |
 | DOC-DEV-038 | [FEAT-023-B Structured Telemetry / Operational Evidence Foundation Implementation Plan](implementation/FEAT023_B_STRUCTURED_TELEMETRY_OPERATIONAL_EVIDENCE_IMPLEMENTATION_PLAN.md) | RED-GREEN implementation and bounded verification plan | AVAILABLE |
-| DOC-DEV-039 | [FEAT-023 Implementation Traceability](implementation/FEAT023_TRACEABILITY_MATRIX.md) | FEAT-023-A~H and Final Gate evidence mapping | AVAILABLE |
+| DOC-DEV-039 | [FEAT-023 Implementation Traceability](implementation/FEAT023_TRACEABILITY_MATRIX.md) | FEAT-023-A~H and approved Final Gate closure evidence mapping | AVAILABLE |
 | DOC-DEV-040 | [FEAT-023-C Health / Readiness / Freshness Implementation Plan](implementation/FEAT023_C_HEALTH_READINESS_FRESHNESS_IMPLEMENTATION_PLAN.md) | RED-GREEN bounded status projection and verification plan | AVAILABLE |
 | DOC-DEV-041 | [FEAT-023-E Alert / Incident Evidence Projection Implementation Plan](implementation/FEAT023_E_ALERT_INCIDENT_EVIDENCE_PROJECTION_IMPLEMENTATION_PLAN.md) | approved Alert normalization, durable projection and read-only Console TDD plan | AVAILABLE |
 | DOC-DEV-042 | [FEAT-023-F Deployment / Backup / Rollback Readiness Implementation Plan](implementation/FEAT023_F_DEPLOYMENT_BACKUP_ROLLBACK_READINESS_IMPLEMENTATION_PLAN.md) | source-specific readiness manifest, existing durable store and read-only Console TDD plan | AVAILABLE |
@@ -1013,6 +1014,7 @@
 | DOC-REVIEW-138 | FEAT-023-G Operations Console / Traceability Gap Matrix | [FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_GAP_MATRIX.md](reviews/FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_GAP_MATRIX.md) |
 | DOC-REVIEW-139 | FEAT-023-G Operations Console / Traceability Integration Completion | [FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_COMPLETION.md](reviews/FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_COMPLETION.md) |
 | DOC-REVIEW-140 | FEAT-023-H Final Integration / Hardening Completion | [FEAT023_H_FINAL_INTEGRATION_HARDENING_COMPLETION.md](reviews/FEAT023_H_FINAL_INTEGRATION_HARDENING_COMPLETION.md) |
+| DOC-REVIEW-141 | FEAT-023 Security / Privacy / Operations Controls Final Gate Report | [FEAT023_FINAL_GATE_REPORT.md](reviews/FEAT023_FINAL_GATE_REPORT.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books

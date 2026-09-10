@@ -86,3 +86,98 @@ test("FEAT-023-D redacts unsafe values hidden under innocent security detail key
   assert.equal(sanitized["safeOutcome"], "DENY");
   assert.equal(Object.isFrozen(sanitized), true);
 });
+
+test("FEAT-023 Final Gate redacts SQL and SQLite diagnostics by value under generic keys", () => {
+  const unsafeDiagnostics = {
+    message: "SELECT internal_column FROM operational_telemetry WHERE component = ?",
+    selectLiteral: "SELECT 1",
+    selectAggregate: "SELECT count(*) FROM operational_evidence",
+    selectDistinct: "SELECT DISTINCT internal_column FROM operational_evidence",
+    selectQuoted: 'SELECT "internal_column" FROM operational_evidence',
+    selectMultiple: "SELECT id, name FROM operational_evidence",
+    selectNull: "SELECT NULL",
+    selectParameter: "SELECT ?",
+    selectAlias: "SELECT id AS alias FROM operational_evidence",
+    detail: "INSERT INTO operational_alerts (alert_id) VALUES (?)",
+    replacement: "REPLACE INTO operational_alerts (alert_id) VALUES (?)",
+    valuesClause: "VALUES (1)",
+    reason: "UPDATE operational_status SET readiness = 'READY' WHERE id = ?",
+    context: "DELETE FROM operational_evidence WHERE tenant_id = ?",
+    error: "CREATE TABLE internal_evidence (secret_column TEXT)",
+    description: "ALTER TABLE operational_evidence ADD COLUMN private_value TEXT",
+    query: "DROP TABLE operational_evidence",
+    engineMessage: "SQLITE_CONSTRAINT: FOREIGN KEY constraint failed",
+    lookupFailure: "no such table: operational_telemetry",
+    schemaFailure: "no such column: internal_secret",
+    parserFailure: "near SELECT: syntax error",
+    databaseDiagnostic: "database file runtime-state.sqlite3 is locked",
+    tableDiagnostic: "schema main has no table named operational_evidence",
+    sqliteLocked: "SQLite database is locked",
+    sqliteMalformed: "database disk image is malformed",
+    sqliteReadonly: "attempt to write a readonly database",
+    sqlitePragma: "PRAGMA table_info(operational_evidence)",
+    sqliteLogicError: "SQL logic error",
+    sqliteDatatypeMismatch: "datatype mismatch",
+    combinedDiagnostic:
+      "Error: SQLITE_ERROR: no such table: operational_evidence\n    at query (D:\\service\\storage.ts:42:9)",
+    safeOutcome: "UNKNOWN",
+  };
+
+  const sanitized = sanitizeSecurityDetails(unsafeDiagnostics);
+
+  for (const key of Object.keys(unsafeDiagnostics).filter(
+    (entry) => entry !== "safeOutcome",
+  )) {
+    assert.equal(sanitized[key], "[REDACTED]", `${key} must be redacted`);
+  }
+  assert.equal(sanitized["safeOutcome"], "UNKNOWN");
+  assert.equal(Object.isFrozen(sanitized), true);
+});
+
+test("FEAT-023 Final Gate preserves bounded non-diagnostic operational text", () => {
+  const sanitized = sanitizeSecurityDetails({
+    selection: "Operator selected an approved source from the visible list",
+    updateSummary: "Record update completed successfully",
+    tableSummary: "Operational table view is available",
+    safeOutcome: "DEGRADED",
+  });
+
+  assert.deepEqual(sanitized, {
+    selection: "Operator selected an approved source from the visible list",
+    updateSummary: "Record update completed successfully",
+    tableSummary: "Operational table view is available",
+    safeOutcome: "DEGRADED",
+  });
+});
+
+test("FEAT-023 Final Gate evaluates long SQL-like non-diagnostics without quadratic scanning", () => {
+  const longSafeValue = "select x ".repeat(32_000);
+  const startedAt = performance.now();
+
+  const sanitized = sanitizeSecurityDetails({ message: longSafeValue });
+
+  const elapsedMilliseconds = performance.now() - startedAt;
+  assert.equal(sanitized["message"], "[REDACTED]");
+  assert.ok(
+    elapsedMilliseconds < 500,
+    `sanitization took ${elapsedMilliseconds.toFixed(1)}ms`,
+  );
+});
+
+test("FEAT-023 Final Gate evaluates long diagnostic-prefix input in linear time", () => {
+  for (const longSafeValue of [
+    "near x ".repeat(8_000),
+    "constraint x ".repeat(8_000),
+  ]) {
+    const startedAt = performance.now();
+
+    const sanitized = sanitizeSecurityDetails({ message: longSafeValue });
+
+    const elapsedMilliseconds = performance.now() - startedAt;
+    assert.equal(sanitized["message"], longSafeValue);
+    assert.ok(
+      elapsedMilliseconds < 200,
+      `sanitization took ${elapsedMilliseconds.toFixed(1)}ms`,
+    );
+  }
+});
