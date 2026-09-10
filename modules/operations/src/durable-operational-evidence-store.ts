@@ -88,6 +88,7 @@ export interface OperationalEvidenceStore {
   projectAlerts(source: AuthoritativeAlertSource): readonly OperationalAlertProjection[];
   findStatus(statusSnapshotId: string): OperationalStatusSnapshot | undefined;
   listStatuses(filter?: OperationalStatusFilter): readonly OperationalStatusSnapshot[];
+  listStatusesScoped(binding: OperationalEvidenceBinding, filter?: OperationalStatusFilter): readonly OperationalStatusSnapshot[];
   listAlertsScoped(binding: OperationalEvidenceBinding, filter?: OperationalAlertFilter): readonly OperationalAlertProjection[];
   listReadinessScoped(binding: OperationalEvidenceBinding, filter?: OperationalReadinessFilter): readonly OperationalReadinessProjection[];
   close(): void;
@@ -290,6 +291,27 @@ export class DurableOperationalEvidenceStore implements OperationalEvidenceStore
     const where = clauses.length === 0 ? "" : ` WHERE ${clauses.join(" AND ")}`;
     try {
       const rows = this.#database.prepare(`SELECT payload_json FROM operational_status_snapshot${where} ORDER BY evaluated_at, status_snapshot_id LIMIT ${limit}`).all(...values);
+      return immutableOperationalEvidence(rows.map(decodeStatus));
+    } catch (error) {
+      if (error instanceof OperationalEvidenceError || error instanceof OperationalStatusError) throw error;
+      throw unavailable();
+    }
+  }
+
+  public listStatusesScoped(binding: OperationalEvidenceBinding, filter: OperationalStatusFilter = {}): readonly OperationalStatusSnapshot[] {
+    this.#assertOpen();
+    const validBinding = validateBinding(binding);
+    validateStatusFilter(filter);
+    const limit = filter.limit ?? 100;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw invalidTelemetry();
+    const clauses = ["binding.tenant_id = ?", "binding.scope_ref = ?"];
+    const values = [validBinding.tenantId, validBinding.scopeRef];
+    if (filter.component !== undefined) { values.push(validateOperationalCategory(filter.component)); clauses.push("snapshot.component = ?"); }
+    if (filter.resourceRef !== undefined) { values.push(validateOperationalResourceReference(filter.resourceRef)); clauses.push("snapshot.resource_ref = ?"); }
+    try {
+      const rows = this.#database.prepare(`SELECT snapshot.payload_json FROM operational_status_snapshot AS snapshot
+        INNER JOIN operational_evidence_binding AS binding ON binding.telemetry_event_id = snapshot.telemetry_event_id
+        WHERE ${clauses.join(" AND ")} ORDER BY snapshot.evaluated_at, snapshot.status_snapshot_id LIMIT ${limit}`).all(...values);
       return immutableOperationalEvidence(rows.map(decodeStatus));
     } catch (error) {
       if (error instanceof OperationalEvidenceError || error instanceof OperationalStatusError) throw error;
@@ -729,6 +751,7 @@ export function createProductionOperationalEvidenceStore(options: DurableOperati
     projectAlerts: store.projectAlerts.bind(store),
     findStatus: store.findStatus.bind(store),
     listStatuses: store.listStatuses.bind(store),
+    listStatusesScoped: store.listStatusesScoped.bind(store),
     listAlertsScoped: store.listAlertsScoped.bind(store),
     listReadinessScoped: store.listReadinessScoped.bind(store),
     close: store.close.bind(store),

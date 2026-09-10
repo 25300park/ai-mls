@@ -14,6 +14,8 @@ import type { ConnectorApplicationResult } from "../../../modules/source/src/con
 import type { ExternalIntegrationApplicationResult } from "../../../modules/source/src/external-integration-application.js";
 import { validateOperationalAlertProjection } from "../../../modules/operations/src/operational-alert-projection.js";
 import { validateOperationalReadinessProjection } from "../../../modules/operations/src/operational-readiness-evidence.js";
+import { validateOperationalTelemetryRecord } from "../../../modules/operations/src/operational-telemetry-contracts.js";
+import { validateOperationalStatusSnapshot } from "../../../modules/operations/src/operational-status-projection.js";
 
 export const CONSOLE_PAGES = Object.freeze([
   "DASHBOARD",
@@ -116,6 +118,21 @@ export interface ConsoleOperationalReadinessReadPort {
   }>): readonly unknown[];
 }
 
+export interface ConsoleOperationalEvidenceStatusReadPort {
+  readTelemetry(input: Readonly<{
+    session: SessionContext;
+    tenantId: string;
+    scopeRef: string;
+    correlationId: string;
+  }>): readonly unknown[];
+  readStatuses(input: Readonly<{
+    session: SessionContext;
+    tenantId: string;
+    scopeRef: string;
+    correlationId: string;
+  }>): readonly unknown[];
+}
+
 interface ConsoleReadAdapterDependencies {
   readonly queryPort: ConsolePublicationQueryPort;
   readonly operationsRead: PublicationOperationsReadPort;
@@ -129,6 +146,7 @@ interface ConsoleReadAdapterDependencies {
   readonly auditQueryPort?: ConsoleAuditQueryPort;
   readonly alertReadPort?: ConsoleOperationalAlertReadPort;
   readonly readinessReadPort?: ConsoleOperationalReadinessReadPort;
+  readonly evidenceStatusReadPort?: ConsoleOperationalEvidenceStatusReadPort;
 }
 
 const publicationOperations: Readonly<Record<Exclude<ConsolePage, "DASHBOARD" | "ADMINISTRATION" | "UI-036" | "PROJECTION" | "OPERATIONS" | "CONNECTOR" | "EXTERNAL_INTEGRATION" | "RECOVERY_CASE" | "EVIDENCE">, PublicationQueryRequest["operation"]>> = Object.freeze({
@@ -302,6 +320,7 @@ export class ConsoleReadAdapter {
     const status = this.dependencies.operationsRead.getSystemOperationalStatus();
     const alerts = this.readOperationalAlerts(request);
     const operationalReadiness = this.readOperationalReadiness(request);
+    const operationalEvidenceStatus = this.readOperationalEvidenceStatus(request);
     return immutableConsole({
       page: request.page,
       state: "READY" as const,
@@ -312,9 +331,68 @@ export class ConsoleReadAdapter {
         metrics: this.dependencies.operationsRead.getOperationalMetrics(),
         alerts,
         operationalReadiness,
+        ...operationalEvidenceStatus,
         observedAt: status.observedAt,
       },
     });
+  }
+
+  private readOperationalEvidenceStatus(request: ConsoleReadRequest): Readonly<Record<string, unknown>> {
+    if (this.dependencies.evidenceStatusReadPort === undefined) return unavailableOperationalEvidenceStatus();
+    const session = this.resolveCurrentSession(request);
+    if (session === undefined) return unavailableOperationalEvidenceStatus();
+    const input = { session, tenantId: request.tenantId, scopeRef: request.teamId, correlationId: request.correlationId };
+    try {
+      const telemetry = this.dependencies.evidenceStatusReadPort.readTelemetry(input).map((value) => {
+        const record = validateOperationalTelemetryRecord(value);
+        return {
+          telemetryEventId: record.telemetryEventId,
+          eventType: record.eventType,
+          component: record.component,
+          operation: record.operation,
+          resourceType: record.resourceType,
+          resourceRef: record.resourceRef,
+          outcome: record.outcome,
+          safeErrorCode: record.safeErrorCode,
+          correlationId: record.correlationId,
+          evidenceRefs: record.evidenceRefs,
+          occurredAt: record.occurredAt,
+          ...(record.attemptId === undefined ? {} : { attemptId: record.attemptId }),
+          ...(record.invocationId === undefined ? {} : { invocationId: record.invocationId }),
+          ...(record.recoveryCaseId === undefined ? {} : { recoveryCaseId: record.recoveryCaseId }),
+          ...(record.recoveryId === undefined ? {} : { recoveryId: record.recoveryId }),
+          ...(record.advisoryId === undefined ? {} : { advisoryId: record.advisoryId }),
+        };
+      });
+      const operationalStatuses = this.dependencies.evidenceStatusReadPort.readStatuses(input).map((value) => {
+        const status = validateOperationalStatusSnapshot(value);
+        return {
+          statusSnapshotId: status.statusSnapshotId,
+          telemetryEventId: status.telemetryEventId,
+          component: status.component,
+          resourceType: status.resourceType,
+          resourceRef: status.resourceRef,
+          health: status.health,
+          readiness: status.readiness,
+          freshness: status.freshness,
+          evidenceOccurredAt: status.evidenceOccurredAt,
+          evaluatedAt: status.evaluatedAt,
+          freshnessThresholdMs: status.freshnessThresholdMs,
+        };
+      });
+      const securityTelemetry = telemetry.filter(({ component }) => component === "SECURITY");
+      const securityStatuses = operationalStatuses.filter(({ component }) => component === "SECURITY");
+      const evidenceRefs = [...new Set(securityTelemetry.flatMap(({ evidenceRefs: refs }) => refs))].sort();
+      return immutableConsole({
+        telemetry,
+        operationalStatuses,
+        securityPrivacySummary: {
+          telemetryCount: securityTelemetry.length,
+          statusCount: securityStatuses.length,
+          evidenceRefs,
+        },
+      });
+    } catch { return unavailableOperationalEvidenceStatus(); }
   }
 
   private readOperationalAlerts(request: ConsoleReadRequest): readonly Readonly<Record<string, unknown>>[] | "UNAVAILABLE" {
@@ -609,6 +687,14 @@ function arrayOfRecords(value: unknown): readonly Readonly<Record<string, unknow
 
 function safeCorrelationId(value: string): string {
   return /^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/u.test(value) ? value : "console-correlation-unavailable";
+}
+
+function unavailableOperationalEvidenceStatus(): Readonly<Record<string, "UNAVAILABLE">> {
+  return immutableConsole({
+    telemetry: "UNAVAILABLE" as const,
+    operationalStatuses: "UNAVAILABLE" as const,
+    securityPrivacySummary: "UNAVAILABLE" as const,
+  });
 }
 
 export function immutableConsole<Value>(value: Value): Value {

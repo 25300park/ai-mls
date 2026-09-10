@@ -114,7 +114,7 @@ export function createAdminConsoleServer(configuration: AdminConsoleServerConfig
             ...(integrationContractId === undefined ? {} : { integrationContractId }),
             ...(auditTargetId === undefined ? {} : { auditTargetId }),
             ...(auditEventType === undefined ? {} : { auditEventType }),
-            correlationId: `console-read-${String(requestSequence)}`,
+            correlationId: `correlation:console-read-${String(requestSequence)}`,
           };
           if (page === "UI-036" && configuration.administrationSelectorScopes === undefined) {
             writeJson(response, 200, { html: renderConsoleResult({

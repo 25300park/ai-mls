@@ -262,6 +262,8 @@
 | DOC-REVIEW-135 | [FEAT-023-D Security / Privacy Operational Controls Completion](reviews/FEAT023_D_SECURITY_PRIVACY_OPERATIONAL_CONTROLS_COMPLETION.md) | tenant/scope-bound operational security evidence, fixed-purpose live access and value-aware privacy sanitization | AVAILABLE |
 | DOC-REVIEW-136 | [FEAT-023-E Alert / Incident Evidence Projection Completion](reviews/FEAT023_E_ALERT_INCIDENT_EVIDENCE_PROJECTION_COMPLETION.md) | canonical Alert normalization, durable lifecycle, tenant-safe read and read-only Console evidence | AVAILABLE |
 | DOC-REVIEW-137 | [FEAT-023-F Deployment / Backup / Rollback Readiness Completion](reviews/FEAT023_F_DEPLOYMENT_BACKUP_ROLLBACK_READINESS_COMPLETION.md) | source-specific readiness evidence, durable projection, alert enablement and read-only Console evidence | AVAILABLE |
+| DOC-REVIEW-138 | [FEAT-023-G Operations Console / Traceability Gap Matrix](reviews/FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_GAP_MATRIX.md) | pre-production telemetry/status/security/readiness Console integration gap analysis | AVAILABLE |
+| DOC-REVIEW-139 | [FEAT-023-G Operations Console / Traceability Integration Completion](reviews/FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_COMPLETION.md) | scoped operational reads, safe read-only Console projection and A~G evidence closure | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -528,6 +530,7 @@
 | DOC-DEV-040 | [FEAT-023-C Health / Readiness / Freshness Implementation Plan](implementation/FEAT023_C_HEALTH_READINESS_FRESHNESS_IMPLEMENTATION_PLAN.md) | RED-GREEN bounded status projection and verification plan | AVAILABLE |
 | DOC-DEV-041 | [FEAT-023-E Alert / Incident Evidence Projection Implementation Plan](implementation/FEAT023_E_ALERT_INCIDENT_EVIDENCE_PROJECTION_IMPLEMENTATION_PLAN.md) | approved Alert normalization, durable projection and read-only Console TDD plan | AVAILABLE |
 | DOC-DEV-042 | [FEAT-023-F Deployment / Backup / Rollback Readiness Implementation Plan](implementation/FEAT023_F_DEPLOYMENT_BACKUP_ROLLBACK_READINESS_IMPLEMENTATION_PLAN.md) | source-specific readiness manifest, existing durable store and read-only Console TDD plan | AVAILABLE |
+| DOC-DEV-043 | [FEAT-023-G Operations Console / Traceability Integration Implementation Plan](implementation/FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_IMPLEMENTATION_PLAN.md) | scoped operational read, safe Console DTO/rendering and A~G closure TDD plan | AVAILABLE |
 | DOC-REVIEW-019 | [Phase 12 Completion](reviews/PHASE12_COMPLETION.md) | Developer Bible completion evidence와 Phase 13 gate | AVAILABLE |
 
 ## Book 12 — Master Development Roadmap (Phase 13)
@@ -838,6 +841,7 @@
 | DOC-DEV-040 | FEAT-023-C Health / Readiness / Freshness Implementation Plan | [FEAT023_C_HEALTH_READINESS_FRESHNESS_IMPLEMENTATION_PLAN.md](implementation/FEAT023_C_HEALTH_READINESS_FRESHNESS_IMPLEMENTATION_PLAN.md) |
 | DOC-DEV-041 | FEAT-023-E Alert / Incident Evidence Projection Implementation Plan | [FEAT023_E_ALERT_INCIDENT_EVIDENCE_PROJECTION_IMPLEMENTATION_PLAN.md](implementation/FEAT023_E_ALERT_INCIDENT_EVIDENCE_PROJECTION_IMPLEMENTATION_PLAN.md) |
 | DOC-DEV-042 | FEAT-023-F Deployment / Backup / Rollback Readiness Implementation Plan | [FEAT023_F_DEPLOYMENT_BACKUP_ROLLBACK_READINESS_IMPLEMENTATION_PLAN.md](implementation/FEAT023_F_DEPLOYMENT_BACKUP_ROLLBACK_READINESS_IMPLEMENTATION_PLAN.md) |
+| DOC-DEV-043 | FEAT-023-G Operations Console / Traceability Integration Implementation Plan | [FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_IMPLEMENTATION_PLAN.md](implementation/FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_IMPLEMENTATION_PLAN.md) |
 | DOC-ROADMAP-001 | Master Development Roadmap Index | [00_MASTER_DEVELOPMENT_ROADMAP_INDEX.md](book-12/00_MASTER_DEVELOPMENT_ROADMAP_INDEX.md) |
 | DOC-ROADMAP-002 | Implementation Strategy | [01_IMPLEMENTATION_STRATEGY.md](book-12/01_IMPLEMENTATION_STRATEGY.md) |
 | DOC-ROADMAP-003 | Epic Breakdown | [02_EPIC_BREAKDOWN.md](book-12/02_EPIC_BREAKDOWN.md) |
@@ -1005,6 +1009,8 @@
 | DOC-REVIEW-135 | FEAT-023-D Security / Privacy Operational Controls Completion | [FEAT023_D_SECURITY_PRIVACY_OPERATIONAL_CONTROLS_COMPLETION.md](reviews/FEAT023_D_SECURITY_PRIVACY_OPERATIONAL_CONTROLS_COMPLETION.md) |
 | DOC-REVIEW-136 | FEAT-023-E Alert / Incident Evidence Projection Completion | [FEAT023_E_ALERT_INCIDENT_EVIDENCE_PROJECTION_COMPLETION.md](reviews/FEAT023_E_ALERT_INCIDENT_EVIDENCE_PROJECTION_COMPLETION.md) |
 | DOC-REVIEW-137 | FEAT-023-F Deployment / Backup / Rollback Readiness Completion | [FEAT023_F_DEPLOYMENT_BACKUP_ROLLBACK_READINESS_COMPLETION.md](reviews/FEAT023_F_DEPLOYMENT_BACKUP_ROLLBACK_READINESS_COMPLETION.md) |
+| DOC-REVIEW-138 | FEAT-023-G Operations Console / Traceability Gap Matrix | [FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_GAP_MATRIX.md](reviews/FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_GAP_MATRIX.md) |
+| DOC-REVIEW-139 | FEAT-023-G Operations Console / Traceability Integration Completion | [FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_COMPLETION.md](reviews/FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_COMPLETION.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books

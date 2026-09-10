@@ -34,6 +34,8 @@ interface SecurityReadinessRequest extends SecurityAccessRequest {
 
 interface Controls {
   readEvidence(request: SecurityAccessRequest): readonly OperationalTelemetryRecord[];
+  readTelemetry(request: Omit<SecurityAccessRequest, "resourceRef">): readonly OperationalTelemetryRecord[];
+  readStatuses(request: Omit<SecurityAccessRequest, "resourceRef">): readonly OperationalStatusSnapshot[];
   readAlerts(request: Omit<SecurityAccessRequest, "resourceRef">): readonly OperationalAlertProjection[];
   readReadiness(request: Omit<SecurityAccessRequest, "resourceRef">): readonly OperationalReadinessProjection[];
   projectSecurityReadiness(request: SecurityReadinessRequest): OperationalStatusSnapshot | undefined;
@@ -182,6 +184,49 @@ test("FEAT-023-E Alert visibility reuses live security authorization and tenant 
   assert.deepEqual(controls.readAlerts({ ...request, scopeRef: "team-002" }), []);
   assert.deepEqual(controls.readAlerts({ ...request, session: session({ assurance: "SINGLE_FACTOR", isMfaVerified: false }) }), []);
   assert.equal(store.listAlertsScoped({ tenantId: "tenant-001", scopeRef: "team-001" }).length, 1);
+}));
+
+test("FEAT-023-G telemetry and status visibility require live MFA authority and exact tenant scope", async () => withStore(async (store) => {
+  const Constructor = await controlsConstructor();
+  assert.equal(typeof Constructor, "function");
+  const controls = new Constructor!({ authorizationService: authorization([assignment()]), evidenceStore: store });
+  const record = telemetry({ telemetryEventId: "telemetry:security-status-001" });
+  store.appendScoped(record, { tenantId: "tenant-001", scopeRef: "team-001" });
+  const projected = store.projectStatus({
+    statusSnapshotId: "status-snapshot:security-status-001",
+    telemetryEventId: record.telemetryEventId,
+    health: "UNKNOWN",
+    readiness: "UNKNOWN",
+    evaluatedAt: "2026-09-10T01:30:00.000Z",
+    freshnessThresholdMs: null,
+  });
+  const request = { session: session(), tenantId: "tenant-001", scopeRef: "team-001", correlationId: "correlation:security-status-read-001" };
+
+  assert.deepEqual(controls.readTelemetry(request), [record]);
+  assert.deepEqual(controls.readStatuses(request), [projected]);
+  assert.deepEqual(controls.readTelemetry({ ...request, tenantId: "tenant-002" }), []);
+  assert.deepEqual(controls.readStatuses({ ...request, scopeRef: "team-002" }), []);
+  assert.deepEqual(controls.readTelemetry({ ...request, session: session({ assurance: "SINGLE_FACTOR", isMfaVerified: false }) }), []);
+  assert.deepEqual(controls.readStatuses({ ...request, session: session({ assurance: "SINGLE_FACTOR", isMfaVerified: false }) }), []);
+}));
+
+test("FEAT-023-G telemetry and status visibility ignores process-local roles and revalidates authority", async () => withStore(async (store) => {
+  const Constructor = await controlsConstructor();
+  const controls = new Constructor!({ authorizationService: authorization([]), evidenceStore: store });
+  const record = telemetry({ telemetryEventId: "telemetry:security-status-002" });
+  store.appendScoped(record, { tenantId: "tenant-001", scopeRef: "team-001" });
+  store.projectStatus({
+    statusSnapshotId: "status-snapshot:security-status-002",
+    telemetryEventId: record.telemetryEventId,
+    health: "HEALTHY",
+    readiness: "READY",
+    evaluatedAt: "2026-09-10T01:30:00.000Z",
+    freshnessThresholdMs: null,
+  });
+  const request = { session: session({ roles: ["SEC", "ADM"] }), tenantId: "tenant-001", scopeRef: "team-001", correlationId: "correlation:security-status-read-002" };
+
+  assert.deepEqual(controls.readTelemetry(request), []);
+  assert.deepEqual(controls.readStatuses(request), []);
 }));
 
 test("FEAT-023-F readiness visibility reuses live MFA authorization and tenant scope concealment", async () => withStore(async (store) => {

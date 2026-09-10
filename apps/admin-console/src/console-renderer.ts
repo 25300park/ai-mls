@@ -281,8 +281,41 @@ function renderOperations(data: Readonly<Record<string, unknown>>): string {
   return `<section><div class="section-heading"><div><p class="eyebrow">SYSTEM HEALTH</p><h2>System Health</h2></div>${statusBadge(data["health"])}</div><div class="card-grid">${Object.entries(readiness).map(([key, value]) => metricCard(readinessLabel(key), value === true ? "READY" : "NOT_READY")).join("")}</div></section>
   <section><div class="section-heading"><div><p class="eyebrow">COMPONENT STATUS</p><h2>Health and recovery posture</h2></div></div>${historySection("Components", components)}</section>
   <section><div class="section-heading"><div><p class="eyebrow">BOUNDED METRICS</p><h2>Operational evidence</h2></div></div>${definitionGrid(metrics)}</section>
+  ${renderOperationalTelemetry(data["telemetry"])}
+  ${renderOperationalStatuses(data["operationalStatuses"])}
+  ${renderSecurityPrivacySummary(data["securityPrivacySummary"])}
   ${renderOperationalReadiness(data["operationalReadiness"])}
   ${renderOperationalAlerts(data["alerts"])}`;
+}
+
+function renderOperationalTelemetry(value: unknown): string {
+  if (value === "UNAVAILABLE") return unavailableOperationalSection("Operational Telemetry", "Authorized telemetry evidence is unavailable.");
+  const records = arrayOf(value).filter(isRecord);
+  if (records.length === 0) return emptyOperationalSection("Operational Telemetry", "No authorized telemetry evidence is currently available.");
+  return `<section aria-labelledby="operational-telemetry"><div class="section-heading"><div><p class="eyebrow">DURABLE EVIDENCE · READ ONLY</p><h2 id="operational-telemetry">Operational Telemetry</h2></div>${statusBadge("READ ONLY")}</div>
+  <div class="table-wrap"><table aria-label="Operational Telemetry"><thead><tr><th scope="col">Event</th><th scope="col">Component</th><th scope="col">Operation</th><th scope="col">Outcome</th><th scope="col">Resource</th><th scope="col">Correlation</th><th scope="col">Evidence</th><th scope="col">Occurred</th></tr></thead><tbody>${records.map((record) => `<tr><td>${escapeHtml(record["telemetryEventId"])}</td><td>${escapeHtml(record["component"])}</td><td>${escapeHtml(record["operation"])}</td><td>${statusBadge(record["outcome"])}</td><td>${escapeHtml(`${displayValue(record["resourceType"])} · ${displayValue(record["resourceRef"])}`)}</td><td>${escapeHtml(displayValue(record["correlationId"]))}</td><td>${escapeHtml(displayValue(record["evidenceRefs"]))}</td><td>${escapeHtml(record["occurredAt"])}</td></tr>`).join("")}</tbody></table></div></section>`;
+}
+
+function renderOperationalStatuses(value: unknown): string {
+  if (value === "UNAVAILABLE") return unavailableOperationalSection("Component Health / Readiness / Freshness", "Authorized component status is unavailable.");
+  const statuses = arrayOf(value).filter(isRecord);
+  if (statuses.length === 0) return emptyOperationalSection("Component Health / Readiness / Freshness", "No component status snapshot has been recorded.");
+  return `<section aria-labelledby="operational-component-status"><div class="section-heading"><div><p class="eyebrow">CANONICAL STATUS · READ ONLY</p><h2 id="operational-component-status">Component Health / Readiness / Freshness</h2></div>${statusBadge("READ ONLY")}</div>
+  <div class="table-wrap"><table aria-label="Component Health Readiness Freshness"><thead><tr><th scope="col">Snapshot</th><th scope="col">Component</th><th scope="col">Resource</th><th scope="col">Health</th><th scope="col">Readiness</th><th scope="col">Freshness</th><th scope="col">Telemetry evidence</th><th scope="col">Evaluated</th></tr></thead><tbody>${statuses.map((status) => `<tr><td>${escapeHtml(status["statusSnapshotId"])}</td><td>${escapeHtml(status["component"])}</td><td>${escapeHtml(`${displayValue(status["resourceType"])} · ${displayValue(status["resourceRef"])}`)}</td><td>${statusBadge(status["health"])}</td><td>${statusBadge(status["readiness"])}</td><td>${statusBadge(status["freshness"])}</td><td>${escapeHtml(status["telemetryEventId"])}</td><td>${escapeHtml(status["evaluatedAt"])}</td></tr>`).join("")}</tbody></table></div><p class="scope-note">Health, Readiness, and Freshness are independent evidence projections. UNKNOWN remains UNKNOWN and grants no authority.</p></section>`;
+}
+
+function renderSecurityPrivacySummary(value: unknown): string {
+  if (value === "UNAVAILABLE") return unavailableOperationalSection("Security / Privacy Summary", "Authorized security and privacy evidence is unavailable.");
+  if (!isRecord(value)) return emptyOperationalSection("Security / Privacy Summary", "No security and privacy evidence is currently available.");
+  return `<section aria-labelledby="security-privacy-summary"><div class="section-heading"><div><p class="eyebrow">SCOPED EVIDENCE · READ ONLY</p><h2 id="security-privacy-summary">Security / Privacy Summary</h2></div>${statusBadge("READ ONLY")}</div>${definitionGrid(select(value, ["telemetryCount", "statusCount", "evidenceRefs"]))}<p class="scope-note">Summary counts and references are derived only from live-authorized, tenant- and scope-bound SECURITY evidence.</p></section>`;
+}
+
+function unavailableOperationalSection(title: string, message: string): string {
+  return `<section><div class="section-heading"><h2>${escapeHtml(title)}</h2>${statusBadge("UNAVAILABLE")}</div><p class="empty-inline">${escapeHtml(message)}</p></section>`;
+}
+
+function emptyOperationalSection(title: string, message: string): string {
+  return `<section><div class="section-heading"><h2>${escapeHtml(title)}</h2>${statusBadge("EMPTY")}</div><p class="empty-inline">${escapeHtml(message)}</p></section>`;
 }
 
 function renderOperationalReadiness(value: unknown): string {

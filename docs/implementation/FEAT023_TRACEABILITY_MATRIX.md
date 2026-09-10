@@ -22,7 +22,7 @@
 | FEAT-023-D | Security / privacy operational controls | approved amendment sections 14~15/20/22; SEC-012/014/021/023/024; TEST-048/049/053 bounded operational-security partition | shared value-aware sanitizer; append-only binding in `DurableOperationalEvidenceStore`; internal `SecurityPrivacyOperationalControlService` | focused security/audit/store/service `45/45`; affected security/AI/SoD regression `128/128`; full regression `1048/1048` | IMPLEMENTED_AND_VERIFIED |
 | FEAT-023-E | Alert / incident evidence projection | approved amendment sections 8~13; approved 14-type/severity mapping | strict evaluator; existing `DurableOperationalEvidenceStore` Alert partition; live-authorized internal read; read-only Console projection | focused `84/84`; Operations/Console affected `121/121`; full regression `1072/1072` | IMPLEMENTED_AND_VERIFIED |
 | FEAT-023-F | Deployment / backup / rollback readiness evidence | approved initial brief sections 1~25, canonical design sections 1~17, and AO-approved readiness remediation | fail-closed injected source admission; complete binding fingerprint; append-only readiness evidence/projection; scoped live-authorized read; read-only Console | remediation `6/6`; directly affected `111/111`; full regression `1099/1099`; independent review Critical 0 / Important 0 | IMPLEMENTED_AND_VERIFIED |
-| FEAT-023-G | Operations Console / traceability integration | approved amendment section 19 | none in B | not run | PLANNED |
+| FEAT-023-G | Operations Console / traceability integration | approved amendment section 19 and AO-approved bounded design | scoped status read; live-authorized telemetry/status service; one injected Console port; safe immutable DTO and existing `/system/operations` renderer | focused `91/91`; Operations/Console affected `157/157`; full regression `1108/1108`; architecture/Gitleaks PASS | IMPLEMENTED_AND_VERIFIED |
 | FEAT-023-H | Final integration / hardening | approved amendment section 26 preservation gates | none in B | not run | PLANNED |
 | Final Gate | FEAT-023 completion disposition | approved amendment section 26 | none in B | not run | NOT_STARTED |
 
@@ -98,4 +98,19 @@ FEAT-023-C는 Health/Readiness/Freshness를 operational observation으로만 유
 | Read-only Console | injected readiness read port and bounded renderer | safe DTO only; deployment/backup/restore/rollback controls absent | PASS |
 | F19 and execution containment | supporting reference cannot satisfy restore gate; pure projector/architecture assertions | F19 recovery evidence is not backup success; deployment/backup/rollback execution paths `0` | PASS |
 
-상세 결과는 [FEAT-023-F Deployment / Backup / Rollback Readiness Completion](../reviews/FEAT023_F_DEPLOYMENT_BACKUP_ROLLBACK_READINESS_COMPLETION.md)에 기록한다. AO-approved remediation과 fresh independent review로 provenance, binding identity 및 unscoped-read findings를 모두 해소했다. FEAT-023-G/H 및 Final Gate는 시작하지 않았다.
+상세 결과는 [FEAT-023-F Deployment / Backup / Rollback Readiness Completion](../reviews/FEAT023_F_DEPLOYMENT_BACKUP_ROLLBACK_READINESS_COMPLETION.md)에 기록한다. AO-approved remediation과 fresh independent review로 provenance, binding identity 및 unscoped-read findings를 모두 해소했다. FEAT-023-G는 해당 경계를 변경하지 않고 Console 통합 evidence를 추가했으며 FEAT-023-H 및 Final Gate는 시작하지 않았다.
+
+## 9. FEAT-023-G evidence chain
+
+| Requirement | Production | Test / assertion | Result |
+|---|---|---|---|
+| Tenant/scope-safe status persistence read | `DurableOperationalEvidenceStore.listStatusesScoped()` | status-to-existing-binding join; cross-tenant/cross-scope empty; immutable result | PASS |
+| Live-authorized telemetry/status boundary | `SecurityPrivacyOperationalControlService.readTelemetry()` / `readStatuses()` | fixed `SECURITY_MONITORING`, live `audit.query`, MFA, process-local role rejection and concealment | PASS |
+| Single injected Console boundary | `ConsoleOperationalEvidenceStatusReadPort` in existing `ConsoleReadAdapter` | durable store → security service → Console composition; direct store imports/construction absent | PASS |
+| Safe immutable DTO / provenance | canonical telemetry/status validators and field reconstruction | unknown/unsafe record becomes `UNAVAILABLE`; tenant/scope/internal detail absent; immutable safe IDs, correlation and evidence refs | PASS |
+| Health / Readiness / Freshness separation | existing `renderOperations()` read-only sections | three distinct labelled columns; exact `UNKNOWN`, `NOT_READY`, `STALE`; no readiness inference | PASS |
+| Existing Alert/readiness preservation | existing injected Alert/readiness ports and renderers | Alert and deployment/backup/rollback evidence remain read-only and retain authoritative references | PASS |
+| No mutation/authority expansion | architecture and Console renderer assertions | new route/API/authority/persistence subsystem `0`; form/button/retry/recover/deploy/backup/restore/rollback controls `0` | PASS |
+| Verification | focused/affected/full quality gates | `91/91`, `157/157`, `1108/1108`; lint/typecheck/build/verify constituents, checksum, Gitleaks and diff checks PASS | PASS |
+
+상세 결과는 [FEAT-023-G Operations Console / Traceability Integration Completion](../reviews/FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_COMPLETION.md)에 기록한다. FEAT-023-H와 Final Gate는 완료 처리하지 않았고 시작하지 않았다.

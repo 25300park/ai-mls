@@ -28,6 +28,8 @@ const SECURITY_MONITORING_PURPOSE = "SECURITY_MONITORING";
 const OPERATIONAL_EVIDENCE_RESOURCE = "OPERATIONAL_EVIDENCE";
 const OPERATIONAL_ALERT_COLLECTION_REF = `operational-alert:sha256:${"a".repeat(64)}`;
 const OPERATIONAL_READINESS_COLLECTION_REF = `operational-readiness:sha256:${"b".repeat(64)}`;
+const OPERATIONAL_TELEMETRY_COLLECTION_REF = `operational-telemetry:sha256:${"c".repeat(64)}`;
+const OPERATIONAL_STATUS_COLLECTION_REF = `operational-status:sha256:${"d".repeat(64)}`;
 
 interface AuthorizationEvaluator {
   evaluate(request: AuthorizationRequest): AuthorizationDecision;
@@ -85,6 +87,22 @@ export class SecurityPrivacyOperationalControlService {
     const decision = this.#authorize(request, OPERATIONAL_ALERT_COLLECTION_REF, "audit.query");
     if (decision?.effect !== "ALLOW") return Object.freeze([]);
     try { return this.#evidenceStore.listAlertsScoped(binding(request), { limit: 100 }); }
+    catch { return Object.freeze([]); }
+  }
+
+  public readTelemetry(request: SecurityAlertAccessRequest): readonly OperationalTelemetryRecord[] {
+    if (!isAlertAccessRequest(request)) return Object.freeze([]);
+    const decision = this.#authorize(request, OPERATIONAL_TELEMETRY_COLLECTION_REF, "audit.query");
+    if (decision?.effect !== "ALLOW") return Object.freeze([]);
+    try { return this.#evidenceStore.listScoped(binding(request), { limit: 100 }); }
+    catch { return Object.freeze([]); }
+  }
+
+  public readStatuses(request: SecurityAlertAccessRequest): readonly OperationalStatusSnapshot[] {
+    if (!isAlertAccessRequest(request)) return Object.freeze([]);
+    const decision = this.#authorize(request, OPERATIONAL_STATUS_COLLECTION_REF, "audit.query");
+    if (decision?.effect !== "ALLOW") return Object.freeze([]);
+    try { return this.#evidenceStore.listStatusesScoped(binding(request), { limit: 100 }); }
     catch { return Object.freeze([]); }
   }
 

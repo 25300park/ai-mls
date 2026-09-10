@@ -21,6 +21,7 @@ import type { OperationalStatusProjectionRequest, OperationalStatusSnapshot } fr
 interface ScopedEvidenceStore {
   appendScoped(record: OperationalTelemetryRecord, binding: Readonly<{ tenantId: string; scopeRef: string }>): OperationalTelemetryRecord;
   listScoped(binding: Readonly<{ tenantId: string; scopeRef: string }>): readonly OperationalTelemetryRecord[];
+  listStatusesScoped(binding: Readonly<{ tenantId: string; scopeRef: string }>): readonly OperationalStatusSnapshot[];
 }
 
 interface AlertStore {
@@ -486,6 +487,20 @@ test("FEAT-023-C operational status snapshots are append-only at the database bo
     assert.throws(() => raw.exec("UPDATE operational_status_snapshot SET health = 'UNHEALTHY' WHERE status_snapshot_id = 'status-snapshot:001'"), /append-only/iu);
     assert.throws(() => raw.exec("DELETE FROM operational_status_snapshot WHERE status_snapshot_id = 'status-snapshot:001'"), /append-only/iu);
   } finally { raw.close(); }
+}));
+
+test("FEAT-023-G operational status reads are tenant and scope bound", () => withDatabase((databasePath) => {
+  const store = new DurableOperationalEvidenceStore({ databasePath }) as DurableOperationalEvidenceStore & ScopedEvidenceStore;
+  const binding = { tenantId: "tenant-a", scopeRef: "team-a" } as const;
+  try {
+    store.appendScoped(telemetry(), binding);
+    const projected = store.projectStatus(statusRequest());
+
+    assert.deepEqual(store.listStatusesScoped(binding), [projected]);
+    assert.deepEqual(store.listStatusesScoped({ ...binding, tenantId: "tenant-b" }), []);
+    assert.deepEqual(store.listStatusesScoped({ ...binding, scopeRef: "team-b" }), []);
+    assert.equal(Object.isFrozen(store.listStatusesScoped(binding)), true);
+  } finally { store.close(); }
 }));
 
 test("FEAT-023-D unbound evidence is concealed and tenant scope binding survives restart append-only", () => withDatabase((databasePath) => {

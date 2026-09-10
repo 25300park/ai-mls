@@ -621,3 +621,51 @@ test("FEAT-023-F renders readiness evidence read-only without deployment backup 
   for (const value of ["Operational Readiness", "BACKUP", "UNKNOWN", "MISSING_BACKUP_EXECUTION", "evidence:backup-config-001"]) assert.equal(html.includes(value), true, value);
   assert.equal(/<button|<form|data-(?:deploy|backup|restore|rollback|retry)/iu.test(html), false);
 });
+
+test("FEAT-023-G renders scoped telemetry component status and security privacy summary as separate read-only evidence", () => {
+  const html = renderConsoleResult(ready("OPERATIONS", {
+    health: "HEALTHY", readiness: { operationsRead: true }, components: [], metrics: {}, alerts: [],
+    operationalReadiness: ["DEPLOYMENT", "BACKUP", "ROLLBACK"].map((readinessType) => ({
+      readinessProjectionId: `readiness-projection:${readinessType.toLowerCase()}-001`, readinessType,
+      resourceRef: `operational-readiness:sha256:${"d".repeat(64)}`, readiness: "UNKNOWN", freshness: "UNKNOWN",
+      safeReasonCodes: [`MISSING_${readinessType}_EVIDENCE`], evidenceRefs: [`evidence:${readinessType.toLowerCase()}:001`],
+      evaluatedAt: "2026-09-10T01:00:00.000Z",
+    })),
+    observedAt: "2026-09-10T01:00:00.000Z",
+    telemetry: [{
+      telemetryEventId: "telemetry:console-status-001", eventType: "SECURITY_CONTROL_OBSERVED", component: "SECURITY",
+      operation: "SECURITY_MONITORING", resourceType: "SECURITY_EVENT", resourceRef: `security-event:sha256:${"c".repeat(64)}`,
+      outcome: "OBSERVED", safeErrorCode: null, correlationId: "correlation:console-status-001",
+      evidenceRefs: ["evidence:security:console-status-001"], occurredAt: "2026-09-10T01:00:00.000Z",
+    }],
+    operationalStatuses: [{
+      statusSnapshotId: "status-snapshot:console-status-001", telemetryEventId: "telemetry:console-status-001",
+      component: "SECURITY", resourceType: "SECURITY_EVENT", resourceRef: `security-event:sha256:${"c".repeat(64)}`,
+      health: "UNKNOWN", readiness: "NOT_READY", freshness: "STALE", evidenceOccurredAt: "2026-09-10T01:00:00.000Z",
+      evaluatedAt: "2026-09-10T02:00:00.000Z", freshnessThresholdMs: 1800000,
+    }],
+    securityPrivacySummary: { telemetryCount: 1, statusCount: 1, evidenceRefs: ["evidence:security:console-status-001"] },
+  }));
+
+  for (const value of [
+    "Operational Telemetry", "Component Health / Readiness / Freshness", "Security / Privacy Summary",
+    "Health", "Readiness", "Freshness", "UNKNOWN", "NOT_READY", "STALE",
+    "telemetry:console-status-001", "status-snapshot:console-status-001", "correlation:console-status-001",
+    "evidence:security:console-status-001",
+    "DEPLOYMENT", "BACKUP", "ROLLBACK",
+  ]) assert.equal(html.includes(value), true, value);
+  assert.equal(html.includes("UNKNOWN</span>"), true);
+  assert.equal(html.includes("UNKNOWN</span>") && html.includes("READY</span>"), true);
+  assert.equal(/<button|<form|data-(?:acknowledge|mute|retry|recover|deploy|backup|restore|rollback)/iu.test(html), false);
+});
+
+test("FEAT-023-G renders unavailable operational evidence without internal error detail", () => {
+  const html = renderConsoleResult(ready("OPERATIONS", {
+    health: "UNKNOWN", readiness: {}, components: [], metrics: {}, alerts: "UNAVAILABLE", operationalReadiness: "UNAVAILABLE",
+    telemetry: "UNAVAILABLE", operationalStatuses: "UNAVAILABLE", securityPrivacySummary: "UNAVAILABLE",
+    observedAt: "2026-09-10T01:00:00.000Z",
+  }));
+  assert.equal((html.match(/UNAVAILABLE/gu) ?? []).length >= 3, true);
+  assert.equal(html.includes("C:\\secret\\runtime.ts"), false);
+  assert.equal(html.includes("database.sqlite"), false);
+});

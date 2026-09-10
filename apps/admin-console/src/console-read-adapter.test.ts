@@ -17,15 +17,21 @@ import { SecurityPrivacyOperationalControlService } from "../../../modules/opera
 import {
   ConsoleReadAdapter,
   type ConsoleOperationalAlertReadPort,
+  type ConsoleOperationalEvidenceStatusReadPort,
   type ConsoleOperationalReadinessReadPort,
 } from "./console-read-adapter.js";
+import { createAdminConsoleServer } from "./console-server.js";
 import { createDevelopmentConsoleSessionAdapter } from "./development-session.js";
 
 const now = "2026-08-13T00:00:00.000Z";
 const publicationId = "publication-console-1";
 const tenantId = "team-a";
 
-function setup(alertReadPort?: ConsoleOperationalAlertReadPort, readinessReadPort?: ConsoleOperationalReadinessReadPort) {
+function setup(
+  alertReadPort?: ConsoleOperationalAlertReadPort,
+  readinessReadPort?: ConsoleOperationalReadinessReadPort,
+  evidenceStatusReadPort?: ConsoleOperationalEvidenceStatusReadPort,
+) {
   const clock = new FixedClock(now);
   const session = createDevelopmentConsoleSessionAdapter({
     enabled: true,
@@ -105,6 +111,7 @@ function setup(alertReadPort?: ConsoleOperationalAlertReadPort, readinessReadPor
     clock,
     ...(alertReadPort === undefined ? {} : { alertReadPort }),
     ...(readinessReadPort === undefined ? {} : { readinessReadPort }),
+    ...(evidenceStatusReadPort === undefined ? {} : { evidenceStatusReadPort }),
   });
   return {
     adapter,
@@ -340,6 +347,71 @@ test("FEAT-023-F Operations Console exposes only safe fields from its injected r
   assert.equal(Object.hasOwn(readiness[0] ?? {}, "rollback"), false);
 });
 
+test("FEAT-023-G Operations Console exposes safe immutable telemetry status and security summary DTOs through one injected port", () => {
+  const safeEvidenceRef = `evidence:operational:e1${"e".repeat(14)}`;
+  let telemetryInput: Readonly<Record<string, unknown>> | undefined;
+  let statusInput: Readonly<Record<string, unknown>> | undefined;
+  const port: ConsoleOperationalEvidenceStatusReadPort = {
+    readTelemetry(input: unknown) {
+      telemetryInput = input as Readonly<Record<string, unknown>>;
+      return Object.freeze([Object.freeze({
+        telemetryEventId: "telemetry:console-status-001", eventType: "SECURITY_CONTROL_OBSERVED", component: "SECURITY",
+        operation: "SECURITY_MONITORING", resourceType: "SECURITY_EVENT", resourceRef: `security-event:sha256:${"c".repeat(64)}`,
+        outcome: "OBSERVED", safeErrorCode: null, correlationId: "correlation:console-status-001",
+        evidenceRefs: Object.freeze([safeEvidenceRef]), occurredAt: now,
+      })]);
+    },
+    readStatuses(input: unknown) {
+      statusInput = input as Readonly<Record<string, unknown>>;
+      return Object.freeze([Object.freeze({
+        statusSnapshotId: "status-snapshot:console-status-001", telemetryEventId: "telemetry:console-status-001",
+        component: "SECURITY", resourceType: "SECURITY_EVENT", resourceRef: `security-event:sha256:${"c".repeat(64)}`,
+        health: "UNKNOWN", readiness: "UNKNOWN", freshness: "UNKNOWN", evidenceOccurredAt: now, evaluatedAt: now,
+        freshnessThresholdMs: null,
+      })]);
+    },
+  };
+  const result = setup(undefined, undefined, port).adapter.read(request("OPERATIONS"));
+  const telemetry = result.data?.["telemetry"] as readonly Readonly<Record<string, unknown>>[];
+  const statuses = result.data?.["operationalStatuses"] as readonly Readonly<Record<string, unknown>>[];
+  const summary = result.data?.["securityPrivacySummary"] as Readonly<Record<string, unknown>>;
+
+  assert.equal(telemetry.length, 1);
+  assert.equal(statuses.length, 1);
+  assert.equal(statuses[0]?.["health"], "UNKNOWN");
+  assert.equal(statuses[0]?.["readiness"], "UNKNOWN");
+  assert.equal(statuses[0]?.["freshness"], "UNKNOWN");
+  assert.deepEqual(summary, { telemetryCount: 1, statusCount: 1, evidenceRefs: [safeEvidenceRef] });
+  assert.equal((telemetryInput?.["session"] as { principalId?: string }).principalId, "console-operator");
+  assert.equal(telemetryInput?.["tenantId"], tenantId);
+  assert.equal(statusInput?.["scopeRef"], tenantId);
+  assert.equal(Object.hasOwn(telemetry[0] ?? {}, "tenantId"), false);
+  assert.equal(Object.hasOwn(statuses[0] ?? {}, "scopeRef"), false);
+  assert.equal(Object.hasOwn(summary, "retry"), false);
+  assert.equal(Object.isFrozen(telemetry), true);
+  assert.equal(Object.isFrozen(statuses), true);
+  assert.equal(Object.isFrozen(summary), true);
+});
+
+test("FEAT-023-G missing or unsafe operational evidence status port fails closed without leaking details", () => {
+  const unavailable = setup().adapter.read(request("OPERATIONS"));
+  assert.equal(unavailable.data?.["telemetry"], "UNAVAILABLE");
+  assert.equal(unavailable.data?.["operationalStatuses"], "UNAVAILABLE");
+  assert.equal(unavailable.data?.["securityPrivacySummary"], "UNAVAILABLE");
+
+  const unsafePort: ConsoleOperationalEvidenceStatusReadPort = {
+    readTelemetry() {
+      return [{ telemetryEventId: "telemetry:unsafe", stack: "C:\\secret\\runtime.ts:42", token: "Bearer unsafe" }];
+    },
+    readStatuses() { throw new Error("C:\\secret\\database.sqlite"); },
+  };
+  const result = setup(undefined, undefined, unsafePort).adapter.read(request("OPERATIONS"));
+  assert.equal(result.data?.["telemetry"], "UNAVAILABLE");
+  assert.equal(result.data?.["operationalStatuses"], "UNAVAILABLE");
+  assert.equal(JSON.stringify(result).includes("secret"), false);
+  assert.equal(JSON.stringify(result).includes("Bearer"), false);
+});
+
 test("FEAT-023-E composed Console path reads durable Alerts through the live-authorized operational service", () => {
   const directory = mkdtempSync(join(tmpdir(), "feat-023-e-console-"));
   const store = new DurableOperationalEvidenceStore({ databasePath: join(directory, "operations.sqlite") }, createTestOperationalReadinessEvidenceAdmission());
@@ -402,6 +474,72 @@ test("FEAT-023-F composed Console path reads durable readiness through the live-
     assert.equal(JSON.stringify(projections).includes("tenantId"), false);
     assert.equal(JSON.stringify(projections).includes("scopeRef"), false);
     assert.equal(setupResult.commandCalls, 0);
+  } finally {
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("FEAT-023-G composed HTTP Console path reads durable scoped telemetry and status through the injected security privacy boundary", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "feat-023-g-console-"));
+  const store = new DurableOperationalEvidenceStore({ databasePath: join(directory, "operations.sqlite") }, createTestOperationalReadinessEvidenceAdmission());
+  try {
+    const resourceRef = `security-event:sha256:${"c".repeat(64)}`;
+    store.appendScoped({
+      telemetryEventId: "telemetry:console-status-composed-001", eventType: "SECURITY_CONTROL_OBSERVED", component: "SECURITY",
+      operation: "SECURITY_MONITORING", resourceType: "SECURITY_EVENT", resourceRef, outcome: "OBSERVED", safeErrorCode: null,
+      correlationId: "correlation:console-status-composed-001", evidenceRefs: ["evidence:security:console-status-composed-001"], occurredAt: now,
+    }, { tenantId, scopeRef: tenantId });
+    store.projectStatus({
+      statusSnapshotId: "status-snapshot:console-status-composed-001", telemetryEventId: "telemetry:console-status-composed-001",
+      health: "UNKNOWN", readiness: "NOT_READY", evaluatedAt: now, freshnessThresholdMs: null,
+    });
+    const service = new SecurityPrivacyOperationalControlService({
+      authorizationService: new AuthorizationService({
+        assignments: [{ ...assignment("SEC", ["OPERATIONAL_EVIDENCE"]), purposes: Object.freeze(["SECURITY_MONITORING"]) }],
+        authoritySource: "STATIC_TEST_COMPATIBILITY",
+        auditSink: new AuditLog({ clock: () => new Date(now), idFactory: () => "console-status-auth-audit" }),
+        clock: () => new Date(now), policyVersion: "console-status-policy-v1",
+      }),
+      evidenceStore: store,
+    });
+    const setupResult = setup(undefined, undefined, service);
+    const result = setupResult.adapter.read(Object.freeze({ ...request("OPERATIONS"), correlationId: "correlation:console-status-read-001" }));
+    const telemetry = result.data?.["telemetry"] as readonly Readonly<Record<string, unknown>>[];
+    const statuses = result.data?.["operationalStatuses"] as readonly Readonly<Record<string, unknown>>[];
+
+    assert.equal(telemetry.length, 1);
+    assert.equal(statuses.length, 1);
+    assert.equal(statuses[0]?.["health"], "UNKNOWN");
+    assert.equal(statuses[0]?.["readiness"], "NOT_READY");
+    assert.equal(statuses[0]?.["freshness"], "UNKNOWN");
+    assert.equal(JSON.stringify(result).includes("tenantId"), false);
+    assert.equal(JSON.stringify(result).includes("scopeRef"), false);
+    assert.equal(setupResult.commandCalls, 0);
+
+    const server = createAdminConsoleServer({
+      host: "127.0.0.1",
+      port: 0,
+      sessionId: "console-session",
+      tenantId,
+      readAdapter: setupResult.adapter,
+    });
+    await server.start();
+    try {
+      const response = await fetch(`${server.localUrl}/api/console/view?page=OPERATIONS`);
+      const payload = await response.json() as Readonly<{ html?: string }>;
+      assert.equal(response.status, 200);
+      assert.equal(payload.html?.includes("Operational Telemetry"), true);
+      assert.equal(payload.html?.includes("Health / Readiness / Freshness"), true);
+      assert.equal(payload.html?.includes("UNKNOWN"), true);
+      assert.equal(payload.html?.includes("NOT_READY"), true);
+      assert.equal(payload.html?.includes("tenantId"), false);
+      assert.equal(payload.html?.includes("scopeRef"), false);
+      assert.equal(payload.html?.includes("button"), false);
+      assert.equal(setupResult.commandCalls, 0);
+    } finally {
+      await server.stop();
+    }
   } finally {
     store.close();
     rmSync(directory, { recursive: true, force: true });
