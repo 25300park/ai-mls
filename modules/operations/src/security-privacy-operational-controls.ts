@@ -10,6 +10,7 @@ import type {
   OperationalEvidenceBinding,
   OperationalEvidenceStore,
 } from "./durable-operational-evidence-store.js";
+import type { OperationalAlertProjection } from "./operational-alert-projection.js";
 import {
   validateOperationalReference,
   validateOperationalResourceReference,
@@ -24,6 +25,7 @@ import {
 
 const SECURITY_MONITORING_PURPOSE = "SECURITY_MONITORING";
 const OPERATIONAL_EVIDENCE_RESOURCE = "OPERATIONAL_EVIDENCE";
+const OPERATIONAL_ALERT_COLLECTION_REF = `operational-alert:sha256:${"a".repeat(64)}`;
 
 interface AuthorizationEvaluator {
   evaluate(request: AuthorizationRequest): AuthorizationDecision;
@@ -36,6 +38,8 @@ export interface SecurityOperationalAccessRequest {
   readonly resourceRef: string;
   readonly correlationId: string;
 }
+
+export type SecurityAlertAccessRequest = Omit<SecurityOperationalAccessRequest, "resourceRef">;
 
 export interface SecurityReadinessProjectionRequest extends SecurityOperationalAccessRequest {
   readonly telemetryEventId: string;
@@ -63,7 +67,7 @@ export class SecurityPrivacyOperationalControlService {
 
   public readEvidence(request: SecurityOperationalAccessRequest): readonly OperationalTelemetryRecord[] {
     if (!isAccessRequest(request)) return Object.freeze([]);
-    const decision = this.#authorize(request, "audit.query");
+    const decision = this.#authorize(request, request.resourceRef, "audit.query");
     if (decision?.effect !== "ALLOW") return Object.freeze([]);
     try {
       return this.#evidenceStore.listScoped(binding(request), {
@@ -74,9 +78,17 @@ export class SecurityPrivacyOperationalControlService {
     } catch { return Object.freeze([]); }
   }
 
+  public readAlerts(request: SecurityAlertAccessRequest): readonly OperationalAlertProjection[] {
+    if (!isAlertAccessRequest(request)) return Object.freeze([]);
+    const decision = this.#authorize(request, OPERATIONAL_ALERT_COLLECTION_REF, "audit.query");
+    if (decision?.effect !== "ALLOW") return Object.freeze([]);
+    try { return this.#evidenceStore.listAlertsScoped(binding(request), { limit: 100 }); }
+    catch { return Object.freeze([]); }
+  }
+
   public projectSecurityReadiness(request: SecurityReadinessProjectionRequest): OperationalStatusSnapshot | undefined {
     if (!isReadinessRequest(request)) return undefined;
-    const decision = this.#authorize(request, "security.admin", request.reason);
+    const decision = this.#authorize(request, request.resourceRef, "security.admin", request.reason);
     if (decision?.effect !== "ALLOW") return undefined;
     try {
       const source = this.#evidenceStore.listScoped(binding(request), {
@@ -97,7 +109,8 @@ export class SecurityPrivacyOperationalControlService {
   }
 
   #authorize(
-    request: SecurityOperationalAccessRequest,
+    request: SecurityAlertAccessRequest,
+    resourceRef: string,
     action: "audit.query" | "security.admin",
     reason?: string,
   ): AuthorizationDecision | undefined {
@@ -108,7 +121,7 @@ export class SecurityPrivacyOperationalControlService {
         action,
         resource: {
           type: OPERATIONAL_EVIDENCE_RESOURCE,
-          id: request.resourceRef,
+          id: resourceRef,
           tenantId: request.tenantId,
           teamId: request.scopeRef,
         },
@@ -120,8 +133,18 @@ export class SecurityPrivacyOperationalControlService {
   }
 }
 
-function binding(request: SecurityOperationalAccessRequest): OperationalEvidenceBinding {
+function binding(request: SecurityAlertAccessRequest): OperationalEvidenceBinding {
   return { tenantId: request.tenantId, scopeRef: request.scopeRef };
+}
+
+function isAlertAccessRequest(value: unknown): value is SecurityAlertAccessRequest {
+  if (!isExactObject(value, ["session", "tenantId", "scopeRef", "correlationId"])) return false;
+  try {
+    assertScopeValue(value["tenantId"]);
+    assertScopeValue(value["scopeRef"]);
+    validateOperationalReference(value["correlationId"], "correlation:");
+    return typeof value["session"] === "object" && value["session"] !== null;
+  } catch { return false; }
 }
 
 function isAccessRequest(value: unknown): value is SecurityOperationalAccessRequest {

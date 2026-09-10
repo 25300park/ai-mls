@@ -591,3 +591,22 @@ test("FEAT-021-D shared CSS preserves narrow reflow and forced-colors semantics"
 function ready(page: ConsoleReadResult["page"], data: Readonly<Record<string, unknown>>): ConsoleReadResult {
   return Object.freeze({ page, state: "READY", data: Object.freeze(data) });
 }
+
+test("FEAT-023-E renders safe read-only Alert evidence without incident or remediation controls", () => {
+  const html = renderConsoleResult(ready("OPERATIONS", {
+    health: "DEGRADED", readiness: { operationsRead: true }, components: [], metrics: {},
+    observedAt: "2026-09-10T01:00:00.000Z",
+    alerts: [{
+      alertId: "alert:001", alertType: "COMPONENT_UNHEALTHY", severity: "HIGH",
+      component: "PUBLICATION_RUNTIME", resourceRef: `publication:sha256:${"a".repeat(64)}`,
+      currentState: "ACTIVE", safeReasonCode: "COMPONENT_UNHEALTHY",
+      evidenceRefs: ["evidence:operational:001"], openedAt: "2026-09-10T01:00:00.000Z",
+      lastEvaluatedAt: "2026-09-10T01:05:00.000Z", clearedAt: null,
+    }],
+  }));
+  for (const value of ["Operational Alerts", "COMPONENT_UNHEALTHY", "HIGH", "PUBLICATION_RUNTIME", "ACTIVE", "evidence:operational:001"]) {
+    assert.equal(html.includes(value), true, value);
+  }
+  assert.equal(/<button|<form/iu.test(html), false);
+  assert.equal(/data-(?:acknowledge|mute|retry|recover|reactivate)/iu.test(html), false);
+});

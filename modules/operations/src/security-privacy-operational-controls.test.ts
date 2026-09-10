@@ -8,6 +8,7 @@ import { AuditLog } from "../../audit/src/audit-log.js";
 import { AuthorizationService, type LiveRoleAssignment } from "../../authorization/src/authorization-service.js";
 import type { SessionContext } from "../../identity/src/session-service.js";
 import { DurableOperationalEvidenceStore } from "./durable-operational-evidence-store.js";
+import type { OperationalAlertProjection } from "./operational-alert-projection.js";
 import type { OperationalTelemetryRecord } from "./operational-telemetry-contracts.js";
 import type { OperationalStatusSnapshot } from "./operational-status-projection.js";
 
@@ -31,6 +32,7 @@ interface SecurityReadinessRequest extends SecurityAccessRequest {
 
 interface Controls {
   readEvidence(request: SecurityAccessRequest): readonly OperationalTelemetryRecord[];
+  readAlerts(request: Omit<SecurityAccessRequest, "resourceRef">): readonly OperationalAlertProjection[];
   projectSecurityReadiness(request: SecurityReadinessRequest): OperationalStatusSnapshot | undefined;
 }
 
@@ -160,6 +162,23 @@ test("FEAT-023-D ignores process-local roles and revalidates live authority", as
   store.appendScoped(telemetry(), { tenantId: "tenant-001", scopeRef: "team-001" });
 
   assert.deepEqual(controls.readEvidence(access({ session: session({ roles: ["SEC", "ADM"] }) })), []);
+}));
+
+test("FEAT-023-E Alert visibility reuses live security authorization and tenant scope concealment", async () => withStore(async (store) => {
+  const Constructor = await controlsConstructor();
+  assert.equal(typeof Constructor, "function");
+  const controls = new Constructor!({ authorizationService: authorization([assignment()]), evidenceStore: store });
+  store.appendScoped(telemetry({ telemetryEventId: "telemetry:security-alert-001", component: "SECURITY",
+    resourceRef: securityRef, evidenceRefs: ["evidence:security:alert-001"], occurredAt: "2026-09-10T01:00:00.000Z" }),
+  { tenantId: "tenant-001", scopeRef: "team-001" });
+  store.projectStatus({ statusSnapshotId: "status-snapshot:security-alert-001", telemetryEventId: "telemetry:security-alert-001",
+    health: "UNHEALTHY", readiness: "READY", evaluatedAt: "2026-09-10T01:00:00.000Z", freshnessThresholdMs: null });
+  const request = { session: session(), tenantId: "tenant-001", scopeRef: "team-001", correlationId: "correlation:security-alert-read-001" };
+  assert.equal(controls.readAlerts(request).length, 1);
+  assert.deepEqual(controls.readAlerts({ ...request, tenantId: "tenant-002" }), []);
+  assert.deepEqual(controls.readAlerts({ ...request, scopeRef: "team-002" }), []);
+  assert.deepEqual(controls.readAlerts({ ...request, session: session({ assurance: "SINGLE_FACTOR", isMfaVerified: false }) }), []);
+  assert.equal(store.listAlertsScoped({ tenantId: "tenant-001", scopeRef: "team-001" }).length, 1);
 }));
 
 test("FEAT-023-D security readiness requires live MFA and creates no projection on denial", async () => withStore(async (store) => {

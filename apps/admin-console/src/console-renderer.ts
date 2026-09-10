@@ -280,7 +280,16 @@ function renderOperations(data: Readonly<Record<string, unknown>>): string {
   const metrics = isRecord(data["metrics"]) ? data["metrics"] : Object.freeze({});
   return `<section><div class="section-heading"><div><p class="eyebrow">SYSTEM HEALTH</p><h2>System Health</h2></div>${statusBadge(data["health"])}</div><div class="card-grid">${Object.entries(readiness).map(([key, value]) => metricCard(readinessLabel(key), value === true ? "READY" : "NOT_READY")).join("")}</div></section>
   <section><div class="section-heading"><div><p class="eyebrow">COMPONENT STATUS</p><h2>Health and recovery posture</h2></div></div>${historySection("Components", components)}</section>
-  <section><div class="section-heading"><div><p class="eyebrow">BOUNDED METRICS</p><h2>Operational evidence</h2></div></div>${definitionGrid(metrics)}</section>`;
+  <section><div class="section-heading"><div><p class="eyebrow">BOUNDED METRICS</p><h2>Operational evidence</h2></div></div>${definitionGrid(metrics)}</section>
+  ${renderOperationalAlerts(data["alerts"])}`;
+}
+
+function renderOperationalAlerts(value: unknown): string {
+  if (value === "UNAVAILABLE") return `<section><div class="section-heading"><div><p class="eyebrow">DERIVED · READ ONLY</p><h2>Operational Alerts</h2></div>${statusBadge("UNAVAILABLE")}</div><p class="empty-inline">Authorized Alert evidence is unavailable.</p></section>`;
+  const alerts = arrayOf(value).filter(isRecord);
+  if (alerts.length === 0) return `<section><div class="section-heading"><div><p class="eyebrow">DERIVED · READ ONLY</p><h2>Operational Alerts</h2></div>${statusBadge("EMPTY")}</div><p class="empty-inline">No authorized Alert evidence is currently available.</p></section>`;
+  return `<section><div class="section-heading"><div><p class="eyebrow">DERIVED · READ ONLY</p><h2>Operational Alerts</h2></div>${statusBadge(alerts.some((alert) => alert["currentState"] === "ACTIVE") ? "ACTIVE" : "CLEARED")}</div>
+  <div class="table-wrap"><table aria-label="Operational Alerts"><thead><tr><th scope="col">Severity</th><th scope="col">Alert</th><th scope="col">Component / Resource</th><th scope="col">State</th><th scope="col">Safe reason</th><th scope="col">Evidence</th><th scope="col">Opened / Evaluated</th></tr></thead><tbody>${alerts.map((alert) => `<tr><td>${statusBadge(alert["severity"])}</td><td>${escapeHtml(alert["alertType"])}</td><td>${escapeHtml(`${displayValue(alert["component"])} · ${displayValue(alert["resourceRef"])}`)}</td><td>${statusBadge(alert["currentState"])}</td><td>${escapeHtml(alert["safeReasonCode"])}</td><td>${escapeHtml(displayValue(alert["evidenceRefs"]))}</td><td>${escapeHtml(`${displayValue(alert["openedAt"])} · ${displayValue(alert["lastEvaluatedAt"])}`)}</td></tr>`).join("")}</tbody></table></div><p class="scope-note">Read-only derived operational evidence.</p></section>`;
 }
 
 function renderConnectorOperations(data: Readonly<Record<string, unknown>>): string {

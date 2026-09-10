@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import { PublicationApi } from "../../api/src/publication-api.js";
@@ -8,14 +11,19 @@ import { AuthorizationService, type RoleAssignment } from "../../../modules/auth
 import { PublicationAggregate } from "../../../modules/publication/src/publication-aggregate.js";
 import { FixedClock } from "../../../modules/publication/src/publication-clock.js";
 import { createPublicationInfrastructure } from "../../../modules/publication/src/publication-infrastructure.js";
-import { ConsoleReadAdapter } from "./console-read-adapter.js";
+import { DurableOperationalEvidenceStore } from "../../../modules/operations/src/durable-operational-evidence-store.js";
+import { SecurityPrivacyOperationalControlService } from "../../../modules/operations/src/security-privacy-operational-controls.js";
+import {
+  ConsoleReadAdapter,
+  type ConsoleOperationalAlertReadPort,
+} from "./console-read-adapter.js";
 import { createDevelopmentConsoleSessionAdapter } from "./development-session.js";
 
 const now = "2026-08-13T00:00:00.000Z";
 const publicationId = "publication-console-1";
 const tenantId = "team-a";
 
-function setup() {
+function setup(alertReadPort?: ConsoleOperationalAlertReadPort) {
   const clock = new FixedClock(now);
   const session = createDevelopmentConsoleSessionAdapter({
     enabled: true,
@@ -93,6 +101,7 @@ function setup() {
     sessionResolver: session,
     authorizationEvaluator: authorization,
     clock,
+    ...(alertReadPort === undefined ? {} : { alertReadPort }),
   });
   return {
     adapter,
@@ -270,6 +279,66 @@ test("POST-F15-CONSOLE read adapter exposes bounded Dashboard, Projection and Op
   assert.equal(projection.data?.["projectionStatus"], "UNAVAILABLE");
   assert.equal(operations.state, "READY");
   assert.equal((operations.data?.["readiness"] as { operationsRead?: boolean }).operationsRead, true);
+  assert.equal(operations.data?.["alerts"], "UNAVAILABLE");
+});
+
+test("FEAT-023-E Operations Console uses an injected tenant-safe read-only Alert port", () => {
+  let captured: Readonly<Record<string, unknown>> | undefined;
+  const { adapter } = setup({
+    readAlerts(input: unknown) {
+      captured = input as Readonly<Record<string, unknown>>;
+      return Object.freeze([Object.freeze({
+        alertId: "alert:001", alertType: "COMPONENT_UNHEALTHY", severity: "HIGH",
+        component: "PUBLICATION_RUNTIME", resourceRef: `publication:sha256:${"a".repeat(64)}`,
+        currentState: "ACTIVE", safeReasonCode: "COMPONENT_UNHEALTHY",
+        evidenceRefs: Object.freeze(["evidence:operational:001"]),
+        openedAt: now, lastEvaluatedAt: now, clearedAt: null,
+      })]);
+    },
+  });
+  const result = adapter.read(request("OPERATIONS"));
+  const alerts = result.data?.["alerts"] as readonly Readonly<Record<string, unknown>>[];
+  assert.equal(alerts.length, 1);
+  assert.equal(alerts[0]?.["severity"], "HIGH");
+  assert.equal((captured?.["session"] as { principalId?: string }).principalId, "console-operator");
+  assert.equal(captured?.["tenantId"], tenantId);
+  assert.equal(captured?.["scopeRef"], tenantId);
+  assert.equal(Object.hasOwn(alerts[0] ?? {}, "tenantId"), false);
+  assert.equal(Object.hasOwn(alerts[0] ?? {}, "scopeRef"), false);
+  assert.equal(Object.hasOwn(alerts[0] ?? {}, "acknowledge"), false);
+  assert.equal(Object.hasOwn(alerts[0] ?? {}, "retry"), false);
+});
+
+test("FEAT-023-E composed Console path reads durable Alerts through the live-authorized operational service", () => {
+  const directory = mkdtempSync(join(tmpdir(), "feat-023-e-console-"));
+  const store = new DurableOperationalEvidenceStore({ databasePath: join(directory, "operations.sqlite") });
+  try {
+    store.appendScoped({
+      telemetryEventId: "telemetry:console-alert-001", eventType: "SECURITY_ALERT_OBSERVED", component: "SECURITY",
+      operation: "SECURITY_MONITORING", resourceType: "SECURITY_EVENT", resourceRef: `security-event:sha256:${"c".repeat(64)}`,
+      outcome: "FAILED", safeErrorCode: "COMPONENT_UNHEALTHY", correlationId: "correlation:console-alert-001",
+      evidenceRefs: ["evidence:security:console-alert-001"], occurredAt: now,
+    }, { tenantId, scopeRef: tenantId });
+    store.projectStatus({ statusSnapshotId: "status-snapshot:console-alert-001", telemetryEventId: "telemetry:console-alert-001",
+      health: "UNHEALTHY", readiness: "READY", evaluatedAt: now, freshnessThresholdMs: null });
+    const alertAuthorization = new AuthorizationService({
+      assignments: [{ ...assignment("SEC", ["OPERATIONAL_EVIDENCE"]), purposes: Object.freeze(["SECURITY_MONITORING"]) }],
+      authoritySource: "STATIC_TEST_COMPATIBILITY",
+      auditSink: new AuditLog({ clock: () => new Date(now), idFactory: () => "console-alert-auth-audit" }),
+      clock: () => new Date(now), policyVersion: "console-alert-policy-v1",
+    });
+    const service = new SecurityPrivacyOperationalControlService({ authorizationService: alertAuthorization, evidenceStore: store });
+    const result = setup(service).adapter.read(Object.freeze({
+      ...request("OPERATIONS"),
+      correlationId: "correlation:console-alert-read-001",
+    }));
+    assert.equal((result.data?.["alerts"] as readonly unknown[]).length, 1);
+    assert.equal(JSON.stringify(result).includes("tenantId"), false);
+    assert.equal(JSON.stringify(result).includes("scopeRef"), false);
+  } finally {
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("POST-F15-CONSOLE every Console DTO is deeply immutable and no command capability is exposed", () => {

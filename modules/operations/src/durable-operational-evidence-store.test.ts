@@ -10,11 +10,36 @@ import {
   createProductionOperationalEvidenceStore,
 } from "./durable-operational-evidence-store.js";
 import { OperationalEvidenceError, type OperationalTelemetryRecord } from "./operational-telemetry-contracts.js";
+import {
+  OperationalAlertError,
+  normalizeAuthoritativeAlertSignals,
+  type AuthoritativeAlertSource,
+  type OperationalAlertSignal,
+} from "./operational-alert-projection.js";
 import type { OperationalStatusProjectionRequest, OperationalStatusSnapshot } from "./operational-status-projection.js";
 
 interface ScopedEvidenceStore {
   appendScoped(record: OperationalTelemetryRecord, binding: Readonly<{ tenantId: string; scopeRef: string }>): OperationalTelemetryRecord;
   listScoped(binding: Readonly<{ tenantId: string; scopeRef: string }>): readonly OperationalTelemetryRecord[];
+}
+
+interface AlertStore {
+  projectAlerts(source: AuthoritativeAlertSource): readonly AlertProjection[];
+  listAlertsScoped(binding: Readonly<{ tenantId: string; scopeRef: string }>, filter?: Readonly<{ currentState?: "ACTIVE" | "CLEARED"; limit?: number }>): readonly AlertProjection[];
+}
+
+interface AlertProjection {
+  readonly alertId: string;
+  readonly alertType: string;
+  readonly severity: string;
+  readonly component: string;
+  readonly resourceRef: string;
+  readonly currentState: "ACTIVE" | "CLEARED";
+  readonly safeReasonCode: string;
+  readonly evidenceRefs: readonly string[];
+  readonly openedAt: string;
+  readonly lastEvaluatedAt: string;
+  readonly clearedAt: string | null;
 }
 
 function telemetry(overrides: Partial<OperationalTelemetryRecord> = {}): OperationalTelemetryRecord {
@@ -49,11 +74,63 @@ function statusRequest(overrides: Partial<OperationalStatusProjectionRequest> = 
 
 function withDatabase(run: (databasePath: string) => void): void {
   const directory = mkdtempSync(join(tmpdir(), "feat-023-b-"));
-  try { run(join(directory, "operations.sqlite")); } finally { rmSync(directory, { recursive: true, force: true }); }
+  let primaryFailure: unknown;
+  try { run(join(directory, "operations.sqlite")); } catch (error) { primaryFailure = error; }
+  try { rmSync(directory, { recursive: true, force: true }); } catch (cleanupFailure) {
+    if (primaryFailure === undefined) throwError(cleanupFailure);
+  }
+  if (primaryFailure !== undefined) throwError(primaryFailure);
+}
+
+function throwError(value: unknown): never {
+  if (value instanceof Error) throw value;
+  throw new Error("Non-Error test failure", { cause: value });
+}
+
+function alertSource(overrides: Readonly<Record<string, unknown>> = {}): AuthoritativeAlertSource {
+  return {
+    sourceId: "telemetry:alert-001",
+    conditionRef: "condition:publication-runtime-001",
+    sourceKind: "PUBLICATION_OUTCOME",
+    component: "PUBLICATION_RUNTIME",
+    resourceRef: `publication:sha256:${"a".repeat(64)}`,
+    tenantId: "tenant-a",
+    scopeRef: "team-a",
+    evidenceRefs: ["evidence:operational:alert-001"],
+    observedAt: "2026-09-10T01:00:00.000Z",
+    outcome: "UNKNOWN",
+    ...overrides,
+  };
+}
+
+function alertSignal(overrides: Readonly<Record<string, unknown>> = {}): OperationalAlertSignal {
+  const [signal] = normalizeAuthoritativeAlertSignals(alertSource(overrides));
+  assert.ok(signal);
+  return signal;
+}
+
+function projectAlert(
+  store: DurableOperationalEvidenceStore & AlertStore,
+  overrides: Readonly<Record<string, unknown>> = {},
+): AlertProjection | undefined {
+  const source = alertSource(overrides);
+  const signal = alertSignal(overrides);
+  if (store.find(signal.sourceId) === undefined) {
+    store.appendScoped(telemetry({
+      telemetryEventId: signal.sourceId,
+      component: signal.component,
+      resourceRef: signal.resourceRef,
+      outcome: source.sourceKind === "PUBLICATION_OUTCOME" ? source.outcome : "COMPLETED",
+      evidenceRefs: signal.evidenceRefs,
+      occurredAt: signal.observedAt,
+    }), { tenantId: signal.tenantId, scopeRef: signal.scopeRef });
+  }
+  return store.projectAlerts(source)[0];
 }
 
 function expectCode(run: () => unknown, code: string): void {
-  assert.throws(run, (error: unknown) => error instanceof OperationalEvidenceError && error.code === code);
+  assert.throws(run, (error: unknown) =>
+    (error instanceof OperationalEvidenceError || error instanceof OperationalAlertError) && error.code === code);
 }
 
 function expectOpenFailure(databasePath: string): void {
@@ -100,6 +177,197 @@ test("FEAT-023-B durable configuration fails closed and never falls back to memo
   expectCode(() => createProductionOperationalEvidenceStore({ databasePath: ":memory:" }), "PERSISTENCE_UNAVAILABLE");
   expectCode(() => createProductionOperationalEvidenceStore({ databasePath: "file::memory:" }), "PERSISTENCE_UNAVAILABLE");
 });
+
+test("FEAT-023-E repeated active evaluation preserves one durable Alert identity", () => withDatabase((databasePath) => {
+  const store = new DurableOperationalEvidenceStore({ databasePath }) as DurableOperationalEvidenceStore & AlertStore;
+  const first = projectAlert(store);
+  const repeated = projectAlert(store, {
+    sourceId: "telemetry:alert-002",
+    evidenceRefs: ["evidence:operational:alert-002"],
+    observedAt: "2026-09-10T01:05:00.000Z",
+  });
+  assert.ok(first);
+  assert.ok(repeated);
+  assert.equal(repeated.alertId, first.alertId);
+  assert.equal(repeated.currentState, "ACTIVE");
+  assert.equal(repeated.lastEvaluatedAt, "2026-09-10T01:05:00.000Z");
+  assert.equal(store.listAlertsScoped({ tenantId: "tenant-a", scopeRef: "team-a" }).length, 1);
+  store.close();
+}));
+
+test("FEAT-023-E clear and later recurrence are deterministic without mutating prior occurrence", () => withDatabase((databasePath) => {
+  const store = new DurableOperationalEvidenceStore({ databasePath }) as DurableOperationalEvidenceStore & AlertStore;
+  const active = projectAlert(store);
+  const clearedSource = alertSource({
+    sourceId: "telemetry:alert-003", evidenceRefs: ["evidence:operational:alert-003"],
+    observedAt: "2026-09-10T01:10:00.000Z", outcome: "CONFIRMED",
+  });
+  const cleared = projectAlert(store, { ...clearedSource });
+  assert.ok(active);
+  assert.equal(cleared?.alertId, active.alertId);
+  assert.equal(cleared?.currentState, "CLEARED");
+  assert.equal(cleared?.clearedAt, "2026-09-10T01:10:00.000Z");
+
+  const reopened = projectAlert(store, {
+    sourceId: "telemetry:alert-004", evidenceRefs: ["evidence:operational:alert-004"],
+    observedAt: "2026-09-10T01:20:00.000Z",
+  });
+  assert.ok(reopened);
+  assert.notEqual(reopened.alertId, active.alertId);
+  assert.equal(reopened.currentState, "ACTIVE");
+  const history = store.listAlertsScoped({ tenantId: "tenant-a", scopeRef: "team-a" });
+  assert.deepEqual(history.map(({ alertId, currentState }) => ({ alertId, currentState })), [
+    { alertId: reopened.alertId, currentState: "ACTIVE" },
+    { alertId: active.alertId, currentState: "CLEARED" },
+  ]);
+  store.close();
+}));
+
+test("FEAT-023-E active identity and lifecycle survive close/reopen without duplicate opening", () => withDatabase((databasePath) => {
+  const first = new DurableOperationalEvidenceStore({ databasePath }) as DurableOperationalEvidenceStore & AlertStore;
+  const alert = projectAlert(first);
+  first.close();
+  const reopened = new DurableOperationalEvidenceStore({ databasePath }) as DurableOperationalEvidenceStore & AlertStore;
+  const replay = projectAlert(reopened);
+  assert.equal(replay?.alertId, alert?.alertId);
+  assert.equal(reopened.listAlertsScoped({ tenantId: "tenant-a", scopeRef: "team-a" }).length, 1);
+  reopened.close();
+}));
+
+test("FEAT-023-E Alert reads fail closed across tenant or scope boundaries", () => withDatabase((databasePath) => {
+  const store = new DurableOperationalEvidenceStore({ databasePath }) as DurableOperationalEvidenceStore & AlertStore;
+  projectAlert(store);
+  assert.equal(store.listAlertsScoped({ tenantId: "tenant-b", scopeRef: "team-a" }).length, 0);
+  assert.equal(store.listAlertsScoped({ tenantId: "tenant-a", scopeRef: "team-b" }).length, 0);
+  assert.equal(store.listAlertsScoped({ tenantId: "tenant-a", scopeRef: "team-a" }, { currentState: "ACTIVE" }).length, 1);
+  store.close();
+}));
+
+test("FEAT-023-E rejects a syntactically valid Alert signal without durable authoritative evidence", () => withDatabase((databasePath) => {
+  const store = new DurableOperationalEvidenceStore({ databasePath }) as DurableOperationalEvidenceStore & AlertStore;
+  expectCode(() => store.projectAlerts(alertSource()), "OPERATIONAL_ALERT_INVALID");
+  assert.equal(store.listAlertsScoped({ tenantId: "tenant-a", scopeRef: "team-a" }).length, 0);
+  store.close();
+}));
+
+test("FEAT-023-E keeps distinct condition references separate for the same resource", () => withDatabase((databasePath) => {
+  const store = new DurableOperationalEvidenceStore({ databasePath }) as DurableOperationalEvidenceStore & AlertStore;
+  const first = projectAlert(store);
+  const second = projectAlert(store, {
+    sourceId: "telemetry:alert-distinct-002", conditionRef: "condition:publication-runtime-002",
+    evidenceRefs: ["evidence:operational:alert-distinct-002"], observedAt: "2026-09-10T01:05:00.000Z",
+  });
+  assert.notEqual(first?.alertId, second?.alertId);
+  assert.equal(store.listAlertsScoped({ tenantId: "tenant-a", scopeRef: "team-a" }, { currentState: "ACTIVE" }).length, 2);
+  store.close();
+}));
+
+test("FEAT-023-E same-timestamp clear wins and ACTIVE alerts are never hidden behind cleared history", () => withDatabase((databasePath) => {
+  const store = new DurableOperationalEvidenceStore({ databasePath }) as DurableOperationalEvidenceStore & AlertStore;
+  const old = projectAlert(store, { conditionRef: "condition:old-cleared-001" });
+  const cleared = projectAlert(store, {
+    sourceId: "telemetry:alert-clear-same-time-002", conditionRef: "condition:old-cleared-001",
+    evidenceRefs: ["evidence:operational:alert-clear-same-time-002"], outcome: "CONFIRMED",
+  });
+  assert.equal(cleared?.alertId, old?.alertId);
+  assert.equal(store.listAlertsScoped({ tenantId: "tenant-a", scopeRef: "team-a" })[0]?.currentState, "CLEARED");
+  projectAlert(store, {
+    sourceId: "telemetry:alert-new-active-003", conditionRef: "condition:new-active-003",
+    evidenceRefs: ["evidence:operational:alert-new-active-003"], observedAt: "2026-09-10T01:10:00.000Z",
+  });
+  assert.equal(store.listAlertsScoped({ tenantId: "tenant-a", scopeRef: "team-a" }, { limit: 1 })[0]?.currentState, "ACTIVE");
+  store.close();
+}));
+
+test("FEAT-023-E operational status projection derives durable Alerts through the same store", () => withDatabase((databasePath) => {
+  const store = new DurableOperationalEvidenceStore({ databasePath });
+  store.appendScoped(telemetry(), { tenantId: "tenant-a", scopeRef: "team-a" });
+  store.projectStatus(statusRequest({ health: "UNHEALTHY", readiness: "NOT_READY" }));
+  const alerts = store.listAlertsScoped({ tenantId: "tenant-a", scopeRef: "team-a" }, { currentState: "ACTIVE" });
+  assert.deepEqual(alerts.map(({ alertType }) => alertType).sort(), ["COMPONENT_NOT_READY", "COMPONENT_UNHEALTHY"]);
+  store.close();
+}));
+
+test("FEAT-023-E rejects source-specific alert facts not proven by durable telemetry", () => withDatabase((databasePath) => {
+  const store = new DurableOperationalEvidenceStore({ databasePath });
+  store.appendScoped(telemetry(), { tenantId: "tenant-a", scopeRef: "team-a" });
+  expectCode(() => store.projectAlerts({
+    sourceId: "telemetry:evt-001",
+    conditionRef: "condition:publication-outcome-001",
+    sourceKind: "PUBLICATION_OUTCOME",
+    component: "PUBLICATION_RUNTIME",
+    resourceRef: `publication:sha256:${"a".repeat(64)}`,
+    tenantId: "tenant-a",
+    scopeRef: "team-a",
+    evidenceRefs: ["evidence:publication:001"],
+    observedAt: "2026-09-09T01:00:00.000Z",
+    outcome: "UNKNOWN",
+  }), "OPERATIONAL_ALERT_INVALID");
+  const relabelCommon = {
+    component: "PUBLICATION_RUNTIME", resourceRef: `publication:sha256:${"a".repeat(64)}`,
+    tenantId: "tenant-a", scopeRef: "team-a", evidenceRefs: ["evidence:publication:001"],
+    observedAt: "2026-09-09T01:00:00.000Z",
+  } as const;
+  store.appendScoped(telemetry({ telemetryEventId: "telemetry:evt-security-relabel-002", outcome: "DETECTED" }), { tenantId: "tenant-a", scopeRef: "team-a" });
+  expectCode(() => store.projectAlerts({ ...relabelCommon, sourceId: "telemetry:evt-security-relabel-002",
+    conditionRef: "condition:security-finding-001", sourceKind: "SECURITY_FINDING", detected: true }), "OPERATIONAL_ALERT_INVALID");
+  store.appendScoped(telemetry({ telemetryEventId: "telemetry:evt-architecture-relabel-003", outcome: "DRIFT" }), { tenantId: "tenant-a", scopeRef: "team-a" });
+  expectCode(() => store.projectAlerts({ ...relabelCommon, sourceId: "telemetry:evt-architecture-relabel-003",
+    conditionRef: "condition:architecture-checksum-001", sourceKind: "ARCHITECTURE_CHECKSUM",
+    matchesBaseline: false, approvedDelta: false }), "OPERATIONAL_ALERT_INVALID");
+  assert.equal(store.listAlertsScoped({ tenantId: "tenant-a", scopeRef: "team-a" }).length, 0);
+  store.close();
+}));
+
+test("FEAT-023-E status snapshots provide distinct replay identities for lifecycle transitions", () => withDatabase((databasePath) => {
+  const store = new DurableOperationalEvidenceStore({ databasePath });
+  store.appendScoped(telemetry(), { tenantId: "tenant-a", scopeRef: "team-a" });
+  store.projectStatus(statusRequest({
+    statusSnapshotId: "status-snapshot:stale-001",
+    health: "HEALTHY",
+    readiness: "READY",
+    evaluatedAt: "2026-09-09T01:11:00.000Z",
+    freshnessThresholdMs: 600_000,
+  }));
+  store.projectStatus(statusRequest({
+    statusSnapshotId: "status-snapshot:fresh-002",
+    health: "HEALTHY",
+    readiness: "READY",
+    evaluatedAt: "2026-09-09T01:12:00.000Z",
+    freshnessThresholdMs: 1_200_000,
+  }));
+  const [alert] = store.listAlertsScoped({ tenantId: "tenant-a", scopeRef: "team-a" });
+  assert.equal(alert?.alertType, "STALE_OPERATIONAL_EVIDENCE");
+  assert.equal(alert?.currentState, "CLEARED");
+  assert.equal(alert?.lastEvaluatedAt, "2026-09-09T01:12:00.000Z");
+  store.close();
+}));
+
+test("FEAT-023-E source identity conflict is rejected and Alert tables are append-only", () => withDatabase((databasePath) => {
+  const store = new DurableOperationalEvidenceStore({ databasePath }) as DurableOperationalEvidenceStore & AlertStore;
+  projectAlert(store);
+  assert.throws(() => store.projectAlerts(alertSource({ conditionRef: "condition:publication-runtime-conflict-002" })), (error: unknown) =>
+    error instanceof OperationalAlertError && error.code === "OPERATIONAL_ALERT_IDENTITY_CONFLICT");
+  store.close();
+
+  const database = new DatabaseSync(databasePath);
+  assert.throws(() => database.exec("UPDATE operational_alert_occurrence SET opened_at = '2026-09-10T02:00:00.000Z'"));
+  assert.throws(() => database.exec("DELETE FROM operational_alert_evaluation"));
+  database.close();
+}));
+
+test("FEAT-023-E reopen rejects a tampered Alert occurrence tenant binding", () => withDatabase((databasePath) => {
+  const store = new DurableOperationalEvidenceStore({ databasePath }) as DurableOperationalEvidenceStore & AlertStore;
+  projectAlert(store);
+  store.close();
+
+  const raw = new DatabaseSync(databasePath);
+  raw.exec("DROP TRIGGER operational_alert_occurrence_no_update");
+  raw.exec("UPDATE operational_alert_occurrence SET tenant_id = 'tenant-b'");
+  raw.close();
+
+  expectCode(() => new DurableOperationalEvidenceStore({ databasePath }), "PERSISTENCE_UNAVAILABLE");
+}));
 
 test("FEAT-023-B database evidence is append-only and corrupted state fails closed on reopen", () => withDatabase((databasePath) => {
   const store = new DurableOperationalEvidenceStore({ databasePath });

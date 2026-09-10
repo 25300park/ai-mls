@@ -20,7 +20,7 @@
 | FEAT-023-B | Structured telemetry / operational evidence | REQ-CONST-005/007/010; SEC-012/014/021/023/024; OPS-012/013; TEST-048/049/053 bounded telemetry partition only | `modules/operations/src/operational-telemetry-contracts.ts`; `durable-operational-evidence-store.ts` | canonical contract/store/architecture `13/13`; affected durable stores and final full regression | IMPLEMENTED_AND_VERIFIED |
 | FEAT-023-C | Health / readiness / freshness | approved amendment sections 4~7; OPS-012/024; TEST-048/049/053 bounded operational projection partition | `modules/operations/src/operational-status-projection.ts`; status snapshot extension in `durable-operational-evidence-store.ts` | exact contract/store/architecture `16/16`; Operations affected `20/20`; full regression `1040/1040` | IMPLEMENTED_AND_VERIFIED |
 | FEAT-023-D | Security / privacy operational controls | approved amendment sections 14~15/20/22; SEC-012/014/021/023/024; TEST-048/049/053 bounded operational-security partition | shared value-aware sanitizer; append-only binding in `DurableOperationalEvidenceStore`; internal `SecurityPrivacyOperationalControlService` | focused security/audit/store/service `45/45`; affected security/AI/SoD regression `128/128`; full regression `1048/1048` | IMPLEMENTED_AND_VERIFIED |
-| FEAT-023-E | Alert / incident evidence projection | approved amendment sections 8~13 | none in B | not run | PLANNED |
+| FEAT-023-E | Alert / incident evidence projection | approved amendment sections 8~13; approved 14-type/severity mapping | strict evaluator; existing `DurableOperationalEvidenceStore` Alert partition; live-authorized internal read; read-only Console projection | focused `84/84`; Operations/Console affected `121/121`; full regression `1072/1072` | IMPLEMENTED_AND_VERIFIED |
 | FEAT-023-F | Deployment / backup / rollback readiness evidence | approved amendment sections 16~18 | none in B | not run | PLANNED |
 | FEAT-023-G | Operations Console / traceability integration | approved amendment section 19 | none in B | not run | PLANNED |
 | FEAT-023-H | Final integration / hardening | approved amendment section 26 preservation gates | none in B | not run | PLANNED |
@@ -70,4 +70,18 @@ FEAT-023-C는 Health/Readiness/Freshness를 operational observation으로만 유
 | Existing SoD and AI privacy | unchanged Publication/recovery authorization and AdvisoryRuntime | actor-level SoD, tenant/scope, strict AI output and no prompt/provider/CoT leakage regression | PASS |
 | Authority-free security readiness | existing `projectStatus()` and canonical Health/Readiness values | `DEGRADED / NOT_READY / UNKNOWN` preserved; domain mutation and automatic remediation surface absent | PASS |
 
-상세 결과는 [FEAT-023-D Security / Privacy Operational Controls Completion](../reviews/FEAT023_D_SECURITY_PRIVACY_OPERATIONAL_CONTROLS_COMPLETION.md)에 기록한다. 새 API, authority, lifecycle state, privacy classification, dependency, external network 및 automatic remediation은 모두 `0`이다. FEAT-023-E~H와 Final Gate는 시작하지 않았다.
+상세 결과는 [FEAT-023-D Security / Privacy Operational Controls Completion](../reviews/FEAT023_D_SECURITY_PRIVACY_OPERATIONAL_CONTROLS_COMPLETION.md)에 기록한다. 새 API, authority, lifecycle state, privacy classification, dependency, external network 및 automatic remediation은 모두 `0`이다.
+
+## 7. FEAT-023-E evidence chain
+
+| Requirement | Production | Test / assertion | Result |
+|---|---|---|---|
+| Exact canonical Alert vocabulary | `operational-alert-projection.ts` | 14 types, `INFO/WARNING/HIGH/CRITICAL`, fixed and dependency severity mapping | PASS |
+| Authoritative-source normalization | `validateAuthoritativeAlertSource()` and store provenance check | unrelated scoped telemetry cannot be relabeled as Publication, Security or Architecture evidence | PASS |
+| Deterministic lifecycle | append-only Alert occurrence/evaluation tables | repeated active identity, clear, recurrence, equal-time ordering and restart persistence | PASS |
+| Status snapshot identity | `statusSnapshotId`-bound status Alert evaluation | one telemetry record may produce later status snapshots and a valid `STALE → CLEARED` transition | PASS |
+| Tenant/scope-safe read | `SecurityPrivacyOperationalControlService.readAlerts()` | live `audit.query`, fixed purpose, MFA and cross-tenant/scope concealment | PASS |
+| Read-only Console | injected `ConsoleOperationalAlertReadPort` and bounded renderer | safe DTO only; incident, acknowledgement, retry and remediation controls absent | PASS |
+| Disabled prerequisites | pure evaluator returns no signal | authorization/idempotency spikes and backup/deployment readiness remain disabled | PASS |
+
+상세 결과는 [FEAT-023-E Alert / Incident Evidence Projection Completion](../reviews/FEAT023_E_ALERT_INCIDENT_EVIDENCE_PROJECTION_COMPLETION.md)에 기록한다. Alert는 incident aggregate나 business authority가 아니며 automatic remediation, external alert network, 새 API 및 dependency 변경은 모두 `0`이다. FEAT-023-F/G/H와 Final Gate는 시작하지 않았다.

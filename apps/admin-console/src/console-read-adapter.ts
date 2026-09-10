@@ -12,6 +12,7 @@ import type {
 } from "../../api/src/publication-api-contracts.js";
 import type { ConnectorApplicationResult } from "../../../modules/source/src/connector-runtime-application.js";
 import type { ExternalIntegrationApplicationResult } from "../../../modules/source/src/external-integration-application.js";
+import { validateOperationalAlertProjection } from "../../../modules/operations/src/operational-alert-projection.js";
 
 export const CONSOLE_PAGES = Object.freeze([
   "DASHBOARD",
@@ -96,6 +97,15 @@ interface ConsoleAuditQueryPort {
   queryAudit(input: unknown): ConsoleAuditQueryResult;
 }
 
+export interface ConsoleOperationalAlertReadPort {
+  readAlerts(input: Readonly<{
+    session: SessionContext;
+    tenantId: string;
+    scopeRef: string;
+    correlationId: string;
+  }>): readonly unknown[];
+}
+
 interface ConsoleReadAdapterDependencies {
   readonly queryPort: ConsolePublicationQueryPort;
   readonly operationsRead: PublicationOperationsReadPort;
@@ -107,6 +117,7 @@ interface ConsoleReadAdapterDependencies {
   readonly externalIntegrationQueryPort?: ConsoleExternalIntegrationQueryPort;
   readonly recoveryQueryPort?: ConsoleRecoveryQueryPort;
   readonly auditQueryPort?: ConsoleAuditQueryPort;
+  readonly alertReadPort?: ConsoleOperationalAlertReadPort;
 }
 
 const publicationOperations: Readonly<Record<Exclude<ConsolePage, "DASHBOARD" | "ADMINISTRATION" | "UI-036" | "PROJECTION" | "OPERATIONS" | "CONNECTOR" | "EXTERNAL_INTEGRATION" | "RECOVERY_CASE" | "EVIDENCE">, PublicationQueryRequest["operation"]>> = Object.freeze({
@@ -278,6 +289,7 @@ export class ConsoleReadAdapter {
   private readOperations(request: ConsoleReadRequest): ConsoleReadResult {
     if (!this.authorizeOperationalRead(request, "PublicationOperations", "system")) return concealedResult(request.page);
     const status = this.dependencies.operationsRead.getSystemOperationalStatus();
+    const alerts = this.readOperationalAlerts(request);
     return immutableConsole({
       page: request.page,
       state: "READY" as const,
@@ -286,9 +298,39 @@ export class ConsoleReadAdapter {
         readiness: status.readiness,
         components: status.components,
         metrics: this.dependencies.operationsRead.getOperationalMetrics(),
+        alerts,
         observedAt: status.observedAt,
       },
     });
+  }
+
+  private readOperationalAlerts(request: ConsoleReadRequest): readonly Readonly<Record<string, unknown>>[] | "UNAVAILABLE" {
+    if (this.dependencies.alertReadPort === undefined) return "UNAVAILABLE";
+    const session = this.resolveCurrentSession(request);
+    if (session === undefined) return "UNAVAILABLE";
+    try {
+      return immutableConsole(this.dependencies.alertReadPort.readAlerts({
+        session,
+        tenantId: request.tenantId,
+        scopeRef: request.teamId,
+        correlationId: request.correlationId,
+      }).map((value) => {
+        const alert = validateOperationalAlertProjection(value);
+        return {
+          alertId: alert.alertId,
+          alertType: alert.alertType,
+          severity: alert.severity,
+          component: alert.component,
+          resourceRef: alert.resourceRef,
+          currentState: alert.currentState,
+          safeReasonCode: alert.safeReasonCode,
+          evidenceRefs: alert.evidenceRefs,
+          openedAt: alert.openedAt,
+          lastEvaluatedAt: alert.lastEvaluatedAt,
+          clearedAt: alert.clearedAt,
+        };
+      }));
+    } catch { return "UNAVAILABLE"; }
   }
 
   private readConnector(request: ConsoleReadRequest): ConsoleReadResult {

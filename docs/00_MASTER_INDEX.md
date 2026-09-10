@@ -260,6 +260,7 @@
 | DOC-REVIEW-133 | [FEAT-023-B Structured Telemetry / Operational Evidence Foundation Completion](reviews/FEAT023_B_STRUCTURED_TELEMETRY_OPERATIONAL_EVIDENCE_COMPLETION.md) | safe telemetry contract, durable append-only operational evidence and bounded verification | AVAILABLE |
 | DOC-REVIEW-134 | [FEAT-023-C Health / Readiness / Freshness Completion](reviews/FEAT023_C_HEALTH_READINESS_FRESHNESS_COMPLETION.md) | exact operational status vocabularies, threshold-safe freshness and durable telemetry-correlated projection | AVAILABLE |
 | DOC-REVIEW-135 | [FEAT-023-D Security / Privacy Operational Controls Completion](reviews/FEAT023_D_SECURITY_PRIVACY_OPERATIONAL_CONTROLS_COMPLETION.md) | tenant/scope-bound operational security evidence, fixed-purpose live access and value-aware privacy sanitization | AVAILABLE |
+| DOC-REVIEW-136 | [FEAT-023-E Alert / Incident Evidence Projection Completion](reviews/FEAT023_E_ALERT_INCIDENT_EVIDENCE_PROJECTION_COMPLETION.md) | canonical Alert normalization, durable lifecycle, tenant-safe read and read-only Console evidence | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -524,6 +525,7 @@
 | DOC-DEV-038 | [FEAT-023-B Structured Telemetry / Operational Evidence Foundation Implementation Plan](implementation/FEAT023_B_STRUCTURED_TELEMETRY_OPERATIONAL_EVIDENCE_IMPLEMENTATION_PLAN.md) | RED-GREEN implementation and bounded verification plan | AVAILABLE |
 | DOC-DEV-039 | [FEAT-023 Implementation Traceability](implementation/FEAT023_TRACEABILITY_MATRIX.md) | FEAT-023-A~H and Final Gate evidence mapping | AVAILABLE |
 | DOC-DEV-040 | [FEAT-023-C Health / Readiness / Freshness Implementation Plan](implementation/FEAT023_C_HEALTH_READINESS_FRESHNESS_IMPLEMENTATION_PLAN.md) | RED-GREEN bounded status projection and verification plan | AVAILABLE |
+| DOC-DEV-041 | [FEAT-023-E Alert / Incident Evidence Projection Implementation Plan](implementation/FEAT023_E_ALERT_INCIDENT_EVIDENCE_PROJECTION_IMPLEMENTATION_PLAN.md) | approved Alert normalization, durable projection and read-only Console TDD plan | AVAILABLE |
 | DOC-REVIEW-019 | [Phase 12 Completion](reviews/PHASE12_COMPLETION.md) | Developer Bible completion evidence와 Phase 13 gate | AVAILABLE |
 
 ## Book 12 — Master Development Roadmap (Phase 13)
@@ -832,6 +834,7 @@
 | DOC-DEV-038 | FEAT-023-B Structured Telemetry / Operational Evidence Foundation Implementation Plan | [FEAT023_B_STRUCTURED_TELEMETRY_OPERATIONAL_EVIDENCE_IMPLEMENTATION_PLAN.md](implementation/FEAT023_B_STRUCTURED_TELEMETRY_OPERATIONAL_EVIDENCE_IMPLEMENTATION_PLAN.md) |
 | DOC-DEV-039 | FEAT-023 Implementation Traceability Matrix | [FEAT023_TRACEABILITY_MATRIX.md](implementation/FEAT023_TRACEABILITY_MATRIX.md) |
 | DOC-DEV-040 | FEAT-023-C Health / Readiness / Freshness Implementation Plan | [FEAT023_C_HEALTH_READINESS_FRESHNESS_IMPLEMENTATION_PLAN.md](implementation/FEAT023_C_HEALTH_READINESS_FRESHNESS_IMPLEMENTATION_PLAN.md) |
+| DOC-DEV-041 | FEAT-023-E Alert / Incident Evidence Projection Implementation Plan | [FEAT023_E_ALERT_INCIDENT_EVIDENCE_PROJECTION_IMPLEMENTATION_PLAN.md](implementation/FEAT023_E_ALERT_INCIDENT_EVIDENCE_PROJECTION_IMPLEMENTATION_PLAN.md) |
 | DOC-ROADMAP-001 | Master Development Roadmap Index | [00_MASTER_DEVELOPMENT_ROADMAP_INDEX.md](book-12/00_MASTER_DEVELOPMENT_ROADMAP_INDEX.md) |
 | DOC-ROADMAP-002 | Implementation Strategy | [01_IMPLEMENTATION_STRATEGY.md](book-12/01_IMPLEMENTATION_STRATEGY.md) |
 | DOC-ROADMAP-003 | Epic Breakdown | [02_EPIC_BREAKDOWN.md](book-12/02_EPIC_BREAKDOWN.md) |
@@ -997,6 +1000,7 @@
 | DOC-REVIEW-133 | FEAT-023-B Structured Telemetry / Operational Evidence Foundation Completion | [FEAT023_B_STRUCTURED_TELEMETRY_OPERATIONAL_EVIDENCE_COMPLETION.md](reviews/FEAT023_B_STRUCTURED_TELEMETRY_OPERATIONAL_EVIDENCE_COMPLETION.md) |
 | DOC-REVIEW-134 | FEAT-023-C Health / Readiness / Freshness Completion | [FEAT023_C_HEALTH_READINESS_FRESHNESS_COMPLETION.md](reviews/FEAT023_C_HEALTH_READINESS_FRESHNESS_COMPLETION.md) |
 | DOC-REVIEW-135 | FEAT-023-D Security / Privacy Operational Controls Completion | [FEAT023_D_SECURITY_PRIVACY_OPERATIONAL_CONTROLS_COMPLETION.md](reviews/FEAT023_D_SECURITY_PRIVACY_OPERATIONAL_CONTROLS_COMPLETION.md) |
+| DOC-REVIEW-136 | FEAT-023-E Alert / Incident Evidence Projection Completion | [FEAT023_E_ALERT_INCIDENT_EVIDENCE_PROJECTION_COMPLETION.md](reviews/FEAT023_E_ALERT_INCIDENT_EVIDENCE_PROJECTION_COMPLETION.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books
