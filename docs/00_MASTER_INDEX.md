@@ -264,6 +264,7 @@
 | DOC-REVIEW-137 | [FEAT-023-F Deployment / Backup / Rollback Readiness Completion](reviews/FEAT023_F_DEPLOYMENT_BACKUP_ROLLBACK_READINESS_COMPLETION.md) | source-specific readiness evidence, durable projection, alert enablement and read-only Console evidence | AVAILABLE |
 | DOC-REVIEW-138 | [FEAT-023-G Operations Console / Traceability Gap Matrix](reviews/FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_GAP_MATRIX.md) | pre-production telemetry/status/security/readiness Console integration gap analysis | AVAILABLE |
 | DOC-REVIEW-139 | [FEAT-023-G Operations Console / Traceability Integration Completion](reviews/FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_COMPLETION.md) | scoped operational reads, safe read-only Console projection and A~G evidence closure | AVAILABLE |
+| DOC-REVIEW-140 | [FEAT-023-H Final Integration / Hardening Completion](reviews/FEAT023_H_FINAL_INTEGRATION_HARDENING_COMPLETION.md) | A~G durability, isolation, privacy, truthfulness and read-only preservation gate | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -1011,6 +1012,7 @@
 | DOC-REVIEW-137 | FEAT-023-F Deployment / Backup / Rollback Readiness Completion | [FEAT023_F_DEPLOYMENT_BACKUP_ROLLBACK_READINESS_COMPLETION.md](reviews/FEAT023_F_DEPLOYMENT_BACKUP_ROLLBACK_READINESS_COMPLETION.md) |
 | DOC-REVIEW-138 | FEAT-023-G Operations Console / Traceability Gap Matrix | [FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_GAP_MATRIX.md](reviews/FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_GAP_MATRIX.md) |
 | DOC-REVIEW-139 | FEAT-023-G Operations Console / Traceability Integration Completion | [FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_COMPLETION.md](reviews/FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_COMPLETION.md) |
+| DOC-REVIEW-140 | FEAT-023-H Final Integration / Hardening Completion | [FEAT023_H_FINAL_INTEGRATION_HARDENING_COMPLETION.md](reviews/FEAT023_H_FINAL_INTEGRATION_HARDENING_COMPLETION.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books
