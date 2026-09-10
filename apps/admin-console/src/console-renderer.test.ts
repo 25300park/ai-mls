@@ -610,3 +610,14 @@ test("FEAT-023-E renders safe read-only Alert evidence without incident or remed
   assert.equal(/<button|<form/iu.test(html), false);
   assert.equal(/data-(?:acknowledge|mute|retry|recover|reactivate)/iu.test(html), false);
 });
+
+test("FEAT-023-F renders readiness evidence read-only without deployment backup or rollback controls", () => {
+  const html = renderConsoleResult(ready("OPERATIONS", {
+    health: "HEALTHY", readiness: { operationsRead: true }, components: [], metrics: {}, alerts: [], observedAt: "2026-09-10T01:00:00.000Z",
+    operationalReadiness: [{ readinessProjectionId: "readiness-projection:backup-001", readinessType: "BACKUP",
+      resourceRef: `backup-readiness:sha256:${"d".repeat(64)}`, readiness: "UNKNOWN", freshness: "UNKNOWN",
+      safeReasonCodes: ["MISSING_BACKUP_EXECUTION"], evidenceRefs: ["evidence:backup-config-001"], evaluatedAt: "2026-09-10T01:00:00.000Z" }],
+  }));
+  for (const value of ["Operational Readiness", "BACKUP", "UNKNOWN", "MISSING_BACKUP_EXECUTION", "evidence:backup-config-001"]) assert.equal(html.includes(value), true, value);
+  assert.equal(/<button|<form|data-(?:deploy|backup|restore|rollback|retry)/iu.test(html), false);
+});

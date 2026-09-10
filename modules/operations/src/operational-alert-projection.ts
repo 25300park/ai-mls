@@ -95,6 +95,8 @@ const fixedSeverity = Object.freeze<Partial<Record<OperationalAlertType, Operati
   SUSPENDED_INTEGRATION_CONTRACT: "WARNING",
   SECRET_LEAKAGE_DETECTED: "CRITICAL",
   ARCHITECTURE_DRIFT_DETECTED: "HIGH",
+  BACKUP_READINESS_FAILURE: "HIGH",
+  DEPLOYMENT_READINESS_FAILURE: "HIGH",
 });
 
 const dependencySeverity = Object.freeze<Record<string, OperationalAlertSeverity>>({
@@ -138,10 +140,10 @@ export function normalizeAuthoritativeAlertSignals(input: unknown): readonly Ope
     case "ARCHITECTURE_CHECKSUM": {
       return immutableOperationalEvidence([signal(source, "ARCHITECTURE_DRIFT_DETECTED", !source.matchesBaseline && !source.approvedDelta)]);
     }
+    case "BACKUP_READINESS": return immutableOperationalEvidence([signal(source, "BACKUP_READINESS_FAILURE", source.readiness === "NOT_READY")]);
+    case "DEPLOYMENT_READINESS": return immutableOperationalEvidence([signal(source, "DEPLOYMENT_READINESS_FAILURE", source.readiness === "NOT_READY")]);
     case "AUTHORIZATION_AGGREGATE":
     case "IDEMPOTENCY_AGGREGATE":
-    case "BACKUP_READINESS":
-    case "DEPLOYMENT_READINESS":
       return Object.freeze([]);
   }
 }

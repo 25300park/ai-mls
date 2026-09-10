@@ -8,9 +8,11 @@ import { AuditLog } from "../../audit/src/audit-log.js";
 import { AuthorizationService, type LiveRoleAssignment } from "../../authorization/src/authorization-service.js";
 import type { SessionContext } from "../../identity/src/session-service.js";
 import { DurableOperationalEvidenceStore } from "./durable-operational-evidence-store.js";
+import { createTestOperationalReadinessEvidenceAdmission } from "./operational-readiness-test-support.js";
 import type { OperationalAlertProjection } from "./operational-alert-projection.js";
 import type { OperationalTelemetryRecord } from "./operational-telemetry-contracts.js";
 import type { OperationalStatusSnapshot } from "./operational-status-projection.js";
+import type { OperationalReadinessProjection } from "./operational-readiness-evidence.js";
 
 interface SecurityAccessRequest {
   readonly session: SessionContext;
@@ -33,6 +35,7 @@ interface SecurityReadinessRequest extends SecurityAccessRequest {
 interface Controls {
   readEvidence(request: SecurityAccessRequest): readonly OperationalTelemetryRecord[];
   readAlerts(request: Omit<SecurityAccessRequest, "resourceRef">): readonly OperationalAlertProjection[];
+  readReadiness(request: Omit<SecurityAccessRequest, "resourceRef">): readonly OperationalReadinessProjection[];
   projectSecurityReadiness(request: SecurityReadinessRequest): OperationalStatusSnapshot | undefined;
 }
 
@@ -119,7 +122,7 @@ function authorization(assignments: readonly LiveRoleAssignment[]): Authorizatio
 
 function withStore(run: (store: DurableOperationalEvidenceStore) => Promise<void>): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), "feat-023-d-"));
-  const store = new DurableOperationalEvidenceStore({ databasePath: join(directory, "operations.sqlite") });
+  const store = new DurableOperationalEvidenceStore({ databasePath: join(directory, "operations.sqlite") }, createTestOperationalReadinessEvidenceAdmission());
   return run(store).finally(() => { store.close(); rmSync(directory, { recursive: true, force: true }); });
 }
 
@@ -179,6 +182,28 @@ test("FEAT-023-E Alert visibility reuses live security authorization and tenant 
   assert.deepEqual(controls.readAlerts({ ...request, scopeRef: "team-002" }), []);
   assert.deepEqual(controls.readAlerts({ ...request, session: session({ assurance: "SINGLE_FACTOR", isMfaVerified: false }) }), []);
   assert.equal(store.listAlertsScoped({ tenantId: "tenant-001", scopeRef: "team-001" }).length, 1);
+}));
+
+test("FEAT-023-F readiness visibility reuses live MFA authorization and tenant scope concealment", async () => withStore(async (store) => {
+  const Constructor = await controlsConstructor();
+  const controls = new Constructor!({ authorizationService: authorization([assignment()]), evidenceStore: store });
+  const readinessBinding = { subjectRef: `backup-readiness:sha256:${"d".repeat(64)}`, tenantId: "tenant-001", scopeRef: "team-001",
+    candidateRef: null, environmentRef: null, protectedSetRef: `protected-set:sha256:${"e".repeat(64)}`, rollbackTargetRef: null } as const;
+  const evidenceTypes = ["BACKUP_CONFIGURATION", "BACKUP_EXECUTION", "BACKUP_INTEGRITY", "RESTORE_VALIDATION"] as const;
+  evidenceTypes.forEach((evidenceType, index) => store.appendReadinessEvidence({
+    evidenceId: `readiness-evidence:security-backup-${String(index + 1)}`, readinessType: "BACKUP", evidenceType,
+    sourceClassification: evidenceType === "RESTORE_VALIDATION" ? "RECOVERY_VALIDATOR" : "BACKUP_SYSTEM",
+    binding: readinessBinding, outcome: "SATISFIED", occurredAt: "2026-09-10T01:00:00.000Z", freshnessThresholdMs: null,
+    evidenceRefs: [`evidence:security-backup-${String(index + 1)}`],
+  }));
+  store.projectReadiness({ readinessProjectionId: "readiness-projection:security-backup-001", readinessType: "BACKUP",
+    binding: readinessBinding, evidenceIds: evidenceTypes.map((_, index) => `readiness-evidence:security-backup-${String(index + 1)}`),
+    evaluatedAt: "2026-09-10T01:30:00.000Z" });
+  const request = { session: session(), tenantId: "tenant-001", scopeRef: "team-001", correlationId: "correlation:security-readiness-read-001" };
+  assert.equal(controls.readReadiness(request).length, 1);
+  assert.deepEqual(controls.readReadiness({ ...request, tenantId: "tenant-002" }), []);
+  assert.deepEqual(controls.readReadiness({ ...request, scopeRef: "team-002" }), []);
+  assert.deepEqual(controls.readReadiness({ ...request, session: session({ assurance: "SINGLE_FACTOR", isMfaVerified: false }) }), []);
 }));
 
 test("FEAT-023-D security readiness requires live MFA and creates no projection on denial", async () => withStore(async (store) => {

@@ -281,7 +281,16 @@ function renderOperations(data: Readonly<Record<string, unknown>>): string {
   return `<section><div class="section-heading"><div><p class="eyebrow">SYSTEM HEALTH</p><h2>System Health</h2></div>${statusBadge(data["health"])}</div><div class="card-grid">${Object.entries(readiness).map(([key, value]) => metricCard(readinessLabel(key), value === true ? "READY" : "NOT_READY")).join("")}</div></section>
   <section><div class="section-heading"><div><p class="eyebrow">COMPONENT STATUS</p><h2>Health and recovery posture</h2></div></div>${historySection("Components", components)}</section>
   <section><div class="section-heading"><div><p class="eyebrow">BOUNDED METRICS</p><h2>Operational evidence</h2></div></div>${definitionGrid(metrics)}</section>
+  ${renderOperationalReadiness(data["operationalReadiness"])}
   ${renderOperationalAlerts(data["alerts"])}`;
+}
+
+function renderOperationalReadiness(value: unknown): string {
+  if (value === "UNAVAILABLE") return `<section><div class="section-heading"><div><p class="eyebrow">EVIDENCE · READ ONLY</p><h2>Operational Readiness</h2></div>${statusBadge("UNAVAILABLE")}</div><p class="empty-inline">No authorized readiness evidence is currently available.</p></section>`;
+  const projections = arrayOf(value).filter(isRecord);
+  if (projections.length === 0) return `<section><div class="section-heading"><div><p class="eyebrow">EVIDENCE · READ ONLY</p><h2>Operational Readiness</h2></div>${statusBadge("EMPTY")}</div><p class="empty-inline">No readiness projection has been recorded.</p></section>`;
+  return `<section><div class="section-heading"><div><p class="eyebrow">EVIDENCE · READ ONLY</p><h2>Operational Readiness</h2></div>${statusBadge("READ ONLY")}</div>
+  <div class="table-wrap"><table aria-label="Operational Readiness"><thead><tr><th scope="col">Type</th><th scope="col">Resource</th><th scope="col">Readiness</th><th scope="col">Freshness</th><th scope="col">Safe reasons</th><th scope="col">Evidence</th><th scope="col">Evaluated</th></tr></thead><tbody>${projections.map((projection) => `<tr><td>${escapeHtml(projection["readinessType"])}</td><td>${escapeHtml(projection["resourceRef"])}</td><td>${statusBadge(projection["readiness"])}</td><td>${statusBadge(projection["freshness"])}</td><td>${escapeHtml(displayValue(projection["safeReasonCodes"]))}</td><td>${escapeHtml(displayValue(projection["evidenceRefs"]))}</td><td>${escapeHtml(projection["evaluatedAt"])}</td></tr>`).join("")}</tbody></table></div><p class="scope-note">Derived evidence only. No deployment, backup, restore, or rollback authority.</p></section>`;
 }
 
 function renderOperationalAlerts(value: unknown): string {

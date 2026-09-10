@@ -11,6 +11,7 @@ import type {
   OperationalEvidenceStore,
 } from "./durable-operational-evidence-store.js";
 import type { OperationalAlertProjection } from "./operational-alert-projection.js";
+import type { OperationalReadinessProjection } from "./operational-readiness-evidence.js";
 import {
   validateOperationalReference,
   validateOperationalResourceReference,
@@ -26,6 +27,7 @@ import {
 const SECURITY_MONITORING_PURPOSE = "SECURITY_MONITORING";
 const OPERATIONAL_EVIDENCE_RESOURCE = "OPERATIONAL_EVIDENCE";
 const OPERATIONAL_ALERT_COLLECTION_REF = `operational-alert:sha256:${"a".repeat(64)}`;
+const OPERATIONAL_READINESS_COLLECTION_REF = `operational-readiness:sha256:${"b".repeat(64)}`;
 
 interface AuthorizationEvaluator {
   evaluate(request: AuthorizationRequest): AuthorizationDecision;
@@ -83,6 +85,14 @@ export class SecurityPrivacyOperationalControlService {
     const decision = this.#authorize(request, OPERATIONAL_ALERT_COLLECTION_REF, "audit.query");
     if (decision?.effect !== "ALLOW") return Object.freeze([]);
     try { return this.#evidenceStore.listAlertsScoped(binding(request), { limit: 100 }); }
+    catch { return Object.freeze([]); }
+  }
+
+  public readReadiness(request: SecurityAlertAccessRequest): readonly OperationalReadinessProjection[] {
+    if (!isAlertAccessRequest(request)) return Object.freeze([]);
+    const decision = this.#authorize(request, OPERATIONAL_READINESS_COLLECTION_REF, "audit.query");
+    if (decision?.effect !== "ALLOW") return Object.freeze([]);
+    try { return this.#evidenceStore.listReadinessScoped(binding(request), { limit: 100 }); }
     catch { return Object.freeze([]); }
   }
 

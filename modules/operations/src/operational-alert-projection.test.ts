@@ -42,7 +42,9 @@ test("FEAT-023-E preserves exactly fourteen canonical Alert types and approved f
   assert.equal(canonicalSeverityForAlert("SUSPENDED_INTEGRATION_CONTRACT"), "WARNING");
   assert.equal(canonicalSeverityForAlert("SECRET_LEAKAGE_DETECTED"), "CRITICAL");
   assert.equal(canonicalSeverityForAlert("ARCHITECTURE_DRIFT_DETECTED"), "HIGH");
-  for (const disabled of ["AUTHORIZATION_FAILURE_SPIKE", "IDEMPOTENCY_CONFLICT_SPIKE", "BACKUP_READINESS_FAILURE", "DEPLOYMENT_READINESS_FAILURE"] as const) {
+  assert.equal(canonicalSeverityForAlert("BACKUP_READINESS_FAILURE"), "HIGH");
+  assert.equal(canonicalSeverityForAlert("DEPLOYMENT_READINESS_FAILURE"), "HIGH");
+  for (const disabled of ["AUTHORIZATION_FAILURE_SPIKE", "IDEMPOTENCY_CONFLICT_SPIKE"] as const) {
     assert.equal(canonicalSeverityForAlert(disabled), undefined);
   }
 });
@@ -111,7 +113,20 @@ test("FEAT-023-E suppresses approved deltas and disabled alerts while rejecting 
     { alertType: "ARCHITECTURE_DRIFT_DETECTED", active: false },
   ]);
   assert.deepEqual(normalizeAuthoritativeAlertSignals({ ...common, sourceKind: "AUTHORIZATION_AGGREGATE", failureCount: 10 }), []);
-  assert.deepEqual(normalizeAuthoritativeAlertSignals({ ...common, sourceKind: "BACKUP_READINESS", readiness: "NOT_READY" }), []);
+  assert.deepEqual(normalizeAuthoritativeAlertSignals({ ...common, sourceKind: "BACKUP_READINESS", readiness: "NOT_READY" }).map(({ alertType, severity, active }) => ({ alertType, severity, active })), [
+    { alertType: "BACKUP_READINESS_FAILURE", severity: "HIGH", active: true },
+  ]);
+  assert.deepEqual(normalizeAuthoritativeAlertSignals({ ...common, sourceKind: "DEPLOYMENT_READINESS", readiness: "NOT_READY" }).map(({ alertType, severity, active }) => ({ alertType, severity, active })), [
+    { alertType: "DEPLOYMENT_READINESS_FAILURE", severity: "HIGH", active: true },
+  ]);
+  for (const readiness of ["UNKNOWN", "DEGRADED", "READY"] as const) {
+    assert.deepEqual(normalizeAuthoritativeAlertSignals({ ...common, sourceKind: "BACKUP_READINESS", readiness }).map(({ alertType, active }) => ({ alertType, active })), [
+      { alertType: "BACKUP_READINESS_FAILURE", active: false },
+    ]);
+    assert.deepEqual(normalizeAuthoritativeAlertSignals({ ...common, sourceKind: "DEPLOYMENT_READINESS", readiness }).map(({ alertType, active }) => ({ alertType, active })), [
+      { alertType: "DEPLOYMENT_READINESS_FAILURE", active: false },
+    ]);
+  }
   expectInvalid(() => normalizeAuthoritativeAlertSignals({ ...common, sourceKind: "SECURITY_FINDING", detected: true, rawSecret: "not-a-secret-fixture" }));
   expectInvalid(() => normalizeAuthoritativeAlertSignals({ ...common, sourceKind: "DEPENDENCY_AUDIT", active: true, auditSeverity: "high", evidenceRefs: ["secret:unsafe"] }));
 });

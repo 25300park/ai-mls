@@ -22,6 +22,19 @@ import {
   type OperationalTelemetryRecord,
 } from "./operational-telemetry-contracts.js";
 import {
+  OperationalReadinessEvidenceError,
+  deriveOperationalReadinessBindingFingerprint,
+  deriveOperationalReadiness,
+  validateOperationalReadinessEvidence,
+  validateOperationalReadinessProjection,
+  validateOperationalReadinessProjectionPersistenceRequest,
+  type OperationalReadinessEvidence,
+  type OperationalReadinessEvidenceAdmissionPort,
+  type OperationalReadinessProjection,
+  type OperationalReadinessProjectionPersistenceRequest,
+  type OperationalReadinessType,
+} from "./operational-readiness-evidence.js";
+import {
   OperationalStatusError,
   deriveEvidenceFreshness,
   validateOperationalStatusProjectionRequest,
@@ -54,6 +67,12 @@ export interface OperationalAlertFilter {
   readonly limit?: number;
 }
 
+export interface OperationalReadinessFilter {
+  readonly readinessType?: OperationalReadinessType;
+  readonly resourceRef?: string;
+  readonly limit?: number;
+}
+
 export interface OperationalEvidenceBinding {
   readonly tenantId: string;
   readonly scopeRef: string;
@@ -70,15 +89,18 @@ export interface OperationalEvidenceStore {
   findStatus(statusSnapshotId: string): OperationalStatusSnapshot | undefined;
   listStatuses(filter?: OperationalStatusFilter): readonly OperationalStatusSnapshot[];
   listAlertsScoped(binding: OperationalEvidenceBinding, filter?: OperationalAlertFilter): readonly OperationalAlertProjection[];
+  listReadinessScoped(binding: OperationalEvidenceBinding, filter?: OperationalReadinessFilter): readonly OperationalReadinessProjection[];
   close(): void;
 }
 
 export class DurableOperationalEvidenceStore implements OperationalEvidenceStore {
   readonly #database: DatabaseSync;
+  readonly #readinessEvidenceAdmission: OperationalReadinessEvidenceAdmissionPort | undefined;
   #closed = false;
 
-  public constructor(options: DurableOperationalEvidenceStoreOptions) {
+  public constructor(options: DurableOperationalEvidenceStoreOptions, readinessEvidenceAdmission?: OperationalReadinessEvidenceAdmissionPort) {
     if (!isFileDatabasePath(options.databasePath)) throw unavailable();
+    this.#readinessEvidenceAdmission = readinessEvidenceAdmission;
     let database: DatabaseSync | undefined;
     try {
       database = new DatabaseSync(options.databasePath);
@@ -271,6 +293,97 @@ export class DurableOperationalEvidenceStore implements OperationalEvidenceStore
       return immutableOperationalEvidence(rows.map(decodeStatus));
     } catch (error) {
       if (error instanceof OperationalEvidenceError || error instanceof OperationalStatusError) throw error;
+      throw unavailable();
+    }
+  }
+
+  public appendReadinessEvidence(record: OperationalReadinessEvidence): OperationalReadinessEvidence {
+    this.#assertOpen();
+    if (this.#readinessEvidenceAdmission === undefined) throw readinessAdmissionRequired();
+    const admitted = this.#readinessEvidenceAdmission.admit(record);
+    if (admitted === undefined) throw readinessAdmissionRequired();
+    const valid = validateOperationalReadinessEvidence(admitted);
+    const existing = this.#findReadinessEvidence(valid.evidenceId);
+    if (existing !== undefined) {
+      if (canonicalJson(existing) !== canonicalJson(valid)) throw readinessIdentityConflict();
+      return existing;
+    }
+    try {
+      this.#database.prepare(`INSERT INTO operational_readiness_evidence
+        (evidence_id, readiness_type, evidence_type, source_classification, resource_ref, tenant_id, scope_ref, occurred_at, payload_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(valid.evidenceId, valid.readinessType, valid.evidenceType, valid.sourceClassification, valid.binding.subjectRef,
+          valid.binding.tenantId, valid.binding.scopeRef, valid.occurredAt, canonicalJson(valid));
+      return immutableOperationalEvidence(valid);
+    } catch (error) {
+      if (error instanceof OperationalReadinessEvidenceError) throw error;
+      throw unavailable();
+    }
+  }
+
+  public projectReadiness(request: OperationalReadinessProjectionPersistenceRequest): OperationalReadinessProjection {
+    this.#assertOpen();
+    const valid = validateOperationalReadinessProjectionPersistenceRequest(request);
+    const evidence = valid.evidenceIds.map((evidenceId) => {
+      const record = this.#findReadinessEvidence(evidenceId);
+      if (record === undefined) throw readinessNotFound();
+      return record;
+    });
+    const projection = deriveOperationalReadiness({
+      readinessProjectionId: valid.readinessProjectionId,
+      readinessType: valid.readinessType,
+      binding: valid.binding,
+      evidence,
+      evaluatedAt: valid.evaluatedAt,
+    });
+    const existing = this.#findReadinessProjection(projection.readinessProjectionId);
+    if (existing !== undefined) {
+      if (canonicalJson(existing) !== canonicalJson(projection)) throw readinessIdentityConflict();
+      this.#projectReadinessAlerts(existing);
+      return existing;
+    }
+    try {
+      this.#database.exec("BEGIN IMMEDIATE");
+      this.#database.prepare(`INSERT INTO operational_readiness_projection
+        (readiness_projection_id, readiness_type, resource_ref, tenant_id, scope_ref, readiness, freshness, binding_fingerprint, evaluated_at, payload_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(projection.readinessProjectionId, projection.readinessType, projection.binding.subjectRef,
+          projection.binding.tenantId, projection.binding.scopeRef, projection.readiness, projection.freshness,
+          deriveOperationalReadinessBindingFingerprint(projection.readinessType, projection.binding),
+          projection.evaluatedAt, canonicalJson(projection));
+      const link = this.#database.prepare(`INSERT INTO operational_readiness_projection_evidence
+        (readiness_projection_id, evidence_id) VALUES (?, ?)`);
+      for (const evidenceId of projection.evidenceIds) link.run(projection.readinessProjectionId, evidenceId);
+      this.#database.exec("COMMIT");
+    } catch (error) {
+      try { this.#database.exec("ROLLBACK"); } catch { /* preserve original failure */ }
+      if (error instanceof OperationalReadinessEvidenceError) throw error;
+      throw unavailable();
+    }
+    this.#projectReadinessAlerts(projection);
+    return immutableOperationalEvidence(projection);
+  }
+
+  public listReadinessScoped(binding: OperationalEvidenceBinding, filter: OperationalReadinessFilter = {}): readonly OperationalReadinessProjection[] {
+    this.#assertOpen();
+    const validBinding = validateBinding(binding);
+    validateReadinessFilter(filter);
+    const limit = filter.limit ?? 100;
+    const clauses = ["tenant_id = ?", "scope_ref = ?"];
+    const values = [validBinding.tenantId, validBinding.scopeRef];
+    if (filter.readinessType !== undefined) { values.push(filter.readinessType); clauses.push("readiness_type = ?"); }
+    if (filter.resourceRef !== undefined) { values.push(validateOperationalResourceReference(filter.resourceRef)); clauses.push("resource_ref = ?"); }
+    try {
+      const rows = this.#database.prepare(`SELECT projection.payload_json FROM operational_readiness_projection AS projection
+        WHERE ${clauses.map((clause) => `projection.${clause}`).join(" AND ")}
+          AND projection.rowid = (SELECT candidate.rowid FROM operational_readiness_projection AS candidate
+            WHERE candidate.tenant_id = projection.tenant_id AND candidate.scope_ref = projection.scope_ref
+              AND candidate.binding_fingerprint = projection.binding_fingerprint
+            ORDER BY candidate.evaluated_at DESC, candidate.rowid DESC LIMIT 1)
+        ORDER BY projection.evaluated_at DESC, projection.readiness_projection_id DESC LIMIT ${limit}`).all(...values);
+      return immutableOperationalEvidence(rows.map(decodeReadinessProjection));
+    } catch (error) {
+      if (error instanceof OperationalReadinessEvidenceError) throw error;
       throw unavailable();
     }
   }
@@ -475,6 +588,40 @@ export class DurableOperationalEvidenceStore implements OperationalEvidenceStore
         || text(row["payload_json"]) !== canonicalJson(projection)
         || text(row["signal_json"]) !== canonicalJson(signal)) throw unavailable();
     }
+    for (const row of this.#database.prepare("SELECT * FROM operational_readiness_evidence").all()) {
+      const record = decodeReadinessEvidence(row);
+      if (text(row["evidence_id"]) !== record.evidenceId || text(row["readiness_type"]) !== record.readinessType
+        || text(row["evidence_type"]) !== record.evidenceType || text(row["source_classification"]) !== record.sourceClassification
+        || text(row["resource_ref"]) !== record.binding.subjectRef || text(row["tenant_id"]) !== record.binding.tenantId
+        || text(row["scope_ref"]) !== record.binding.scopeRef || text(row["occurred_at"]) !== record.occurredAt
+        || text(row["payload_json"]) !== canonicalJson(record)) throw unavailable();
+    }
+    for (const row of this.#database.prepare("SELECT * FROM operational_readiness_projection").all()) {
+      const projection = decodeReadinessProjection(row);
+      if (text(row["readiness_projection_id"]) !== projection.readinessProjectionId
+        || text(row["readiness_type"]) !== projection.readinessType || text(row["resource_ref"]) !== projection.binding.subjectRef
+        || text(row["tenant_id"]) !== projection.binding.tenantId || text(row["scope_ref"]) !== projection.binding.scopeRef
+        || text(row["binding_fingerprint"]) !== deriveOperationalReadinessBindingFingerprint(projection.readinessType, projection.binding)
+        || text(row["readiness"]) !== projection.readiness || text(row["freshness"]) !== projection.freshness
+        || text(row["evaluated_at"]) !== projection.evaluatedAt || text(row["payload_json"]) !== canonicalJson(projection)) throw unavailable();
+      const linked = this.#database.prepare(`SELECT evidence_id FROM operational_readiness_projection_evidence
+        WHERE readiness_projection_id = ? ORDER BY evidence_id`).all(projection.readinessProjectionId).map((link) => text(link["evidence_id"]));
+      if (canonicalJson(linked) !== canonicalJson([...projection.evidenceIds].sort())) throw unavailable();
+    }
+  }
+
+  #findReadinessEvidence(evidenceId: string): OperationalReadinessEvidence | undefined {
+    let identity: string;
+    try { identity = validateOperationalReference(evidenceId, "readiness-evidence:"); } catch { throw invalidReadiness(); }
+    const row = this.#database.prepare("SELECT payload_json FROM operational_readiness_evidence WHERE evidence_id = ?").get(identity);
+    return row === undefined ? undefined : decodeReadinessEvidence(row);
+  }
+
+  #findReadinessProjection(readinessProjectionId: string): OperationalReadinessProjection | undefined {
+    let identity: string;
+    try { identity = validateOperationalReference(readinessProjectionId, "readiness-projection:"); } catch { throw invalidReadiness(); }
+    const row = this.#database.prepare("SELECT payload_json FROM operational_readiness_projection WHERE readiness_projection_id = ?").get(identity);
+    return row === undefined ? undefined : decodeReadinessProjection(row);
   }
 
   #findBinding(telemetryEventId: string): OperationalEvidenceBinding | undefined {
@@ -483,6 +630,16 @@ export class DurableOperationalEvidenceStore implements OperationalEvidenceStore
   }
 
   #validateAlertSourceProvenance(source: AuthoritativeAlertSource): void {
+    if (source.sourceKind === "BACKUP_READINESS" || source.sourceKind === "DEPLOYMENT_READINESS") {
+      const projection = this.#findReadinessProjection(source.sourceId);
+      const expectedType = source.sourceKind === "BACKUP_READINESS" ? "BACKUP" : "DEPLOYMENT";
+      if (projection?.readinessType !== expectedType
+        || projection.binding.subjectRef !== source.resourceRef || projection.binding.tenantId !== source.tenantId
+        || projection.binding.scopeRef !== source.scopeRef || projection.evaluatedAt !== source.observedAt
+        || projection.readiness !== source.readiness || canonicalJson(projection.evidenceRefs) !== canonicalJson(source.evidenceRefs)
+        || source.component !== source.sourceKind) throw invalidAlert();
+      return;
+    }
     if (source.sourceKind === "OPERATIONAL_STATUS") {
       const snapshot = this.findStatus(source.sourceId);
       if (snapshot?.component !== source.component || snapshot.resourceRef !== source.resourceRef
@@ -528,6 +685,23 @@ export class DurableOperationalEvidenceStore implements OperationalEvidenceStore
     });
   }
 
+  #projectReadinessAlerts(projection: OperationalReadinessProjection): void {
+    if (projection.readinessType === "ROLLBACK" || projection.evidenceRefs.length === 0) return;
+    const sourceKind = projection.readinessType === "BACKUP" ? "BACKUP_READINESS" : "DEPLOYMENT_READINESS";
+    this.projectAlerts({
+      sourceId: projection.readinessProjectionId,
+      conditionRef: `condition:${sourceKind.toLowerCase().replaceAll("_", "-")}-${deriveOperationalReadinessBindingFingerprint(projection.readinessType, projection.binding).slice(0, 32)}`,
+      sourceKind,
+      component: sourceKind,
+      resourceRef: projection.binding.subjectRef,
+      tenantId: projection.binding.tenantId,
+      scopeRef: projection.binding.scopeRef,
+      evidenceRefs: projection.evidenceRefs,
+      observedAt: projection.evaluatedAt,
+      readiness: projection.readiness,
+    });
+  }
+
   #validateDatabaseControls(): void {
     const foreignKeys = this.#database.prepare("PRAGMA foreign_keys").get()?.["foreign_keys"];
     const journalMode = this.#database.prepare("PRAGMA journal_mode").get()?.["journal_mode"];
@@ -542,7 +716,23 @@ export class DurableOperationalEvidenceStore implements OperationalEvidenceStore
 }
 
 export function createProductionOperationalEvidenceStore(options: DurableOperationalEvidenceStoreOptions): OperationalEvidenceStore {
-  return new DurableOperationalEvidenceStore(options);
+  if (typeof options !== "object" || options === null || Array.isArray(options)
+    || Object.keys(options).length !== 1 || !Object.hasOwn(options, "databasePath")) throw unavailable();
+  const store = new DurableOperationalEvidenceStore(options);
+  return Object.freeze({
+    append: store.append.bind(store),
+    appendScoped: store.appendScoped.bind(store),
+    find: store.find.bind(store),
+    list: store.list.bind(store),
+    listScoped: store.listScoped.bind(store),
+    projectStatus: store.projectStatus.bind(store),
+    projectAlerts: store.projectAlerts.bind(store),
+    findStatus: store.findStatus.bind(store),
+    listStatuses: store.listStatuses.bind(store),
+    listAlertsScoped: store.listAlertsScoped.bind(store),
+    listReadinessScoped: store.listReadinessScoped.bind(store),
+    close: store.close.bind(store),
+  });
 }
 
 function alertSourceConditionMatchesTelemetry(
@@ -601,6 +791,15 @@ function validateAlertFilter(filter: unknown): asserts filter is OperationalAler
   if (value["currentState"] !== undefined && value["currentState"] !== "ACTIVE" && value["currentState"] !== "CLEARED") throw invalidAlert();
 }
 
+function validateReadinessFilter(filter: unknown): asserts filter is OperationalReadinessFilter {
+  if (typeof filter !== "object" || filter === null || Array.isArray(filter)
+    || (Object.getPrototypeOf(filter) !== Object.prototype && Object.getPrototypeOf(filter) !== null)
+    || Object.keys(filter).some((key) => !["readinessType", "resourceRef", "limit"].includes(key))) throw invalidReadiness();
+  const value = filter as Readonly<Record<string, unknown>>;
+  if (value["readinessType"] !== undefined && !["BACKUP", "DEPLOYMENT", "ROLLBACK"].includes(value["readinessType"] as string)) throw invalidReadiness();
+  if (value["limit"] !== undefined && (!Number.isInteger(value["limit"]) || (value["limit"] as number) < 1 || (value["limit"] as number) > 100)) throw invalidReadiness();
+}
+
 function validateBinding(binding: unknown): OperationalEvidenceBinding {
   if (typeof binding !== "object" || binding === null || Array.isArray(binding)
     || (Object.getPrototypeOf(binding) !== Object.prototype && Object.getPrototypeOf(binding) !== null)
@@ -635,6 +834,18 @@ function decodeAlertSignal(row: Record<string, SQLOutputValue>): OperationalAler
   const value = row["signal_json"];
   if (typeof value !== "string") throw unavailable();
   try { return validateOperationalAlertSignal(JSON.parse(value) as unknown); } catch { throw unavailable(); }
+}
+
+function decodeReadinessEvidence(row: Record<string, SQLOutputValue>): OperationalReadinessEvidence {
+  const value = row["payload_json"];
+  if (typeof value !== "string") throw unavailable();
+  try { return validateOperationalReadinessEvidence(JSON.parse(value) as unknown); } catch { throw unavailable(); }
+}
+
+function decodeReadinessProjection(row: Record<string, SQLOutputValue>): OperationalReadinessProjection {
+  const value = row["payload_json"];
+  if (typeof value !== "string") throw unavailable();
+  try { return validateOperationalReadinessProjection(JSON.parse(value) as unknown); } catch { throw unavailable(); }
 }
 
 function text(value: SQLOutputValue | undefined): string {
@@ -678,6 +889,22 @@ function invalidTelemetry(): OperationalEvidenceError {
 
 function invalidAlert(): OperationalAlertError {
   return new OperationalAlertError("OPERATIONAL_ALERT_INVALID", "Operational Alert input is invalid.");
+}
+
+function invalidReadiness(): OperationalReadinessEvidenceError {
+  return new OperationalReadinessEvidenceError("READINESS_EVIDENCE_INVALID", "Operational readiness evidence is invalid.");
+}
+
+function readinessIdentityConflict(): OperationalReadinessEvidenceError {
+  return new OperationalReadinessEvidenceError("READINESS_EVIDENCE_IDENTITY_CONFLICT", "Operational readiness evidence identity is immutable.");
+}
+
+function readinessNotFound(): OperationalReadinessEvidenceError {
+  return new OperationalReadinessEvidenceError("READINESS_EVIDENCE_NOT_FOUND", "Operational readiness evidence was not found.");
+}
+
+function readinessAdmissionRequired(): OperationalReadinessEvidenceError {
+  return new OperationalReadinessEvidenceError("READINESS_EVIDENCE_INVALID", "Authoritative readiness evidence admission is required.");
 }
 
 function hash(value: string): string {
@@ -768,6 +995,45 @@ const ALERT_EVALUATION_ALERT_INDEX_SQL = "CREATE INDEX IF NOT EXISTS operational
 const ALERT_EVALUATION_UPDATE_TRIGGER_SQL = "CREATE TRIGGER IF NOT EXISTS operational_alert_evaluation_no_update BEFORE UPDATE ON operational_alert_evaluation BEGIN SELECT RAISE(ABORT, 'append-only'); END";
 const ALERT_EVALUATION_DELETE_TRIGGER_SQL = "CREATE TRIGGER IF NOT EXISTS operational_alert_evaluation_no_delete BEFORE DELETE ON operational_alert_evaluation BEGIN SELECT RAISE(ABORT, 'append-only'); END";
 const ALERT_EVALUATION_INSERT_TRIGGER_SQL = "CREATE TRIGGER IF NOT EXISTS operational_alert_evaluation_no_replace BEFORE INSERT ON operational_alert_evaluation WHEN EXISTS (SELECT 1 FROM operational_alert_evaluation WHERE evaluation_id = NEW.evaluation_id) BEGIN SELECT RAISE(ABORT, 'append-only'); END";
+const READINESS_EVIDENCE_TABLE_SQL = `CREATE TABLE IF NOT EXISTS operational_readiness_evidence (
+  evidence_id TEXT PRIMARY KEY,
+  readiness_type TEXT NOT NULL CHECK (readiness_type IN ('BACKUP','DEPLOYMENT','ROLLBACK')),
+  evidence_type TEXT NOT NULL,
+  source_classification TEXT NOT NULL,
+  resource_ref TEXT NOT NULL,
+  tenant_id TEXT NOT NULL,
+  scope_ref TEXT NOT NULL,
+  occurred_at TEXT NOT NULL,
+  payload_json TEXT NOT NULL
+)`;
+const READINESS_EVIDENCE_SCOPE_INDEX_SQL = "CREATE INDEX IF NOT EXISTS operational_readiness_evidence_scope_idx ON operational_readiness_evidence(tenant_id, scope_ref, readiness_type, occurred_at)";
+const READINESS_EVIDENCE_UPDATE_TRIGGER_SQL = "CREATE TRIGGER IF NOT EXISTS operational_readiness_evidence_no_update BEFORE UPDATE ON operational_readiness_evidence BEGIN SELECT RAISE(ABORT, 'append-only'); END";
+const READINESS_EVIDENCE_DELETE_TRIGGER_SQL = "CREATE TRIGGER IF NOT EXISTS operational_readiness_evidence_no_delete BEFORE DELETE ON operational_readiness_evidence BEGIN SELECT RAISE(ABORT, 'append-only'); END";
+const READINESS_EVIDENCE_INSERT_TRIGGER_SQL = "CREATE TRIGGER IF NOT EXISTS operational_readiness_evidence_no_replace BEFORE INSERT ON operational_readiness_evidence WHEN EXISTS (SELECT 1 FROM operational_readiness_evidence WHERE evidence_id = NEW.evidence_id) BEGIN SELECT RAISE(ABORT, 'append-only'); END";
+const READINESS_PROJECTION_TABLE_SQL = `CREATE TABLE IF NOT EXISTS operational_readiness_projection (
+  readiness_projection_id TEXT PRIMARY KEY,
+  readiness_type TEXT NOT NULL CHECK (readiness_type IN ('BACKUP','DEPLOYMENT','ROLLBACK')),
+  resource_ref TEXT NOT NULL,
+  tenant_id TEXT NOT NULL,
+  scope_ref TEXT NOT NULL,
+  binding_fingerprint TEXT NOT NULL CHECK (length(binding_fingerprint) = 64),
+  readiness TEXT NOT NULL CHECK (readiness IN ('READY','NOT_READY','DEGRADED','UNKNOWN')),
+  freshness TEXT NOT NULL CHECK (freshness IN ('FRESH','STALE','UNKNOWN')),
+  evaluated_at TEXT NOT NULL,
+  payload_json TEXT NOT NULL
+)`;
+const READINESS_PROJECTION_SCOPE_INDEX_SQL = "CREATE INDEX IF NOT EXISTS operational_readiness_projection_scope_idx ON operational_readiness_projection(tenant_id, scope_ref, readiness_type, binding_fingerprint, evaluated_at)";
+const READINESS_PROJECTION_UPDATE_TRIGGER_SQL = "CREATE TRIGGER IF NOT EXISTS operational_readiness_projection_no_update BEFORE UPDATE ON operational_readiness_projection BEGIN SELECT RAISE(ABORT, 'append-only'); END";
+const READINESS_PROJECTION_DELETE_TRIGGER_SQL = "CREATE TRIGGER IF NOT EXISTS operational_readiness_projection_no_delete BEFORE DELETE ON operational_readiness_projection BEGIN SELECT RAISE(ABORT, 'append-only'); END";
+const READINESS_PROJECTION_INSERT_TRIGGER_SQL = "CREATE TRIGGER IF NOT EXISTS operational_readiness_projection_no_replace BEFORE INSERT ON operational_readiness_projection WHEN EXISTS (SELECT 1 FROM operational_readiness_projection WHERE readiness_projection_id = NEW.readiness_projection_id) BEGIN SELECT RAISE(ABORT, 'append-only'); END";
+const READINESS_LINK_TABLE_SQL = `CREATE TABLE IF NOT EXISTS operational_readiness_projection_evidence (
+  readiness_projection_id TEXT NOT NULL REFERENCES operational_readiness_projection(readiness_projection_id),
+  evidence_id TEXT NOT NULL REFERENCES operational_readiness_evidence(evidence_id),
+  PRIMARY KEY (readiness_projection_id, evidence_id)
+)`;
+const READINESS_LINK_UPDATE_TRIGGER_SQL = "CREATE TRIGGER IF NOT EXISTS operational_readiness_projection_evidence_no_update BEFORE UPDATE ON operational_readiness_projection_evidence BEGIN SELECT RAISE(ABORT, 'append-only'); END";
+const READINESS_LINK_DELETE_TRIGGER_SQL = "CREATE TRIGGER IF NOT EXISTS operational_readiness_projection_evidence_no_delete BEFORE DELETE ON operational_readiness_projection_evidence BEGIN SELECT RAISE(ABORT, 'append-only'); END";
+const READINESS_LINK_INSERT_TRIGGER_SQL = "CREATE TRIGGER IF NOT EXISTS operational_readiness_projection_evidence_no_replace BEFORE INSERT ON operational_readiness_projection_evidence WHEN EXISTS (SELECT 1 FROM operational_readiness_projection_evidence WHERE readiness_projection_id = NEW.readiness_projection_id AND evidence_id = NEW.evidence_id) BEGIN SELECT RAISE(ABORT, 'append-only'); END";
 const SCHEMA_OBJECTS = Object.freeze({
   operational_telemetry: TABLE_SQL,
   operational_telemetry_component_idx: COMPONENT_INDEX_SQL,
@@ -798,5 +1064,19 @@ const SCHEMA_OBJECTS = Object.freeze({
   operational_alert_evaluation_no_update: ALERT_EVALUATION_UPDATE_TRIGGER_SQL,
   operational_alert_evaluation_no_delete: ALERT_EVALUATION_DELETE_TRIGGER_SQL,
   operational_alert_evaluation_no_replace: ALERT_EVALUATION_INSERT_TRIGGER_SQL,
+  operational_readiness_evidence: READINESS_EVIDENCE_TABLE_SQL,
+  operational_readiness_evidence_scope_idx: READINESS_EVIDENCE_SCOPE_INDEX_SQL,
+  operational_readiness_evidence_no_update: READINESS_EVIDENCE_UPDATE_TRIGGER_SQL,
+  operational_readiness_evidence_no_delete: READINESS_EVIDENCE_DELETE_TRIGGER_SQL,
+  operational_readiness_evidence_no_replace: READINESS_EVIDENCE_INSERT_TRIGGER_SQL,
+  operational_readiness_projection: READINESS_PROJECTION_TABLE_SQL,
+  operational_readiness_projection_scope_idx: READINESS_PROJECTION_SCOPE_INDEX_SQL,
+  operational_readiness_projection_no_update: READINESS_PROJECTION_UPDATE_TRIGGER_SQL,
+  operational_readiness_projection_no_delete: READINESS_PROJECTION_DELETE_TRIGGER_SQL,
+  operational_readiness_projection_no_replace: READINESS_PROJECTION_INSERT_TRIGGER_SQL,
+  operational_readiness_projection_evidence: READINESS_LINK_TABLE_SQL,
+  operational_readiness_projection_evidence_no_update: READINESS_LINK_UPDATE_TRIGGER_SQL,
+  operational_readiness_projection_evidence_no_delete: READINESS_LINK_DELETE_TRIGGER_SQL,
+  operational_readiness_projection_evidence_no_replace: READINESS_LINK_INSERT_TRIGGER_SQL,
 });
 const SCHEMA = `${Object.values(SCHEMA_OBJECTS).join(";\n")};`;

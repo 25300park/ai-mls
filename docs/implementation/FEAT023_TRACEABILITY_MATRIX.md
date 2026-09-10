@@ -21,7 +21,7 @@
 | FEAT-023-C | Health / readiness / freshness | approved amendment sections 4~7; OPS-012/024; TEST-048/049/053 bounded operational projection partition | `modules/operations/src/operational-status-projection.ts`; status snapshot extension in `durable-operational-evidence-store.ts` | exact contract/store/architecture `16/16`; Operations affected `20/20`; full regression `1040/1040` | IMPLEMENTED_AND_VERIFIED |
 | FEAT-023-D | Security / privacy operational controls | approved amendment sections 14~15/20/22; SEC-012/014/021/023/024; TEST-048/049/053 bounded operational-security partition | shared value-aware sanitizer; append-only binding in `DurableOperationalEvidenceStore`; internal `SecurityPrivacyOperationalControlService` | focused security/audit/store/service `45/45`; affected security/AI/SoD regression `128/128`; full regression `1048/1048` | IMPLEMENTED_AND_VERIFIED |
 | FEAT-023-E | Alert / incident evidence projection | approved amendment sections 8~13; approved 14-type/severity mapping | strict evaluator; existing `DurableOperationalEvidenceStore` Alert partition; live-authorized internal read; read-only Console projection | focused `84/84`; Operations/Console affected `121/121`; full regression `1072/1072` | IMPLEMENTED_AND_VERIFIED |
-| FEAT-023-F | Deployment / backup / rollback readiness evidence | approved amendment sections 16~18 | none in B | not run | PLANNED |
+| FEAT-023-F | Deployment / backup / rollback readiness evidence | approved initial brief sections 1~25, canonical design sections 1~17, and AO-approved readiness remediation | fail-closed injected source admission; complete binding fingerprint; append-only readiness evidence/projection; scoped live-authorized read; read-only Console | remediation `6/6`; directly affected `111/111`; full regression `1099/1099`; independent review Critical 0 / Important 0 | IMPLEMENTED_AND_VERIFIED |
 | FEAT-023-G | Operations Console / traceability integration | approved amendment section 19 | none in B | not run | PLANNED |
 | FEAT-023-H | Final integration / hardening | approved amendment section 26 preservation gates | none in B | not run | PLANNED |
 | Final Gate | FEAT-023 completion disposition | approved amendment section 26 | none in B | not run | NOT_STARTED |
@@ -85,3 +85,17 @@ FEAT-023-C는 Health/Readiness/Freshness를 operational observation으로만 유
 | Disabled prerequisites | pure evaluator returns no signal | authorization/idempotency spikes and backup/deployment readiness remain disabled | PASS |
 
 상세 결과는 [FEAT-023-E Alert / Incident Evidence Projection Completion](../reviews/FEAT023_E_ALERT_INCIDENT_EVIDENCE_PROJECTION_COMPLETION.md)에 기록한다. Alert는 incident aggregate나 business authority가 아니며 automatic remediation, external alert network, 새 API 및 dependency 변경은 모두 `0`이다. FEAT-023-F/G/H와 Final Gate는 시작하지 않았다.
+
+## 8. FEAT-023-F evidence chain
+
+| Requirement | Production | Test / assertion | Result |
+|---|---|---|---|
+| Exact readiness/freshness vocabulary and composition | `operational-readiness-evidence.ts` | missing/config-only `UNKNOWN`; blocking/stale-required `NOT_READY`; explicit degraded only; complete manifests `READY` | PASS |
+| Source-specific provenance and binding | injected admission port plus strict evidence type/source map and full SHA-256 binding fingerprint | direct caller `SATISFIED` and threshold rejected; no Production adapter fails closed; Production facade exposes no writer; candidate/environment/rollback-target collisions `0` | PASS |
+| Durable append-only evidence/projection | existing `DurableOperationalEvidenceStore` SQLite boundary | close/reopen, exact replay, identity conflict, raw UPDATE/DELETE rejection and missing durable evidence | PASS |
+| Tenant/scope-safe access | `SecurityPrivacyOperationalControlService.readReadiness()` | live `audit.query`, fixed `SECURITY_MONITORING`, MFA and cross-tenant/scope concealment | PASS |
+| Alert integration | existing FEAT-023-E evaluator and durable provenance check | backup/deployment `NOT_READY` only => HIGH; `UNKNOWN/DEGRADED/READY` inactive; active-to-cleared lifecycle | PASS |
+| Read-only Console | injected readiness read port and bounded renderer | safe DTO only; deployment/backup/restore/rollback controls absent | PASS |
+| F19 and execution containment | supporting reference cannot satisfy restore gate; pure projector/architecture assertions | F19 recovery evidence is not backup success; deployment/backup/rollback execution paths `0` | PASS |
+
+상세 결과는 [FEAT-023-F Deployment / Backup / Rollback Readiness Completion](../reviews/FEAT023_F_DEPLOYMENT_BACKUP_ROLLBACK_READINESS_COMPLETION.md)에 기록한다. AO-approved remediation과 fresh independent review로 provenance, binding identity 및 unscoped-read findings를 모두 해소했다. FEAT-023-G/H 및 Final Gate는 시작하지 않았다.

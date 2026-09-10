@@ -12,10 +12,12 @@ import { PublicationAggregate } from "../../../modules/publication/src/publicati
 import { FixedClock } from "../../../modules/publication/src/publication-clock.js";
 import { createPublicationInfrastructure } from "../../../modules/publication/src/publication-infrastructure.js";
 import { DurableOperationalEvidenceStore } from "../../../modules/operations/src/durable-operational-evidence-store.js";
+import { createTestOperationalReadinessEvidenceAdmission } from "../../../modules/operations/src/operational-readiness-test-support.js";
 import { SecurityPrivacyOperationalControlService } from "../../../modules/operations/src/security-privacy-operational-controls.js";
 import {
   ConsoleReadAdapter,
   type ConsoleOperationalAlertReadPort,
+  type ConsoleOperationalReadinessReadPort,
 } from "./console-read-adapter.js";
 import { createDevelopmentConsoleSessionAdapter } from "./development-session.js";
 
@@ -23,7 +25,7 @@ const now = "2026-08-13T00:00:00.000Z";
 const publicationId = "publication-console-1";
 const tenantId = "team-a";
 
-function setup(alertReadPort?: ConsoleOperationalAlertReadPort) {
+function setup(alertReadPort?: ConsoleOperationalAlertReadPort, readinessReadPort?: ConsoleOperationalReadinessReadPort) {
   const clock = new FixedClock(now);
   const session = createDevelopmentConsoleSessionAdapter({
     enabled: true,
@@ -102,6 +104,7 @@ function setup(alertReadPort?: ConsoleOperationalAlertReadPort) {
     authorizationEvaluator: authorization,
     clock,
     ...(alertReadPort === undefined ? {} : { alertReadPort }),
+    ...(readinessReadPort === undefined ? {} : { readinessReadPort }),
   });
   return {
     adapter,
@@ -280,6 +283,7 @@ test("POST-F15-CONSOLE read adapter exposes bounded Dashboard, Projection and Op
   assert.equal(operations.state, "READY");
   assert.equal((operations.data?.["readiness"] as { operationsRead?: boolean }).operationsRead, true);
   assert.equal(operations.data?.["alerts"], "UNAVAILABLE");
+  assert.equal(operations.data?.["operationalReadiness"], "UNAVAILABLE");
 });
 
 test("FEAT-023-E Operations Console uses an injected tenant-safe read-only Alert port", () => {
@@ -309,9 +313,36 @@ test("FEAT-023-E Operations Console uses an injected tenant-safe read-only Alert
   assert.equal(Object.hasOwn(alerts[0] ?? {}, "retry"), false);
 });
 
+test("FEAT-023-F Operations Console exposes only safe fields from its injected readiness read port", () => {
+  let captured: Readonly<Record<string, unknown>> | undefined;
+  const { adapter } = setup(undefined, {
+    readReadiness(input: unknown) {
+      captured = input as Readonly<Record<string, unknown>>;
+      return Object.freeze([Object.freeze({
+        readinessProjectionId: "readiness-projection:backup-001", readinessType: "BACKUP",
+        binding: Object.freeze({ subjectRef: `backup-readiness:sha256:${"d".repeat(64)}`, tenantId, scopeRef: tenantId,
+          candidateRef: null, environmentRef: null, protectedSetRef: `protected-set:sha256:${"e".repeat(64)}`, rollbackTargetRef: null }),
+        readiness: "UNKNOWN", freshness: "UNKNOWN", safeReasonCodes: Object.freeze(["MISSING_BACKUP_EXECUTION"]),
+        evidenceIds: Object.freeze(["readiness-evidence:backup-config-001"]),
+        evidenceRefs: Object.freeze(["evidence:backup-config-001"]), evaluatedAt: now,
+      })]);
+    },
+  });
+  const result = adapter.read(request("OPERATIONS"));
+  const readiness = result.data?.["operationalReadiness"] as readonly Readonly<Record<string, unknown>>[];
+  assert.equal(readiness[0]?.["readinessType"], "BACKUP");
+  assert.equal(readiness[0]?.["readiness"], "UNKNOWN");
+  assert.equal((captured?.["session"] as { principalId?: string }).principalId, "console-operator");
+  assert.equal(Object.hasOwn(readiness[0] ?? {}, "tenantId"), false);
+  assert.equal(Object.hasOwn(readiness[0] ?? {}, "scopeRef"), false);
+  assert.equal(Object.hasOwn(readiness[0] ?? {}, "evidenceIds"), false);
+  assert.equal(Object.hasOwn(readiness[0] ?? {}, "deploy"), false);
+  assert.equal(Object.hasOwn(readiness[0] ?? {}, "rollback"), false);
+});
+
 test("FEAT-023-E composed Console path reads durable Alerts through the live-authorized operational service", () => {
   const directory = mkdtempSync(join(tmpdir(), "feat-023-e-console-"));
-  const store = new DurableOperationalEvidenceStore({ databasePath: join(directory, "operations.sqlite") });
+  const store = new DurableOperationalEvidenceStore({ databasePath: join(directory, "operations.sqlite") }, createTestOperationalReadinessEvidenceAdmission());
   try {
     store.appendScoped({
       telemetryEventId: "telemetry:console-alert-001", eventType: "SECURITY_ALERT_OBSERVED", component: "SECURITY",
@@ -335,6 +366,42 @@ test("FEAT-023-E composed Console path reads durable Alerts through the live-aut
     assert.equal((result.data?.["alerts"] as readonly unknown[]).length, 1);
     assert.equal(JSON.stringify(result).includes("tenantId"), false);
     assert.equal(JSON.stringify(result).includes("scopeRef"), false);
+  } finally {
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("FEAT-023-F composed Console path reads durable readiness through the live-authorized operational service", () => {
+  const directory = mkdtempSync(join(tmpdir(), "feat-023-f-console-"));
+  const store = new DurableOperationalEvidenceStore({ databasePath: join(directory, "operations.sqlite") }, createTestOperationalReadinessEvidenceAdmission());
+  try {
+    const binding = { subjectRef: `backup-readiness:sha256:${"f".repeat(64)}`, tenantId, scopeRef: tenantId,
+      candidateRef: null, environmentRef: null, protectedSetRef: `protected-set:sha256:${"e".repeat(64)}`, rollbackTargetRef: null } as const;
+    const types = ["BACKUP_CONFIGURATION", "BACKUP_EXECUTION", "BACKUP_INTEGRITY", "RESTORE_VALIDATION"] as const;
+    types.forEach((evidenceType, index) => store.appendReadinessEvidence({
+      evidenceId: `readiness-evidence:console-backup-${String(index + 1)}`, readinessType: "BACKUP", evidenceType,
+      sourceClassification: evidenceType === "RESTORE_VALIDATION" ? "RECOVERY_VALIDATOR" : "BACKUP_SYSTEM",
+      binding, outcome: "SATISFIED", occurredAt: now, freshnessThresholdMs: null,
+      evidenceRefs: [`evidence:console-backup-${String(index + 1)}`],
+    }));
+    store.projectReadiness({ readinessProjectionId: "readiness-projection:console-backup-001", readinessType: "BACKUP", binding,
+      evidenceIds: types.map((_, index) => `readiness-evidence:console-backup-${String(index + 1)}`), evaluatedAt: now });
+    const readinessAuthorization = new AuthorizationService({
+      assignments: [{ ...assignment("SEC", ["OPERATIONAL_EVIDENCE"]), purposes: Object.freeze(["SECURITY_MONITORING"]) }],
+      authoritySource: "STATIC_TEST_COMPATIBILITY",
+      auditSink: new AuditLog({ clock: () => new Date(now), idFactory: () => "console-readiness-auth-audit" }),
+      clock: () => new Date(now), policyVersion: "console-readiness-policy-v1",
+    });
+    const service = new SecurityPrivacyOperationalControlService({ authorizationService: readinessAuthorization, evidenceStore: store });
+    const setupResult = setup(undefined, service);
+    const result = setupResult.adapter.read(Object.freeze({ ...request("OPERATIONS"), correlationId: "correlation:console-readiness-read-001" }));
+    const projections = result.data?.["operationalReadiness"] as readonly Readonly<Record<string, unknown>>[];
+    assert.equal(projections.length, 1);
+    assert.equal(projections[0]?.["readiness"], "READY");
+    assert.equal(JSON.stringify(projections).includes("tenantId"), false);
+    assert.equal(JSON.stringify(projections).includes("scopeRef"), false);
+    assert.equal(setupResult.commandCalls, 0);
   } finally {
     store.close();
     rmSync(directory, { recursive: true, force: true });
