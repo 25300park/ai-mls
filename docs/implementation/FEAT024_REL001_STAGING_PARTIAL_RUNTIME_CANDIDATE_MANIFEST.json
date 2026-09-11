@@ -1,0 +1,142 @@
+{
+  "releaseCandidateId": "1f8da015c5cd9e1ae79984066e31f217430a244627d5284fb1fa901e86f51ff1",
+  "logicalReleaseId": "REL-001",
+  "sourceCommitSha": "ddc1604cae78ca3493c27a7add23446970e485ae",
+  "repositoryIdentity": "https://github.com/25300park/ai-mls.git",
+  "sourceBranch": "codex/feat-024-a-release-candidate",
+  "artifactFingerprint": "a5de42d389b2aec27b4dd2a6362f442afced8414a7050c170f980fa4727547cd",
+  "targetEnvironment": "Staging",
+  "generatedAt": "2026-09-11T03:00:20.4196923Z",
+  "candidateFingerprint": "001b97569d2b56ae80b90f4a13b87822d156dc6fd18a75899c5681ebb15d427d",
+  "acceptanceResult": "INCOMPLETE",
+  "releaseScopeCoverage": [
+    {
+      "artifactComponentId": "API-015_ADMINISTRATION_HTTP",
+      "requiredByReleaseScope": true,
+      "executableRuntimeAvailable": true,
+      "artifactIncluded": true,
+      "implementationRuntimeEvidenceRef": "apps/api/src/administration-production-composition.ts#composeProductionAdministrationApi015NodeHttpServer",
+      "gapDisposition": "INCLUDED"
+    },
+    {
+      "artifactComponentId": "ADMIN_CONSOLE",
+      "requiredByReleaseScope": true,
+      "executableRuntimeAvailable": false,
+      "artifactIncluded": false,
+      "implementationRuntimeEvidenceRef": "apps/admin-console/src/main.ts#composeDevelopmentAdminConsole",
+      "gapDisposition": "INCOMPLETE_RUNTIME_SURFACE"
+    },
+    {
+      "artifactComponentId": "CORE_APIS_FEAT_001_011",
+      "requiredByReleaseScope": true,
+      "executableRuntimeAvailable": false,
+      "artifactIncluded": false,
+      "implementationRuntimeEvidenceRef": "apps/api/src/composition.ts#composeApiModules",
+      "gapDisposition": "INCOMPLETE_RUNTIME_SURFACE"
+    },
+    {
+      "artifactComponentId": "AUDIT_API_016",
+      "requiredByReleaseScope": true,
+      "executableRuntimeAvailable": false,
+      "artifactIncluded": false,
+      "implementationRuntimeEvidenceRef": "modules/audit/src/audit-log.ts#AuditLog",
+      "gapDisposition": "INCOMPLETE_RUNTIME_SURFACE"
+    },
+    {
+      "artifactComponentId": "JOBS_API_017",
+      "requiredByReleaseScope": true,
+      "executableRuntimeAvailable": false,
+      "artifactIncluded": false,
+      "implementationRuntimeEvidenceRef": "modules/jobs/src/job-service.ts#JobService",
+      "gapDisposition": "INCOMPLETE_RUNTIME_SURFACE"
+    },
+    {
+      "artifactComponentId": "AI_ADVISORY_FEAT_022",
+      "requiredByReleaseScope": true,
+      "executableRuntimeAvailable": false,
+      "artifactIncluded": false,
+      "implementationRuntimeEvidenceRef": "modules/ai/src/advisory-production-composition.ts#createProductionAdvisoryRuntime",
+      "gapDisposition": "INCOMPLETE_RUNTIME_SURFACE"
+    },
+    {
+      "artifactComponentId": "PUBLICATION_API_014",
+      "requiredByReleaseScope": false,
+      "executableRuntimeAvailable": true,
+      "artifactIncluded": false,
+      "implementationRuntimeEvidenceRef": "apps/api/src/composition.ts#composeProductionPublicationApi014NodeHttpServer",
+      "gapDisposition": "OUT_OF_SCOPE"
+    },
+    {
+      "artifactComponentId": "CONNECTOR_API_018_019",
+      "requiredByReleaseScope": false,
+      "executableRuntimeAvailable": true,
+      "artifactIncluded": false,
+      "implementationRuntimeEvidenceRef": "apps/api/src/connector-production-composition.ts#createProductionConnectorApi018Composition",
+      "gapDisposition": "OUT_OF_SCOPE"
+    }
+  ],
+  "artifactManifest": {
+    "artifactManifestVersion": "1",
+    "logicalReleaseId": "REL-001",
+    "targetEnvironment": "Staging",
+    "sourceCommitSha": "ddc1604cae78ca3493c27a7add23446970e485ae",
+    "repositoryIdentity": "https://github.com/25300park/ai-mls.git",
+    "runtimeComponents": [
+      {
+        "artifactComponentId": "API-015_ADMINISTRATION_HTTP",
+        "runtimeEntryPoint": "apps/api/src/administration-production-composition.js",
+        "includedFiles": [
+          { "path": "apps/api/src/administration-api-contracts.js", "fileSize": 30038, "fileSha256": "21c4082c8cb668e4c18b2c7fb1f49e05ee6a23178ccbb2ebc41377fd7b1ad3ab" },
+          { "path": "apps/api/src/administration-api-validation.js", "fileSize": 2679, "fileSha256": "82effb9eff3c1ed1db9189331fec6cdcb9d80d9b1e529bfaf10d825a98e4de70" },
+          { "path": "apps/api/src/administration-governance-api.js", "fileSize": 68542, "fileSha256": "0e5f0aa855999964bb70efc18031f41ca552e6af9a96401788e2f95ab89f3c61" },
+          { "path": "apps/api/src/administration-http-adapter.js", "fileSize": 9955, "fileSha256": "26964bb897704cbdb10d8e07e97d03ca64d442bc085457301d79b2b6d361104d" },
+          { "path": "apps/api/src/administration-production-composition.js", "fileSize": 2890, "fileSha256": "f960e287c57d8d31c18d2680e5d25dc0990b9c50af3303b60c016e990d04d798" },
+          { "path": "modules/administration/src/administration-durable-persistence.js", "fileSize": 45508, "fileSha256": "30ce53653221d2ffc02c54e9cb1a2cfd68b439681cfe865c19e5bb8c2dbdf445" },
+          { "path": "modules/administration/src/administration-persistence-engine.js", "fileSize": 29443, "fileSha256": "e947772aa3a333df2e18316991cd27eba295e6773c506b1b90f6fa152447b48a" },
+          { "path": "modules/administration/src/administration-persistence.js", "fileSize": 2771, "fileSha256": "e989a49097f98cc016e0a29134bcf19cc87c013a077e234563b285853b4581f9" },
+          { "path": "modules/administration/src/live-assignment-adapter.js", "fileSize": 8884, "fileSha256": "25b3af0c19724188034d854e40c66b16ce859eea9a2bb4a168e1f1bc1a818881" },
+          { "path": "modules/authorization/src/authorization-service.js", "fileSize": 20091, "fileSha256": "ce09e1d38dfcf32d9a6954c839c80188665714a27d44c7d4b7b8ec758f2ce316" },
+          { "path": "modules/identity/src/session-service.js", "fileSize": 9543, "fileSha256": "f2ec82fc7d2575a5e2456bc736f5e8d81ff37ae8bcf3fb4982eebf4d38f420b2" },
+          { "path": "modules/publication/src/publication-http-contracts.js", "fileSize": 5782, "fileSha256": "923610581ddfa815c7b1567f1c31777be4f196a9175ef71a0ad836faaf31bab8" },
+          { "path": "modules/publication/src/publication-node-http-configuration.js", "fileSize": 2050, "fileSha256": "86d7c33f71d6fb4df625942187501b4377e357dacd23df54a8c77a11dddfd397" },
+          { "path": "modules/publication/src/publication-node-http-contracts.js", "fileSize": 747, "fileSha256": "b919fab3a02579a9c6645411b40eeaae85d9974df6b0fe6eeebf340c78ce3591" },
+          { "path": "modules/publication/src/publication-node-http-lifecycle.js", "fileSize": 1094, "fileSha256": "bd7dba66b3c7cea1fc5ab836e2a76862ddd96bd2b9f26c57eeb0ade03ea338e4" },
+          { "path": "modules/publication/src/publication-node-http-request-reader.js", "fileSize": 6154, "fileSha256": "989354e6e436696314041a679402222eed03d7404444ce3fb550bec20fdae6c8" },
+          { "path": "modules/publication/src/publication-node-http-response-writer.js", "fileSize": 5234, "fileSha256": "394e05335c4888ed114416ca086724c9c0dabaee3aba80a732ef33d2265fb2d2" },
+          { "path": "modules/publication/src/publication-node-http-server.js", "fileSize": 10985, "fileSha256": "8da186378f77fc800f0f2715e925c6d573df3d37255bb9d7ab1070154c4eb436" }
+        ],
+        "componentFingerprint": "a8dfe6424209016bcdeca71986eb833703450d9d905e60bd027f77f8e4b43058"
+      }
+    ],
+    "includedFilePaths": [
+      "apps/api/src/administration-api-contracts.js",
+      "apps/api/src/administration-api-validation.js",
+      "apps/api/src/administration-governance-api.js",
+      "apps/api/src/administration-http-adapter.js",
+      "apps/api/src/administration-production-composition.js",
+      "modules/administration/src/administration-durable-persistence.js",
+      "modules/administration/src/administration-persistence-engine.js",
+      "modules/administration/src/administration-persistence.js",
+      "modules/administration/src/live-assignment-adapter.js",
+      "modules/authorization/src/authorization-service.js",
+      "modules/identity/src/session-service.js",
+      "modules/publication/src/publication-http-contracts.js",
+      "modules/publication/src/publication-node-http-configuration.js",
+      "modules/publication/src/publication-node-http-contracts.js",
+      "modules/publication/src/publication-node-http-lifecycle.js",
+      "modules/publication/src/publication-node-http-request-reader.js",
+      "modules/publication/src/publication-node-http-response-writer.js",
+      "modules/publication/src/publication-node-http-server.js"
+    ],
+    "excludedClassPolicy": [
+      "test/spec/fixture/mock output",
+      "source map and TypeScript declaration metadata",
+      "TypeScript source and build metadata",
+      "documentation, reports, logs, temp, cache, and backups",
+      "local databases, environment values, credentials, and secrets",
+      "unreachable dist output"
+    ],
+    "artifactFingerprint": "a5de42d389b2aec27b4dd2a6362f442afced8414a7050c170f980fa4727547cd",
+    "generatedAt": "2026-09-11T03:00:20.4196923Z"
+  }
+}

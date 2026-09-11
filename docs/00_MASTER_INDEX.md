@@ -267,6 +267,7 @@
 | DOC-REVIEW-140 | [FEAT-023-H Final Integration / Hardening Completion](reviews/FEAT023_H_FINAL_INTEGRATION_HARDENING_COMPLETION.md) | A~G durability, isolation, privacy, truthfulness and read-only preservation gate | AVAILABLE |
 | DOC-REVIEW-141 | [FEAT-023 Security / Privacy / Operations Controls Final Gate](reviews/FEAT023_FINAL_GATE_REPORT.md) | A~H integration verification, preserved initial blocker and approved SQL/SQLite remediation closure | AVAILABLE |
 | DOC-REVIEW-142 | [FEAT-024-A API-015 Artifact Root Extraction Completion](reviews/FEAT024_A_API015_ARTIFACT_ROOT_EXTRACTION_COMPLETION.md) | dedicated API-015 compiled artifact root, compatibility and bounded runtime closure evidence | AVAILABLE |
+| DOC-REVIEW-143 | [FEAT-024-A REL-001 / Staging Candidate Manifest Materialization](reviews/FEAT024_A_REL001_STAGING_CANDIDATE_IMPLEMENTATION_REPORT.md) | exact candidate-bound runtime manifest, deterministic fingerprints and truthful incomplete-scope evidence | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -1017,6 +1018,7 @@
 | DOC-REVIEW-140 | FEAT-023-H Final Integration / Hardening Completion | [FEAT023_H_FINAL_INTEGRATION_HARDENING_COMPLETION.md](reviews/FEAT023_H_FINAL_INTEGRATION_HARDENING_COMPLETION.md) |
 | DOC-REVIEW-141 | FEAT-023 Security / Privacy / Operations Controls Final Gate Report | [FEAT023_FINAL_GATE_REPORT.md](reviews/FEAT023_FINAL_GATE_REPORT.md) |
 | DOC-REVIEW-142 | FEAT-024-A API-015 Artifact Root Extraction Completion | [FEAT024_A_API015_ARTIFACT_ROOT_EXTRACTION_COMPLETION.md](reviews/FEAT024_A_API015_ARTIFACT_ROOT_EXTRACTION_COMPLETION.md) |
+| DOC-REVIEW-143 | FEAT-024-A REL-001 / Staging Candidate Manifest Materialization | [FEAT024_A_REL001_STAGING_CANDIDATE_IMPLEMENTATION_REPORT.md](reviews/FEAT024_A_REL001_STAGING_CANDIDATE_IMPLEMENTATION_REPORT.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books

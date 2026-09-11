@@ -33,10 +33,10 @@
 - Produces `materializeRel001StagingCandidate(input): Promise<Rel001StagingCandidate>`.
 - Returns immutable coverage evidence, runtime manifest, and `acceptanceResult: "INCOMPLETE"`.
 
-- [ ] Write RED table tests with literal rows for API-015 included; Console, Core, Audit, Jobs, AI incomplete; Publication and Connector out of scope. Mutate omitted rows and false inclusion/executability claims.
-- [ ] Build/run the focused test; confirm failure because the production module is absent.
-- [ ] Implement the fixed eight-row contract and fail-closed validation.
-- [ ] Re-run and confirm GREEN.
+- [x] Write RED table tests with literal rows for API-015 included; Console, Core, Audit, Jobs, AI incomplete; Publication and Connector out of scope. Mutate omitted rows and false inclusion/executability claims.
+- [x] Build/run the focused test; confirm failure because the production module is absent.
+- [x] Implement the fixed eight-row contract and fail-closed validation.
+- [x] Re-run and confirm GREEN.
 
 ### Task 2: Runtime closure and exclusions
 
@@ -48,10 +48,10 @@
 - Consumes `distRoot` and runtime entry point `apps/api/src/administration-production-composition.js`.
 - Produces sorted paths and `{ path, fileSize, fileSha256 }` records.
 
-- [ ] Write RED tests using a temporary ESM graph: include reachable JS/safe JSON; exclude tests/specs/maps/declarations/tsbuildinfo/source/unrelated files; reject path escape, missing dependency, and secret-bearing runtime config.
-- [ ] Run and confirm the expected missing-closure failure.
-- [ ] Implement a bounded walker for relative static import/export and literal dynamic import under `distRoot`; ignore Node/package imports and reject ambiguity.
-- [ ] Re-run and confirm GREEN.
+- [x] Write RED tests using a temporary ESM graph: include reachable JS/safe JSON; exclude tests/specs/maps/declarations/tsbuildinfo/source/unrelated files; reject path escape, missing dependency, and secret-bearing runtime config.
+- [x] Run and confirm the expected missing-closure failure.
+- [x] Implement a bounded walker for relative static import/export and literal dynamic import under `distRoot`; ignore Node/package imports and reject ambiguity.
+- [x] Re-run and confirm GREEN.
 
 ### Task 2A: Dedicated API-015 artifact root extraction
 
@@ -77,10 +77,10 @@
 **Interfaces:**
 - Produces `componentFingerprint`, `artifactFingerprint`, `releaseCandidateId`, `candidateFingerprint`.
 
-- [ ] Write RED tests proving `generatedAt` does not affect identity, one byte changes identity, and the artifact hash covers included components only.
-- [ ] Confirm RED.
-- [ ] Hash ordered `path + fileSha256 + fileSize`, then `REL-001 + Staging + sourceCommitSha + ordered component fingerprints`; derive the non-temporal candidate ID and fingerprint.
-- [ ] Confirm focused GREEN.
+- [x] Write RED tests proving `generatedAt` does not affect identity, one byte changes identity, and the artifact hash covers included components only.
+- [x] Confirm RED.
+- [x] Hash ordered `path + fileSha256 + fileSize`, then `REL-001 + Staging + sourceCommitSha + ordered component fingerprints`; derive the non-temporal candidate ID and fingerprint.
+- [x] Confirm focused GREEN.
 
 ### Task 4: Exact baseline evidence
 
@@ -91,17 +91,17 @@
 **Interfaces:**
 - Consumes the new source commit containing the approved API-015 root extraction, repository `https://github.com/25300park/ai-mls.git`, branch `codex/feat-024-a-release-candidate`, and its exact `dist/`.
 
-- [ ] After the extraction closeout commit exists, build its exact clean output.
-- [ ] Materialize and serialize the candidate with only API-015 as a runtime component and all required gaps present.
-- [ ] Report exact fingerprints, `INCOMPLETE`, gaps, validation, limitations, and prerequisites without claiming acceptance or deployment readiness.
+- [x] After the extraction closeout commit exists, build its exact clean output.
+- [x] Materialize and serialize the candidate with only API-015 as a runtime component and all required gaps present.
+- [x] Report exact fingerprints, `INCOMPLETE`, gaps, validation, limitations, and prerequisites without claiming acceptance or deployment readiness.
 
 ### Task 5: Extraction verification and stop
 
-- [ ] Run focused candidate tests.
-- [ ] Run affected API-015 production-composition regression.
-- [ ] Run lint, typecheck, build, and affected regression using the existing toolchain.
-- [ ] Run `git diff --check`; confirm dependency/lockfile changes zero, runtime semantics unchanged, and main clean.
+- [x] Run focused candidate tests.
+- [x] Run affected API-015 production-composition regression.
+- [x] Run lint, typecheck, build, and affected regression using the existing toolchain.
+- [x] Run `git diff --check`; confirm dependency/lockfile changes zero, runtime semantics unchanged, and main clean.
 - [x] Run the full regression and repository verification gate.
 - [x] Validate immutable architecture checksum and Gitleaks.
-- [ ] Record the extraction closeout evidence and obtain the new source commit SHA.
-- [ ] Stop before materializing the candidate from that new SHA. Do not push, deploy, accept REL-001, or start FEAT-024-B.
+- [x] Record the extraction closeout evidence and obtain the new source commit SHA.
+- [x] Stop after candidate materialization for Architecture Owner completion approval. Do not integrate, push, deploy, accept REL-001, or start FEAT-024-B.
