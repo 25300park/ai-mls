@@ -136,6 +136,11 @@ export async function materializeRel001StagingCandidate(input: Rel001StagingCand
 }
 
 export function assertRel001StagingCandidateIntegrity(candidate: Rel001StagingCandidate): void {
+  assertRel001StagingCandidateArtifactIntegrity(candidate);
+  if (!sameCanonicalRows(candidate.releaseScopeCoverage, RELEASE_SCOPE_COVERAGE)) invalidCandidate();
+}
+
+export function assertRel001StagingCandidateArtifactIntegrity(candidate: Rel001StagingCandidate): void {
   const artifact = candidate.artifactManifest;
   if (candidate.repositoryIdentity !== REPOSITORY_IDENTITY || !isSafeSourceBranch(candidate.sourceBranch)) invalidCandidate();
   if (artifact.runtimeComponents.length !== 1) invalidCandidate();
@@ -159,7 +164,6 @@ export function assertRel001StagingCandidateIntegrity(candidate: Rel001StagingCa
     || artifact.artifactFingerprint !== artifactFingerprint
     || candidate.releaseCandidateId !== releaseCandidateId
     || candidate.candidateFingerprint !== candidateFingerprint
-    || !sameCanonicalRows(candidate.releaseScopeCoverage, RELEASE_SCOPE_COVERAGE)
     || !sameOrderedValues(artifact.excludedClassPolicy, EXCLUDED_CLASS_POLICY)) invalidCandidate();
 }
 

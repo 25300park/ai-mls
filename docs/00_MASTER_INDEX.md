@@ -276,6 +276,8 @@
 | DOC-REVIEW-149 | [FEAT-024-D Acceptance Authority / SoD Completion](reviews/FEAT024_D_ACCEPTANCE_AUTHORITY_SOD_COMPLETION.md) | bounded RELEASE_OWNER authority, live MFA/SoD, candidate-bound provenance and durable replay verification | AVAILABLE |
 | DOC-REVIEW-150 | [FEAT-024-E Evidence Composition / Candidate-Bound Verification Gap Matrix](reviews/FEAT024_E_EVIDENCE_COMPOSITION_CANDIDATE_VERIFICATION_GAP_MATRIX.md) | authoritative evidence source inventory, exact candidate/environment binding and truthful missing/blocking gap analysis | AVAILABLE |
 | DOC-REVIEW-151 | [FEAT-024-E Evidence Composition / Candidate-Bound Verification Completion](reviews/FEAT024_E_EVIDENCE_COMPOSITION_CANDIDATE_VERIFICATION_COMPLETION.md) | deterministic safe evidence composition, readiness/runtime-gap preservation and exact REL-001 incomplete verification | AVAILABLE |
+| DOC-REVIEW-152 | [FEAT-024-F Promotion Handoff Evidence Gap Matrix](reviews/FEAT024_F_PROMOTION_HANDOFF_EVIDENCE_GAP_MATRIX.md) | accepted candidate, manifest lineage, readiness, environment and deployment SoD handoff gap analysis | AVAILABLE |
+| DOC-REVIEW-153 | [FEAT-024-F Promotion Handoff Evidence Completion](reviews/FEAT024_F_PROMOTION_HANDOFF_EVIDENCE_COMPLETION.md) | deterministic immutable handoff evidence, exact REL-001 bindings and zero deployment-side-effect verification | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -1041,6 +1043,8 @@
 | DOC-REVIEW-149 | FEAT-024-D Acceptance Authority / SoD Completion | [FEAT024_D_ACCEPTANCE_AUTHORITY_SOD_COMPLETION.md](reviews/FEAT024_D_ACCEPTANCE_AUTHORITY_SOD_COMPLETION.md) |
 | DOC-REVIEW-150 | FEAT-024-E Evidence Composition / Candidate-Bound Verification Gap Matrix | [FEAT024_E_EVIDENCE_COMPOSITION_CANDIDATE_VERIFICATION_GAP_MATRIX.md](reviews/FEAT024_E_EVIDENCE_COMPOSITION_CANDIDATE_VERIFICATION_GAP_MATRIX.md) |
 | DOC-REVIEW-151 | FEAT-024-E Evidence Composition / Candidate-Bound Verification Completion | [FEAT024_E_EVIDENCE_COMPOSITION_CANDIDATE_VERIFICATION_COMPLETION.md](reviews/FEAT024_E_EVIDENCE_COMPOSITION_CANDIDATE_VERIFICATION_COMPLETION.md) |
+| DOC-REVIEW-152 | FEAT-024-F Promotion Handoff Evidence Gap Matrix | [FEAT024_F_PROMOTION_HANDOFF_EVIDENCE_GAP_MATRIX.md](reviews/FEAT024_F_PROMOTION_HANDOFF_EVIDENCE_GAP_MATRIX.md) |
+| DOC-REVIEW-153 | FEAT-024-F Promotion Handoff Evidence Completion | [FEAT024_F_PROMOTION_HANDOFF_EVIDENCE_COMPLETION.md](reviews/FEAT024_F_PROMOTION_HANDOFF_EVIDENCE_COMPLETION.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books
