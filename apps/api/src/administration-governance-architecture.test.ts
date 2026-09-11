@@ -7,7 +7,7 @@ import { ADMINISTRATION_API_COMMAND_OPERATIONS, ADMINISTRATION_API_QUERY_OPERATI
 const source = new URL("apps/api/src/administration-governance-api.ts", `file:///${process.cwd().replaceAll("\\", "/")}/`);
 const index = new URL("apps/api/src/index.ts", `file:///${process.cwd().replaceAll("\\", "/")}/`);
 const httpAdapter = new URL("apps/api/src/administration-http-adapter.ts", `file:///${process.cwd().replaceAll("\\", "/")}/`);
-const composition = new URL("apps/api/src/composition.ts", `file:///${process.cwd().replaceAll("\\", "/")}/`);
+const administrationComposition = new URL("apps/api/src/administration-production-composition.ts", `file:///${process.cwd().replaceAll("\\", "/")}/`);
 const durablePersistence = new URL("modules/administration/src/administration-durable-persistence.ts", `file:///${process.cwd().replaceAll("\\", "/")}/`);
 
 test("F16-PHASE-8 workflow uses API-015, Phase 6 UoW and Phase 7 live authorization without execution dependencies", async () => {
@@ -28,7 +28,7 @@ test("F16-PHASE-8 workflow uses API-015, Phase 6 UoW and Phase 7 live authorizat
 
 test("F16-PHASE-9 HTTP adapter uses one governance application boundary and preserves canonical ownership", async () => {
   const [adapter, root, exports] = await Promise.all([
-    readFile(httpAdapter, "utf8"), readFile(composition, "utf8"), readFile(index, "utf8"),
+    readFile(httpAdapter, "utf8"), readFile(administrationComposition, "utf8"), readFile(index, "utf8"),
   ]);
   assert.match(adapter, /AdministrationGovernanceApplicationPort/);
   assert.match(adapter, /x-session-id/);
@@ -48,7 +48,7 @@ test("F16-PHASE-9 HTTP adapter uses one governance application boundary and pres
 
 test("F16-R1 production composition selects durable persistence with no in-memory fallback", async () => {
   const [root, durable] = await Promise.all([
-    readFile(composition, "utf8"),
+    readFile(administrationComposition, "utf8"),
     readFile(durablePersistence, "utf8"),
   ]);
   assert.match(root, /composeProductionAdministrationApi015NodeHttpServer/);

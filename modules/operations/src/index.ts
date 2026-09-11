@@ -3,4 +3,5 @@ export * from "./operational-alert-projection.js";
 export * from "./operational-readiness-evidence.js";
 export * from "./operational-telemetry-contracts.js";
 export * from "./operational-status-projection.js";
+export * from "./release-candidate-artifact.js";
 export * from "./security-privacy-operational-controls.js";
