@@ -274,6 +274,8 @@
 | DOC-REVIEW-147 | [FEAT-024-C Durable Acceptance Manifest / Idempotency Completion](reviews/FEAT024_C_DURABLE_ACCEPTANCE_MANIFEST_IDEMPOTENCY_COMPLETION.md) | durable candidate/manifest persistence, atomic replay/evidence binding, append-only and restart verification | AVAILABLE |
 | DOC-REVIEW-148 | [FEAT-024-D Acceptance Authority / SoD Gap Matrix](reviews/FEAT024_D_ACCEPTANCE_AUTHORITY_SOD_GAP_MATRIX.md) | canonical release authority, trusted actor, MFA, producer/author SoD and deployment separation gap analysis | AVAILABLE |
 | DOC-REVIEW-149 | [FEAT-024-D Acceptance Authority / SoD Completion](reviews/FEAT024_D_ACCEPTANCE_AUTHORITY_SOD_COMPLETION.md) | bounded RELEASE_OWNER authority, live MFA/SoD, candidate-bound provenance and durable replay verification | AVAILABLE |
+| DOC-REVIEW-150 | [FEAT-024-E Evidence Composition / Candidate-Bound Verification Gap Matrix](reviews/FEAT024_E_EVIDENCE_COMPOSITION_CANDIDATE_VERIFICATION_GAP_MATRIX.md) | authoritative evidence source inventory, exact candidate/environment binding and truthful missing/blocking gap analysis | AVAILABLE |
+| DOC-REVIEW-151 | [FEAT-024-E Evidence Composition / Candidate-Bound Verification Completion](reviews/FEAT024_E_EVIDENCE_COMPOSITION_CANDIDATE_VERIFICATION_COMPLETION.md) | deterministic safe evidence composition, readiness/runtime-gap preservation and exact REL-001 incomplete verification | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -543,6 +545,7 @@
 | DOC-DEV-043 | [FEAT-023-G Operations Console / Traceability Integration Implementation Plan](implementation/FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_IMPLEMENTATION_PLAN.md) | scoped operational read, safe Console DTO/rendering and A~G closure TDD plan | AVAILABLE |
 | DOC-DEV-044 | [FEAT-024-C Durable Acceptance Manifest / Idempotency Implementation Plan](implementation/FEAT024_C_DURABLE_ACCEPTANCE_MANIFEST_IDEMPOTENCY_IMPLEMENTATION_PLAN.md) | bounded SQLite store, atomic append, restart replay, conflict and lineage TDD plan | AVAILABLE |
 | DOC-DEV-045 | [FEAT-024-D Acceptance Authority / SoD Implementation Plan](implementation/FEAT024_D_ACCEPTANCE_AUTHORITY_SOD_IMPLEMENTATION_PLAN.md) | RELEASE_OWNER, trusted Session actor, MFA, candidate provenance, SoD and durable manifest delegation TDD plan | AVAILABLE |
+| DOC-DEV-046 | [FEAT-024-E Evidence Composition / Candidate-Bound Verification Implementation Plan](implementation/FEAT024_E_EVIDENCE_COMPOSITION_CANDIDATE_VERIFICATION_IMPLEMENTATION_PLAN.md) | exact candidate evidence resolver, deterministic composition, readiness truth and safe bounded evidence TDD plan | AVAILABLE |
 | DOC-REVIEW-019 | [Phase 12 Completion](reviews/PHASE12_COMPLETION.md) | Developer Bible completion evidence와 Phase 13 gate | AVAILABLE |
 
 ## Book 12 — Master Development Roadmap (Phase 13)
@@ -856,6 +859,7 @@
 | DOC-DEV-043 | FEAT-023-G Operations Console / Traceability Integration Implementation Plan | [FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_IMPLEMENTATION_PLAN.md](implementation/FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_IMPLEMENTATION_PLAN.md) |
 | DOC-DEV-044 | FEAT-024-C Durable Acceptance Manifest / Idempotency Implementation Plan | [FEAT024_C_DURABLE_ACCEPTANCE_MANIFEST_IDEMPOTENCY_IMPLEMENTATION_PLAN.md](implementation/FEAT024_C_DURABLE_ACCEPTANCE_MANIFEST_IDEMPOTENCY_IMPLEMENTATION_PLAN.md) |
 | DOC-DEV-045 | FEAT-024-D Acceptance Authority / SoD Implementation Plan | [FEAT024_D_ACCEPTANCE_AUTHORITY_SOD_IMPLEMENTATION_PLAN.md](implementation/FEAT024_D_ACCEPTANCE_AUTHORITY_SOD_IMPLEMENTATION_PLAN.md) |
+| DOC-DEV-046 | FEAT-024-E Evidence Composition / Candidate-Bound Verification Implementation Plan | [FEAT024_E_EVIDENCE_COMPOSITION_CANDIDATE_VERIFICATION_IMPLEMENTATION_PLAN.md](implementation/FEAT024_E_EVIDENCE_COMPOSITION_CANDIDATE_VERIFICATION_IMPLEMENTATION_PLAN.md) |
 | DOC-ROADMAP-001 | Master Development Roadmap Index | [00_MASTER_DEVELOPMENT_ROADMAP_INDEX.md](book-12/00_MASTER_DEVELOPMENT_ROADMAP_INDEX.md) |
 | DOC-ROADMAP-002 | Implementation Strategy | [01_IMPLEMENTATION_STRATEGY.md](book-12/01_IMPLEMENTATION_STRATEGY.md) |
 | DOC-ROADMAP-003 | Epic Breakdown | [02_EPIC_BREAKDOWN.md](book-12/02_EPIC_BREAKDOWN.md) |
@@ -1035,6 +1039,8 @@
 | DOC-REVIEW-147 | FEAT-024-C Durable Acceptance Manifest / Idempotency Completion | [FEAT024_C_DURABLE_ACCEPTANCE_MANIFEST_IDEMPOTENCY_COMPLETION.md](reviews/FEAT024_C_DURABLE_ACCEPTANCE_MANIFEST_IDEMPOTENCY_COMPLETION.md) |
 | DOC-REVIEW-148 | FEAT-024-D Acceptance Authority / SoD Gap Matrix | [FEAT024_D_ACCEPTANCE_AUTHORITY_SOD_GAP_MATRIX.md](reviews/FEAT024_D_ACCEPTANCE_AUTHORITY_SOD_GAP_MATRIX.md) |
 | DOC-REVIEW-149 | FEAT-024-D Acceptance Authority / SoD Completion | [FEAT024_D_ACCEPTANCE_AUTHORITY_SOD_COMPLETION.md](reviews/FEAT024_D_ACCEPTANCE_AUTHORITY_SOD_COMPLETION.md) |
+| DOC-REVIEW-150 | FEAT-024-E Evidence Composition / Candidate-Bound Verification Gap Matrix | [FEAT024_E_EVIDENCE_COMPOSITION_CANDIDATE_VERIFICATION_GAP_MATRIX.md](reviews/FEAT024_E_EVIDENCE_COMPOSITION_CANDIDATE_VERIFICATION_GAP_MATRIX.md) |
+| DOC-REVIEW-151 | FEAT-024-E Evidence Composition / Candidate-Bound Verification Completion | [FEAT024_E_EVIDENCE_COMPOSITION_CANDIDATE_VERIFICATION_COMPLETION.md](reviews/FEAT024_E_EVIDENCE_COMPOSITION_CANDIDATE_VERIFICATION_COMPLETION.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books
