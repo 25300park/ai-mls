@@ -270,6 +270,8 @@
 | DOC-REVIEW-143 | [FEAT-024-A REL-001 / Staging Candidate Manifest Materialization](reviews/FEAT024_A_REL001_STAGING_CANDIDATE_IMPLEMENTATION_REPORT.md) | exact candidate-bound runtime manifest, deterministic fingerprints and truthful incomplete-scope evidence | AVAILABLE |
 | DOC-REVIEW-144 | [FEAT-024-B Release Evidence Manifest Contract Gap Matrix](reviews/FEAT024_B_RELEASE_EVIDENCE_MANIFEST_CONTRACT_GAP_MATRIX.md) | candidate-bound evidence/readiness, deterministic manifest identity and replay/conflict contract gap analysis | AVAILABLE |
 | DOC-REVIEW-145 | [FEAT-024-B Release Evidence Manifest Contracts Completion](reviews/FEAT024_B_RELEASE_EVIDENCE_MANIFEST_CONTRACTS_COMPLETION.md) | immutable acceptance manifest, candidate-bound evidence/readiness, provenance, deterministic identity and conflict verification | AVAILABLE |
+| DOC-REVIEW-146 | [FEAT-024-C Durable Acceptance Manifest / Idempotency Gap Matrix](reviews/FEAT024_C_DURABLE_ACCEPTANCE_MANIFEST_IDEMPOTENCY_GAP_MATRIX.md) | bounded store ownership, atomic partitions, restart replay, conflict and lineage gap analysis | AVAILABLE |
+| DOC-REVIEW-147 | [FEAT-024-C Durable Acceptance Manifest / Idempotency Completion](reviews/FEAT024_C_DURABLE_ACCEPTANCE_MANIFEST_IDEMPOTENCY_COMPLETION.md) | durable candidate/manifest persistence, atomic replay/evidence binding, append-only and restart verification | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -537,6 +539,7 @@
 | DOC-DEV-041 | [FEAT-023-E Alert / Incident Evidence Projection Implementation Plan](implementation/FEAT023_E_ALERT_INCIDENT_EVIDENCE_PROJECTION_IMPLEMENTATION_PLAN.md) | approved Alert normalization, durable projection and read-only Console TDD plan | AVAILABLE |
 | DOC-DEV-042 | [FEAT-023-F Deployment / Backup / Rollback Readiness Implementation Plan](implementation/FEAT023_F_DEPLOYMENT_BACKUP_ROLLBACK_READINESS_IMPLEMENTATION_PLAN.md) | source-specific readiness manifest, existing durable store and read-only Console TDD plan | AVAILABLE |
 | DOC-DEV-043 | [FEAT-023-G Operations Console / Traceability Integration Implementation Plan](implementation/FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_IMPLEMENTATION_PLAN.md) | scoped operational read, safe Console DTO/rendering and A~G closure TDD plan | AVAILABLE |
+| DOC-DEV-044 | [FEAT-024-C Durable Acceptance Manifest / Idempotency Implementation Plan](implementation/FEAT024_C_DURABLE_ACCEPTANCE_MANIFEST_IDEMPOTENCY_IMPLEMENTATION_PLAN.md) | bounded SQLite store, atomic append, restart replay, conflict and lineage TDD plan | AVAILABLE |
 | DOC-REVIEW-019 | [Phase 12 Completion](reviews/PHASE12_COMPLETION.md) | Developer Bible completion evidence와 Phase 13 gate | AVAILABLE |
 
 ## Book 12 — Master Development Roadmap (Phase 13)
@@ -848,6 +851,7 @@
 | DOC-DEV-041 | FEAT-023-E Alert / Incident Evidence Projection Implementation Plan | [FEAT023_E_ALERT_INCIDENT_EVIDENCE_PROJECTION_IMPLEMENTATION_PLAN.md](implementation/FEAT023_E_ALERT_INCIDENT_EVIDENCE_PROJECTION_IMPLEMENTATION_PLAN.md) |
 | DOC-DEV-042 | FEAT-023-F Deployment / Backup / Rollback Readiness Implementation Plan | [FEAT023_F_DEPLOYMENT_BACKUP_ROLLBACK_READINESS_IMPLEMENTATION_PLAN.md](implementation/FEAT023_F_DEPLOYMENT_BACKUP_ROLLBACK_READINESS_IMPLEMENTATION_PLAN.md) |
 | DOC-DEV-043 | FEAT-023-G Operations Console / Traceability Integration Implementation Plan | [FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_IMPLEMENTATION_PLAN.md](implementation/FEAT023_G_OPERATIONS_CONSOLE_TRACEABILITY_IMPLEMENTATION_PLAN.md) |
+| DOC-DEV-044 | FEAT-024-C Durable Acceptance Manifest / Idempotency Implementation Plan | [FEAT024_C_DURABLE_ACCEPTANCE_MANIFEST_IDEMPOTENCY_IMPLEMENTATION_PLAN.md](implementation/FEAT024_C_DURABLE_ACCEPTANCE_MANIFEST_IDEMPOTENCY_IMPLEMENTATION_PLAN.md) |
 | DOC-ROADMAP-001 | Master Development Roadmap Index | [00_MASTER_DEVELOPMENT_ROADMAP_INDEX.md](book-12/00_MASTER_DEVELOPMENT_ROADMAP_INDEX.md) |
 | DOC-ROADMAP-002 | Implementation Strategy | [01_IMPLEMENTATION_STRATEGY.md](book-12/01_IMPLEMENTATION_STRATEGY.md) |
 | DOC-ROADMAP-003 | Epic Breakdown | [02_EPIC_BREAKDOWN.md](book-12/02_EPIC_BREAKDOWN.md) |
@@ -1023,6 +1027,8 @@
 | DOC-REVIEW-143 | FEAT-024-A REL-001 / Staging Candidate Manifest Materialization | [FEAT024_A_REL001_STAGING_CANDIDATE_IMPLEMENTATION_REPORT.md](reviews/FEAT024_A_REL001_STAGING_CANDIDATE_IMPLEMENTATION_REPORT.md) |
 | DOC-REVIEW-144 | FEAT-024-B Release Evidence Manifest Contract Gap Matrix | [FEAT024_B_RELEASE_EVIDENCE_MANIFEST_CONTRACT_GAP_MATRIX.md](reviews/FEAT024_B_RELEASE_EVIDENCE_MANIFEST_CONTRACT_GAP_MATRIX.md) |
 | DOC-REVIEW-145 | FEAT-024-B Release Evidence Manifest Contracts Completion | [FEAT024_B_RELEASE_EVIDENCE_MANIFEST_CONTRACTS_COMPLETION.md](reviews/FEAT024_B_RELEASE_EVIDENCE_MANIFEST_CONTRACTS_COMPLETION.md) |
+| DOC-REVIEW-146 | FEAT-024-C Durable Acceptance Manifest / Idempotency Gap Matrix | [FEAT024_C_DURABLE_ACCEPTANCE_MANIFEST_IDEMPOTENCY_GAP_MATRIX.md](reviews/FEAT024_C_DURABLE_ACCEPTANCE_MANIFEST_IDEMPOTENCY_GAP_MATRIX.md) |
+| DOC-REVIEW-147 | FEAT-024-C Durable Acceptance Manifest / Idempotency Completion | [FEAT024_C_DURABLE_ACCEPTANCE_MANIFEST_IDEMPOTENCY_COMPLETION.md](reviews/FEAT024_C_DURABLE_ACCEPTANCE_MANIFEST_IDEMPOTENCY_COMPLETION.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books

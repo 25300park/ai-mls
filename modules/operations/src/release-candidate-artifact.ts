@@ -63,11 +63,14 @@ export interface Rel001StagingCandidate {
 }
 
 const RUNTIME_ENTRY_POINT = "apps/api/src/administration-production-composition.js" as const;
+const REPOSITORY_IDENTITY = "https://github.com/25300park/ai-mls.git" as const;
 const RUNTIME_EXTENSIONS = new Set([".js", ".mjs", ".cjs", ".json"]);
 const EXCLUDED_PATH = /(?:^|\/)(?:tests?|__tests__|fixtures?|mocks?|coverage|docs?|reviews?|reports?|logs?|temp|tmp|cache|backups?)(?:\/|$)|\.(?:test|spec)\.[^.]+$|\.map$|\.d\.ts$|\.tsbuildinfo$|\.(?:ts|tsx)$/i;
 const IMPORT_SPECIFIER = /\b(?:import|export)\s+(?:[^"'()\r\n]*?\s+from\s+)?["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)/g;
 const SECRET_KEY = /(?:secret|token|password|credential|authorization|api.?key|private.?key|access.?key)/i;
 const SECRET_VALUE = /(?:\bBearer\s+[A-Za-z0-9._~+\/-]+=*|-----BEGIN [A-Z ]+PRIVATE KEY-----|\b(?:sk|ghp|github_pat)_[A-Za-z0-9_-]{8,})/i;
+const SAFE_SOURCE_BRANCH = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,254}$/u;
+const UNSAFE_SOURCE_BRANCH_VALUE = /(?:^|[/._-])(?:sk|ghp|github_pat)[_-][A-Za-z0-9_-]{8,}|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|\d(?:[ ().-]*\d){6,}|chain[-_ ]?of[-_ ]?thought|stack[-_ ]?trace|sqlite_(?:error|constraint|busy|corrupt)|\bBearer\s+/iu;
 
 const EXCLUDED_CLASS_POLICY = Object.freeze([
   "test/spec/fixture/mock output",
@@ -114,7 +117,7 @@ export async function materializeRel001StagingCandidate(input: Rel001StagingCand
     artifactFingerprint,
     generatedAt: input.generatedAt,
   });
-  return deepFreeze({
+  const candidate = deepFreeze({
     releaseCandidateId,
     logicalReleaseId: "REL-001" as const,
     sourceCommitSha: input.sourceCommitSha,
@@ -128,6 +131,36 @@ export async function materializeRel001StagingCandidate(input: Rel001StagingCand
     releaseScopeCoverage: RELEASE_SCOPE_COVERAGE,
     artifactManifest,
   });
+  assertRel001StagingCandidateIntegrity(candidate);
+  return candidate;
+}
+
+export function assertRel001StagingCandidateIntegrity(candidate: Rel001StagingCandidate): void {
+  const artifact = candidate.artifactManifest;
+  if (candidate.repositoryIdentity !== REPOSITORY_IDENTITY || !isSafeSourceBranch(candidate.sourceBranch)) invalidCandidate();
+  if (artifact.runtimeComponents.length !== 1) invalidCandidate();
+  const component = artifact.runtimeComponents[0]!;
+  if (component.artifactComponentId !== "API-015_ADMINISTRATION_HTTP" || component.runtimeEntryPoint !== RUNTIME_ENTRY_POINT
+    || component.includedFiles.length === 0) invalidCandidate();
+
+  const includedPaths = component.includedFiles.map((file) => file.path);
+  if (new Set(includedPaths).size !== includedPaths.length
+    || includedPaths.some((path, index) => index > 0 && includedPaths[index - 1]!.localeCompare(path, "en") >= 0)
+    || !sameOrderedValues(artifact.includedFilePaths, includedPaths)) invalidCandidate();
+
+  const componentFingerprint = sha256(component.includedFiles
+    .map((file) => `${file.path}\0${file.fileSha256}\0${file.fileSize}`).join("\n"));
+  const artifactFingerprint = sha256(["REL-001", "Staging", candidate.sourceCommitSha, `API-015_ADMINISTRATION_HTTP:${componentFingerprint}`].join("\0"));
+  const releaseCandidateId = sha256(["REL-001", candidate.sourceCommitSha, candidate.repositoryIdentity, candidate.sourceBranch, artifactFingerprint, "Staging"].join("\0"));
+  const candidateFingerprint = sha256([releaseCandidateId, "REL-001", candidate.sourceCommitSha, candidate.repositoryIdentity, candidate.sourceBranch, artifactFingerprint, "Staging"].join("\0"));
+
+  if (component.componentFingerprint !== componentFingerprint
+    || candidate.artifactFingerprint !== artifactFingerprint
+    || artifact.artifactFingerprint !== artifactFingerprint
+    || candidate.releaseCandidateId !== releaseCandidateId
+    || candidate.candidateFingerprint !== candidateFingerprint
+    || !sameCanonicalRows(candidate.releaseScopeCoverage, RELEASE_SCOPE_COVERAGE)
+    || !sameOrderedValues(artifact.excludedClassPolicy, EXCLUDED_CLASS_POLICY)) invalidCandidate();
 }
 
 function coverage(
@@ -226,12 +259,42 @@ function assertSafeRuntimeConfiguration(path: string, contents: Buffer): void {
 
 function validateCandidateInput(input: Rel001StagingCandidateInput): void {
   if (!/^[a-f0-9]{40}$/.test(input.sourceCommitSha)) throw new TypeError("Exact source commit SHA is required.");
-  if (input.repositoryIdentity.trim() === "" || input.sourceBranch.trim() === "") throw new TypeError("Repository and branch identity are required.");
+  if (input.repositoryIdentity !== REPOSITORY_IDENTITY || !isSafeSourceBranch(input.sourceBranch)) throw new TypeError("Repository and branch identity are invalid.");
   if (!Number.isFinite(Date.parse(input.generatedAt))) throw new TypeError("A valid generatedAt timestamp is required.");
+}
+
+function isSafeSourceBranch(value: string): boolean {
+  return SAFE_SOURCE_BRANCH.test(value)
+    && !value.includes("..")
+    && !value.includes("//")
+    && !value.endsWith("/")
+    && !value.endsWith(".")
+    && !value.endsWith(".lock")
+    && !UNSAFE_SOURCE_BRANCH_VALUE.test(value);
 }
 
 function sha256(value: string | Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function sameOrderedValues(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function sameCanonicalRows(left: readonly ReleaseScopeCoverageEvidence[], right: readonly ReleaseScopeCoverageEvidence[]): boolean {
+  return left.length === right.length && left.every((value, index) => {
+    const expected = right[index]!;
+    return value.artifactComponentId === expected.artifactComponentId
+      && value.requiredByReleaseScope === expected.requiredByReleaseScope
+      && value.executableRuntimeAvailable === expected.executableRuntimeAvailable
+      && value.artifactIncluded === expected.artifactIncluded
+      && value.implementationRuntimeEvidenceRef === expected.implementationRuntimeEvidenceRef
+      && value.gapDisposition === expected.gapDisposition;
+  });
+}
+
+function invalidCandidate(): never {
+  throw new TypeError("REL-001 candidate integrity is invalid.");
 }
 
 function deepFreeze<T>(value: T): T {

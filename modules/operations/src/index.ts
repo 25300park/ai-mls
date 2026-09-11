@@ -1,4 +1,5 @@
 export * from "./durable-operational-evidence-store.js";
+export * from "./durable-release-acceptance-manifest-store.js";
 export * from "./operational-alert-projection.js";
 export * from "./operational-readiness-evidence.js";
 export * from "./operational-telemetry-contracts.js";
