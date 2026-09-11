@@ -238,6 +238,7 @@ const capabilities: Readonly<Record<RoleCode, readonly string[]>> = {
     "job.cancel",
     "job.retry",
   ],
+  RELEASE_OWNER: ["release.accept"],
   SVC: [
     "service.execute",
     "publication.deliver",
@@ -287,6 +288,7 @@ const privilegedActions = new Set([
   "publication.supersede",
   "publication.terminate",
   "publication.suspension.set",
+  "release.accept",
 ]);
 
 const humanAuthorityActions = new Set([
@@ -322,6 +324,7 @@ const humanAuthorityActions = new Set([
   "publication.supersede",
   "publication.terminate",
   "publication.suspension.set",
+  "release.accept",
 ]);
 
 const humanRequiredActions = new Set([

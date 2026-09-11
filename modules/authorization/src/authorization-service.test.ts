@@ -287,6 +287,88 @@ test("TEST-047 service principals cannot receive human approval authority", () =
   assert.equal(decision.reasonCode, "HUMAN_AUTHORITY_REQUIRED");
 });
 
+test("FEAT-024-D grants release.accept only to a live MFA RELEASE_OWNER", () => {
+  const releaseOwnerRole = "RELEASE_OWNER" as RoleAssignment["role"];
+  const { service } = createService([assignment({
+    principalId: "release-owner-1",
+    role: releaseOwnerRole,
+    resourceTypes: ["ReleaseCandidate"],
+    purposes: ["RELEASE_ACCEPTANCE"],
+  })]);
+  const request = {
+    action: "release.accept",
+    resource: { type: "ReleaseCandidate", id: "candidate-1", teamId: "team-a", createdBy: "candidate-producer-1" },
+    purpose: "RELEASE_ACCEPTANCE",
+    reason: "Exact candidate acceptance review",
+    correlationId: "correlation-feat024-d-release-accept",
+  } as const;
+
+  const allowed = service.evaluate({
+    ...request,
+    session: session({ principalId: "release-owner-1", roles: [releaseOwnerRole] }),
+  });
+  const missingMfa = service.evaluate({
+    ...request,
+    session: session({ principalId: "release-owner-1", roles: [releaseOwnerRole], assurance: "SINGLE_FACTOR", isMfaVerified: false }),
+  });
+
+  assert.equal(allowed.effect, "ALLOW");
+  assert.deepEqual(allowed.obligations, ["MFA", "REASON", "AUDIT"]);
+  assert.equal(missingMfa.reasonCode, "REAUTHENTICATION_REQUIRED");
+
+  for (const action of ["resource.view", "administration.approve", "security.policy.change", "publication.deliver", "job.retry"] as const) {
+    const denied = service.evaluate({
+      ...request,
+      action,
+      session: session({ principalId: "release-owner-1", roles: [releaseOwnerRole] }),
+    });
+    assert.equal(denied.reasonCode, "CAPABILITY_DENIED", action);
+  }
+});
+
+test("FEAT-024-D does not let existing roles or service identities inherit release acceptance", () => {
+  for (const role of ["ADM", "SEC", "OPS", "REV"] as const) {
+    const principalId = `release-${role.toLowerCase()}`;
+    const { service } = createService([assignment({
+      principalId,
+      role,
+      resourceTypes: ["ReleaseCandidate"],
+      purposes: ["RELEASE_ACCEPTANCE"],
+    })]);
+    const decision = service.evaluate({
+      session: session({ principalId, roles: [role] }),
+      action: "release.accept",
+      resource: { type: "ReleaseCandidate", id: "candidate-1", teamId: "team-a", createdBy: "candidate-producer-1" },
+      purpose: "RELEASE_ACCEPTANCE",
+      reason: "Attempted inherited release authority",
+      correlationId: `correlation-feat024-d-${role}`,
+    });
+    assert.equal(decision.reasonCode, "CAPABILITY_DENIED", role);
+  }
+
+  const releaseOwnerRole = "RELEASE_OWNER" as RoleAssignment["role"];
+  const servicePrincipal = createService([assignment({
+    principalId: "release-service-1",
+    role: releaseOwnerRole,
+    resourceTypes: ["ReleaseCandidate"],
+    purposes: ["RELEASE_ACCEPTANCE"],
+  })]).service.evaluate({
+    session: session({
+      principalId: "release-service-1",
+      principalType: "SERVICE",
+      roles: [releaseOwnerRole],
+      assurance: "WORKLOAD",
+      isMfaVerified: false,
+    }),
+    action: "release.accept",
+    resource: { type: "ReleaseCandidate", id: "candidate-1", teamId: "team-a" },
+    purpose: "RELEASE_ACCEPTANCE",
+    reason: "Automated release acceptance attempt",
+    correlationId: "correlation-feat024-d-service",
+  });
+  assert.equal(servicePrincipal.reasonCode, "HUMAN_AUTHORITY_REQUIRED");
+});
+
 test("F15-TASK-005 grants only scoped OPS command capabilities with MFA and reason", () => {
   const opsAssignment = assignment({
     principalId: "publication-operator-1",

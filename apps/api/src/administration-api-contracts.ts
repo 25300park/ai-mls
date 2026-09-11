@@ -669,7 +669,7 @@ function deepFreeze(value: unknown): void {
 }
 
 const roleCodes = [
-  "COL", "AGT", "SAG", "REV", "AIR", "DUR", "VER", "PMR", "PUA", "MGR", "DST", "OPS", "SEC", "ADM", "SVC", "EXT",
+  "COL", "AGT", "SAG", "REV", "AIR", "DUR", "VER", "PMR", "PUA", "MGR", "DST", "OPS", "SEC", "ADM", "RELEASE_OWNER", "SVC", "EXT",
 ] as const satisfies readonly RoleCode[];
 
 const governedResourceTypes = ["ROLE_ASSIGNMENT", "ROLE", "POLICY", "TEAM_SCOPE", "SOURCE_REGISTRY", "PUBLICATION_TARGET"] as const;

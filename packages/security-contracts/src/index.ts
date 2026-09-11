@@ -15,6 +15,7 @@ export type RoleCode =
   | "OPS"
   | "SEC"
   | "ADM"
+  | "RELEASE_OWNER"
   | "SVC"
   | "EXT";
 

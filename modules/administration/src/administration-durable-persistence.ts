@@ -38,7 +38,7 @@ const RESOURCE_TYPES = Object.freeze([
   "ROLE_ASSIGNMENT", "ROLE", "POLICY", "TEAM_SCOPE", "SOURCE_REGISTRY", "PUBLICATION_TARGET",
 ] as const);
 const SCOPE_TYPES = Object.freeze(["TENANT", "TEAM", "ORGANIZATION", "RESOURCE", "POLICY", "SOURCE", "TARGET"] as const);
-const ROLE_CODES = Object.freeze(["COL", "AGT", "SAG", "REV", "AIR", "DUR", "VER", "PMR", "PUA", "MGR", "DST", "OPS", "SEC", "ADM", "SVC", "EXT"] as const);
+const ROLE_CODES = Object.freeze(["COL", "AGT", "SAG", "REV", "AIR", "DUR", "VER", "PMR", "PUA", "MGR", "DST", "OPS", "SEC", "ADM", "RELEASE_OWNER", "SVC", "EXT"] as const);
 const PROPOSAL_STATUSES = Object.freeze(["PROPOSED", "APPROVED", "REJECTED", "REVOKED"] as const);
 const DECISION_STATUSES = Object.freeze(["APPROVED", "REJECTED", "REVOKED"] as const);
 const RESULT_STATUSES = Object.freeze(["PROPOSED", "ACTIVE", "REJECTED", "REVOKED", "PAUSED", "BLOCKED", "RETIRED"] as const);

@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-SEC-005 |
-| 문서 버전 | v1.0 |
+| 문서 버전 | v1.1 |
 | 상태 | FROZEN |
 | 소유 역할 | Security Owner / Business Owner |
 | 기준일 | 2026-07-14 |
@@ -32,6 +32,7 @@
 | OPS | Operations/Publication Owner | job, exception, delivery/reconciliation; no approval creation |
 | SEC | Security/Privacy/Audit Owner | audit, investigation, security/privacy control |
 | ADM | Administrator | identity/role/policy administration; no business approval |
+| RELEASE_OWNER | Release Owner | exact FEAT-024 release-candidate acceptance only; no deployment, administration, security-policy, operations or business approval authority |
 | SVC | Service/Connector Identity | non-human API execution; no interactive UI/human authority |
 | EXT | Future External Partner | `POST-MVP`, contract-scoped contribution only |
 
@@ -53,10 +54,19 @@
 | OPS | S | S | S | — | — | — | S — approved delivery only | S | — | — |
 | SEC | P | — | P — security disposition | — | — | — | — | P | — | P — security only |
 | ADM | P | P | P | — | — | — | — | P — admin evidence only | — | P |
+| RELEASE_OWNER | — | — | — | — | — | P — exact release candidate only | — | — | — | — |
 | SVC | E | E | E | — | — | — | E — approved command only | — | — | — |
 | EXT | POST | POST | POST | — | — | — | — | — | — | — |
 
 Delete는 default deny다. Privacy deletion/retention은 API-015/017의 governed disposition이며 row-level delete grant가 아니다.
+
+### FEAT-024 release acceptance capability
+
+| Role | Capability | Scope | Privileged | MFA | Explicitly denied |
+|---|---|---|---|---|---|
+| RELEASE_OWNER | `release.accept` | exact FEAT-024 release candidate | YES | REQUIRED | deployment/promotion/rollback, credential activation, business approval/mutation, administration, security-policy change, operational remediation |
+
+`release.accept`는 authenticated Session actor와 live exact-scope assignment에서만 파생한다. Evidence generation, implementation authorship 또는 independent review는 capability를 만들지 않으며 caller-supplied actor/role/capability는 authoritative input이 아니다.
 
 ## Screen permission matrix
 
@@ -135,7 +145,10 @@ REV는 navigation/read shell이며 actual review action은 AIR/DUR/VER/PMR/PUA �
 3. Role/permission grant proposer와 approver를 분리하고 emergency grant는 Security Owner review가 필요하다.
 4. Export requester와 high-risk restricted export approver를 분리할 수 있으며 threshold는 `OPEN DECISION`이다.
 5. MGR/ADM/SEC의 oversight는 domain business mutation을 암묵 허용하지 않는다.
+6. FEAT-024 candidate producer와 authoritative implementation author는 같은 candidate의 RELEASE_OWNER accepter가 될 수 없다. Later deployment executor는 persisted accepter identity와 달라야 하며 `release.accept` 자체는 deployment authority를 부여하지 않는다.
 
 ## Permission decision and audit
 
 Every allow/deny는 policy version과 applied scope를 가지며 privileged allow는 MFA, reason, correlation ID와 Audit Event를 요구한다. Matrix 변경은 CR/Decision, security/business owner review, impact analysis와 access recertification을 거친다.
+
+FEAT-024-D의 `RELEASE_OWNER`/`release.accept` delta는 Architecture Owner가 승인한 Canonical Authority Amendment에 한정된다. 기존 ADM/SEC/OPS/REV 의미와 권한은 변경하지 않는다.

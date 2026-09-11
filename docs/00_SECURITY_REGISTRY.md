@@ -3,11 +3,11 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-CORE-046 |
-| 문서 버전 | v0.1 |
+| 문서 버전 | v0.2 |
 | 상태 | IN REVIEW |
 | 소유 역할 | Security/Privacy Reviewer / Architecture Owner |
 | 기준일 | 2026-07-24 |
-| 적용 범위 | Phase 11-6 Security Registry Alignment |
+| 적용 범위 | Phase 11-6 Security Registry Alignment + FEAT-024-D approved release-acceptance authority overlay |
 
 ## 1. 목적과 governance boundary
 
@@ -103,6 +103,17 @@ Missing, stale, ambiguous 또는 conflicting identity, classification, purpose, 
 | Monitoring Separation | monitored operator vs alert/review disposition | SEC-024~028 | monitoring signal cannot authorize command | PARTIALLY_VERIFIED |
 
 Role stacking은 allow의 합집합을 만들지 않는다. 동일 actor conflict가 하나라도 있으면 더 제한적인 deny가 우선한다. Break-glass는 containment/recovery에만 사용하며 Verification, Permission, Approval, Publication, Withdrawal, Republish 또는 Reconciliation resolution을 대체하지 않는다.
+
+### FEAT-024-D release acceptance authority overlay
+
+| Control | Enforced boundary | Result |
+|---|---|---|
+| SEC-001/002 | trusted active Session, live exact tenant/team/resource/purpose `RELEASE_OWNER` assignment and `release.accept`; caller claims ignored | default deny |
+| SEC-004 | `release.accept` is privileged human authority and requires verified MFA plus documented reason | reauthentication/default deny |
+| SEC-010 | candidate producer != accepter; authoritative implementation author != accepter; absent author provenance is `NOT_EVALUABLE`, never fabricated PASS | SoD deny |
+| SEC-021/022 | accepted actor, authority assignment ref, MFA status ref, trusted producer provenance, SoD result and future deployment-SoD handoff are candidate-bound append-only evidence | immutable bounded evidence |
+
+`RELEASE_OWNER`는 FEAT-024 exact release-candidate acceptance만 수행한다. 이 role과 `release.accept`는 deployment/promotion/rollback, credential activation, business approval/mutation, administration, security-policy change 또는 operational remediation를 허용하지 않는다. Independent reviewer identity는 mandatory evidence가 될 수 있으나 acceptance authority가 아니다. Later deployment boundary는 persisted accepter와 deployment executor를 분리해야 한다.
 
 ## 6. Data classification and privacy contract
 
