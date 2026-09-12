@@ -7,4 +7,5 @@ export * from "./operational-status-projection.js";
 export * from "./release-candidate-artifact.js";
 export * from "./release-acceptance-authority-service.js";
 export * from "./release-evidence-manifest.js";
+export * from "./release-trace-read-projection.js";
 export * from "./security-privacy-operational-controls.js";

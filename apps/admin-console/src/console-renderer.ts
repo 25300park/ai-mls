@@ -285,7 +285,28 @@ function renderOperations(data: Readonly<Record<string, unknown>>): string {
   ${renderOperationalStatuses(data["operationalStatuses"])}
   ${renderSecurityPrivacySummary(data["securityPrivacySummary"])}
   ${renderOperationalReadiness(data["operationalReadiness"])}
-  ${renderOperationalAlerts(data["alerts"])}`;
+  ${renderOperationalAlerts(data["alerts"])}
+  ${renderReleaseTrace(data["releaseTrace"])}`;
+}
+
+function renderReleaseTrace(value: unknown): string {
+  if (!isRecord(value)) return unavailableOperationalSection("Release Trace / Acceptance Evidence", "Release trace evidence is unavailable.");
+  const empty: Readonly<Record<string, unknown>> = Object.freeze({});
+  const candidate = isRecord(value["candidate"]) ? value["candidate"] : empty;
+  const manifest = isRecord(value["acceptanceManifest"]) ? value["acceptanceManifest"] : empty;
+  const composition = isRecord(value["evidenceComposition"]) ? value["evidenceComposition"] : empty;
+  const handoff: Readonly<Record<string, unknown>> = isRecord(value["promotionHandoff"]) ? value["promotionHandoff"] : Object.freeze({ state: "UNAVAILABLE" });
+  const authority = isRecord(value["authorityProvenance"]) ? value["authorityProvenance"] : empty;
+  const gaps = arrayOf(candidate["runtimeGapComponentIds"]);
+  return `<section aria-labelledby="release-trace-heading"><div class="section-heading"><div><p class="eyebrow">EXACT CANDIDATE EVIDENCE · READ ONLY</p><h2 id="release-trace-heading">Release Trace / Acceptance Evidence</h2></div>${statusBadge(manifest["acceptanceResult"])}</div>
+  <h3>Candidate</h3>${definitionGrid(select(candidate, ["releaseCandidateId", "logicalReleaseId", "sourceCommitSha", "artifactFingerprint", "candidateFingerprint", "targetEnvironment", "acceptanceResult"]))}
+  <h3>Runtime gaps</h3>${definitionGrid({ count: gaps.length, componentIds: gaps })}
+  <h3>Acceptance Manifest</h3>${definitionGrid(select(manifest, ["acceptanceManifestId", "manifestFingerprint", "acceptanceResult", "acceptedBy", "acceptedAt", "evaluatedAt", "decisionEvidenceRef", "evidenceRefs", "readinessRefs"]))}
+  <h3>Evidence Composition</h3>${definitionGrid(select(composition, ["compositionFingerprint", "acceptanceResult", "runtimeGapComponentIds", "evidenceRefs", "readinessRefs"]))}
+  <h3>Authority / SoD provenance</h3>${definitionGrid(select(authority, ["acceptedBy", "acceptanceAuthorityEvidenceRefs", "deploymentSodEvidenceRefs"]))}
+  <div class="section-heading"><h3>Promotion Handoff</h3>${statusBadge(handoff["state"] ?? "UNAVAILABLE")}</div>
+  ${handoff["state"] === "AVAILABLE" ? definitionGrid(select(handoff, ["releaseCandidateId", "acceptanceManifestId", "manifestFingerprint", "logicalReleaseId", "sourceCommitSha", "artifactFingerprint", "targetEnvironment", "acceptanceResult", "acceptedAt", "readinessRefs", "acceptanceActorId", "acceptanceAuthorityEvidenceRefs", "deploymentSodEvidenceRefs", "handoffEvidenceFingerprint"])) : ""}
+  <p class="scope-note">Candidate-bound acceptance evidence only. This view grants no acceptance, promotion, deployment, rollback, or registry mutation authority.</p></section>`;
 }
 
 function renderOperationalTelemetry(value: unknown): string {

@@ -16,6 +16,7 @@ import { validateOperationalAlertProjection } from "../../../modules/operations/
 import { validateOperationalReadinessProjection } from "../../../modules/operations/src/operational-readiness-evidence.js";
 import { validateOperationalTelemetryRecord } from "../../../modules/operations/src/operational-telemetry-contracts.js";
 import { validateOperationalStatusSnapshot } from "../../../modules/operations/src/operational-status-projection.js";
+import { isUnsafeSecurityDetailValue } from "../../../packages/security-contracts/src/index.js";
 
 export const CONSOLE_PAGES = Object.freeze([
   "DASHBOARD",
@@ -133,6 +134,15 @@ export interface ConsoleOperationalEvidenceStatusReadPort {
   }>): readonly unknown[];
 }
 
+export interface ConsoleReleaseTraceReadPort {
+  readReleaseTrace(input: Readonly<{
+    session: SessionContext;
+    tenantId: string;
+    scopeRef: string;
+    correlationId: string;
+  }>): unknown;
+}
+
 interface ConsoleReadAdapterDependencies {
   readonly queryPort: ConsolePublicationQueryPort;
   readonly operationsRead: PublicationOperationsReadPort;
@@ -147,6 +157,7 @@ interface ConsoleReadAdapterDependencies {
   readonly alertReadPort?: ConsoleOperationalAlertReadPort;
   readonly readinessReadPort?: ConsoleOperationalReadinessReadPort;
   readonly evidenceStatusReadPort?: ConsoleOperationalEvidenceStatusReadPort;
+  readonly releaseTraceReadPort?: ConsoleReleaseTraceReadPort;
 }
 
 const publicationOperations: Readonly<Record<Exclude<ConsolePage, "DASHBOARD" | "ADMINISTRATION" | "UI-036" | "PROJECTION" | "OPERATIONS" | "CONNECTOR" | "EXTERNAL_INTEGRATION" | "RECOVERY_CASE" | "EVIDENCE">, PublicationQueryRequest["operation"]>> = Object.freeze({
@@ -316,11 +327,13 @@ export class ConsoleReadAdapter {
   }
 
   private readOperations(request: ConsoleReadRequest): ConsoleReadResult {
-    if (!this.authorizeOperationalRead(request, "PublicationOperations", "system")) return concealedResult(request.page);
+    const authorizedSession = this.resolveAuthorizedOperationalSession(request, "PublicationOperations", "system");
+    if (authorizedSession === undefined) return concealedResult(request.page);
     const status = this.dependencies.operationsRead.getSystemOperationalStatus();
     const alerts = this.readOperationalAlerts(request);
     const operationalReadiness = this.readOperationalReadiness(request);
     const operationalEvidenceStatus = this.readOperationalEvidenceStatus(request);
+    const releaseTrace = this.readReleaseTrace(request, authorizedSession);
     return immutableConsole({
       page: request.page,
       state: "READY" as const,
@@ -332,9 +345,24 @@ export class ConsoleReadAdapter {
         alerts,
         operationalReadiness,
         ...operationalEvidenceStatus,
+        releaseTrace,
         observedAt: status.observedAt,
       },
     });
+  }
+
+  private readReleaseTrace(request: ConsoleReadRequest, session: SessionContext): Readonly<Record<string, unknown>> | "UNAVAILABLE" {
+    if (this.dependencies.releaseTraceReadPort === undefined) return "UNAVAILABLE";
+    try {
+      return projectReleaseTrace(this.dependencies.releaseTraceReadPort.readReleaseTrace({
+        session,
+        tenantId: request.tenantId,
+        scopeRef: request.teamId,
+        correlationId: request.correlationId,
+      }));
+    } catch {
+      return "UNAVAILABLE";
+    }
   }
 
   private readOperationalEvidenceStatus(request: ConsoleReadRequest): Readonly<Record<string, unknown>> {
@@ -568,8 +596,12 @@ export class ConsoleReadAdapter {
   }
 
   private authorizeOperationalRead(request: ConsoleReadRequest, resourceType: string, resourceId: string): boolean {
+    return this.resolveAuthorizedOperationalSession(request, resourceType, resourceId) !== undefined;
+  }
+
+  private resolveAuthorizedOperationalSession(request: ConsoleReadRequest, resourceType: string, resourceId: string): SessionContext | undefined {
     const session = this.resolveCurrentSession(request);
-    if (session === undefined || request.teamId !== request.tenantId || session.teamId !== request.tenantId) return false;
+    if (session === undefined || request.teamId !== request.tenantId || session.teamId !== request.tenantId) return undefined;
     try {
       return this.dependencies.authorizationEvaluator.evaluate({
         session,
@@ -579,9 +611,9 @@ export class ConsoleReadAdapter {
         reason: "Bounded read-only Admin Console visibility",
         requestId: `console-${request.correlationId}`,
         correlationId: request.correlationId,
-      }).effect === "ALLOW";
+      }).effect === "ALLOW" ? session : undefined;
     } catch {
-      return false;
+      return undefined;
     }
   }
 
@@ -695,6 +727,144 @@ function unavailableOperationalEvidenceStatus(): Readonly<Record<string, "UNAVAI
     operationalStatuses: "UNAVAILABLE" as const,
     securityPrivacySummary: "UNAVAILABLE" as const,
   });
+}
+
+const RELEASE_TRACE_RUNTIME_GAPS = Object.freeze([
+  "ADMIN_CONSOLE",
+  "AI_ADVISORY_FEAT_022",
+  "AUDIT_API_016",
+  "CORE_APIS_FEAT_001_011",
+  "JOBS_API_017",
+]);
+const RELEASE_TRACE_KEYS = Object.freeze(["acceptanceManifest", "authorityProvenance", "candidate", "evidenceComposition", "promotionHandoff"]);
+const RELEASE_CANDIDATE_KEYS = Object.freeze(["acceptanceResult", "artifactFingerprint", "candidateFingerprint", "logicalReleaseId", "releaseCandidateId", "runtimeGapComponentIds", "sourceCommitSha", "targetEnvironment"]);
+const RELEASE_MANIFEST_KEYS = Object.freeze(["acceptanceManifestId", "acceptanceResult", "acceptedAt", "acceptedBy", "artifactFingerprint", "decisionEvidenceRef", "evaluatedAt", "evidenceRefs", "logicalReleaseId", "manifestFingerprint", "readinessRefs", "releaseCandidateId", "sourceCommitSha", "targetEnvironment"]);
+const RELEASE_COMPOSITION_KEYS = Object.freeze(["acceptanceResult", "artifactFingerprint", "candidateBindingFingerprint", "compositionFingerprint", "evidenceRefs", "logicalReleaseId", "readinessRefs", "releaseCandidateId", "runtimeGapComponentIds", "sourceCommitSha", "targetEnvironment"]);
+const RELEASE_AUTHORITY_KEYS = Object.freeze(["acceptanceAuthorityEvidenceRefs", "acceptedBy", "deploymentSodEvidenceRefs"]);
+const RELEASE_HANDOFF_KEYS = Object.freeze(["acceptanceActorId", "acceptanceAuthorityEvidenceRefs", "acceptanceManifestId", "acceptanceResult", "acceptedAt", "artifactFingerprint", "deploymentSodEvidenceRefs", "handoffEvidenceFingerprint", "logicalReleaseId", "manifestFingerprint", "readinessRefs", "releaseCandidateId", "sourceCommitSha", "state", "targetEnvironment"]);
+
+function projectReleaseTrace(value: unknown): Readonly<Record<string, unknown>> | "UNAVAILABLE" {
+  if (!hasExactKeys(value, RELEASE_TRACE_KEYS)) return "UNAVAILABLE";
+  const candidate = value["candidate"];
+  const manifest = value["acceptanceManifest"];
+  const composition = value["evidenceComposition"];
+  const handoff = value["promotionHandoff"];
+  const authority = value["authorityProvenance"];
+  if (!hasExactKeys(candidate, RELEASE_CANDIDATE_KEYS)
+    || !hasExactKeys(manifest, RELEASE_MANIFEST_KEYS)
+    || !hasExactKeys(composition, RELEASE_COMPOSITION_KEYS)
+    || !hasExactKeys(authority, RELEASE_AUTHORITY_KEYS)
+    || !isRecord(handoff)) return "UNAVAILABLE";
+
+  const bindingKeys = ["releaseCandidateId", "logicalReleaseId", "sourceCommitSha", "artifactFingerprint", "targetEnvironment"] as const;
+  if (bindingKeys.some((key) => candidate[key] !== manifest[key] || candidate[key] !== composition[key])
+    || composition["candidateBindingFingerprint"] !== candidate["candidateFingerprint"]
+    || candidate["logicalReleaseId"] !== "REL-001"
+    || candidate["targetEnvironment"] !== "Staging"
+    || candidate["acceptanceResult"] !== "INCOMPLETE"
+    || !isHex(candidate["releaseCandidateId"], 64)
+    || !isHex(candidate["artifactFingerprint"], 64)
+    || !isHex(candidate["candidateFingerprint"], 64)
+    || !isHex(candidate["sourceCommitSha"], 40)
+    || !isHex(manifest["acceptanceManifestId"], 64)
+    || !isHex(manifest["manifestFingerprint"], 64)
+    || !isHex(composition["compositionFingerprint"], 64)) return "UNAVAILABLE";
+
+  const manifestResult = manifest["acceptanceResult"];
+  if (!isAcceptanceResult(manifestResult) || composition["acceptanceResult"] !== manifestResult) return "UNAVAILABLE";
+  const acceptedBy = manifest["acceptedBy"];
+  const acceptedAt = manifest["acceptedAt"];
+  if ((manifestResult === "ACCEPTED" && (!isSafeReleaseIdentifier(acceptedBy) || !isTimestamp(acceptedAt)))
+    || (manifestResult !== "ACCEPTED" && (acceptedBy !== null || acceptedAt !== null))
+    || authority["acceptedBy"] !== acceptedBy) return "UNAVAILABLE";
+
+  const candidateGaps = safeStringList(candidate["runtimeGapComponentIds"], isSafeReleaseIdentifier);
+  const compositionGaps = safeStringList(composition["runtimeGapComponentIds"], isSafeReleaseIdentifier);
+  const evidenceRefs = safeStringList(manifest["evidenceRefs"], isSafeReleaseReference);
+  const readinessRefs = safeStringList(manifest["readinessRefs"], isSafeReleaseReference);
+  const compositionEvidenceRefs = safeStringList(composition["evidenceRefs"], isSafeReleaseReference);
+  const compositionReadinessRefs = safeStringList(composition["readinessRefs"], isSafeReleaseReference);
+  const authorityRefs = safeStringList(authority["acceptanceAuthorityEvidenceRefs"], isSafeReleaseReference);
+  const sodRefs = safeStringList(authority["deploymentSodEvidenceRefs"], isSafeReleaseReference);
+  if (candidateGaps === undefined || compositionGaps === undefined || evidenceRefs === undefined || readinessRefs === undefined
+    || compositionEvidenceRefs === undefined || compositionReadinessRefs === undefined || authorityRefs === undefined || sodRefs === undefined
+    || JSON.stringify(candidateGaps) !== JSON.stringify(compositionGaps)
+    || (manifestResult === "INCOMPLETE" && JSON.stringify(candidateGaps) !== JSON.stringify(RELEASE_TRACE_RUNTIME_GAPS))
+    || !isTimestamp(manifest["evaluatedAt"])
+    || !isSafeReleaseReference(manifest["decisionEvidenceRef"])) return "UNAVAILABLE";
+
+  const projectedHandoff = projectReleaseHandoff(handoff, candidate, manifest, authority, readinessRefs);
+  if (projectedHandoff === undefined) return "UNAVAILABLE";
+  return immutableConsole({
+    candidate: { ...candidate, runtimeGapComponentIds: candidateGaps },
+    acceptanceManifest: { ...manifest, evidenceRefs, readinessRefs },
+    evidenceComposition: { ...composition, runtimeGapComponentIds: compositionGaps, evidenceRefs: compositionEvidenceRefs, readinessRefs: compositionReadinessRefs },
+    promotionHandoff: projectedHandoff,
+    authorityProvenance: { acceptedBy, acceptanceAuthorityEvidenceRefs: authorityRefs, deploymentSodEvidenceRefs: sodRefs },
+  });
+}
+
+function projectReleaseHandoff(
+  handoff: Readonly<Record<string, unknown>>,
+  candidate: Readonly<Record<string, unknown>>,
+  manifest: Readonly<Record<string, unknown>>,
+  authority: Readonly<Record<string, unknown>>,
+  readinessRefs: readonly string[],
+): Readonly<Record<string, unknown>> | undefined {
+  if (hasExactKeys(handoff, ["state"]) && handoff["state"] === "UNAVAILABLE") return Object.freeze({ state: "UNAVAILABLE" as const });
+  if (!hasExactKeys(handoff, RELEASE_HANDOFF_KEYS) || handoff["state"] !== "AVAILABLE" || handoff["acceptanceResult"] !== "ACCEPTED") return undefined;
+  const bindingKeys = ["releaseCandidateId", "logicalReleaseId", "sourceCommitSha", "artifactFingerprint", "targetEnvironment"] as const;
+  const authorityRefs = safeStringList(handoff["acceptanceAuthorityEvidenceRefs"], isSafeReleaseReference);
+  const sodRefs = safeStringList(handoff["deploymentSodEvidenceRefs"], isSafeReleaseReference);
+  const handoffReadiness = safeStringList(handoff["readinessRefs"], isSafeReleaseReference);
+  if (bindingKeys.some((key) => handoff[key] !== candidate[key])
+    || handoff["acceptanceManifestId"] !== manifest["acceptanceManifestId"]
+    || handoff["manifestFingerprint"] !== manifest["manifestFingerprint"]
+    || handoff["acceptedAt"] !== manifest["acceptedAt"]
+    || handoff["acceptanceActorId"] !== manifest["acceptedBy"]
+    || !isHex(handoff["handoffEvidenceFingerprint"], 64)
+    || authorityRefs === undefined || sodRefs === undefined || handoffReadiness === undefined
+    || JSON.stringify(authorityRefs) !== JSON.stringify(authority["acceptanceAuthorityEvidenceRefs"])
+    || JSON.stringify(sodRefs) !== JSON.stringify(authority["deploymentSodEvidenceRefs"])
+    || JSON.stringify(handoffReadiness) !== JSON.stringify(readinessRefs)) return undefined;
+  return immutableConsole({ ...handoff, readinessRefs: handoffReadiness, acceptanceAuthorityEvidenceRefs: authorityRefs, deploymentSodEvidenceRefs: sodRefs });
+}
+
+function hasExactKeys(value: unknown, expected: readonly string[]): value is Readonly<Record<string, unknown>> {
+  if (!isRecord(value)) return false;
+  const actual = Object.keys(value).sort((left, right) => left.localeCompare(right, "en"));
+  const sorted = [...expected].sort((left, right) => left.localeCompare(right, "en"));
+  return actual.length === sorted.length && actual.every((key, index) => key === sorted[index]);
+}
+
+function isHex(value: unknown, length: 40 | 64): value is string {
+  return typeof value === "string" && new RegExp(`^[a-f0-9]{${length}}$`, "u").test(value);
+}
+
+function isAcceptanceResult(value: unknown): value is "ACCEPTED" | "REJECTED" | "INCOMPLETE" {
+  return value === "ACCEPTED" || value === "REJECTED" || value === "INCOMPLETE";
+}
+
+function isTimestamp(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(value)) return false;
+  return new Date(value).toISOString() === value;
+}
+
+function isSafeReleaseIdentifier(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/u.test(value)
+    && !isUnsafeSecurityDetailValue(value)
+    && !/(?:authorization|bearer|cookie|credential|password|private.?key|secret|session.?token|token|prompt|chain.?of.?thought|stack|sql|sqlite|database|[A-Z]:\\)/iu.test(value);
+}
+
+function isSafeReleaseReference(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9_.:#/-]{0,255}$/u.test(value)
+    && !isUnsafeSecurityDetailValue(value)
+    && !/(?:authorization|bearer|cookie|credential|password|private.?key|secret|session.?token|token|prompt|chain.?of.?thought|stack|sql|sqlite|database|[A-Z]:\\)/iu.test(value);
+}
+
+function safeStringList(value: unknown, predicate: (item: unknown) => item is string): readonly string[] | undefined {
+  if (!Array.isArray(value) || value.length > 64 || !value.every(predicate) || new Set(value).size !== value.length) return undefined;
+  return Object.freeze([...value]);
 }
 
 export function immutableConsole<Value>(value: Value): Value {

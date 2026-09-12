@@ -278,6 +278,8 @@
 | DOC-REVIEW-151 | [FEAT-024-E Evidence Composition / Candidate-Bound Verification Completion](reviews/FEAT024_E_EVIDENCE_COMPOSITION_CANDIDATE_VERIFICATION_COMPLETION.md) | deterministic safe evidence composition, readiness/runtime-gap preservation and exact REL-001 incomplete verification | AVAILABLE |
 | DOC-REVIEW-152 | [FEAT-024-F Promotion Handoff Evidence Gap Matrix](reviews/FEAT024_F_PROMOTION_HANDOFF_EVIDENCE_GAP_MATRIX.md) | accepted candidate, manifest lineage, readiness, environment and deployment SoD handoff gap analysis | AVAILABLE |
 | DOC-REVIEW-153 | [FEAT-024-F Promotion Handoff Evidence Completion](reviews/FEAT024_F_PROMOTION_HANDOFF_EVIDENCE_COMPLETION.md) | deterministic immutable handoff evidence, exact REL-001 bindings and zero deployment-side-effect verification | AVAILABLE |
+| DOC-REVIEW-154 | [FEAT-024-G Traceability / Console Read Gap Matrix](reviews/FEAT024_G_TRACEABILITY_CONSOLE_READ_GAP_MATRIX.md) | existing Operations Console read boundary, exact binding, safe DTO and traceability integration gap analysis | AVAILABLE |
+| DOC-REVIEW-155 | [FEAT-024-G Traceability / Console Read Integration Completion](reviews/FEAT024_G_TRACEABILITY_CONSOLE_READ_INTEGRATION_COMPLETION.md) | trusted scoped release trace read projection, truthful incomplete state, safety and A~G verification evidence | AVAILABLE |
 
 ## Book 1 — Business Strategy (A2)
 
@@ -548,6 +550,7 @@
 | DOC-DEV-044 | [FEAT-024-C Durable Acceptance Manifest / Idempotency Implementation Plan](implementation/FEAT024_C_DURABLE_ACCEPTANCE_MANIFEST_IDEMPOTENCY_IMPLEMENTATION_PLAN.md) | bounded SQLite store, atomic append, restart replay, conflict and lineage TDD plan | AVAILABLE |
 | DOC-DEV-045 | [FEAT-024-D Acceptance Authority / SoD Implementation Plan](implementation/FEAT024_D_ACCEPTANCE_AUTHORITY_SOD_IMPLEMENTATION_PLAN.md) | RELEASE_OWNER, trusted Session actor, MFA, candidate provenance, SoD and durable manifest delegation TDD plan | AVAILABLE |
 | DOC-DEV-046 | [FEAT-024-E Evidence Composition / Candidate-Bound Verification Implementation Plan](implementation/FEAT024_E_EVIDENCE_COMPOSITION_CANDIDATE_VERIFICATION_IMPLEMENTATION_PLAN.md) | exact candidate evidence resolver, deterministic composition, readiness truth and safe bounded evidence TDD plan | AVAILABLE |
+| DOC-DEV-047 | [FEAT-024 Implementation Traceability](implementation/FEAT024_TRACEABILITY_MATRIX.md) | FEAT-024-A~G candidate, manifest, authority, evidence, handoff and Console read verification mapping | AVAILABLE |
 | DOC-REVIEW-019 | [Phase 12 Completion](reviews/PHASE12_COMPLETION.md) | Developer Bible completion evidence와 Phase 13 gate | AVAILABLE |
 
 ## Book 12 — Master Development Roadmap (Phase 13)
@@ -862,6 +865,7 @@
 | DOC-DEV-044 | FEAT-024-C Durable Acceptance Manifest / Idempotency Implementation Plan | [FEAT024_C_DURABLE_ACCEPTANCE_MANIFEST_IDEMPOTENCY_IMPLEMENTATION_PLAN.md](implementation/FEAT024_C_DURABLE_ACCEPTANCE_MANIFEST_IDEMPOTENCY_IMPLEMENTATION_PLAN.md) |
 | DOC-DEV-045 | FEAT-024-D Acceptance Authority / SoD Implementation Plan | [FEAT024_D_ACCEPTANCE_AUTHORITY_SOD_IMPLEMENTATION_PLAN.md](implementation/FEAT024_D_ACCEPTANCE_AUTHORITY_SOD_IMPLEMENTATION_PLAN.md) |
 | DOC-DEV-046 | FEAT-024-E Evidence Composition / Candidate-Bound Verification Implementation Plan | [FEAT024_E_EVIDENCE_COMPOSITION_CANDIDATE_VERIFICATION_IMPLEMENTATION_PLAN.md](implementation/FEAT024_E_EVIDENCE_COMPOSITION_CANDIDATE_VERIFICATION_IMPLEMENTATION_PLAN.md) |
+| DOC-DEV-047 | FEAT-024 Implementation Traceability | [FEAT024_TRACEABILITY_MATRIX.md](implementation/FEAT024_TRACEABILITY_MATRIX.md) |
 | DOC-ROADMAP-001 | Master Development Roadmap Index | [00_MASTER_DEVELOPMENT_ROADMAP_INDEX.md](book-12/00_MASTER_DEVELOPMENT_ROADMAP_INDEX.md) |
 | DOC-ROADMAP-002 | Implementation Strategy | [01_IMPLEMENTATION_STRATEGY.md](book-12/01_IMPLEMENTATION_STRATEGY.md) |
 | DOC-ROADMAP-003 | Epic Breakdown | [02_EPIC_BREAKDOWN.md](book-12/02_EPIC_BREAKDOWN.md) |
@@ -1045,6 +1049,8 @@
 | DOC-REVIEW-151 | FEAT-024-E Evidence Composition / Candidate-Bound Verification Completion | [FEAT024_E_EVIDENCE_COMPOSITION_CANDIDATE_VERIFICATION_COMPLETION.md](reviews/FEAT024_E_EVIDENCE_COMPOSITION_CANDIDATE_VERIFICATION_COMPLETION.md) |
 | DOC-REVIEW-152 | FEAT-024-F Promotion Handoff Evidence Gap Matrix | [FEAT024_F_PROMOTION_HANDOFF_EVIDENCE_GAP_MATRIX.md](reviews/FEAT024_F_PROMOTION_HANDOFF_EVIDENCE_GAP_MATRIX.md) |
 | DOC-REVIEW-153 | FEAT-024-F Promotion Handoff Evidence Completion | [FEAT024_F_PROMOTION_HANDOFF_EVIDENCE_COMPLETION.md](reviews/FEAT024_F_PROMOTION_HANDOFF_EVIDENCE_COMPLETION.md) |
+| DOC-REVIEW-154 | FEAT-024-G Traceability / Console Read Gap Matrix | [FEAT024_G_TRACEABILITY_CONSOLE_READ_GAP_MATRIX.md](reviews/FEAT024_G_TRACEABILITY_CONSOLE_READ_GAP_MATRIX.md) |
+| DOC-REVIEW-155 | FEAT-024-G Traceability / Console Read Integration Completion | [FEAT024_G_TRACEABILITY_CONSOLE_READ_INTEGRATION_COMPLETION.md](reviews/FEAT024_G_TRACEABILITY_CONSOLE_READ_INTEGRATION_COMPLETION.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books

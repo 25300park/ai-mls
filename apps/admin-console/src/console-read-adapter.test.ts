@@ -19,6 +19,7 @@ import {
   type ConsoleOperationalAlertReadPort,
   type ConsoleOperationalEvidenceStatusReadPort,
   type ConsoleOperationalReadinessReadPort,
+  type ConsoleReleaseTraceReadPort,
 } from "./console-read-adapter.js";
 import { createAdminConsoleServer } from "./console-server.js";
 import { createDevelopmentConsoleSessionAdapter } from "./development-session.js";
@@ -31,6 +32,7 @@ function setup(
   alertReadPort?: ConsoleOperationalAlertReadPort,
   readinessReadPort?: ConsoleOperationalReadinessReadPort,
   evidenceStatusReadPort?: ConsoleOperationalEvidenceStatusReadPort,
+  releaseTraceReadPort?: ConsoleReleaseTraceReadPort,
 ) {
   const clock = new FixedClock(now);
   const session = createDevelopmentConsoleSessionAdapter({
@@ -112,6 +114,7 @@ function setup(
     ...(alertReadPort === undefined ? {} : { alertReadPort }),
     ...(readinessReadPort === undefined ? {} : { readinessReadPort }),
     ...(evidenceStatusReadPort === undefined ? {} : { evidenceStatusReadPort }),
+    ...(releaseTraceReadPort === undefined ? {} : { releaseTraceReadPort }),
   });
   return {
     adapter,
@@ -121,6 +124,75 @@ function setup(
     clock,
     get commandCalls() { return commandCalls; },
   };
+}
+
+const releaseCandidateId = "1".repeat(64);
+const artifactFingerprint = "2".repeat(64);
+const candidateFingerprint = "3".repeat(64);
+const acceptanceManifestId = "4".repeat(64);
+const manifestFingerprint = "5".repeat(64);
+const compositionFingerprint = "6".repeat(64);
+const sourceCommitSha = "d".repeat(40);
+const runtimeGapComponentIds = Object.freeze([
+  "ADMIN_CONSOLE",
+  "AI_ADVISORY_FEAT_022",
+  "AUDIT_API_016",
+  "CORE_APIS_FEAT_001_011",
+  "JOBS_API_017",
+]);
+
+function incompleteReleaseTrace(): Readonly<Record<string, unknown>> {
+  return Object.freeze({
+    candidate: Object.freeze({
+      releaseCandidateId, logicalReleaseId: "REL-001", sourceCommitSha, artifactFingerprint,
+      candidateFingerprint, targetEnvironment: "Staging", acceptanceResult: "INCOMPLETE",
+      runtimeGapComponentIds,
+    }),
+    acceptanceManifest: Object.freeze({
+      acceptanceManifestId, manifestFingerprint, releaseCandidateId, logicalReleaseId: "REL-001",
+      sourceCommitSha, artifactFingerprint, targetEnvironment: "Staging", acceptanceResult: "INCOMPLETE",
+      acceptedBy: null, acceptedAt: null, evaluatedAt: now,
+      decisionEvidenceRef: "evidence:release:decision:001",
+      evidenceRefs: Object.freeze(["evidence:release:verification:001"]),
+      readinessRefs: Object.freeze(["readiness:deployment:001"]),
+    }),
+    evidenceComposition: Object.freeze({
+      releaseCandidateId, logicalReleaseId: "REL-001", sourceCommitSha, artifactFingerprint,
+      candidateBindingFingerprint: candidateFingerprint, targetEnvironment: "Staging",
+      acceptanceResult: "INCOMPLETE", compositionFingerprint, runtimeGapComponentIds,
+      evidenceRefs: Object.freeze(["evidence:release:verification:001"]),
+      readinessRefs: Object.freeze(["readiness:deployment:001"]),
+    }),
+    promotionHandoff: Object.freeze({ state: "UNAVAILABLE" }),
+    authorityProvenance: Object.freeze({
+      acceptedBy: null,
+      acceptanceAuthorityEvidenceRefs: Object.freeze([]),
+      deploymentSodEvidenceRefs: Object.freeze([]),
+    }),
+  });
+}
+
+function acceptedReleaseTrace(): Readonly<Record<string, unknown>> {
+  const base = incompleteReleaseTrace();
+  const candidate = base["candidate"] as Readonly<Record<string, unknown>>;
+  const manifest = base["acceptanceManifest"] as Readonly<Record<string, unknown>>;
+  const composition = base["evidenceComposition"] as Readonly<Record<string, unknown>>;
+  const authorityRefs = Object.freeze(["evidence:release:authority:001"]);
+  const sodRefs = Object.freeze(["evidence:release:sod:001"]);
+  const readinessRefs = Object.freeze(["readiness:deployment:001"]);
+  return Object.freeze({
+    candidate: Object.freeze({ ...candidate, runtimeGapComponentIds: Object.freeze([]) }),
+    acceptanceManifest: Object.freeze({ ...manifest, acceptanceResult: "ACCEPTED", acceptedBy: "release-owner-1", acceptedAt: now }),
+    evidenceComposition: Object.freeze({ ...composition, acceptanceResult: "ACCEPTED", runtimeGapComponentIds: Object.freeze([]) }),
+    promotionHandoff: Object.freeze({
+      state: "AVAILABLE", releaseCandidateId, acceptanceManifestId, manifestFingerprint,
+      logicalReleaseId: "REL-001", sourceCommitSha, artifactFingerprint, targetEnvironment: "Staging",
+      acceptanceResult: "ACCEPTED", acceptedAt: now, readinessRefs,
+      acceptanceActorId: "release-owner-1", acceptanceAuthorityEvidenceRefs: authorityRefs,
+      deploymentSodEvidenceRefs: sodRefs, handoffEvidenceFingerprint: "7".repeat(64),
+    }),
+    authorityProvenance: Object.freeze({ acceptedBy: "release-owner-1", acceptanceAuthorityEvidenceRefs: authorityRefs, deploymentSodEvidenceRefs: sodRefs }),
+  });
 }
 
 function assignment(role: "OPS" | "SEC", resourceTypes: readonly string[]): RoleAssignment {
@@ -1025,4 +1097,132 @@ test("F20-B new pages preserve unavailable, tenant concealment, and safe port-er
   assert.equal(failed.error?.code, "CONSOLE_READ_UNAVAILABLE");
   assert.equal(JSON.stringify(failed).includes("restricted"), false);
   assert.equal(JSON.stringify(failed).includes("secret-token"), false);
+});
+
+test("FEAT-024-G projects exact REL-001 Staging trace only after trusted live authorization", () => {
+  let reads = 0;
+  let trustedActor = "";
+  const port: ConsoleReleaseTraceReadPort = {
+    readReleaseTrace(input) {
+      reads += 1;
+      trustedActor = input.session.principalId;
+      assert.equal(input.tenantId, tenantId);
+      assert.equal(input.scopeRef, tenantId);
+      return incompleteReleaseTrace();
+    },
+  };
+  const configured = setup(undefined, undefined, undefined, port);
+
+  const visible = configured.adapter.read({
+    page: "OPERATIONS", sessionId: "console-session", tenantId, teamId: tenantId,
+    correlationId: "release-trace-visible",
+  });
+  assert.equal(visible.state, "READY");
+  assert.equal(reads, 1);
+  assert.equal(trustedActor, "console-operator");
+  assert.deepEqual(visible.data?.["releaseTrace"], incompleteReleaseTrace());
+  assert.equal(Object.isFrozen(visible.data?.["releaseTrace"]), true);
+
+  const concealed = configured.adapter.read({
+    page: "OPERATIONS", sessionId: "console-session", tenantId: "team-b", teamId: "team-b",
+    correlationId: "release-trace-concealed",
+  });
+  assert.equal(concealed.state, "EMPTY");
+  assert.equal(reads, 1);
+});
+
+test("FEAT-024-G passes the exact authorized Session to the release trace port without resolver TOCTOU", () => {
+  const setupResult = setup();
+  let resolverCalls = 0;
+  let observedActor = "";
+  const firstSession = setupResult.session.resolve("console-session");
+  assert.notEqual(firstSession, undefined);
+  const secondSession = Object.freeze({ ...firstSession!, principalId: "cross-context-actor", tenantId: "team-b", teamIds: Object.freeze(["team-b"]) });
+  const adapter = new ConsoleReadAdapter({
+    queryPort: { executeQuery: () => { throw new Error("Publication query must not be used"); } },
+    operationsRead: setupResult.infrastructure.operationsRead,
+    projectionRead: setupResult.infrastructure.operationsProjectionRead,
+    sessionResolver: { resolve: () => (++resolverCalls === 1 ? firstSession : secondSession) },
+    authorizationEvaluator: setupResult.authorization,
+    clock: setupResult.clock,
+    releaseTraceReadPort: {
+      readReleaseTrace: ({ session }) => {
+        observedActor = session.principalId;
+        return incompleteReleaseTrace();
+      },
+    },
+  });
+
+  const result = adapter.read({
+    page: "OPERATIONS", sessionId: "console-session", tenantId, teamId: tenantId,
+    correlationId: "release-trace-session-toctou",
+  });
+
+  assert.equal(result.state, "READY");
+  assert.equal(observedActor, "console-operator");
+  assert.equal(resolverCalls, 1);
+});
+
+test("FEAT-024-G rejects cross-candidate environment binding and unsafe release evidence fail closed", () => {
+  const setupResult = setup();
+  const cases = [
+    { ...incompleteReleaseTrace(), evidenceComposition: { ...(incompleteReleaseTrace()["evidenceComposition"] as object), artifactFingerprint: "9".repeat(64) } },
+    { ...incompleteReleaseTrace(), acceptanceManifest: { ...(incompleteReleaseTrace()["acceptanceManifest"] as object), targetEnvironment: "Production" } },
+    { ...incompleteReleaseTrace(), rawScannerPayload: "Authorization: Bearer secret-fixture-value" },
+    { ...incompleteReleaseTrace(), evidenceComposition: { ...(incompleteReleaseTrace()["evidenceComposition"] as object), evidenceRefs: ["C:\\internal\\release.sqlite"] } },
+  ];
+  for (const [index, value] of cases.entries()) {
+    const adapter = new ConsoleReadAdapter({
+      queryPort: { executeQuery: () => { throw new Error("Publication query must not be used"); } },
+      operationsRead: setupResult.infrastructure.operationsRead,
+      projectionRead: setupResult.infrastructure.operationsProjectionRead,
+      sessionResolver: setupResult.session,
+      authorizationEvaluator: setupResult.authorization,
+      clock: setupResult.clock,
+      releaseTraceReadPort: { readReleaseTrace: () => value },
+    });
+    const result = adapter.read({
+      page: "OPERATIONS", sessionId: "console-session", tenantId, teamId: tenantId,
+      correlationId: `release-trace-invalid-${index}`,
+    });
+    assert.equal(result.state, "READY");
+    assert.equal(result.data?.["releaseTrace"], "UNAVAILABLE");
+    assert.equal(JSON.stringify(result).includes("Bearer"), false);
+    assert.equal(JSON.stringify(result).includes("release.sqlite"), false);
+  }
+});
+
+test("FEAT-024-G keeps the release trace unavailable when its injected boundary is absent or fails", () => {
+  const unavailable = setup().adapter.read({
+    page: "OPERATIONS", sessionId: "console-session", tenantId, teamId: tenantId,
+    correlationId: "release-trace-unavailable",
+  });
+  assert.equal(unavailable.data?.["releaseTrace"], "UNAVAILABLE");
+
+  const setupResult = setup();
+  const failed = new ConsoleReadAdapter({
+    queryPort: { executeQuery: () => { throw new Error("Publication query must not be used"); } },
+    operationsRead: setupResult.infrastructure.operationsRead,
+    projectionRead: setupResult.infrastructure.operationsProjectionRead,
+    sessionResolver: setupResult.session,
+    authorizationEvaluator: setupResult.authorization,
+    clock: setupResult.clock,
+    releaseTraceReadPort: { readReleaseTrace: () => { throw new Error("C:\\secret\\release.sqlite Authorization: Bearer unsafe"); } },
+  }).read({
+    page: "OPERATIONS", sessionId: "console-session", tenantId, teamId: tenantId,
+    correlationId: "release-trace-failed",
+  });
+  assert.equal(failed.state, "READY");
+  assert.equal(failed.data?.["releaseTrace"], "UNAVAILABLE");
+  assert.equal(JSON.stringify(failed).includes("unsafe"), false);
+});
+
+test("FEAT-024-G preserves a test-only exact accepted handoff as bounded read evidence without executing promotion", () => {
+  const trace = acceptedReleaseTrace();
+  const result = setup(undefined, undefined, undefined, { readReleaseTrace: () => trace }).adapter.read({
+    page: "OPERATIONS", sessionId: "console-session", tenantId, teamId: tenantId,
+    correlationId: "release-trace-accepted-fixture",
+  });
+  assert.equal(result.state, "READY");
+  assert.deepEqual(result.data?.["releaseTrace"], trace);
 });

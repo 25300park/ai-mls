@@ -669,3 +669,94 @@ test("FEAT-023-G renders unavailable operational evidence without internal error
   assert.equal(html.includes("C:\\secret\\runtime.ts"), false);
   assert.equal(html.includes("database.sqlite"), false);
 });
+
+test("FEAT-024-G renders exact incomplete Staging release trace without promotion controls", () => {
+  const html = renderConsoleResult(ready("OPERATIONS", {
+    health: "HEALTHY", readiness: { operationsRead: true }, components: [], metrics: {}, alerts: [],
+    operationalReadiness: [], telemetry: [], operationalStatuses: [], securityPrivacySummary: {},
+    releaseTrace: incompleteReleaseTraceView(), observedAt: "2026-09-12T00:00:00.000Z",
+  }));
+
+  for (const value of [
+    "Release Trace / Acceptance Evidence", "REL-001", "Staging", "INCOMPLETE",
+    "Runtime gaps", "5", "ADMIN_CONSOLE", "AI_ADVISORY_FEAT_022", "AUDIT_API_016",
+    "CORE_APIS_FEAT_001_011", "JOBS_API_017", "Promotion Handoff", "UNAVAILABLE",
+    "evidence:release:decision:001", "readiness:deployment:001",
+  ]) assert.equal(html.includes(value), true, value);
+  assert.equal(/READY FOR PRODUCTION|PROMOTION AVAILABLE|RELEASE APPROVED/iu.test(html), false);
+  assert.equal(/<button|<form|data-(?:accept|release|promote|deploy|rollback)|type="submit"/iu.test(html), false);
+  assert.equal(html.includes('aria-labelledby="release-trace-heading"'), true);
+});
+
+test("FEAT-024-G escapes release trace fields and renders malformed or unavailable trace as UNAVAILABLE", () => {
+  const unsafe = incompleteReleaseTraceView();
+  const malformed = { ...unsafe, candidate: { ...(unsafe["candidate"] as object), logicalReleaseId: "<script>unsafe()</script>" } };
+  const html = renderConsoleResult(ready("OPERATIONS", {
+    health: "UNKNOWN", readiness: {}, components: [], metrics: {}, alerts: "UNAVAILABLE",
+    operationalReadiness: "UNAVAILABLE", telemetry: "UNAVAILABLE", operationalStatuses: "UNAVAILABLE",
+    securityPrivacySummary: "UNAVAILABLE", releaseTrace: malformed,
+  }));
+  const unavailable = renderConsoleResult(ready("OPERATIONS", {
+    health: "UNKNOWN", readiness: {}, components: [], metrics: {}, alerts: "UNAVAILABLE",
+    operationalReadiness: "UNAVAILABLE", telemetry: "UNAVAILABLE", operationalStatuses: "UNAVAILABLE",
+    securityPrivacySummary: "UNAVAILABLE", releaseTrace: "UNAVAILABLE",
+  }));
+  assert.equal(html.includes("<script>unsafe()"), false);
+  assert.equal(html.includes("&lt;script&gt;unsafe()&lt;/script&gt;"), true);
+  assert.equal(/<button|<form|onclick=/iu.test(html), false);
+  assert.equal(unavailable.includes("Release trace evidence is unavailable."), true);
+});
+
+test("FEAT-024-G renders bounded accepted promotion handoff bindings and provenance without controls", () => {
+  const trace = incompleteReleaseTraceView();
+  const candidate = trace["candidate"] as Readonly<Record<string, unknown>>;
+  const manifest = trace["acceptanceManifest"] as Readonly<Record<string, unknown>>;
+  const authorityRefs = Object.freeze(["evidence:release:authority:001"]);
+  const sodRefs = Object.freeze(["evidence:release:sod:001"]);
+  const acceptedAt = "2026-09-12T00:00:00.000Z";
+  const accepted = Object.freeze({
+    ...trace,
+    acceptanceManifest: Object.freeze({ ...manifest, acceptanceResult: "ACCEPTED", acceptedBy: "release-owner-1", acceptedAt }),
+    authorityProvenance: Object.freeze({ acceptedBy: "release-owner-1", acceptanceAuthorityEvidenceRefs: authorityRefs, deploymentSodEvidenceRefs: sodRefs }),
+    promotionHandoff: Object.freeze({
+      state: "AVAILABLE", releaseCandidateId: candidate["releaseCandidateId"], acceptanceManifestId: manifest["acceptanceManifestId"],
+      manifestFingerprint: manifest["manifestFingerprint"], logicalReleaseId: "REL-001", sourceCommitSha: candidate["sourceCommitSha"],
+      artifactFingerprint: candidate["artifactFingerprint"], targetEnvironment: "Staging", acceptanceResult: "ACCEPTED", acceptedAt,
+      readinessRefs: Object.freeze(["readiness:deployment:001"]), acceptanceActorId: "release-owner-1",
+      acceptanceAuthorityEvidenceRefs: authorityRefs, deploymentSodEvidenceRefs: sodRefs, handoffEvidenceFingerprint: "7".repeat(64),
+    }),
+  });
+  const html = renderConsoleResult({ page: "OPERATIONS", state: "READY", data: {
+    health: "HEALTHY", readiness: { operationsRead: true }, components: [], metrics: {}, alerts: [],
+    operationalReadiness: [], operationalTelemetry: [], operationalStatuses: [], securityPrivacySummary: "UNAVAILABLE",
+    releaseTrace: accepted, observedAt: acceptedAt,
+  } });
+
+  for (const value of ["release-owner-1", "evidence:release:authority:001", "evidence:release:sod:001", "7".repeat(64)]) {
+    assert.equal(html.includes(value), true, value);
+  }
+  assert.equal(/<button|<form|data-command|\/accept|\/promote|\/deploy|\/rollback/iu.test(html), false);
+});
+
+function incompleteReleaseTraceView(): Readonly<Record<string, unknown>> {
+  const releaseCandidateId = "1".repeat(64);
+  const artifactFingerprint = "2".repeat(64);
+  const candidateFingerprint = "3".repeat(64);
+  const sourceCommitSha = "d".repeat(40);
+  const runtimeGapComponentIds = ["ADMIN_CONSOLE", "AI_ADVISORY_FEAT_022", "AUDIT_API_016", "CORE_APIS_FEAT_001_011", "JOBS_API_017"];
+  return {
+    candidate: { releaseCandidateId, logicalReleaseId: "REL-001", sourceCommitSha, artifactFingerprint,
+      candidateFingerprint, targetEnvironment: "Staging", acceptanceResult: "INCOMPLETE", runtimeGapComponentIds },
+    acceptanceManifest: { acceptanceManifestId: "4".repeat(64), manifestFingerprint: "5".repeat(64),
+      releaseCandidateId, logicalReleaseId: "REL-001", sourceCommitSha, artifactFingerprint,
+      targetEnvironment: "Staging", acceptanceResult: "INCOMPLETE", acceptedBy: null, acceptedAt: null,
+      evaluatedAt: "2026-09-12T00:00:00.000Z", decisionEvidenceRef: "evidence:release:decision:001",
+      evidenceRefs: ["evidence:release:verification:001"], readinessRefs: ["readiness:deployment:001"] },
+    evidenceComposition: { releaseCandidateId, logicalReleaseId: "REL-001", sourceCommitSha, artifactFingerprint,
+      candidateBindingFingerprint: candidateFingerprint, targetEnvironment: "Staging", acceptanceResult: "INCOMPLETE",
+      compositionFingerprint: "6".repeat(64), runtimeGapComponentIds,
+      evidenceRefs: ["evidence:release:verification:001"], readinessRefs: ["readiness:deployment:001"] },
+    promotionHandoff: { state: "UNAVAILABLE" },
+    authorityProvenance: { acceptedBy: null, acceptanceAuthorityEvidenceRefs: [], deploymentSodEvidenceRefs: [] },
+  };
+}

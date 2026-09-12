@@ -177,3 +177,21 @@ test("F16-PHASE-11 Console imports no authoritative graph and exposes only the b
   assert.match(mainSource, /AdministrationConsoleReadAdapter/u);
   assert.match(mainSource, /administrationReadAdapter/u);
 });
+
+test("FEAT-024-G Console reaches release evidence only through the injected read-only port", () => {
+  const sourceRoot = join(process.cwd(), "apps", "admin-console", "src");
+  const operationsRoot = join(process.cwd(), "modules", "operations", "src");
+  const adapterSource = readFileSync(join(sourceRoot, "console-read-adapter.ts"), "utf8");
+  const projectionSource = readFileSync(join(operationsRoot, "release-trace-read-projection.ts"), "utf8");
+  const rendererSource = readFileSync(join(sourceRoot, "console-renderer.ts"), "utf8");
+  assert.match(adapterSource, /ConsoleReleaseTraceReadPort/u);
+  assert.match(adapterSource, /releaseTraceReadPort\.readReleaseTrace/u);
+  assert.equal(/DurableReleaseAcceptanceManifestStore|release-acceptance-authority-service|new PromotionHandoffEvidenceService|\.append\(|\.decide\(/u.test(adapterSource), false);
+  assert.match(projectionSource, /manifestRead\.findCandidate/u);
+  assert.match(projectionSource, /evidenceComposition\.compose/u);
+  assert.match(projectionSource, /promotionHandoff\.materialize/u);
+  assert.equal(/\.append\(|\.decide\(|\.deploy\(|\.promote\(/u.test(projectionSource), false);
+  assert.equal(/\/release|RELEASE_ACCEPT|PROMOTE|DEPLOY|ROLLBACK/u.test(readFileSync(join(sourceRoot, "console-server.ts"), "utf8")), false);
+  const releaseRenderer = /function renderReleaseTrace[\s\S]*?function renderOperationalTelemetry/u.exec(rendererSource)?.[0] ?? "";
+  assert.equal(/<button|<form|data-(?:accept|release|promote|deploy|rollback)/iu.test(releaseRenderer), false);
+});
