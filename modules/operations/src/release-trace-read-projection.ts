@@ -35,7 +35,7 @@ export class ReleaseTraceReadProjectionService {
       const candidate = this.dependencies.manifestRead.findCandidate(this.dependencies.releaseCandidateId);
       if (candidate === undefined) return undefined;
       const history = this.dependencies.manifestRead.listManifestHistory(candidate.releaseCandidateId);
-      const manifest = history.at(-1);
+      const manifest = terminalManifest(history, candidate.releaseCandidateId);
       if (manifest === undefined) return undefined;
       const composition = this.dependencies.evidenceComposition.compose(candidate, { evaluatedAt: manifest.evaluatedAt });
       if (!sameBinding(candidate, manifest, composition)) return undefined;
@@ -55,6 +55,35 @@ export class ReleaseTraceReadProjectionService {
       && request.session.teamId === this.dependencies.scopeRef
       && request.session.state === "ACTIVE";
   }
+}
+
+function terminalManifest(
+  history: readonly ReleaseAcceptanceManifest[],
+  releaseCandidateId: string,
+): ReleaseAcceptanceManifest | undefined {
+  if (history.length === 0) return undefined;
+  const byId = new Map<string, ReleaseAcceptanceManifest>();
+  const successorById = new Map<string, string>();
+  for (const manifest of history) {
+    if (manifest.releaseCandidateId !== releaseCandidateId || byId.has(manifest.acceptanceManifestId)) return undefined;
+    byId.set(manifest.acceptanceManifestId, manifest);
+  }
+  for (const manifest of history) {
+    if (manifest.previousManifestId === null) continue;
+    if (!byId.has(manifest.previousManifestId) || successorById.has(manifest.previousManifestId)) return undefined;
+    successorById.set(manifest.previousManifestId, manifest.acceptanceManifestId);
+  }
+  const terminals = history.filter((manifest) => !successorById.has(manifest.acceptanceManifestId));
+  if (terminals.length !== 1) return undefined;
+  const terminal = terminals[0]!;
+  const visited = new Set<string>();
+  let current: ReleaseAcceptanceManifest | undefined = terminal;
+  while (current !== undefined) {
+    if (visited.has(current.acceptanceManifestId)) return undefined;
+    visited.add(current.acceptanceManifestId);
+    current = current.previousManifestId === null ? undefined : byId.get(current.previousManifestId);
+  }
+  return visited.size === history.length ? terminal : undefined;
 }
 
 function project(
