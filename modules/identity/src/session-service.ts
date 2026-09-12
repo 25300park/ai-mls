@@ -6,6 +6,12 @@ import type {
   PrincipalType,
   RoleCode,
 } from "../../../packages/security-contracts/src/index.js";
+import {
+  InMemorySessionUnitOfWork,
+  sessionEvidenceReference,
+  type DurableSessionRecord,
+  type SessionUnitOfWork,
+} from "./session-persistence.js";
 
 export interface AuthenticationEvidence {
   readonly credentialReference: string;
@@ -40,6 +46,14 @@ export interface SessionContext {
   readonly absoluteExpiresAt: string;
   readonly familyId: string;
   readonly refreshReference: string;
+  readonly sessionVersion?: number;
+  readonly tenantBindingOrigin?: string;
+  readonly issuedAt?: string;
+  readonly revokedAt?: string;
+  readonly revocationEvidenceRef?: string;
+  readonly auditEvidenceRef?: string;
+  readonly lastAccessedAt?: string;
+  readonly lastMfaVerifiedAt?: string;
 }
 
 type AuthenticationAssurance = Pick<SessionContext, "assurance" | "isMfaVerified">;
@@ -61,6 +75,8 @@ interface SessionServiceDependencies {
   readonly idFactory: IdFactory;
   readonly accessLifetimeMs: number;
   readonly absoluteLifetimeMs: number;
+  readonly unitOfWork?: SessionUnitOfWork;
+  readonly tenantBindingOrigin?: string;
 }
 
 interface CreateSessionRequest {
@@ -100,16 +116,6 @@ function immutableSession(session: SessionContext): SessionContext {
   return Object.freeze(snapshot);
 }
 
-function sessionPrincipal(session: SessionContext): AuditPrincipal {
-  return {
-    id: session.principalId,
-    type: session.principalType,
-    roles: session.roles,
-    ...(session.teamId === undefined ? {} : { teamId: session.teamId }),
-    sessionId: session.id,
-  };
-}
-
 export class SessionService {
   readonly #authenticationAdapter: AuthenticationAdapter;
   readonly #auditSink: AuditSink;
@@ -117,9 +123,8 @@ export class SessionService {
   readonly #idFactory: IdFactory;
   readonly #accessLifetimeMs: number;
   readonly #absoluteLifetimeMs: number;
-  readonly #sessions = new Map<string, SessionContext>();
-  readonly #familySessions = new Map<string, Set<string>>();
-  readonly #consumedRefreshReferences = new Set<string>();
+  readonly #unitOfWork: SessionUnitOfWork;
+  readonly #tenantBindingOrigin: string;
 
   public constructor(dependencies: SessionServiceDependencies) {
     this.#authenticationAdapter = dependencies.authenticationAdapter;
@@ -128,6 +133,9 @@ export class SessionService {
     this.#idFactory = dependencies.idFactory;
     this.#accessLifetimeMs = dependencies.accessLifetimeMs;
     this.#absoluteLifetimeMs = dependencies.absoluteLifetimeMs;
+    this.#unitOfWork = dependencies.unitOfWork ?? new InMemorySessionUnitOfWork();
+    this.#tenantBindingOrigin = dependencies.tenantBindingOrigin
+      ?? "authentication-adapter:test-development-compatibility";
   }
 
   public createSession(request: CreateSessionRequest): SessionContext {
@@ -153,49 +161,71 @@ export class SessionService {
     this.#assertPrincipalRoles(identity);
     const now = this.#clock();
     const familyId = this.#idFactory();
-    const session = this.#createSessionSnapshot(identity, familyId, now, undefined);
-    this.#storeSession(session);
-    this.#auditSink.append({
+    const sessionId = this.#idFactory();
+    const refreshReference = this.#idFactory();
+    const auditEvent = this.#auditSink.append({
       eventType: "LOGIN",
-      principal: sessionPrincipal(session),
+      principal: identityPrincipal(identity),
       action: "session.create",
-      target: { type: "Session", id: session.id },
+      target: { type: "Session", id: sessionEvidenceReference(sessionId) },
       purpose: "AUTHENTICATION",
       policyVersion: "identity-v1",
       classification: "RESTRICTED_SECURITY",
       decision: "ALLOW",
-      outcome: "COMPLETED",
+      outcome: "ACCEPTED",
       ...(request.requestId === undefined ? {} : { requestId: request.requestId }),
       correlationId: request.correlationId,
       details: {
-        assurance: session.assurance,
-        isMfaVerified: session.isMfaVerified,
+        assurance: identity.assurance,
+        isMfaVerified: identity.isMfaVerified,
         requestedScope: request.evidence.requestedScope,
       },
     });
-    return session;
+    const record = this.#createSessionSnapshot({
+      identity,
+      familyId,
+      sessionId,
+      refreshReference,
+      issuedAt: now,
+      lastAccessedAt: now,
+      auditEvidenceRef: auditEvent.id,
+    });
+    this.#storeSession(record);
+    return this.#toSessionContext(record);
   }
 
   public readSession(sessionId: string): SessionContext {
     const session = this.#requireSession(sessionId);
+    const projected = this.#toSessionContext(session);
     if (session.state === "REVOKED") {
       throw new AuthenticationError("SESSION_REVOKED", "Session is not active.");
     }
     if (
       session.state === "EXPIRED" ||
-      this.#clock().getTime() >= new Date(session.expiresAt).getTime() ||
-      this.#clock().getTime() >= new Date(session.absoluteExpiresAt).getTime()
+      this.#clock().getTime() >= new Date(projected.expiresAt).getTime() ||
+      this.#clock().getTime() >= new Date(projected.absoluteExpiresAt).getTime()
     ) {
-      this.#sessions.set(session.id, immutableSession({ ...session, state: "EXPIRED" }));
+      this.#unitOfWork.transaction(
+        { sessionId: session.id, expectedVersion: session.sessionVersion },
+        () => this.#unitOfWork.sessions.update(session.sessionVersion, {
+          ...session,
+          state: "EXPIRED",
+          sessionVersion: session.sessionVersion + 1,
+        }),
+      );
       throw new AuthenticationError("SESSION_EXPIRED", "Session is not active.");
     }
-    return session;
+    return projected;
   }
 
   public refreshSession(request: RefreshSessionRequest): SessionContext {
     const current = this.#requireSession(request.sessionId);
-    if (this.#consumedRefreshReferences.has(request.refreshReference)) {
-      this.#revokeFamily(current.familyId);
+    if (current.state === "REVOKED" && current.refreshReference === request.refreshReference) {
+      this.#revokeFamily(
+        current.familyId,
+        current.revokedAt ?? this.#clock().toISOString(),
+        current.revocationEvidenceRef ?? current.auditEvidenceRef,
+      );
       throw new AuthenticationError("SESSION_REVOKED", "Session is not active.");
     }
     if (current.state !== "ACTIVE" || current.refreshReference !== request.refreshReference) {
@@ -203,8 +233,6 @@ export class SessionService {
     }
     this.readSession(current.id);
 
-    this.#consumedRefreshReferences.add(current.refreshReference);
-    this.#sessions.set(current.id, immutableSession({ ...current, state: "REVOKED" }));
     const identity: AuthenticatedIdentity = {
       principalId: current.principalId,
       principalType: current.principalType,
@@ -214,28 +242,46 @@ export class SessionService {
       isMfaVerified: current.isMfaVerified,
       status: "ACTIVE",
     };
-    const successor = this.#createSessionSnapshot(
-      identity,
-      current.familyId,
-      this.#clock(),
-      current.absoluteExpiresAt,
-    );
-    this.#storeSession(successor);
-    this.#auditSink.append({
+    const now = this.#clock();
+    const successorId = this.#idFactory();
+    const successorRefreshReference = this.#idFactory();
+    const auditEvent = this.#auditSink.append({
       eventType: "SESSION_REFRESH",
-      principal: sessionPrincipal(successor),
+      principal: identityPrincipal(identity),
       action: "session.refresh",
-      target: { type: "Session", id: successor.id },
+      target: { type: "Session", id: sessionEvidenceReference(successorId) },
       purpose: "AUTHENTICATION",
       policyVersion: "identity-v1",
       classification: "RESTRICTED_SECURITY",
       decision: "ALLOW",
-      outcome: "COMPLETED",
+      outcome: "ACCEPTED",
       ...(request.requestId === undefined ? {} : { requestId: request.requestId }),
       correlationId: request.correlationId,
-      details: { predecessorSessionId: current.id },
+      details: { predecessorSessionRef: sessionEvidenceReference(current.id) },
     });
-    return successor;
+    this.#unitOfWork.transaction(
+      { sessionId: current.id, expectedVersion: current.sessionVersion },
+      () => this.#unitOfWork.sessions.appendRevocation(current.sessionVersion, {
+        sessionId: current.id,
+        revokedAt: now.toISOString(),
+        revocationEvidenceRef: auditEvent.id,
+        auditEvidenceRef: auditEvent.id,
+      }),
+    );
+    const successor = this.#createSessionSnapshot({
+      identity,
+      familyId: current.familyId,
+      sessionId: successorId,
+      refreshReference: successorRefreshReference,
+      issuedAt: new Date(current.issuedAt),
+      lastAccessedAt: now,
+      auditEvidenceRef: auditEvent.id,
+      ...(current.lastMfaVerifiedAt === undefined
+        ? {}
+        : { lastMfaVerifiedAt: new Date(current.lastMfaVerifiedAt) }),
+    });
+    this.#storeSession(successor);
+    return this.#toSessionContext(successor);
   }
 
   public revokeSession(request: RevokeSessionRequest): SessionContext {
@@ -243,23 +289,31 @@ export class SessionService {
       throw new Error("REVOCATION_REASON_REQUIRED");
     }
     const session = this.#requireSession(request.sessionId);
-    const revoked = immutableSession({ ...session, state: "REVOKED" });
-    this.#sessions.set(revoked.id, revoked);
-    this.#auditSink.append({
+    const revokedAt = this.#clock().toISOString();
+    const auditEvent = this.#auditSink.append({
       eventType: "SESSION_REVOKE",
       principal: request.actor,
       action: "session.revoke",
-      target: { type: "Session", id: revoked.id },
+      target: { type: "Session", id: sessionEvidenceReference(session.id) },
       purpose: "ACCESS_GOVERNANCE",
       policyVersion: "identity-v1",
       classification: "RESTRICTED_SECURITY",
       decision: "ALLOW",
-      outcome: "COMPLETED",
+      outcome: "ACCEPTED",
       reason: request.reason,
       ...(request.requestId === undefined ? {} : { requestId: request.requestId }),
       correlationId: request.correlationId,
     });
-    return revoked;
+    this.#unitOfWork.transaction(
+      { sessionId: session.id, expectedVersion: session.sessionVersion },
+      () => this.#unitOfWork.sessions.appendRevocation(session.sessionVersion, {
+        sessionId: session.id,
+        revokedAt,
+        revocationEvidenceRef: auditEvent.id,
+        auditEvidenceRef: auditEvent.id,
+      }),
+    );
+    return this.#toSessionContext(this.#requireSession(session.id));
   }
 
   #assertPrincipalRoles(identity: AuthenticatedIdentity): void {
@@ -280,59 +334,94 @@ export class SessionService {
     }
   }
 
-  #createSessionSnapshot(
-    identity: AuthenticatedIdentity,
-    familyId: string,
-    now: Date,
-    inheritedAbsoluteExpiry: string | undefined,
-  ): SessionContext {
-    const absoluteExpiry =
-      inheritedAbsoluteExpiry ??
-      new Date(now.getTime() + this.#absoluteLifetimeMs).toISOString();
+  #createSessionSnapshot(input: {
+    readonly identity: AuthenticatedIdentity;
+    readonly familyId: string;
+    readonly sessionId: string;
+    readonly refreshReference: string;
+    readonly issuedAt: Date;
+    readonly lastAccessedAt: Date;
+    readonly lastMfaVerifiedAt?: Date;
+    readonly auditEvidenceRef: string;
+  }): DurableSessionRecord {
+    const lastMfaVerifiedAt = input.lastMfaVerifiedAt
+      ?? (input.identity.isMfaVerified ? input.lastAccessedAt : undefined);
+    return {
+      id: input.sessionId,
+      principalId: input.identity.principalId,
+      principalType: input.identity.principalType,
+      roles: input.identity.roles,
+      ...(input.identity.teamId === undefined ? {} : { teamId: input.identity.teamId }),
+      state: "ACTIVE",
+      assurance: input.identity.assurance,
+      isMfaVerified: input.identity.isMfaVerified,
+      familyId: input.familyId,
+      refreshReference: input.refreshReference,
+      sessionVersion: 1,
+      tenantBindingOrigin: this.#tenantBindingOrigin,
+      issuedAt: input.issuedAt.toISOString(),
+      auditEvidenceRef: input.auditEvidenceRef,
+      lastAccessedAt: input.lastAccessedAt.toISOString(),
+      ...(lastMfaVerifiedAt === undefined
+        ? {}
+        : { lastMfaVerifiedAt: lastMfaVerifiedAt.toISOString() }),
+    };
+  }
+
+  #toSessionContext(record: DurableSessionRecord): SessionContext {
+    const absoluteExpiry = new Date(
+      new Date(record.issuedAt).getTime() + this.#absoluteLifetimeMs,
+    ).toISOString();
     const accessExpiry = new Date(
       Math.min(
-        now.getTime() + this.#accessLifetimeMs,
+        new Date(record.issuedAt).getTime() + this.#accessLifetimeMs,
         new Date(absoluteExpiry).getTime(),
       ),
     ).toISOString();
     return immutableSession({
-      id: this.#idFactory(),
-      principalId: identity.principalId,
-      principalType: identity.principalType,
-      roles: identity.roles,
-      ...(identity.teamId === undefined ? {} : { teamId: identity.teamId }),
-      state: "ACTIVE",
-      assurance: identity.assurance,
-      isMfaVerified: identity.isMfaVerified,
-      authenticatedAt: now.toISOString(),
+      ...record,
+      authenticatedAt: record.issuedAt,
       expiresAt: accessExpiry,
       absoluteExpiresAt: absoluteExpiry,
-      familyId,
-      refreshReference: this.#idFactory(),
     });
   }
 
-  #storeSession(session: SessionContext): void {
-    this.#sessions.set(session.id, session);
-    const family = this.#familySessions.get(session.familyId) ?? new Set<string>();
-    family.add(session.id);
-    this.#familySessions.set(session.familyId, family);
+  #storeSession(session: DurableSessionRecord): void {
+    this.#unitOfWork.transaction(
+      { sessionId: session.id, expectedVersion: 0 },
+      () => this.#unitOfWork.sessions.create(session),
+    );
   }
 
-  #requireSession(sessionId: string): SessionContext {
-    const session = this.#sessions.get(sessionId);
+  #requireSession(sessionId: string): DurableSessionRecord {
+    const session = this.#unitOfWork.sessions.find(sessionId);
     if (session === undefined) {
       throw new AuthenticationError("SESSION_REVOKED", "Session is not active.");
     }
     return session;
   }
 
-  #revokeFamily(familyId: string): void {
-    for (const sessionId of this.#familySessions.get(familyId) ?? []) {
-      const session = this.#sessions.get(sessionId);
-      if (session !== undefined) {
-        this.#sessions.set(sessionId, immutableSession({ ...session, state: "REVOKED" }));
-      }
+  #revokeFamily(familyId: string, revokedAt: string, evidenceRef: string): void {
+    for (const session of this.#unitOfWork.sessions.listByFamily(familyId)) {
+      if (session.state !== "ACTIVE") continue;
+      this.#unitOfWork.transaction(
+        { sessionId: session.id, expectedVersion: session.sessionVersion },
+        () => this.#unitOfWork.sessions.appendRevocation(session.sessionVersion, {
+          sessionId: session.id,
+          revokedAt,
+          revocationEvidenceRef: evidenceRef,
+          auditEvidenceRef: evidenceRef,
+        }),
+      );
     }
   }
+}
+
+function identityPrincipal(identity: AuthenticatedIdentity): AuditPrincipal {
+  return {
+    id: identity.principalId,
+    type: identity.principalType,
+    roles: identity.roles,
+    ...(identity.teamId === undefined ? {} : { teamId: identity.teamId }),
+  };
 }
