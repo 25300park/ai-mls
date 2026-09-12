@@ -3,14 +3,14 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | DOC-DEV-047 |
-| 문서 버전 | v0.1 |
+| 문서 버전 | v0.2 |
 | 상태 | IN REVIEW |
 | 소유 역할 | Architecture Owner / Release Owner / Quality Owner |
-| 적용 범위 | FEAT-024-A~H verified evidence |
+| 적용 범위 | FEAT-024-A~H 및 Final Gate verified evidence |
 
 ## 1. Boundary
 
-이 문서는 FEAT-024 실행 증거를 canonical release-candidate identity에 연결한다. `REL-001 / Staging`은 계속 `INCOMPLETE`이고 mandatory runtime gaps는 5개이며 promotion handoff는 `UNAVAILABLE`이다. 이 RTM은 release acceptance, deployment 또는 registry status 변경을 수행하지 않는다.
+이 문서는 FEAT-024 실행 증거를 canonical release-candidate identity에 연결한다. FEAT-024는 release trace/acceptance evidence system으로 Final Gate를 통과했지만 `REL-001 / Staging`은 계속 `INCOMPLETE`이고 mandatory runtime gaps는 5개이며 promotion handoff는 `UNAVAILABLE`이다. 이 RTM은 release acceptance, deployment 또는 registry status 변경을 수행하지 않는다.
 
 ## 2. A–H traceability
 
@@ -51,17 +51,32 @@
 | Authority/security | D/E/F/G regression preserves trusted actor, MFA, SoD, safe refs, concealment and zero raw diagnostic leakage | PASS |
 | Side effects and registry | read projection exposes no accept/promote/deploy/rollback callback; H diff changes no registry or persistence state semantics | PASS — `0` |
 
-## 5. Deferred status
+## 5. Final Gate traceability
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| A–H integration | A–H commits are ancestors of candidate baseline `c871d9c136e3e6c6aa8d06f5d9010ae40762a727`; phase rows remain VERIFIED | PASS |
+| Candidate/artifact truth | canonical candidate manifest exact identities, 18-file API-015 closure, exclusions 0 and five gaps | PASS |
+| Contract/persistence/replay/lineage | A–H direct assertions; focused `171/171` | PASS |
+| Authority/MFA/SoD and evidence/handoff | D/E/F assertions; current REL-001 stays `INCOMPLETE`, handoff `UNAVAILABLE` | PASS |
+| Console/security/side effects | G/H assertions, Gitleaks 0, mutation/execution/new authority 0 | PASS |
+| Prior-feature preservation | affected `588/588`; full `1220/1220` | PASS |
+| Tooling/architecture/governance | lint/typecheck/clean build/full test constituents PASS; immutable architecture `153/153`; six approved current deltas; documents/links validated | PASS |
+| Final evidence | [FEAT-024 Final Gate Report](../reviews/FEAT024_FINAL_GATE_REPORT.md) | VERIFIED |
+
+## 6. Completion status
 
 | Item | Status |
 |---|---|
 | FEAT-024-H | VERIFIED |
-| FEAT-024 Final Gate | NOT_STARTED |
+| FEAT-024 Final Gate | VERIFIED |
+| FEAT-024 feature | COMPLETE — release trace / acceptance evidence boundary only |
 | REL-001 acceptance | INCOMPLETE |
 | Promotion/deployment execution | NOT_AUTHORIZED / `0` |
 
-## 6. Related evidence
+## 7. Related evidence
 
+- [FEAT-024 Final Gate Report](../reviews/FEAT024_FINAL_GATE_REPORT.md)
 - [FEAT-024-H Gap Matrix](../reviews/FEAT024_H_FINAL_INTEGRATION_HARDENING_GAP_MATRIX.md)
 - [FEAT-024-H Completion](../reviews/FEAT024_H_FINAL_INTEGRATION_HARDENING_COMPLETION.md)
 - [FEAT-024-G Gap Matrix](../reviews/FEAT024_G_TRACEABILITY_CONSOLE_READ_GAP_MATRIX.md)
