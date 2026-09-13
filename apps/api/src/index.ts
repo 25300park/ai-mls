@@ -20,4 +20,5 @@ export * from "./publication-api-runtime-adapter.js";
 export * from "./publication-view-contracts.js";
 export * from "./source-intake-api.js";
 export * from "./staging-session-composition.js";
+export * from "./api016-production-composition.js";
 export * from "./verification-api.js";
