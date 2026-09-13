@@ -1,0 +1,93 @@
+import { isAbsolute } from "node:path";
+import { DatabaseSync, type SQLOutputValue } from "node:sqlite";
+
+import type { Intake } from "./intake-service.js";
+
+export interface TenantBoundIntake extends Intake { readonly tenantId: string }
+export interface IntakeTenantResolver { resolveTenant(input: Readonly<{ rawSourceId: string }>): string | undefined }
+export interface IntakeAuditIntent { readonly intentId: string; readonly domainOwner: "INTAKE"; readonly aggregateId: string; readonly mutationIdentity: string; readonly actorId: string; readonly tenantId: string; readonly scopeRef: string; readonly classificationRef: string; readonly committedAt: string; readonly evidenceRefs: readonly string[] }
+export type IntakePersistenceErrorCode = "IDEMPOTENCY_CONFLICT" | "PERSISTENCE_INPUT_INVALID" | "PERSISTENCE_UNAVAILABLE" | "RECORD_ALREADY_EXISTS" | "RECORD_NOT_FOUND" | "TENANT_BINDING_CONFLICT" | "VERSION_CONFLICT";
+export class IntakePersistenceError extends Error { public constructor(public readonly code: IntakePersistenceErrorCode) { super(code); this.name = "IntakePersistenceError"; } }
+export interface DurableIntakeStoreOptions { readonly databasePath: string; readonly tenantResolver: IntakeTenantResolver; readonly beforeAuditIntentWrite?: () => void; readonly busyTimeoutMilliseconds?: number }
+
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS intake_records (tenant_id TEXT NOT NULL, intake_id TEXT NOT NULL, version INTEGER NOT NULL CHECK(version >= 1), raw_source_id TEXT NOT NULL, payload_json TEXT NOT NULL, PRIMARY KEY (tenant_id, intake_id));
+CREATE TABLE IF NOT EXISTS intake_history (tenant_id TEXT NOT NULL, intake_id TEXT NOT NULL, version INTEGER NOT NULL, payload_json TEXT NOT NULL, PRIMARY KEY (tenant_id, intake_id, version));
+CREATE TABLE IF NOT EXISTS intake_commands (tenant_id TEXT NOT NULL, command_id TEXT NOT NULL, fingerprint TEXT NOT NULL, intake_id TEXT NOT NULL, PRIMARY KEY (tenant_id, command_id), FOREIGN KEY (tenant_id, intake_id) REFERENCES intake_records(tenant_id, intake_id));
+CREATE TABLE IF NOT EXISTS intake_evidence_dedup (tenant_id TEXT NOT NULL, evidence_identity TEXT NOT NULL, intake_id TEXT NOT NULL, fingerprint TEXT NOT NULL, PRIMARY KEY (tenant_id, evidence_identity), FOREIGN KEY (tenant_id, intake_id) REFERENCES intake_records(tenant_id, intake_id));
+CREATE TABLE IF NOT EXISTS intake_audit_intents (intent_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, aggregate_id TEXT NOT NULL, mutation_identity TEXT NOT NULL, payload_json TEXT NOT NULL, FOREIGN KEY (tenant_id, aggregate_id) REFERENCES intake_records(tenant_id, intake_id));
+CREATE TRIGGER IF NOT EXISTS intake_commands_no_update BEFORE UPDATE ON intake_commands BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+CREATE TRIGGER IF NOT EXISTS intake_commands_no_delete BEFORE DELETE ON intake_commands BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+CREATE TRIGGER IF NOT EXISTS intake_evidence_no_update BEFORE UPDATE ON intake_evidence_dedup BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+CREATE TRIGGER IF NOT EXISTS intake_evidence_no_delete BEFORE DELETE ON intake_evidence_dedup BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+CREATE TRIGGER IF NOT EXISTS intake_audit_no_update BEFORE UPDATE ON intake_audit_intents BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+CREATE TRIGGER IF NOT EXISTS intake_audit_no_delete BEFORE DELETE ON intake_audit_intents BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+CREATE TRIGGER IF NOT EXISTS intake_history_no_update BEFORE UPDATE ON intake_history BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+CREATE TRIGGER IF NOT EXISTS intake_history_no_delete BEFORE DELETE ON intake_history BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+`;
+
+export class DurableIntakeStore {
+  readonly #database: DatabaseSync; readonly #resolver: IntakeTenantResolver; readonly #beforeAudit: (() => void) | undefined; #closed = false;
+  public constructor(options: DurableIntakeStoreOptions) {
+    const timeout = options.busyTimeoutMilliseconds ?? 5000;
+    if (!validPath(options.databasePath) || !Number.isInteger(timeout) || timeout < 1 || timeout > 60_000) throw fail("PERSISTENCE_UNAVAILABLE");
+    let database: DatabaseSync | undefined;
+    try { database = new DatabaseSync(options.databasePath); database.exec("PRAGMA foreign_keys = ON"); database.exec("PRAGMA journal_mode = WAL"); database.exec("PRAGMA synchronous = FULL"); database.exec(`PRAGMA busy_timeout = ${String(timeout)}`); database.exec(SCHEMA); assertSchema(database, SCHEMA); this.#database = database; this.#resolver = options.tenantResolver; this.#beforeAudit = options.beforeAuditIntentWrite; }
+    catch { try { database?.close(); } catch { /* safe failure */ } throw fail("PERSISTENCE_UNAVAILABLE"); }
+  }
+
+  public create(input: Readonly<{ record: TenantBoundIntake; commandId: string; commandFingerprint: string; auditIntent: IntakeAuditIntent }>): Readonly<{ status: "STORED" | "REPLAYED"; record: TenantBoundIntake }> {
+    validateRecord(input.record); validateIntent(input.auditIntent); this.#binding(input.record); if (!text(input.commandId) || !text(input.commandFingerprint) || input.record.version !== 1 || !matchesIntent(input.record, input.commandId, input.auditIntent)) throw fail("PERSISTENCE_INPUT_INVALID");
+    return this.#transaction(() => {
+      const prior = this.#database.prepare("SELECT fingerprint, intake_id FROM intake_commands WHERE tenant_id = ? AND command_id = ?").get(input.record.tenantId, input.commandId);
+      if (prior !== undefined) { const stored = this.#required(input.record.tenantId, input.record.id); if (prior["fingerprint"] !== input.commandFingerprint || prior["intake_id"] !== input.record.id || JSON.stringify(stored) !== JSON.stringify(input.record)) throw fail("IDEMPOTENCY_CONFLICT"); return Object.freeze({ status: "REPLAYED" as const, record: stored }); }
+      if (this.#read(input.record.tenantId, input.record.id) !== undefined) throw fail("RECORD_ALREADY_EXISTS");
+      this.#insertRecord(input.record); this.#database.prepare("INSERT INTO intake_commands (tenant_id, command_id, fingerprint, intake_id) VALUES (?, ?, ?, ?)").run(input.record.tenantId, input.commandId, input.commandFingerprint, input.record.id); this.#appendIntent(input.auditIntent);
+      return Object.freeze({ status: "STORED" as const, record: cloneRecord(input.record) });
+    });
+  }
+
+  public update(input: Readonly<{ tenantId: string; intakeId: string; expectedVersion: number; record: TenantBoundIntake; auditIntent: IntakeAuditIntent }>): TenantBoundIntake {
+    validateRecord(input.record); validateIntent(input.auditIntent); this.#binding(input.record); if (input.record.tenantId !== input.tenantId || input.record.id !== input.intakeId || input.record.version !== input.expectedVersion + 1 || !matchesIntent(input.record, input.auditIntent.mutationIdentity, input.auditIntent)) throw fail("PERSISTENCE_INPUT_INVALID");
+    return this.#transaction(() => { const current = this.#required(input.tenantId, input.intakeId); immutable(current, input.record); if (current.version !== input.expectedVersion) throw fail("VERSION_CONFLICT"); const payload = JSON.stringify(input.record); const result = this.#database.prepare("UPDATE intake_records SET version = ?, payload_json = ? WHERE tenant_id = ? AND intake_id = ? AND version = ?").run(input.record.version, payload, input.tenantId, input.intakeId, input.expectedVersion); if (Number(result.changes) !== 1) throw fail("VERSION_CONFLICT"); this.#appendHistory(input.record, payload); this.#appendIntent(input.auditIntent); return cloneRecord(input.record); });
+  }
+
+  public appendEvidence(input: Readonly<{ tenantId: string; intakeId: string; expectedVersion: number; evidenceIdentity: string; record: TenantBoundIntake; auditIntent: IntakeAuditIntent }>): Readonly<{ status: "STORED" | "REPLAYED"; record: TenantBoundIntake }> {
+    validateRecord(input.record); validateIntent(input.auditIntent); this.#binding(input.record); if (!text(input.evidenceIdentity) || input.record.tenantId !== input.tenantId || input.record.id !== input.intakeId || input.record.version !== input.expectedVersion + 1 || !matchesIntent(input.record, input.auditIntent.mutationIdentity, input.auditIntent)) throw fail("PERSISTENCE_INPUT_INVALID");
+    const fingerprint = JSON.stringify(input.record);
+    return this.#transaction(() => { const prior = this.#database.prepare("SELECT intake_id, fingerprint FROM intake_evidence_dedup WHERE tenant_id = ? AND evidence_identity = ?").get(input.tenantId, input.evidenceIdentity); if (prior !== undefined) { if (prior["intake_id"] !== input.intakeId || prior["fingerprint"] !== fingerprint) throw fail("IDEMPOTENCY_CONFLICT"); return Object.freeze({ status: "REPLAYED" as const, record: this.#required(input.tenantId, input.intakeId) }); } const current = this.#required(input.tenantId, input.intakeId); immutable(current, input.record); if (current.version !== input.expectedVersion) throw fail("VERSION_CONFLICT"); const result = this.#database.prepare("UPDATE intake_records SET version = ?, payload_json = ? WHERE tenant_id = ? AND intake_id = ? AND version = ?").run(input.record.version, fingerprint, input.tenantId, input.intakeId, input.expectedVersion); if (Number(result.changes) !== 1) throw fail("VERSION_CONFLICT"); this.#appendHistory(input.record, fingerprint); this.#database.prepare("INSERT INTO intake_evidence_dedup (tenant_id, evidence_identity, intake_id, fingerprint) VALUES (?, ?, ?, ?)").run(input.tenantId, input.evidenceIdentity, input.intakeId, fingerprint); this.#appendIntent(input.auditIntent); return Object.freeze({ status: "STORED" as const, record: cloneRecord(input.record) }); });
+  }
+
+  public read(input: Readonly<{ tenantId: string; intakeId: string }>): TenantBoundIntake | undefined { this.#open(); if (!text(input.tenantId) || !text(input.intakeId)) return undefined; try { return this.#read(input.tenantId, input.intakeId); } catch { throw fail("PERSISTENCE_UNAVAILABLE"); } }
+  public listHistory(input: Readonly<{ tenantId: string; intakeId: string }>): readonly TenantBoundIntake[] { this.#open(); if (!text(input.tenantId) || !text(input.intakeId)) return Object.freeze([]); try { return Object.freeze(this.#database.prepare("SELECT payload_json FROM intake_history WHERE tenant_id = ? AND intake_id = ? ORDER BY version").all(input.tenantId, input.intakeId).map((row) => decodeRecord(required(row["payload_json"])))); } catch { throw fail("PERSISTENCE_UNAVAILABLE"); } }
+  public listAuditIntents(input: Readonly<{ tenantId: string }>): readonly IntakeAuditIntent[] { this.#open(); if (!text(input.tenantId)) return Object.freeze([]); try { return Object.freeze(this.#database.prepare("SELECT payload_json FROM intake_audit_intents WHERE tenant_id = ? ORDER BY intent_id").all(input.tenantId).map((row) => decodeIntent(required(row["payload_json"])))); } catch { throw fail("PERSISTENCE_UNAVAILABLE"); } }
+  public close(): void { if (this.#closed) return; this.#closed = true; try { this.#database.close(); } catch { throw fail("PERSISTENCE_UNAVAILABLE"); } }
+
+  #binding(record: TenantBoundIntake): void { let resolved: string | undefined; try { resolved = this.#resolver.resolveTenant({ rawSourceId: record.rawSourceId }); } catch { throw fail("TENANT_BINDING_CONFLICT"); } if (resolved === undefined || resolved !== record.tenantId) throw fail("TENANT_BINDING_CONFLICT"); }
+  #insertRecord(record: TenantBoundIntake): void { const payload = JSON.stringify(record); this.#database.prepare("INSERT INTO intake_records (tenant_id, intake_id, version, raw_source_id, payload_json) VALUES (?, ?, ?, ?, ?)").run(record.tenantId, record.id, record.version, record.rawSourceId, payload); this.#appendHistory(record, payload); }
+  #appendHistory(record: TenantBoundIntake, payload: string): void { this.#database.prepare("INSERT INTO intake_history (tenant_id, intake_id, version, payload_json) VALUES (?, ?, ?, ?)").run(record.tenantId, record.id, record.version, payload); }
+  #appendIntent(intent: IntakeAuditIntent): void { this.#beforeAudit?.(); this.#database.prepare("INSERT INTO intake_audit_intents (intent_id, tenant_id, aggregate_id, mutation_identity, payload_json) VALUES (?, ?, ?, ?, ?)").run(intent.intentId, intent.tenantId, intent.aggregateId, intent.mutationIdentity, JSON.stringify(intent)); }
+  #read(tenantId: string, intakeId: string): TenantBoundIntake | undefined { const row = this.#database.prepare("SELECT tenant_id, intake_id, version, raw_source_id, payload_json FROM intake_records WHERE tenant_id = ? AND intake_id = ?").get(tenantId, intakeId); if (row === undefined) return undefined; const record = decodeRecord(required(row["payload_json"])); if (record.tenantId !== row["tenant_id"] || record.id !== row["intake_id"] || record.version !== Number(row["version"]) || record.rawSourceId !== row["raw_source_id"]) throw fail("PERSISTENCE_UNAVAILABLE"); return record; }
+  #required(tenantId: string, intakeId: string): TenantBoundIntake { const value = this.#read(tenantId, intakeId); if (value === undefined) throw fail("RECORD_NOT_FOUND"); return value; }
+  #transaction<T>(operation: () => T): T { this.#open(); let open = false; try { this.#database.exec("BEGIN IMMEDIATE"); open = true; const result = operation(); this.#database.exec("COMMIT"); open = false; return result; } catch (error) { if (open) { try { this.#database.exec("ROLLBACK"); } catch { throw fail("PERSISTENCE_UNAVAILABLE"); } } if (error instanceof IntakePersistenceError) throw error; throw fail("PERSISTENCE_UNAVAILABLE"); } }
+  #open(): void { if (this.#closed) throw fail("PERSISTENCE_UNAVAILABLE"); }
+}
+
+function validateRecord(value: unknown): asserts value is TenantBoundIntake { if (!plain(value)) throw fail("PERSISTENCE_INPUT_INVALID"); const r = value as unknown as Record<string, unknown>; if (!text(r["tenantId"]) || !text(r["id"]) || !Number.isInteger(r["version"]) || Number(r["version"]) < 1 || !text(r["status"]) || !text(r["rawSourceId"]) || !Number.isInteger(r["rawSourceVersion"]) || !text(r["rawSourceFingerprint"]) || !text(r["purpose"]) || !text(r["classification"]) || !text(r["createdBy"]) || !instant(r["createdAt"]) || !Array.isArray(r["attachmentReferences"])) throw fail("PERSISTENCE_INPUT_INVALID"); }
+function validateIntent(value: unknown): asserts value is IntakeAuditIntent { if (!plain(value)) throw fail("PERSISTENCE_INPUT_INVALID"); const r = value as unknown as Record<string, unknown>; const keys = ["intentId", "domainOwner", "aggregateId", "mutationIdentity", "actorId", "tenantId", "scopeRef", "classificationRef", "committedAt", "evidenceRefs"]; if (Object.keys(r).length !== keys.length || Object.keys(r).some((key) => !keys.includes(key)) || r["domainOwner"] !== "INTAKE" || !text(r["intentId"]) || !text(r["aggregateId"]) || !text(r["mutationIdentity"]) || !text(r["actorId"]) || !text(r["tenantId"]) || !text(r["scopeRef"]) || !text(r["classificationRef"]) || !instant(r["committedAt"]) || !safeEvidenceRefs(r["evidenceRefs"])) throw fail("PERSISTENCE_INPUT_INVALID"); }
+function matchesIntent(record: TenantBoundIntake, mutation: string, intent: IntakeAuditIntent): boolean { return intent.tenantId === record.tenantId && intent.aggregateId === record.id && intent.mutationIdentity === mutation; }
+function immutable(current: TenantBoundIntake, next: TenantBoundIntake): void { if (current.id !== next.id || current.tenantId !== next.tenantId || current.rawSourceId !== next.rawSourceId || current.rawSourceVersion !== next.rawSourceVersion || current.rawSourceFingerprint !== next.rawSourceFingerprint || current.createdBy !== next.createdBy || current.createdAt !== next.createdAt) throw fail("PERSISTENCE_INPUT_INVALID"); }
+function decodeRecord(value: SQLOutputValue): TenantBoundIntake { const parsed = parse(value); validateRecord(parsed); return cloneRecord(parsed); }
+function decodeIntent(value: SQLOutputValue): IntakeAuditIntent { const parsed = parse(value); validateIntent(parsed); const copy = structuredClone(parsed); Object.freeze(copy.evidenceRefs); return Object.freeze(copy); }
+function cloneRecord(record: TenantBoundIntake): TenantBoundIntake { const copy = structuredClone(record); copy.attachmentReferences.forEach(Object.freeze); Object.freeze(copy.attachmentReferences); if (copy.candidateReference !== undefined) Object.freeze(copy.candidateReference); return Object.freeze(copy); }
+function parse(value: SQLOutputValue): unknown { if (typeof value !== "string") throw fail("PERSISTENCE_UNAVAILABLE"); try { return JSON.parse(value); } catch { throw fail("PERSISTENCE_UNAVAILABLE"); } }
+function required(value: SQLOutputValue | undefined): SQLOutputValue { if (value === undefined) throw fail("PERSISTENCE_UNAVAILABLE"); return value; }
+function validPath(value: string): boolean { return typeof value === "string" && value.length > 0 && isAbsolute(value) && value !== ":memory:" && !value.startsWith("file:"); }
+function plain(value: unknown): value is object { return typeof value === "object" && value !== null && !Array.isArray(value); }
+function text(value: unknown): value is string { return typeof value === "string" && value.trim().length > 0 && value.length <= 512 && !/[\r\n\0]/u.test(value); }
+function safeEvidenceRefs(value: unknown): value is readonly string[] { return Array.isArray(value) && value.length > 0 && value.length <= 100 && value.every(isSafeEvidenceRef); }
+function isSafeEvidenceRef(value: unknown): value is string { return typeof value === "string" && value.length <= 256 && /^evidence:[A-Za-z0-9][A-Za-z0-9._-]*(?::[A-Za-z0-9][A-Za-z0-9._-]*)*$/u.test(value) && !/(?:^|[:._-])(secret|token|password|authorization|bearer|api[-_]?key|prompt|reasoning|stack|sqlite|database|provider[-_]?payload)(?:$|[:._-])/iu.test(value); }
+function assertSchema(database: DatabaseSync, schema: string): void { if (database.prepare("PRAGMA integrity_check").get()?.["integrity_check"] !== "ok") throw fail("PERSISTENCE_UNAVAILABLE"); compareCatalog(database, schema, () => fail("PERSISTENCE_UNAVAILABLE")); }
+function compareCatalog(database: DatabaseSync, schema: string, failClosed: () => Error): void { const golden = new DatabaseSync(":memory:"); try { golden.exec(schema); const sql = "SELECT type, name, tbl_name, sql FROM sqlite_master WHERE type IN ('table','trigger') AND name NOT LIKE 'sqlite_%' ORDER BY type, name"; if (JSON.stringify(database.prepare(sql).all()) !== JSON.stringify(golden.prepare(sql).all())) throw failClosed(); } finally { golden.close(); } }
+function instant(value: unknown): value is string { return text(value) && !Number.isNaN(Date.parse(value)); }
+function fail(code: IntakePersistenceErrorCode): IntakePersistenceError { return new IntakePersistenceError(code); }

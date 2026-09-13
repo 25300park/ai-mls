@@ -15,3 +15,4 @@ export * from "./external-integration-runtime.js";
 export * from "./external-integration-application-host.js";
 export * from "./source-ingestion-admission.js";
 export * from "./source-registry-service.js";
+export * from "./source-registry-durable-persistence.js";
