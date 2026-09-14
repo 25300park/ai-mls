@@ -12,7 +12,7 @@
 
 ## 1. 추적의 의미
 
-이 RTM은 Phase 3B와 [Phase 3B.1 owner decision package](REL001_PHASE3B1_OWNER_DECISION_REGISTER.md)의 **DRAFT 결정 추적만** 제공한다. runtime implementation/test coverage, 전역 Decision Register 승인, release 완료 또는 Phase 3C 진입 증거가 아니다. 기존 [Phase 3A 보고서](../reviews/REL001_PHASE3A_API017_CANONICAL_INVENTORY_REPORT.md), [인벤토리](REL001_PHASE3_API017_RUNTIME_INVENTORY_GAP_MATRIX.md), [lifecycle/authority](REL001_PHASE3_API017_LIFECYCLE_AUTHORITY_MATRIX.md), [persistence](REL001_PHASE3_API017_PERSISTENCE_READINESS_MATRIX.md), [구현 계획](REL001_PHASE3_API017_IMPLEMENTATION_PLAN.md)을 변경하지 않는다.
+§2–5는 Phase 3B와 [Phase 3B.1 owner decision package](REL001_PHASE3B1_OWNER_DECISION_REGISTER.md)의 역사적 **DRAFT 결정 추적**을 보존한다. §6만 별도 승인된 Phase 3C durable persistence implementation delta와 검증 증거를 추가한다. 이 delta는 worker execution, scheduler, public transport, API-016 final event materialization 또는 release 완료 증거가 아니다. 기존 [Phase 3A 보고서](../reviews/REL001_PHASE3A_API017_CANONICAL_INVENTORY_REPORT.md), [인벤토리](REL001_PHASE3_API017_RUNTIME_INVENTORY_GAP_MATRIX.md), [lifecycle/authority](REL001_PHASE3_API017_LIFECYCLE_AUTHORITY_MATRIX.md), [persistence](REL001_PHASE3_API017_PERSISTENCE_READINESS_MATRIX.md), [구현 계획](REL001_PHASE3_API017_IMPLEMENTATION_PLAN.md)을 변경하지 않는다.
 
 ## 2. 필수 결정 그룹 추적
 
@@ -71,3 +71,18 @@
 | final recommendation | [Phase 3B.2 report](../reviews/REL001_PHASE3B2_CANONICAL_CLOSURE_REPORT.md) | `APPROVE_REL001_PHASE3B2_API017_AUDIT_VOCABULARY_CLOSURE` | Phase 3B.2 `APPROVED`; Phase 3C separately `NOT_AUTHORIZED` |
 
 Phase 3B.2의 closure metrics는 DEC-151 승인에 따라 required/effective mapping `9/9`, unknown `0`, remaining canonical decisions `0`이다. Phase 3C implementation은 별도 승인이 필요하다.
+
+## 6. Phase 3C durable Job store implementation delta
+
+| Trace | Production evidence | Test evidence | Result |
+|---|---|---|---|
+| Five canonical operations | [`DurableJobStore`](../../modules/jobs/src/job-durable-persistence.ts)의 `submitJob`, `readJob`, `cancelJob`, `retryAsSuccessor`, `readJobResult` | [`job-durable-persistence.test.ts`](../../modules/jobs/src/job-durable-persistence.test.ts) | `5/5 REPRESENTED` |
+| Identity / restart | immutable Job payload, tenant/scope/jobType/command submit identity, exact schema and durable SQLite | create/reopen/replay, duplicate identity conflict, unknown-field rejection | PASS |
+| Lifecycle / CAS | exact six-state validation, SQL conditional version update, append-only history | invalid transition, stale version, terminal reopen/duplicate completion, deadline expiry | PASS |
+| Idempotency | owner-local submit/cancel/retry command records in the Job store transaction | exact replay after restart, conflicting replay, duplicate successor `0` | PASS |
+| Retry successor | failed predecessor immutable, one durable successor lineage, manual API only | restart lineage, success retry rejection, scheduler/automatic retry surface `0` | PASS |
+| Failure safety | trusted `normalizeJobFailure`, exact two-code vocabulary, opaque evidence reference | forged mapper output, unknown code, stack/path/token rejection | PASS |
+| Audit ownership | append-only API-017 enriched v2 intent in the owner transaction | rollback injection, direct final API-016 table/write `0`, claim/heartbeat `0` | PASS |
+| Verification | source plus prior-phase affected regression | focused `23/23`; affected `149/149`; fresh clean-build full `1373/1373` | PASS |
+
+상세 evidence는 [Phase 3C Traceability](REL001_PHASE3C_DURABLE_JOB_STORE_TRACEABILITY.md)와 [Completion Report](../reviews/REL001_PHASE3C_COMPLETION_REPORT.md)에 기록한다. Phase 3C는 durable state integrity만 구현하며 Phase 3D+, worker loop, polling, HTTP와 automatic retry는 시작하지 않는다.
