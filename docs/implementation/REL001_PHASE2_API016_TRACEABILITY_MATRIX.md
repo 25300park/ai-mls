@@ -35,6 +35,10 @@
 | Phase 2D six-source enriched intent wiring | [Phase 2D Source Mapping Traceability](REL001_PHASE2D_SOURCE_MAPPING_TRACEABILITY.md) | six owner-local stores persist strict v2 intents; API-016 read-only adapter composes exactly six ports; Property outcome is canonical `COMPLETED` | Phase 2D focused `90/90` | PASS — direct scope only |
 | Phase 2D review corrections | [Phase 2D Completion Report](../reviews/REL001_PHASE2D_COMPLETION_REPORT.md) | stale Phase 1G Property legacy fixture/cleanup corrected test-only; Property runtime/test outcome aligned from `ACCEPTED` to canonical `COMPLETED` | isolated `1/1`; affected `469/469`; full `1351/1351` | PASS; final independent review `Critical 0 / Important 0 / Minor 1 — READY` |
 | Phase 2D composed principal coverage | Pre-existing `api016-production-composition.ts` | no `principalEvidenceResolver` injection; `IMMUTABLE_REFERENCE` fails closed in Staging composition | independent review Minor | canonical-compliant, snapshot-only; no resolver support claim; not a Phase 2D defect |
+| Phase 2E integrated six-source materialization | [Phase 2E Gap Matrix](REL001_PHASE2E_INTEGRATED_MATERIALIZATION_GAP_MATRIX.md) | six real domain mutations → strict source ports → Staging runtime → durable final Audit Events | `api016-domain-mutation-materialization.test.ts`; focused `24/24` | PASS |
+| Phase 2E source-port hardening | Phase 2E Brief | every same-domain v2 row is strictly validated before disclosure; validation error is bounded | malformed payload/read-only immutable assertions | PASS |
+| Phase 2E restart/collision/chronology | Phase 2E Brief | `(sourceDomain,intentId)` durable identity, source `committedAt`, separate `materializedAt` | same `intentId` across six sources, replay and reopen assertions | PASS |
+| Phase 2E resolver containment | DOC-DEV-117 | missing immutable-reference resolver remains fail closed; no default/current Session reconstruction | exact `INTENT_INVALID`, final events `0` | PASS |
 
 ## 2. Required RED matrix
 
@@ -68,3 +72,13 @@
 Phase 2C의 API-016-owned partial durable runtime과 Phase 2D의 six-source direct wiring은 direct/affected/full regression으로 검증됐다. Existing v1 records, Client / Requirement, public HTTP와 API-017 scheduling은 계속 제외한다.
 
 `APPROVE_REL001_PHASE2D_ENRICHED_AUDIT_INTENT_SOURCE_WIRING`
+
+## 5. Phase 2E disposition
+
+- 실제 six-source domain mutation으로 final event `6/6`을 생성하고 동일 source intent replay 및 runtime reopen에서 duplicate final event `0`을 검증했다.
+- 같은 `intentId`를 서로 다른 source가 사용해도 `(sourceDomain,intentId)` binding으로 collision `0`이다.
+- v1 materialization/rewrite `0/7`, Client / Requirement materialization `0`, public HTTP/API-017 scheduler 추가 `0`을 유지한다.
+- final Audit Event update/delete는 SQLite append-only trigger로 거부되고 실패한 materialization은 source intent를 삭제하지 않는다.
+- `IMMUTABLE_REFERENCE` without `principalEvidenceResolver`는 `INTENT_INVALID`로 fail closed하며 default principal을 만들지 않는다.
+
+`APPROVE_REL001_PHASE2E_API016_INTEGRATED_MATERIALIZATION_HARDENING`

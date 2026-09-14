@@ -20,7 +20,12 @@ export interface AuditIntentSourcePort {
 
 export function createAuditIntentSourcePort(input: Readonly<{ sourceDomain: MaterializationReadySourceDomain; read(): readonly unknown[] }>): AuditIntentSourcePort {
   if (!isMaterializationReadySourceDomain(input.sourceDomain) || typeof input.read !== "function") throw new Error("INTENT_SOURCE_INPUT_INVALID");
-  const eligible = (): readonly EnrichedAuditIntentV2[] => Object.freeze(input.read().filter((value): value is EnrichedAuditIntentV2 => plain(value) && value["auditIntentContractVersion"] === "v2" && value["sourceDomain"] === input.sourceDomain));
+  const eligible = (): readonly EnrichedAuditIntentV2[] => Object.freeze(input.read()
+    .filter((value) => plain(value) && value["auditIntentContractVersion"] === "v2" && value["sourceDomain"] === input.sourceDomain)
+    .map((value) => {
+      try { return validateEnrichedAuditIntentV2(value, input.sourceDomain); }
+      catch { throw new Error("INTENT_SOURCE_INPUT_INVALID"); }
+    }));
   return Object.freeze({
     sourceDomain: input.sourceDomain,
     readByIntentId: (intentId: string) => safeIdentifier(intentId) ? eligible().find((value) => value.intentId === intentId) : undefined,

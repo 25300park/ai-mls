@@ -31,6 +31,11 @@ test("Phase 2C source port exposes bounded v2 intents and leaves v1 authoritativ
   const port = createAuditIntentSourcePort({ sourceDomain: "SOURCE_REGISTRY", read: () => records });
   assert.deepEqual(port.listEligible({ limit: 1 }), { intents: [enriched], continuation: "intent-v2" });
   assert.equal(port.readByIntentId("intent-v1"), undefined);
+  const exposed = port.readByIntentId("intent-v2");
+  assert.deepEqual(exposed, enriched);
+  assert.equal(Object.isFrozen(exposed), true);
+  assert.equal(Object.isFrozen(exposed?.target), true);
+  assert.throws(() => { (exposed as { action: string }).action = "source.activate"; }, TypeError);
   assert.deepEqual(port.readByIntentId("intent-v2"), enriched);
   assert.equal(records[0], legacy);
 });
@@ -39,4 +44,20 @@ test("Phase 2C source port rejects cross-domain enriched records and malformed c
   const port = createAuditIntentSourcePort({ sourceDomain: "SOURCE_REGISTRY", read: () => [{ ...enriched, sourceDomain: "INTAKE" }] });
   assert.deepEqual(port.listEligible({}), { intents: [] });
   assert.throws(() => port.listEligible({ continuation: " unknown ", limit: 10 }), /INTENT_SOURCE_INPUT_INVALID/);
+});
+
+test("Phase 2E source port fails closed before exposing a malformed same-source v2 row", () => {
+  const malformed = {
+    ...enriched,
+    action: "source.activate",
+    target: { ...enriched.target, rawProviderPayload: "Bearer hidden-token" },
+  };
+  const port = createAuditIntentSourcePort({ sourceDomain: "SOURCE_REGISTRY", read: () => [malformed] });
+
+  for (const read of [() => port.listEligible({}), () => port.readByIntentId(enriched.intentId)]) {
+    assert.throws(read, (error: unknown) => error instanceof Error
+      && error.message === "INTENT_SOURCE_INPUT_INVALID"
+      && !error.message.includes("hidden-token")
+      && !error.message.includes("source.activate"));
+  }
 });

@@ -151,6 +151,35 @@ test("Phase 2C never reconstructs principal provenance from processing-time stat
   } finally { store.close(); rmSync(f.directory, { recursive: true, force: true }); }
 });
 
+test("Phase 2E fails closed when immutable principal evidence has no canonical resolver", () => {
+  const f = fixture();
+  const { store, service } = materializer(f.databasePath);
+  try {
+    const referenced = intent({
+      principalProvenance: { kind: "IMMUTABLE_REFERENCE", principalId: "actor-1", evidenceRef: "evidence:principal-1" },
+    });
+    assert.throws(
+      () => service.materialize(referenced),
+      (error: unknown) => error instanceof AuditIntentMaterializationError && error.code === "INTENT_INVALID" && error.message === "INTENT_INVALID",
+    );
+    assert.equal(store.listAll().length, 0);
+  } finally { store.close(); rmSync(f.directory, { recursive: true, force: true }); }
+});
+
+test("Phase 2E final Audit Events remain structurally append-only", () => {
+  const f = fixture();
+  const { store, service } = materializer(f.databasePath);
+  try {
+    const original = service.materialize(intent()).event;
+    const database = new DatabaseSync(f.databasePath);
+    try {
+      assert.throws(() => database.exec("UPDATE api016_audit_events SET scope_ref = 'team:other'"), /append-only audit event/);
+      assert.throws(() => database.exec("DELETE FROM api016_audit_events"), /append-only audit event/);
+    } finally { database.close(); }
+    assert.deepEqual(store.listAll(), [original]);
+  } finally { store.close(); rmSync(f.directory, { recursive: true, force: true }); }
+});
+
 test("Phase 2C rejects Client Requirement and invented updateClient event mappings", () => {
   const f = fixture();
   const { store, service } = materializer(f.databasePath);
