@@ -123,7 +123,7 @@ test("Phase 2C conflicting payload for the same intent is rejected without overw
   const { store, service } = materializer(f.databasePath);
   try {
     const first = service.materialize(intent()).event;
-    assert.throws(() => service.materialize(intent({ outcome: "FAILED" })), (error: unknown) => error instanceof AuditIntentMaterializationError && error.code === "MATERIALIZATION_IDENTITY_CONFLICT");
+    assert.throws(() => service.materialize(intent({ evidenceRefs: ["evidence:source-2"] })), (error: unknown) => error instanceof AuditIntentMaterializationError && error.code === "MATERIALIZATION_IDENTITY_CONFLICT");
     assert.deepEqual(store.readByIntentId({ sourceDomain: "SOURCE_REGISTRY", intentId: "intent-1" }), first);
   } finally { store.close(); rmSync(f.directory, { recursive: true, force: true }); }
 });
@@ -190,17 +190,17 @@ test("Phase 2C materialization failure retains the authoritative source intent",
 
 test("Phase 2C materializes only the six closed source mappings", () => {
   const cases = [
-    ["SOURCE_REGISTRY", "SOURCE_POLICY_PROPOSED", "source.propose", "SourceRegistry", "COMMAND_ACCEPTED"],
-    ["INTAKE", "INTAKE_CREATED", "intake.create", "Intake", "COMMAND_ACCEPTED"],
-    ["PROPERTY", "PROPERTY_PROPOSED", "property.propose", "Property", "COMMAND_ACCEPTED"],
-    ["LISTING", "CANDIDATE_CREATED", "candidate.create", "CandidateListing", "COMMAND_ACCEPTED"],
-    ["CONTACT", "CONTACT_CREATED", "contact.create", "Contact", "COMMAND_ACCEPTED"],
-    ["MATCHING", "MATCH_RUN_CREATED", "matching.request", "MatchRun", "COMMAND_ACCEPTED"],
+    ["SOURCE_REGISTRY", "SOURCE_POLICY_PROPOSED", "source.propose", "SourceRegistry", "COMMAND_ACCEPTED", "ACCEPTED"],
+    ["INTAKE", "INTAKE_CREATED", "intake.create", "Intake", "COMMAND_ACCEPTED", "ACCEPTED"],
+    ["PROPERTY", "PROPERTY_PROPOSED", "property.propose", "Property", "COMMAND_ACCEPTED", "COMPLETED"],
+    ["LISTING", "CANDIDATE_CREATED", "candidate.create", "CandidateListing", "COMMAND_ACCEPTED", "COMPLETED"],
+    ["CONTACT", "CONTACT_CREATED", "contact.create", "Contact", "COMMAND_ACCEPTED", "COMPLETED"],
+    ["MATCHING", "MATCH_RUN_CREATED", "matching.request", "MatchRun", "COMMAND_ACCEPTED", "COMPLETED"],
   ] as const;
   const f = fixture();
   const { store, service } = materializer(f.databasePath);
   try {
-    for (const [index, [sourceDomain, eventType, action, targetType, eventCategory]] of cases.entries()) {
+    for (const [index, [sourceDomain, eventType, action, targetType, eventCategory, outcome]] of cases.entries()) {
       const system = sourceDomain === "PROPERTY";
       const value = intent({
         intentId: `intent-${String(index)}`,
@@ -208,6 +208,7 @@ test("Phase 2C materializes only the six closed source mappings", () => {
         eventType,
         action,
         eventCategory,
+        outcome,
         target: { type: targetType, id: `aggregate-${String(index)}`, version: 1 },
         aggregateId: `aggregate-${String(index)}`,
         visibility: system ? { kind: "SYSTEM_BOUND", scopeRef: "system:property-master" } : { kind: "TENANT_BOUND", tenantId: "tenant-a", scopeRef: "team:team-a" },

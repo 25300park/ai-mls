@@ -1,13 +1,20 @@
 import { isAbsolute } from "node:path";
 import { DatabaseSync, type SQLOutputValue } from "node:sqlite";
+import { isDeepStrictEqual } from "node:util";
 
+import {
+  validateEnrichedAuditIntentV2,
+  type EnrichedAuditIntentV2,
+} from "../../audit/src/enriched-audit-intent-contract.js";
 import type { SourcePolicy } from "./source-registry-service.js";
 
 export interface TenantBoundSourcePolicy extends SourcePolicy {
   readonly tenantId: string;
 }
 
-export interface SourceRegistryAuditIntent {
+export type SourceRegistryAuditIntent = EnrichedAuditIntentV2<"SOURCE_REGISTRY">;
+
+export interface LegacySourceRegistryAuditIntentV1 {
   readonly intentId: string;
   readonly domainOwner: "SOURCE_REGISTRY";
   readonly aggregateId: string;
@@ -19,6 +26,8 @@ export interface SourceRegistryAuditIntent {
   readonly committedAt: string;
   readonly evidenceRefs: readonly string[];
 }
+
+export type StoredSourceRegistryAuditIntent = SourceRegistryAuditIntent | LegacySourceRegistryAuditIntentV1;
 
 export type SourceRegistryPersistenceErrorCode =
   | "IDEMPOTENCY_CONFLICT"
@@ -108,41 +117,46 @@ export class DurableSourceRegistryStore {
 
   public create(input: CreateTenantBoundSourcePolicyInput): Readonly<{ status: "STORED" | "REPLAYED"; record: TenantBoundSourcePolicy }> {
     this.#assertOpen();
-    validateCreate(input);
+    const { record, auditIntent } = validateCreate(input);
     let open = false;
     try {
       this.#database.exec("BEGIN IMMEDIATE");
       open = true;
       const prior = this.#database.prepare(
         "SELECT fingerprint, source_id FROM source_registry_commands WHERE tenant_id = ? AND command_id = ?",
-      ).get(input.record.tenantId, input.commandId);
+      ).get(record.tenantId, input.commandId);
       if (prior !== undefined) {
-        const stored = this.#readRequired(input.record.tenantId, input.record.id);
-        if (prior["fingerprint"] !== input.commandFingerprint || prior["source_id"] !== input.record.id
-          || JSON.stringify(stored) !== JSON.stringify(input.record)) {
+        const stored = this.#readRequired(record.tenantId, record.id);
+        const storedIntentRow = this.#database.prepare(
+          "SELECT payload_json FROM source_registry_audit_intents WHERE tenant_id = ? AND aggregate_id = ? AND mutation_identity = ?",
+        ).get(record.tenantId, record.id, input.commandId);
+        if (storedIntentRow === undefined) throw failure("PERSISTENCE_UNAVAILABLE");
+        const storedIntent = decodeIntent(requiredValue(storedIntentRow["payload_json"]));
+        if (prior["fingerprint"] !== input.commandFingerprint || prior["source_id"] !== record.id
+          || !isDeepStrictEqual(stored, record) || !isDeepStrictEqual(storedIntent, auditIntent)) {
           throw failure("IDEMPOTENCY_CONFLICT");
         }
         this.#database.exec("COMMIT");
         open = false;
         return Object.freeze({ status: "REPLAYED", record: stored });
       }
-      if (this.#read(input.record.tenantId, input.record.id) !== undefined) {
+      if (this.#read(record.tenantId, record.id) !== undefined) {
         throw failure("RECORD_ALREADY_EXISTS");
       }
       this.#database.prepare(
         "INSERT INTO source_registry_policies (tenant_id, source_id, policy_version, payload_json) VALUES (?, ?, ?, ?)",
-      ).run(input.record.tenantId, input.record.id, input.record.policyVersion, JSON.stringify(input.record));
-      this.#database.prepare("INSERT INTO source_registry_history (tenant_id, source_id, policy_version, payload_json) VALUES (?, ?, ?, ?)").run(input.record.tenantId, input.record.id, input.record.policyVersion, JSON.stringify(input.record));
+      ).run(record.tenantId, record.id, record.policyVersion, JSON.stringify(record));
+      this.#database.prepare("INSERT INTO source_registry_history (tenant_id, source_id, policy_version, payload_json) VALUES (?, ?, ?, ?)").run(record.tenantId, record.id, record.policyVersion, JSON.stringify(record));
       this.#database.prepare(
         "INSERT INTO source_registry_commands (tenant_id, command_id, fingerprint, source_id) VALUES (?, ?, ?, ?)",
-      ).run(input.record.tenantId, input.commandId, input.commandFingerprint, input.record.id);
+      ).run(record.tenantId, input.commandId, input.commandFingerprint, record.id);
       this.#beforeAuditIntentWrite?.();
       this.#database.prepare(
         "INSERT INTO source_registry_audit_intents (intent_id, tenant_id, aggregate_id, mutation_identity, payload_json) VALUES (?, ?, ?, ?, ?)",
-      ).run(input.auditIntent.intentId, input.auditIntent.tenantId, input.auditIntent.aggregateId, input.auditIntent.mutationIdentity, JSON.stringify(input.auditIntent));
+      ).run(auditIntent.intentId, record.tenantId, auditIntent.aggregateId, auditIntent.mutationIdentity, JSON.stringify(auditIntent));
       this.#database.exec("COMMIT");
       open = false;
-      return Object.freeze({ status: "STORED", record: clonePolicy(input.record) });
+      return Object.freeze({ status: "STORED", record });
     } catch (error) {
       if (open) {
         try { this.#database.exec("ROLLBACK"); } catch { throw failure("PERSISTENCE_UNAVAILABLE"); }
@@ -165,7 +179,7 @@ export class DurableSourceRegistryStore {
     catch { throw failure("PERSISTENCE_UNAVAILABLE"); }
   }
 
-  public listAuditIntents(input: Readonly<{ tenantId: string }>): readonly SourceRegistryAuditIntent[] {
+  public listAuditIntents(input: Readonly<{ tenantId: string }>): readonly StoredSourceRegistryAuditIntent[] {
     this.#assertOpen();
     if (!safeText(input.tenantId)) return Object.freeze([]);
     try {
@@ -204,16 +218,39 @@ export class DurableSourceRegistryStore {
   }
 }
 
-function validateCreate(input: CreateTenantBoundSourcePolicyInput): void {
+function validateCreate(input: CreateTenantBoundSourcePolicyInput): Readonly<{
+  record: TenantBoundSourcePolicy;
+  auditIntent: SourceRegistryAuditIntent;
+}> {
   validatePolicy(input.record);
-  validateIntent(input.auditIntent);
-  if (!safeText(input.commandId) || !safeText(input.commandFingerprint)
-    || input.record.policyVersion !== 1
-    || input.auditIntent.tenantId !== input.record.tenantId
-    || input.auditIntent.aggregateId !== input.record.id
-    || input.auditIntent.mutationIdentity !== input.commandId) {
+  const record = clonePolicy(jsonRepresentation(input.record));
+  let auditIntent: SourceRegistryAuditIntent;
+  try {
+    const validated = validateEnrichedAuditIntentV2(input.auditIntent, "SOURCE_REGISTRY");
+    auditIntent = validateEnrichedAuditIntentV2(jsonRepresentation(validated), "SOURCE_REGISTRY");
+  } catch {
     throw failure("PERSISTENCE_INPUT_INVALID");
   }
+  const principalId = auditIntent.principalProvenance.kind === "TRUSTED_SNAPSHOT"
+    ? auditIntent.principalProvenance.principal.id
+    : auditIntent.principalProvenance.principalId;
+  if (!safeText(input.commandId) || !safeText(input.commandFingerprint)
+    || record.policyVersion !== 1
+    || auditIntent.aggregateId !== record.id
+    || auditIntent.mutationIdentity !== input.commandId
+    || auditIntent.target.id !== record.id
+    || auditIntent.target.version !== record.policyVersion
+    || auditIntent.visibility.kind !== "TENANT_BOUND"
+    || auditIntent.visibility.tenantId !== record.tenantId
+    || auditIntent.visibility.scopeRef !== `tenant:${record.tenantId}`
+    || auditIntent.purpose !== "SOURCE_GOVERNANCE"
+    || auditIntent.outcome !== "ACCEPTED"
+    || auditIntent.decision !== "ALLOW"
+    || auditIntent.classification !== record.classification
+    || principalId !== record.proposedBy) {
+    throw failure("PERSISTENCE_INPUT_INVALID");
+  }
+  return Object.freeze({ record, auditIntent });
 }
 
 function validatePolicy(value: unknown): asserts value is TenantBoundSourcePolicy {
@@ -231,7 +268,7 @@ function validatePolicy(value: unknown): asserts value is TenantBoundSourcePolic
   }
 }
 
-function validateIntent(value: unknown): asserts value is SourceRegistryAuditIntent {
+function validateLegacyIntent(value: unknown): asserts value is LegacySourceRegistryAuditIntentV1 {
   if (!plainObject(value)) throw failure("PERSISTENCE_INPUT_INVALID");
   const record = value as unknown as Record<string, unknown>;
   const keys = ["intentId", "domainOwner", "aggregateId", "mutationIdentity", "actorId", "tenantId", "scopeRef", "classificationRef", "committedAt", "evidenceRefs"];
@@ -250,10 +287,14 @@ function decodePolicy(value: SQLOutputValue): TenantBoundSourcePolicy {
   return clonePolicy(parsed);
 }
 
-function decodeIntent(value: SQLOutputValue): SourceRegistryAuditIntent {
+function decodeIntent(value: SQLOutputValue): StoredSourceRegistryAuditIntent {
   const parsed = parse(value);
-  validateIntent(parsed);
-  return cloneIntent(parsed);
+  if (plainObject(parsed) && "auditIntentContractVersion" in parsed) {
+    try { return validateEnrichedAuditIntentV2(parsed, "SOURCE_REGISTRY"); }
+    catch { throw failure("PERSISTENCE_UNAVAILABLE"); }
+  }
+  validateLegacyIntent(parsed);
+  return cloneLegacyIntent(parsed);
 }
 
 function parse(value: SQLOutputValue): unknown {
@@ -273,10 +314,14 @@ function clonePolicy(record: TenantBoundSourcePolicy): TenantBoundSourcePolicy {
   return Object.freeze(copy);
 }
 
-function cloneIntent(record: SourceRegistryAuditIntent): SourceRegistryAuditIntent {
+function cloneLegacyIntent(record: LegacySourceRegistryAuditIntentV1): LegacySourceRegistryAuditIntentV1 {
   const copy = structuredClone(record);
   Object.freeze(copy.evidenceRefs);
   return Object.freeze(copy);
+}
+
+function jsonRepresentation<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 function safeEvidenceRefs(value: unknown): value is readonly string[] {

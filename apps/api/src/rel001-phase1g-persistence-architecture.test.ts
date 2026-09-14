@@ -62,19 +62,28 @@ test("REL-001 Phase 1G reconstructed durable truth cannot be overridden by proce
   const directory = mkdtempSync(join(tmpdir(), "rel001-phase1g-reopen-"));
   const databasePath = join(directory, "property.sqlite");
   const node: PropertyNode = { id: "property-durable", version: 1, entityType: "Property", canonicalName: "Durable", status: "proposed", authority: "CANONICAL_MASTER", classification: "INTERNAL", proposedBy: "actor-a", createdAt: "2026-09-13T07:00:00.000Z" };
-  const auditIntent: PropertyAuditIntent = { intentId: "property-create", domainOwner: "PROPERTY", aggregateId: node.id, mutationIdentity: "property-create", actorId: "actor-a", scopeRef: "system:property-master", classificationRef: "PROPERTY_MUTATION", committedAt: "2026-09-13T07:00:00.000Z", evidenceRefs: ["evidence:property-durable"] };
+  const auditIntent: PropertyAuditIntent = {
+    auditIntentContractVersion: "v2", intentId: "property-create", sourceDomain: "PROPERTY", aggregateId: node.id, mutationIdentity: "property-create",
+    eventType: "PROPERTY_PROPOSED", eventCategory: "COMMAND_ACCEPTED", action: "property.propose", target: { type: node.entityType, id: node.id, version: node.version },
+    principalProvenance: { kind: "TRUSTED_SNAPSHOT", principal: { id: "actor-a", type: "HUMAN", roles: ["DST"], sessionId: "session-a" } },
+    visibility: { kind: "SYSTEM_BOUND", scopeRef: "system:property-master" }, purpose: "LISTING_GOVERNANCE", policyVersion: "policy-v1", classification: "INTERNAL",
+    decision: "ALLOW", outcome: "COMPLETED", committedAt: "2026-09-13T07:00:00.000Z", correlationId: "correlation-a", evidenceRefs: ["evidence:property-durable"],
+  };
+  let store: DurablePropertyStore | undefined;
   try {
-    let store = new DurablePropertyStore({ databasePath });
+    store = new DurablePropertyStore({ databasePath });
     store.createNode({ record: node, commandId: "property-create", commandFingerprint: "sha256:property", auditIntent });
     const first = store.readNode(node.id);
     assert.ok(first);
     assert.equal(Object.isFrozen(first), true);
     assert.throws(() => { (first as { canonicalName: string }).canonicalName = "Process Local Override"; }, TypeError);
     store.close();
+    store = undefined;
     store = new DurablePropertyStore({ databasePath });
     assert.equal(store.readNode(node.id)?.canonicalName, "Durable");
     store.close();
-  } finally { rmSync(directory, { recursive: true, force: true }); }
+    store = undefined;
+  } finally { store?.close(); rmSync(directory, { recursive: true, force: true }); }
 });
 
 test("REL-001 Phase 1G fails closed on a pre-existing same-column schema with weakened constraints", () => {
