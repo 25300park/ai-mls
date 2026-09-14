@@ -86,3 +86,17 @@ Phase 3B.2의 closure metrics는 DEC-151 승인에 따라 required/effective map
 | Verification | source plus prior-phase affected regression | focused `23/23`; affected `149/149`; fresh clean-build full `1373/1373` | PASS |
 
 상세 evidence는 [Phase 3C Traceability](REL001_PHASE3C_DURABLE_JOB_STORE_TRACEABILITY.md)와 [Completion Report](../reviews/REL001_PHASE3C_COMPLETION_REPORT.md)에 기록한다. Phase 3C는 durable state integrity만 구현하며 Phase 3D+, worker loop, polling, HTTP와 automatic retry는 시작하지 않는다.
+
+## 7. Phase 3D execution registry / bounded runtime delta
+
+| Trace | Production evidence | Test evidence | Result |
+|---|---|---|---|
+| Closed mappings | [`JobExecutionRegistry`](../../modules/jobs/src/job-execution-runtime.ts) | [`job-execution-runtime.test.ts`](../../modules/jobs/src/job-execution-runtime.test.ts) | exact `3/3` WIRED |
+| Durable one-shot execution | [`JobExecutionRuntime`](../../modules/jobs/src/job-execution-runtime.ts) reuses Phase 3C store/CAS | success, denial, terminal replay, concurrent stale execution | PASS |
+| Authority / isolation | injected live admission plus durable tenant/scope-scoped read | blocked admission, cross-scope concealment, malformed authority | PASS |
+| Safe result/failure | canonical success fields; trusted `normalizeJobFailure` result only | raw exception, malformed result, forged/unmapped failure | PASS |
+| Staging composition | [`createStagingJobExecutionRuntime`](../../modules/jobs/src/job-staging-composition.ts) | [`job-staging-composition.test.ts`](../../modules/jobs/src/job-staging-composition.test.ts) | READY only for complete exact mapping |
+| Bounded process model | explicit `execute`, `status`, `close` only | no fallback/loop/timer/HTTP/network surface | PASS |
+| Verification | [Handler Traceability](REL001_PHASE3D_HANDLER_MAPPING_TRACEABILITY.md), [Composition Matrix](REL001_PHASE3D_RUNTIME_COMPOSITION_MATRIX.md), [Completion Report](../reviews/REL001_PHASE3D_COMPLETION_REPORT.md) | focused `46/46`; affected `143/143`; full `1396/1396` | PASS |
+
+Phase 3D는 Production FEAT-022 runtime, public API-017 transport, scheduler/polling, automatic retry 또는 provider/network를 시작하지 않는다. Phase 3E+는 `NOT_STARTED`다.
