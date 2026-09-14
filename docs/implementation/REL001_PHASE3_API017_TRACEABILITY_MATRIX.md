@@ -12,7 +12,7 @@
 
 ## 1. 추적의 의미
 
-이 RTM은 Phase 3B의 **DRAFT 결정 추적만** 제공한다. runtime implementation/test coverage, 정본 결정 승인, release 완료 또는 Phase 3C 진입 증거가 아니다. 기존 [Phase 3A 보고서](../reviews/REL001_PHASE3A_API017_CANONICAL_INVENTORY_REPORT.md), [인벤토리](REL001_PHASE3_API017_RUNTIME_INVENTORY_GAP_MATRIX.md), [lifecycle/authority](REL001_PHASE3_API017_LIFECYCLE_AUTHORITY_MATRIX.md), [persistence](REL001_PHASE3_API017_PERSISTENCE_READINESS_MATRIX.md), [구현 계획](REL001_PHASE3_API017_IMPLEMENTATION_PLAN.md)을 변경하지 않는다.
+이 RTM은 Phase 3B와 [Phase 3B.1 owner decision package](REL001_PHASE3B1_OWNER_DECISION_REGISTER.md)의 **DRAFT 결정 추적만** 제공한다. runtime implementation/test coverage, 전역 Decision Register 승인, release 완료 또는 Phase 3C 진입 증거가 아니다. 기존 [Phase 3A 보고서](../reviews/REL001_PHASE3A_API017_CANONICAL_INVENTORY_REPORT.md), [인벤토리](REL001_PHASE3_API017_RUNTIME_INVENTORY_GAP_MATRIX.md), [lifecycle/authority](REL001_PHASE3_API017_LIFECYCLE_AUTHORITY_MATRIX.md), [persistence](REL001_PHASE3_API017_PERSISTENCE_READINESS_MATRIX.md), [구현 계획](REL001_PHASE3_API017_IMPLEMENTATION_PLAN.md)을 변경하지 않는다.
 
 ## 2. 필수 결정 그룹 추적
 
@@ -47,3 +47,27 @@
 | `ReadJobResult` | [Operation 준비도](REL001_PHASE3B_API017_OPERATION_READINESS_MATRIX.md) §2·4 | `NO` | `NO` |
 
 총 `5`; implementation-ready `0/5`; durable-ready `0/5`. [Phase 3B 보고서](../reviews/REL001_PHASE3B_API017_CANONICAL_CLOSURE_REPORT.md)의 최종 권고 `BLOCK_REL001_PHASE3_API017_RUNTIME_FOUNDATION`을 유지한다. Global canonical RTM, `DEV-018`, `IMP-018`, Decision Register 및 historical release 상태는 변경하지 않는다.
+
+## 4. Phase 3B.1 decision delta
+
+| Trace | Phase 3B.1 evidence | Decision state | Runtime evidence |
+|---|---|---|---|
+| identity/lifecycle/authority/persistence/CAS/idempotency | [Owner Decision Register](REL001_PHASE3B1_OWNER_DECISION_REGISTER.md) | 11/13 gap decisions closed for review | `NOT_STARTED` |
+| failure safety | [Failure Safety Decision](REL001_PHASE3B1_FAILURE_SAFETY_DECISION.md) | `PASS_DECISION_DEFINED` | `NOT_STARTED` |
+| handler/worker | [Worker Execution Decision](REL001_PHASE3B1_WORKER_EXECUTION_DECISION.md) | three mappings; option C ready for review | `NOT_STARTED` |
+| audit | [Audit Mapping Decision](REL001_PHASE3B1_AUDIT_MAPPING_DECISION.md) | `0/9`; separate amendment required | `NOT_AUTHORIZED` |
+| operation closure | [Closure Matrix](REL001_PHASE3B1_OPERATION_CANONICAL_CLOSURE_MATRIX.md) | implementation/durable ready `2/5` | `NOT_AUTHORIZED` |
+
+[Phase 3B.1 report](../reviews/REL001_PHASE3B1_COMPLETION_REPORT.md)의 최종 권고는 `BLOCK_REL001_PHASE3_API017_RUNTIME_FOUNDATION`이다. Phase 3C는 `NOT_AUTHORIZED`이며 Phase 3B baseline과 역사적 evidence는 수정하지 않는다.
+
+## 5. Phase 3B.2 audit vocabulary amendment
+
+| Trace | Phase 3B.2 evidence | Proposed closure | Effective state |
+|---|---|---|---|
+| manual successor numeric policy | [Retry owner decision](REL001_PHASE3B2_RETRY_AS_SUCCESSOR_OWNER_DECISION.md) | `NO_FINITE_MAX_REQUIRED`; automatic retry 0 | `CLOSED` by DEC-150 |
+| audit-point inventory | [Audit inventory](REL001_PHASE3B2_API017_AUDIT_POINT_INVENTORY.md) | exact 9 points | `9/9 CLASSIFIED` |
+| API-016 mapping | [Mapping matrix](REL001_PHASE3B2_API016_EVENT_MAPPING_MATRIX.md) | 7 new + 2 N/A, unknown 0 | `9/9` effective by DEC-151 |
+| vocabulary | [Amendment](REL001_PHASE3B2_API016_VOCABULARY_AMENDMENT.md) | seven narrow event tuples | `APPROVED` |
+| final recommendation | [Phase 3B.2 report](../reviews/REL001_PHASE3B2_CANONICAL_CLOSURE_REPORT.md) | `APPROVE_REL001_PHASE3B2_API017_AUDIT_VOCABULARY_CLOSURE` | Phase 3B.2 `APPROVED`; Phase 3C separately `NOT_AUTHORIZED` |
+
+Phase 3B.2의 closure metrics는 DEC-151 승인에 따라 required/effective mapping `9/9`, unknown `0`, remaining canonical decisions `0`이다. Phase 3C implementation은 별도 승인이 필요하다.
