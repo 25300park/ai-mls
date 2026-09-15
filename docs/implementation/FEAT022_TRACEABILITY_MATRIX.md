@@ -147,3 +147,52 @@ FEAT-022 historical completion is unchanged. Phase 4D-A adds no provider selecti
 | readiness | [Matrix](REL001_PHASE4D1_NETWORK_ACTIVATION_READINESS_MATRIX.md) | `0/3 NOT_READY`; DEC-162 `IN REVIEW` |
 
 No historical FEAT-022 status changes. Provider/network/credential/Production execution remains `0`.
+
+## REL-001 Phase 4D.3 provider-selection decision-support overlay
+
+| Trace | Evidence | Result |
+|---|---|---|
+| capability requirements | [Decision Packet](REL001_PHASE4D3_PROVIDER_SELECTION_ACTIVATION_DECISION_PACKET.md) | AI-001/004/005 purpose, input/output, privacy and review boundary extracted |
+| named provider/model | same | none selected; current external evidence unavailable |
+| timeout/request limits | same | `PROPOSED_OWNER_VALUES` only; current authorized calls 0 |
+| credential/prompt/projection | same | identifier/path/field proposals only; approval and physical assets required |
+| destination/retention/pricing | same | `UNKNOWN / BLOCKING` |
+| recommendation | [Completion Report](../reviews/REL001_PHASE4D3_COMPLETION_REPORT.md) | `INSUFFICIENT_EVIDENCE_FOR_PROVIDER_SELECTION` |
+
+DEC-162 remains `IN REVIEW`; Network activation remains `0/3 NOT_READY`. No historical FEAT-022 completion state, provider/network authority or business authority changed.
+
+## REL-001 Phase 4D.4 official-provider evidence overlay
+
+| Trace | Evidence | Result |
+|---|---|---|
+| provider/model comparison | [Comparison Matrix](REL001_PHASE4D4_PROVIDER_COMPARISON_MATRIX.md) | OpenAI `PRIMARY`, Anthropic `SECONDARY`, Gemini Developer API `NOT_RECOMMENDED_FOR_REL001_STAGING`; AO pending |
+| privacy/retention | [Official Evidence](REL001_PHASE4D4_PRIVACY_RETENTION_EVIDENCE.md) | official training, retention, ZDR, review and residency evidence captured; account controls blocking |
+| pricing/model status | [Model/Pricing Evidence](REL001_PHASE4D4_MODEL_PRICING_EVIDENCE.md) | current IDs, stability, limits and prices captured |
+| exact owner proposal | [AO Decision Table](REL001_PHASE4D4_AO_DECISION_TABLE.md) | seven `PROPOSED_AO_VALUE` groups; `DEC-162 IN REVIEW` |
+| recommendation | [Completion Report](../reviews/REL001_PHASE4D4_COMPLETION_REPORT.md) | `READY_FOR_ARCHITECTURE_OWNER_PROVIDER_SELECTION`; execution/network/credentials 0 |
+
+Phase 4D.4 is public research only. It does not approve a provider, create prompts, authorize transmission or change advisory authority.
+
+## REL-001 Phase 4D.5 activation-prerequisite overlay
+
+| Trace | Evidence | Result |
+|---|---|---|
+| physical prompt assets | [Prompt Asset Manifest](REL001_PHASE4D5_PROMPT_ASSET_MANIFEST.md) | `3/3 EXISTING_AND_VERSIONED`; DRAFT, advisory-only, human review required |
+| outbound data | [Projection Contract](REL001_PHASE4D5_OUTBOUND_PROJECTION_CONTRACT.md) | `3/3 CLOSED`; anything else `DENIED` |
+| account controls | [Eligibility Evidence](REL001_PHASE4D5_OPENAI_DATA_CONTROL_ELIGIBILITY.md) | `UNAVAILABLE`; no authenticated project surface |
+| activation readiness | [Readiness Matrix](REL001_PHASE4D5_NETWORK_ACTIVATION_READINESS.md) | `0/3 NOT_READY`; DEC-162 remains `IN REVIEW` |
+| evidence | [Completion Report](../reviews/REL001_PHASE4D5_COMPLETION_REPORT.md) | `BLOCK_REL001_PHASE4D_STAGING_PROVIDER_VALIDATION`; inference/billable/key exposure 0 |
+
+Phase 4D.5 does not convert physical assets into network authority. FEAT-022 advisory-only/human-review boundaries and historical Phase 4D.1 blocked evidence remain unchanged.
+
+## REL-001 Phase 4D.8 external-dependency boundary overlay
+
+| Trace | Evidence | Result |
+|---|---|---|
+| REL-001 Phase 4 | [Phase 4 Boundary](REL001_PHASE4D8_PHASE4_COMPLETION_BOUNDARY.md) | `COMPLETE_FOR_PROVIDER_INTEGRATION_BOUNDARY` |
+| provider-independent boundary | [Phase 4 Boundary](REL001_PHASE4D8_PHASE4_COMPLETION_BOUNDARY.md) | `COMPLETE`; AI-001/004/005 `3/3 READY` |
+| external dependency | [Dependency Hold](REL001_PHASE4D8_EXTERNAL_PROVIDER_DEPENDENCY_HOLD.md) | `EXTERNAL_ACCOUNT_AND_CONTRACT_DEPENDENCY`; repository blockers 0 |
+| live activation | [Readiness Matrix](REL001_PHASE4D8_READINESS_MATRIX.md) | Phase 4D `BLOCKED`; live execution `0/3 NOT_READY`; DEC-162 `IN_REVIEW` |
+| closeout | [Completion Report](../reviews/REL001_PHASE4D8_COMPLETION_REPORT.md) | `APPROVE_REL001_PHASE4_PROVIDER_INTEGRATION_BOUNDARY_CLOSURE` |
+
+This overlay closes only the provider-independent executable boundary. It does not rewrite historical Phase 4D outcomes or claim Staging/Production provider readiness.

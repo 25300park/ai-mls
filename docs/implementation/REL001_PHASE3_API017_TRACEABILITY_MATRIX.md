@@ -246,3 +246,59 @@ Phase 3 status remains `COMPLETE_FOR_PROVIDER_INTEGRATION_BOUNDARY`; Phase 4D-A 
 | evidence | [Phase 4D.1 Report](../reviews/REL001_PHASE4D1_COMPLETION_REPORT.md) |
 
 Phase 3 remains complete only for its provider-integration boundary. Phase 4D.1 does not authorize provider execution or alter Job semantics.
+
+## 19. Phase 4D.3 provider-selection decision-support handoff
+
+| Trace | Result |
+|---|---|
+| API-017 selection/credential/prompt authority | `0` — unchanged |
+| capability requirements | AI-001/004/005 canonical requirements recorded |
+| named provider/model | unselected; evidence insufficient |
+| proposed timeout/budget | owner proposal only; runtime authority `0` |
+| provider destination/terms | `UNKNOWN / BLOCKING` |
+| actual provider execution | `0/3 NOT_READY` |
+| evidence | [Phase 4D.3 Decision Packet](REL001_PHASE4D3_PROVIDER_SELECTION_ACTIVATION_DECISION_PACKET.md) |
+
+Phase 4D.3 is documentation/decision support only. It does not modify API-017 semantics, Job handlers or runtime readiness.
+
+## Phase 4D.4 provider evidence handoff
+
+| Trace | Result |
+|---|---|
+| selected execution authority | `0`; AO selection pending |
+| recommended provider/model | OpenAI API / shared `gpt-5.6-terra` as `PROPOSED_AO_VALUE` |
+| API-017 provider/model/credential authority | `0` — unchanged |
+| request ceiling | proposed 2/2/2, total 6; authorized calls 0 |
+| provider execution/readiness | `0/3 NOT_READY` |
+| evidence | [AO Decision Table](REL001_PHASE4D4_AO_DECISION_TABLE.md), [Completion Report](../reviews/REL001_PHASE4D4_COMPLETION_REPORT.md) |
+
+Official evidence makes DEC-162 ready for AO selection review only; it does not make the deferred AI handlers executable.
+
+## Phase 4D.5 activation-prerequisite handoff
+
+| Trace | Result |
+|---|---|
+| prompt assets | `3/3 EXISTING_AND_VERSIONED` |
+| outbound projections | `3/3 CLOSED`, default deny |
+| account-level eligibility | `UNAVAILABLE` |
+| API-017 provider/model/credential authority | `0` — unchanged |
+| actual provider execution | `0/3 NOT_READY` |
+| evidence | [Readiness Matrix](REL001_PHASE4D5_NETWORK_ACTIVATION_READINESS.md), [Completion Report](../reviews/REL001_PHASE4D5_COMPLETION_REPORT.md) |
+
+The deferred handlers remain non-executable. Phase 4D.5 adds no Job selection authority, network call, credential access, retry or fallback.
+
+## Phase 4D.8 external-dependency boundary handoff
+
+| Trace | Result |
+|---|---|
+| REL-001 Phase 4 | `COMPLETE_FOR_PROVIDER_INTEGRATION_BOUNDARY` |
+| FEAT-022 provider-independent executable boundary | `COMPLETE`, 3/3 |
+| Phase 4D live provider validation | `BLOCKED` |
+| blocker classification | `EXTERNAL_ACCOUNT_AND_CONTRACT_DEPENDENCY` |
+| repository implementation blockers | `0` |
+| live provider execution | `0/3 NOT_READY` |
+| API-017 provider/model/credential authority | `0` — unchanged |
+| independent REL-001 work | `CONTINUE_ALLOWED` |
+| evidence | [Phase 4 Boundary](REL001_PHASE4D8_PHASE4_COMPLETION_BOUNDARY.md), [Dependency Hold](REL001_PHASE4D8_EXTERNAL_PROVIDER_DEPENDENCY_HOLD.md), [Completion Report](../reviews/REL001_PHASE4D8_COMPLETION_REPORT.md) |
+
+Provider-independent REL-001 work may continue. Any live AI handler execution remains fail-closed until the external hold and separate network-authorization gate are closed.

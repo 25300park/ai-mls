@@ -239,6 +239,12 @@ DEC-155는 Phase 4B 당시의 blocked snapshot이다. DEC-156은 이후 explicit
 
 DEC-162는 Phase 4D.1의 owner-input package를 추적하는 `IN REVIEW` record다. Exact values와 provider policy evidence가 없으므로 activation을 승인하지 않으며, 별도 owner approval 전 network authority는 `0`이다.
 
+Phase 4D.3 [Provider Selection / Activation Decision Packet](implementation/REL001_PHASE4D3_PROVIDER_SELECTION_ACTIVATION_DECISION_PACKET.md)은 DEC-162의 decision-support evidence다. 외부 provider evidence 없이 named provider를 선택하지 않았으며 `INSUFFICIENT_EVIDENCE_FOR_PROVIDER_SELECTION`, `0/3 NOT_READY`, calls/network/credential use `0`을 보존한다.
+
+Phase 4D.4 [Official Provider Comparison Matrix](implementation/REL001_PHASE4D4_PROVIDER_COMPARISON_MATRIX.md)과 [AO Decision Table](implementation/REL001_PHASE4D4_AO_DECISION_TABLE.md)은 2026-09-15 공식 공개 근거를 추가한 DEC-162 decision-support evidence다. Recommendation은 `READY_FOR_ARCHITECTURE_OWNER_PROVIDER_SELECTION`이지만 `DEC-162` 상태, network authority 및 `0/3 NOT_READY`는 변경하지 않는다.
+
+Phase 4D.5에서 Architecture Owner는 OpenAI API, shared `gpt-5.6-terra`, 30/30/45초 timeout, `FEAT022_STAGING_OPENAI_API_KEY`, Korea Responses endpoint와 2/2/2 ceiling을 선택했다. [Prompt Asset Manifest](implementation/REL001_PHASE4D5_PROMPT_ASSET_MANIFEST.md)와 [Outbound Projection Contract](implementation/REL001_PHASE4D5_OUTBOUND_PROJECTION_CONTRACT.md)는 3/3 완료되었다. 그러나 authenticated account-level Staging project, Korea residency, MAM/ZDR/amendment 및 credential-reference 구성 증거가 [UNAVAILABLE](implementation/REL001_PHASE4D5_OPENAI_DATA_CONTROL_ELIGIBILITY.md)이므로 DEC-162는 `IN REVIEW`, readiness는 `0/3 NOT_READY`를 유지한다. Network authority, inference, credential use 및 billable calls는 `0`이다.
+
 ## Open-decision disposition catalog
 
 `OPEN DECISION` marker는 다음 precedence로 전수 분류한다. 동일 marker가 여러 범주에 해당하면 위에서 먼저 일치하는 범주가 canonical disposition이다.
