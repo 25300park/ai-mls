@@ -119,3 +119,31 @@ DEC-156 refines the Phase 4B blocked snapshot without changing FEAT-022 historic
 | verification | Phase 4C focused, affected and full regression | focused `23/23`; compatibility 포함 fresh review `39/39`; affected AI/API-017/API-016 `149/149`; total `1443/1443`; independent review Critical `0` / Important `0` / Minor `0` — READY |
 
 FEAT-022 historical Final Gate remains unchanged. Phase 4C activates no real provider, network, credential, business authority or domain mutation.
+
+## REL-001 Phase 4D-A Staging provider activation design overlay
+
+| Trace | Phase 4D-A evidence | Result |
+|---|---|---|
+| exact configuration | [Staging Provider Config Matrix](REL001_PHASE4D_STAGING_PROVIDER_CONFIG_MATRIX.md) | provider/model/timeout/capability version `0/3`; `CONFIG_VALUE_REQUIRED` |
+| credential boundary | [Credential Verification](REL001_PHASE4D_CREDENTIAL_BOUNDARY_VERIFICATION.md) | structural isolation `3/3 PASS`; Staging references/availability `0/3` |
+| prompt/version | config/readiness matrices | physical approved assets `0/3`; metadata/validator mechanics preserved |
+| data minimization | [Network Scope Packet](REL001_PHASE4D_NETWORK_SCOPE_APPROVAL_PACKET.md) | reference-only intent exists; inference content projection `CONTRACT_REQUIRED` |
+| network scope | same packet | named provider/domain/request count/billing `NOT_DEFINED`; calls `0` |
+| readiness | [Staging Readiness Matrix](REL001_PHASE4D_STAGING_READINESS_MATRIX.md) | provider-independent `3/3 READY`; Staging execution `0/3 NOT_READY` |
+| validation plan | [Live Provider Validation Plan](REL001_PHASE4D_LIVE_PROVIDER_VALIDATION_PLAN.md) | conditional plan only; Phase 4D-B `NOT_AUTHORIZED` |
+
+FEAT-022 historical completion is unchanged. Phase 4D-A adds no provider selection, credential, network, Production activation or business authority. Recommendation is `BLOCK_REL001_PHASE4D_STAGING_PROVIDER_VALIDATION` until exact owner decisions and a separate scoped network approval exist.
+
+## REL-001 Phase 4D.1 owner-decision closure overlay
+
+| Trace | Evidence | Result |
+|---|---|---|
+| provider/model/timeout | [Decision](REL001_PHASE4D1_PROVIDER_MODEL_TIMEOUT_DECISION.md) | `0/3 CLOSED`; exact values absent |
+| credential references | [Matrix](REL001_PHASE4D1_CREDENTIAL_REFERENCE_MATRIX.md) | `0/3 CLOSED`; secret values 0 |
+| prompt assets | [Decision](REL001_PHASE4D1_PROMPT_ASSET_DECISION.md) | `0/3`; `PROMPT_ASSET_IMPLEMENTATION_REQUIRED` |
+| outbound data | [Contract](REL001_PHASE4D1_OUTBOUND_DATA_PROJECTION_CONTRACT.md) | approved business fields `0`; default deny |
+| destination/retention | [Decision](REL001_PHASE4D1_PROVIDER_DESTINATION_RETENTION_DECISION.md) | exact destination/policy evidence absent |
+| billing/request limits | [Limits](REL001_PHASE4D1_NETWORK_BILLING_REQUEST_LIMIT.md) | positive limits absent; currently authorized total 0 |
+| readiness | [Matrix](REL001_PHASE4D1_NETWORK_ACTIVATION_READINESS_MATRIX.md) | `0/3 NOT_READY`; DEC-162 `IN REVIEW` |
+
+No historical FEAT-022 status changes. Provider/network/credential/Production execution remains `0`.

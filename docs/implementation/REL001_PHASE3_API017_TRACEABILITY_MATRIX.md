@@ -219,3 +219,30 @@ API-017 foundation remains unchanged. DEC-156 permits later bounded implementati
 | runtime consequence | [Readiness Matrix](REL001_PHASE4C_CONFIG_READINESS_MATRIX.md) | provider-independent `3/3 READY`; actual Staging execution `0/3 NOT_READY` |
 
 Phase 3 remains `COMPLETE_FOR_PROVIDER_INTEGRATION_BOUNDARY`. Phase 4C implements that boundary without scheduler, automatic retry, public transport, provider network or new API-016 event.
+
+## 17. Phase 4D-A Staging provider activation handoff
+
+| Trace | Result |
+|---|---|
+| API-017 provider/model/prompt/credential selection authority | `0` — unchanged |
+| provider-independent handler/application path | `3/3 READY` — Phase 4C preserved |
+| concrete Staging provider/model/timeout/credential/prompt | `0/3`; `CONFIG_VALUE_REQUIRED` |
+| approved outbound inference content projection | `0/3`; `CONTRACT_REQUIRED` |
+| exact network destination/permission | `0`; `NOT_AUTHORIZED` |
+| actual provider execution | `0/3 NOT_READY` |
+| evidence | [Phase 4D-A Report](../reviews/REL001_PHASE4D_COMPLETION_REPORT.md) |
+
+Phase 3 status remains `COMPLETE_FOR_PROVIDER_INTEGRATION_BOUNDARY`; Phase 4D-A does not reopen API-017 semantics and does not authorize Phase 4D-B.
+
+## 18. Phase 4D.1 owner-decision closure handoff
+
+| Trace | Result |
+|---|---|
+| API-017 provider/model/prompt/credential authority | `0` — unchanged |
+| provider activation decisions | DEC-162 `IN REVIEW`; seven groups open |
+| exact outbound projection | approved fields `0`; default deny |
+| request/network authority | total calls `0`; destinations `0` |
+| Staging execution readiness | `0/3 NOT_READY` |
+| evidence | [Phase 4D.1 Report](../reviews/REL001_PHASE4D1_COMPLETION_REPORT.md) |
+
+Phase 3 remains complete only for its provider-integration boundary. Phase 4D.1 does not authorize provider execution or alter Job semantics.
