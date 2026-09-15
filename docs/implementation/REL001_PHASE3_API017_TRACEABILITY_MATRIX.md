@@ -128,3 +128,16 @@ Phase 3E는 기존 API-017 contract와 state vocabulary를 변경하지 않는�
 | Scope protection | final event direct write, scheduler, polling, automatic retry, HTTP/RPC | architecture assertions and regressions | all `0` |
 
 상세 mapping은 [Phase 3F Audit Point Traceability](REL001_PHASE3F_AUDIT_POINT_TRACEABILITY.md), compatibility는 [Phase 3F Materialization Compatibility Matrix](REL001_PHASE3F_MATERIALIZATION_COMPATIBILITY_MATRIX.md), 실행 결과는 [Phase 3F Completion Report](../reviews/REL001_PHASE3F_COMPLETION_REPORT.md)에 기록한다. Phase 3F는 API-017 enriched intent를 기존 API-016-owned final event pipeline에만 연결하며 후속 Phase는 시작하지 않는다.
+
+## 10. Phase 3G-A handler side-effect containment design delta
+
+| Trace | Canonical evidence | Current result |
+|---|---|---|
+| DEC-152 boundary | [Containment Decision](REL001_PHASE3GA_HANDLER_SIDE_EFFECT_CONTAINMENT_DECISION.md) | `APPROVED`; capability-limited evolution defined |
+| Closed capability surface | [Capability Allowlist](REL001_PHASE3GA_HANDLER_CAPABILITY_ALLOWLIST.md) | generic/service-locator escape hatch `0` |
+| Three handler requirements | [Handler Capability Matrix](REL001_PHASE3GA_HANDLER_CAPABILITY_MATRIX.md) | contract-level `3/3 CONTAINMENT_READY`; implementation validation `0/3` |
+| Network/timer/background | exact prohibited list | all canonical requirements `NONE` |
+| Runtime readiness | [Runtime Readiness Matrix](REL001_PHASE3GA_RUNTIME_CONTAINMENT_READINESS_MATRIX.md) | `NOT_READY`; remaining blocker `1` |
+| Scope protection | [Phase 3G-A Closure Report](../reviews/REL001_PHASE3GA_CANONICAL_CLOSURE_REPORT.md) | Production/Test/runtime interface/dependency changes `0` |
+
+Phase 3G-A는 OS-level sandbox를 주장하지 않는다. Phase 3G는 remaining blocker `1`로 `BLOCKED`이다. 별도 implementation authorization과 실제 세 handler source/runtime containment PASS 전에는 runtime `READY`를 선언하지 않는다.
