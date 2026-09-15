@@ -56,3 +56,52 @@
 - `js-yaml` finding은 `DEVELOPMENT_TOOLCHAIN_ONLY / BOUNDED_ACCEPTED_RISK`이며 FEAT-023 또는 별도 maintenance task에서 추적한다.
 - Public advisory API/review mutation, reviewer workflow/UI, sampling, real provider/model과 advisory UI는 approved Final Gate disposition에 따라 `DEFERRED` 또는 `DEPENDENCY_GATED`다.
 - `FEAT-022-D/E/F/G/H`는 생성하지 않는다. [FEAT-022 Final Gate](../reviews/FEAT022_FINAL_GATE_REPORT.md)의 검증 범위에서 `FEAT-022 = COMPLETE`다.
+
+## REL-001 Phase 4A executable-lifecycle inventory overlay
+
+이 overlay는 completed FEAT-022 advisory-only foundation을 다시 열지 않고, REL-001이 deferred provider-backed execution을 검토한 결과만 기록한다.
+
+| Trace | Existing FEAT-022 evidence | Phase 4A result |
+|---|---|---|
+| application/runtime | `AdvisoryRuntime`, durable store, strict validator | PARTIAL for executable lifecycle |
+| handler-specific ports | DEC-153 contracts | `3/3 PORT_READY`; thin adapters absent |
+| output schemas | canonical AI-001/004/005 validators | `3/3 READY` |
+| provider abstraction | `AdvisoryAdapter` and provider-neutral intent | PARTIAL |
+| provider adapters | unavailable Production adapter only | executable `0/3` |
+| prompt | immutable metadata/status | PARTIAL; Production asset/body resolution absent |
+| provider/model/config/credential | deferred Final Gate scope | unresolved; no activation |
+| Staging execution | no approved successful path | `NOT_READY 0/3` |
+| evidence | [Phase 4A Inventory](REL001_PHASE4A_FEAT022_EXECUTABLE_LIFECYCLE_INVENTORY.md), [Gap Matrix](REL001_PHASE4A_EXECUTABLE_LIFECYCLE_GAP_MATRIX.md), [Report](../reviews/REL001_PHASE4A_COMPLETION_REPORT.md) | inventory complete; implementation not authorized |
+
+FEAT-022 historical Final Gate remains unchanged. Phase 4A provider/network calls, Production/Test changes and new authority are `0`.
+
+## REL-001 Phase 4B owner-decision closure overlay
+
+| Trace | Phase 4B evidence | Result |
+|---|---|---|
+| provider/model ownership | [Provider / Model Decisions](REL001_PHASE4B_PROVIDER_MODEL_OWNER_DECISIONS.md) | FEAT-022 ownership CLOSED; selection `OWNER_DECISION_REQUIRED` |
+| timeout/retry/fallback | [Timeout Decision](REL001_PHASE4B_TIMEOUT_RETRY_FALLBACK_DECISIONS.md) | numeric/policy values unresolved |
+| credential/config | [Credential Boundary](REL001_PHASE4B_CREDENTIAL_CONFIG_BOUNDARY.md) | API-017/handler access `0`; gaps `5` |
+| prompt/version | [Prompt Decision](REL001_PHASE4B_PROMPT_VERSIONING_DECISION.md) | metadata mechanics exist; assets/refs unresolved |
+| human authority | [Human Review Decision](REL001_PHASE4B_HUMAN_REVIEW_AUTHORITY_DECISION.md) | advisory-only boundary preserved; review execution partial |
+| validation/failure | [Failure Decision](REL001_PHASE4B_FAILURE_NORMALIZATION_DECISION.md) | existing safe vocabulary sufficient; raw provider detail `0` |
+| thin adapters | [Adapter Contracts](REL001_PHASE4B_THIN_ADAPTER_CONTRACTS.md) | behavior `3/3` closed; Job/request mapping unresolved |
+| readiness | [Readiness Matrix](REL001_PHASE4B_IMPLEMENTATION_READINESS_MATRIX.md) | implementation-ready `0/3`; unresolved decisions `7` |
+| report | [Phase 4B Report](../reviews/REL001_PHASE4B_COMPLETION_REPORT.md) | `BLOCK_REL001_PHASE4_FEAT022_EXECUTABLE_LIFECYCLE` |
+
+FEAT-022's historical completion remains unchanged. REL-001 provider-backed execution is a later deferred scope and remains blocked; Phase 4B Production/Test/provider/network changes are `0`.
+
+## REL-001 Phase 4B.1 owner-decision closure overlay
+
+| Trace | Phase 4B.1 evidence | Result |
+|---|---|---|
+| owner decision | [Decision Register](REL001_PHASE4B1_OWNER_DECISION_REGISTER.md) | DEC-156 `APPROVED`; semantic decisions unresolved `0` |
+| provider/model/timeout | [Decision](REL001_PHASE4B1_PROVIDER_MODEL_TIMEOUT_DECISION.md) | FEAT-022-owned; exact values `CONFIG_VALUE_REQUIRED`; retry/fallback `NONE` |
+| credential/config | [Decision](REL001_PHASE4B1_CREDENTIAL_CONFIG_DECISION.md) | boundary `3/3 CLOSED`; secret visibility outside adapter `0` |
+| prompt/telemetry | [Decision](REL001_PHASE4B1_PROMPT_TELEMETRY_DECISION.md) | ownership `3/3 CLOSED`; telemetry CLOSED; assets are implementation gaps |
+| Job binding | [Matrix](REL001_PHASE4B1_JOB_ADVISORY_BINDING_MATRIX.md) | static mapping `3/3 CLOSED`; generic/dynamic dispatch `0` |
+| review authority | [Decision](REL001_PHASE4B1_HUMAN_REVIEW_DECISION.md) | advisory-only; semantic unresolved `0`; automatic acceptance `0` |
+| readiness | [Matrix](REL001_PHASE4B1_IMPLEMENTATION_READINESS_MATRIX.md) | bounded implementation-ready `3/3`; Staging execution-ready `0/3` |
+| report | [Completion Report](../reviews/REL001_PHASE4B1_COMPLETION_REPORT.md) | `APPROVE_REL001_PHASE4B1_FEAT022_OWNER_DECISION_CLOSURE` |
+
+DEC-156 refines the Phase 4B blocked snapshot without changing FEAT-022 historical Final Gate. Provider values, credentials, network and Production implementation remain unapproved.

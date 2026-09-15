@@ -167,3 +167,41 @@ Phase 3G-C는 exact contracts만 닫는다. Current Production `AdvisoryRuntime`
 | scope protection | bounded documentation diff | Production/Test/provider/network/dependency changes `0` |
 
 `READY_FOR_PROVIDER_INTEGRATION`과 `NOT_READY`는 documentation classifications only이며 새 FEAT-023 readiness enum 또는 Job lifecycle state가 아니다. Phase 3G의 original `3/3 Production handler E2E` 결과는 `BLOCKED`로 유지한다. Phase 4 implementation은 승인되지 않았다.
+
+## 13. Phase 4A FEAT-022 executable lifecycle handoff
+
+| Trace | Phase 4A evidence | Result |
+|---|---|---|
+| exact application-port alignment | [AI-001](REL001_PHASE4A_AI001_EXECUTION_READINESS.md), [AI-004](REL001_PHASE4A_AI004_EXECUTION_READINESS.md), [AI-005](REL001_PHASE4A_AI005_EXECUTION_READINESS.md) | `3/3 THIN_ADAPTER_REQUIRED` |
+| provider boundary | [Provider Matrix](REL001_PHASE4A_PROVIDER_BOUNDARY_MATRIX.md) | abstraction PARTIAL; adapters `0/3` |
+| config/credential | [Config Matrix](REL001_PHASE4A_PROVIDER_CONFIG_CREDENTIAL_MATRIX.md) | gaps `5`; handler access `0` |
+| executable lifecycle | [Gap Matrix](REL001_PHASE4A_EXECUTABLE_LIFECYCLE_GAP_MATRIX.md) | executable `0/3`; decisions `7`; `NOT_READY` |
+| scope | [Phase 4A Report](../reviews/REL001_PHASE4A_COMPLETION_REPORT.md) | Production/Test/network/provider calls `0` |
+
+Phase 3 remains `COMPLETE_FOR_PROVIDER_INTEGRATION_BOUNDARY`. Original Phase 3G E2E remains `BLOCKED`; Phase 4A does not rewrite it or authorize provider implementation.
+
+## 14. Phase 4B FEAT-022 owner-decision closure handoff
+
+| Trace | Phase 4B evidence | Result |
+|---|---|---|
+| API-017 authority | [Provider / Model Decisions](REL001_PHASE4B_PROVIDER_MODEL_OWNER_DECISIONS.md) | provider/model authority `0` |
+| API-017 credential visibility | [Credential Boundary](REL001_PHASE4B_CREDENTIAL_CONFIG_BOUNDARY.md) | credentials/config authority `0` |
+| handler contracts | [Thin Adapter Contracts](REL001_PHASE4B_THIN_ADAPTER_CONTRACTS.md) | behavior closed `3/3`; exact Job/request binding unresolved |
+| Job failure mapping | [Failure Decision](REL001_PHASE4B_FAILURE_NORMALIZATION_DECISION.md) | existing `DEPENDENCY_UNAVAILABLE` / `JOB_RESULT_INVALID` only |
+| Job retry separation | [Timeout / Retry Decision](REL001_PHASE4B_TIMEOUT_RETRY_FALLBACK_DECISIONS.md) | `RetryAsSuccessor` remains manual and separate |
+| readiness | [Readiness Matrix](REL001_PHASE4B_IMPLEMENTATION_READINESS_MATRIX.md) | AI-001/004/005 `NOT_READY`; implementation `0/3` |
+
+Phase 3 remains complete only for the provider-integration boundary. Phase 4B does not alter Job lifecycle, create handlers or authorize provider execution.
+
+## 15. Phase 4B.1 FEAT-022 owner-decision closure handoff
+
+| Trace | Phase 4B.1 evidence | Result |
+|---|---|---|
+| static Job mappings | [Binding Matrix](REL001_PHASE4B1_JOB_ADVISORY_BINDING_MATRIX.md) | `AI_LISTING_PARSE→AI-001`, `AI_REQUIREMENT_PARSE→AI-004`, `AI_MATCHING→AI-005`; `3/3 CLOSED` |
+| handler authority | [Owner Register](REL001_PHASE4B1_OWNER_DECISION_REGISTER.md) | provider/model/prompt/credential/retry authority `0` |
+| provider attempt semantics | [Provider Decision](REL001_PHASE4B1_PROVIDER_MODEL_TIMEOUT_DECISION.md) | one provider attempt; fallback `NONE`; Job successor remains manual |
+| safe failures | Phase 4B [Failure Decision](REL001_PHASE4B_FAILURE_NORMALIZATION_DECISION.md) | existing `DEPENDENCY_UNAVAILABLE` / `JOB_RESULT_INVALID` only |
+| human authority | [Review Decision](REL001_PHASE4B1_HUMAN_REVIEW_DECISION.md) | advisory result grants downstream authority `0` |
+| readiness | [Readiness Matrix](REL001_PHASE4B1_IMPLEMENTATION_READINESS_MATRIX.md) | semantic closure `3/3`; physical handlers/adapters `0/3` |
+
+API-017 foundation remains unchanged. DEC-156 permits later bounded implementation but creates no generic AI Job, handler, provider call or network authority.

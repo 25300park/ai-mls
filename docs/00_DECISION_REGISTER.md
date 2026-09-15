@@ -227,6 +227,15 @@ DEC-109와 DEC-111은 DEC-100/101/104 전체를 폐기하지 않는다. 기존 D
 
 따라서 AO-023–AO-035 중 `SUPERSEDED` 또는 `DEPRECATED` Decision은 없다.
 
+## REL-001 Phase 4B FEAT-022 owner-decision closure disposition
+
+| Decision ID | Decision Name | Decision Version | Approval Status | Recommendation | Scope | Dependencies | Related AO | Related Registry | Related RTM | Effective Version | Approval Date | Architecture Status | Superseded By |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| DEC-155 | REL-001 FEAT-022 Executable Lifecycle Owner-Decision Closure Disposition | v0.1 | IN REVIEW | `BLOCK_REL001_PHASE4_FEAT022_EXECUTABLE_LIFECYCLE` | AI-001/004/005 provider/model, timeout/retry/fallback, credential/config, prompt, review, failure, thin-adapter and network boundaries | DEC-153/154; FEAT-022 Final Gate; Book 4 Provider/Prompt/Human Review | REL-001 Phase 4B | [Phase 4B Readiness Matrix](implementation/REL001_PHASE4B_IMPLEMENTATION_READINESS_MATRIX.md) | [FEAT-022 RTM](implementation/FEAT022_TRACEABILITY_MATRIX.md), [REL-001/API-017 RTM](implementation/REL001_PHASE3_API017_TRACEABILITY_MATRIX.md) | REL-001 Phase 4B draft | — | HISTORICAL BLOCKED SNAPSHOT; refined by later explicit owner direction | DEC-156 |
+| DEC-156 | REL-001 FEAT-022 Load-Bearing Owner Decision Closure | v1.0 | APPROVED | `APPROVE_REL001_PHASE4B1_FEAT022_OWNER_DECISION_CLOSURE` | AI-001/004/005 provider/model/timeout ownership, no retry/fallback, credential/config containment, prompt/version, telemetry, static Job binding and advisory-only human authority | DEC-153–155; FEAT-022 Final Gate; Phase 4B.1 AO direction | [Phase 4B.1 Owner Decision Register](implementation/REL001_PHASE4B1_OWNER_DECISION_REGISTER.md) | [FEAT-022 RTM](implementation/FEAT022_TRACEABILITY_MATRIX.md), [REL-001/API-017 RTM](implementation/REL001_PHASE3_API017_TRACEABILITY_MATRIX.md) | REL-001 Phase 4B.1 | 2026-09-15 | ACTIVE; semantic decisions closed, concrete config/provider values and network authorization remain | None |
+
+DEC-155는 Phase 4B 당시의 blocked snapshot이다. DEC-156은 이후 explicit Architecture Owner direction으로 ownership, containment and static binding semantics를 닫는다. DEC-156은 provider/model/credential value, network 또는 Production implementation을 승인하지 않는다.
+
 ## Open-decision disposition catalog
 
 `OPEN DECISION` marker는 다음 precedence로 전수 분류한다. 동일 marker가 여러 범주에 해당하면 위에서 먼저 일치하는 범주가 canonical disposition이다.
