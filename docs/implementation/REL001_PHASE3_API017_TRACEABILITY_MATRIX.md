@@ -100,3 +100,17 @@ Phase 3B.2의 closure metrics는 DEC-151 승인에 따라 required/effective map
 | Verification | [Handler Traceability](REL001_PHASE3D_HANDLER_MAPPING_TRACEABILITY.md), [Composition Matrix](REL001_PHASE3D_RUNTIME_COMPOSITION_MATRIX.md), [Completion Report](../reviews/REL001_PHASE3D_COMPLETION_REPORT.md) | focused `46/46`; affected `143/143`; full `1396/1396` | PASS |
 
 Phase 3D는 Production FEAT-022 runtime, public API-017 transport, scheduler/polling, automatic retry 또는 provider/network를 시작하지 않는다. Phase 3E+는 `NOT_STARTED`다.
+
+## 8. Phase 3E concurrency / idempotency / recovery hardening delta
+
+| Trace | Production evidence | Test evidence | Result |
+|---|---|---|---|
+| Concurrent winner / stale completion | existing SQL CAS in [`DurableJobStore`](../../modules/jobs/src/job-durable-persistence.ts) | [`job-concurrency-recovery-hardening.test.ts`](../../modules/jobs/src/job-concurrency-recovery-hardening.test.ts) two-adapter, stale success/failure cases | PASS |
+| Restart / interruption / replay | durable `RUNNING` and terminal state remain authoritative | interrupted persistence, terminal replay, tenant/scope concealment | PASS |
+| Current/history integrity | contiguous versions and latest snapshot equality on authoritative read | current-row tamper rejection | PASS |
+| Manual successor lineage | bidirectional durable predecessor/successor validation | missing-lineage corruption rejection plus Phase 3C successor regression | PASS |
+| Safe failure boundary | open guard and transaction acquisition normalization | lock and closed-store native diagnostic containment | PASS |
+| Audit / idempotency | existing owner-local Job mutation, history and enriched audit-intent transaction | one-winner audit count, replay/restart regressions | PASS |
+| Verification | [Recovery Traceability](REL001_PHASE3E_RECOVERY_TRACEABILITY.md), [Completion Report](../reviews/REL001_PHASE3E_COMPLETION_REPORT.md) | direct `16/16`; focused `61/61`; affected `159/159`; full `1412/1412` | PASS |
+
+Phase 3E는 기존 API-017 contract와 state vocabulary를 변경하지 않는다. Automatic retry, scheduler, polling, worker daemon, public HTTP/RPC, new handler, new API-016 Audit Event 및 external provider/network는 모두 `0`이다. Phase 3F+는 `NOT_STARTED`다.

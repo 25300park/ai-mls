@@ -199,7 +199,6 @@ export class DurableJobStore {
     if (replay !== undefined) return snapshot({ status: "REPLAYED" as const, job: this.#requiredBoundJob(replay.result.jobId, input) });
     const jobId = this.#idFactory();
     if (!safeIdentifier(jobId)) throw failure("PERSISTENCE_INPUT_INVALID");
-    if (this.#readJob(jobId) !== undefined) throw failure("JOB_IDENTITY_CONFLICT");
     const committedAt = this.#now();
     const principalValue = principal(input.principalProvenance);
     const job = jobSnapshot({
@@ -230,13 +229,16 @@ export class DurableJobStore {
       mutationIdentity: input.commandId, principalProvenance: input.principalProvenance, correlationId: input.correlationId,
       evidenceRefs: input.authorityEvidenceRefs, committedAt,
     });
-    this.#transaction(() => {
+    return this.#transaction(() => {
+      const lockedReplay = this.#readIdempotency("SubmitJob", identityKey, fingerprint);
+      if (lockedReplay !== undefined) return snapshot({ status: "REPLAYED" as const, job: this.#requiredBoundJob(lockedReplay.result.jobId, input) });
+      if (this.#readJob(jobId) !== undefined) throw failure("JOB_IDENTITY_CONFLICT");
       this.#insertJob(job);
       this.#insertHistory(job);
       this.#insertIntent(intent);
       this.#insertIdempotency("SubmitJob", identityKey, fingerprint, { jobId });
+      return snapshot({ status: "STORED" as const, job });
     });
-    return snapshot({ status: "STORED" as const, job });
   }
 
   public readJob(input: AccessInput): DurableJobRecord {
@@ -260,6 +262,7 @@ export class DurableJobStore {
   }
 
   public startJob(input: InternalTransitionInput): DurableJobRecord {
+    this.#assertOpen();
     validateTransitionInput(input);
     const current = this.#requiredJob(input.jobId);
     assertVersion(current, input.expectedVersion);
@@ -274,6 +277,7 @@ export class DurableJobStore {
   }
 
   public succeedJob(input: InternalTransitionInput & Readonly<{ attempt: number; resultReference: string; resultChecksum: string }>): DurableJobRecord {
+    this.#assertOpen();
     validateTransitionInput(input);
     if (!positiveInteger(input.attempt) || !safeReference(input.resultReference) || !safeReference(input.resultChecksum)) throw failure("JOB_RESULT_INVALID");
     const current = this.#requiredJob(input.jobId);
@@ -288,6 +292,7 @@ export class DurableJobStore {
   }
 
   public failJob(input: InternalTransitionInput & Readonly<{ attempt: number; failure: NormalizedJobFailure }>): DurableJobRecord {
+    this.#assertOpen();
     validateTransitionInput(input);
     if (!positiveInteger(input.attempt) || !plain(input.failure) || !issuedFailures.has(input.failure)) throw failure("JOB_RESULT_INVALID");
     const current = this.#requiredJob(input.jobId);
@@ -305,29 +310,35 @@ export class DurableJobStore {
   }
 
   public cancelJob(input: PrincipalCommandInput & Readonly<{ reasonRef: string }>): Readonly<{ status: "STORED" | "REPLAYED"; job: DurableJobRecord }> {
+    this.#assertOpen();
     validatePrincipalCommand(input);
     if (!safeReference(input.reasonRef)) throw failure("PERSISTENCE_INPUT_INVALID");
     const fingerprint = fingerprintOf({ ...input, commandId: undefined });
-    const current = this.#requiredJob(input.jobId);
-    assertBinding(current, input);
+    const preflightCurrent = this.#requiredJob(input.jobId);
+    assertBinding(preflightCurrent, input);
     const replay = this.#readIdempotency("CancelJob", input.commandId, fingerprint);
     if (replay !== undefined) return snapshot({ status: "REPLAYED" as const, job: this.#requiredBoundJob(replay.result.jobId, input) });
-    assertVersion(current, input.expectedVersion);
-    assertNotTerminal(current);
-    if (current.status !== "QUEUED" && current.status !== "RUNNING") throw failure("STATE_TRANSITION_INVALID");
-    const committedAt = this.#now();
-    const updated = jobSnapshot({ ...current, status: "CANCELLED", version: current.version + 1, completedAt: committedAt });
-    const intent = auditIntent(updated, { eventType: "JOB_CANCELLED", eventCategory: "STATE_CHANGED", action: "job.cancel", outcome: "COMPLETED", mutationIdentity: input.commandId, principalProvenance: input.principalProvenance, correlationId: input.correlationId, evidenceRefs: [...input.authorityEvidenceRefs, input.reasonRef], committedAt });
-    this.#transaction(() => {
+    return this.#transaction(() => {
+      const lockedReplay = this.#readIdempotency("CancelJob", input.commandId, fingerprint);
+      if (lockedReplay !== undefined) return snapshot({ status: "REPLAYED" as const, job: this.#requiredBoundJob(lockedReplay.result.jobId, input) });
+      const current = this.#requiredJob(input.jobId);
+      assertBinding(current, input);
+      assertVersion(current, input.expectedVersion);
+      assertNotTerminal(current);
+      if (current.status !== "QUEUED" && current.status !== "RUNNING") throw failure("STATE_TRANSITION_INVALID");
+      const committedAt = this.#now();
+      const updated = jobSnapshot({ ...current, status: "CANCELLED", version: current.version + 1, completedAt: committedAt });
+      const intent = auditIntent(updated, { eventType: "JOB_CANCELLED", eventCategory: "STATE_CHANGED", action: "job.cancel", outcome: "COMPLETED", mutationIdentity: input.commandId, principalProvenance: input.principalProvenance, correlationId: input.correlationId, evidenceRefs: [...input.authorityEvidenceRefs, input.reasonRef], committedAt });
       this.#updateJob(current, updated);
       this.#insertHistory(updated);
       this.#insertIntent(intent);
       this.#insertIdempotency("CancelJob", input.commandId, fingerprint, { jobId: updated.id });
+      return snapshot({ status: "STORED" as const, job: updated });
     });
-    return snapshot({ status: "STORED" as const, job: updated });
   }
 
   public expireJob(input: InternalTransitionInput): DurableJobRecord {
+    this.#assertOpen();
     validateTransitionInput(input);
     const current = this.#requiredJob(input.jobId);
     assertVersion(current, input.expectedVersion);
@@ -341,57 +352,63 @@ export class DurableJobStore {
   }
 
   public retryAsSuccessor(input: Omit<PrincipalCommandInput, "jobId"> & Readonly<{ predecessorJobId: string; reasonRef: string; eligibilityEvidenceRefs: readonly string[] }>): Readonly<{ status: "STORED" | "REPLAYED"; predecessor: DurableJobRecord; successor: DurableJobRecord }> {
+    this.#assertOpen();
     const command = { ...input, jobId: input.predecessorJobId };
     validatePrincipalCommand(command);
     if (!safeReference(input.reasonRef) || !safeReferences(input.eligibilityEvidenceRefs)) throw failure("PERSISTENCE_INPUT_INVALID");
     const fingerprint = fingerprintOf({ ...input, commandId: undefined });
-    const predecessor = this.#requiredJob(input.predecessorJobId);
-    assertBinding(predecessor, input);
+    const preflightPredecessor = this.#requiredJob(input.predecessorJobId);
+    assertBinding(preflightPredecessor, input);
     const replay = this.#readIdempotency("RetryAsSuccessor", input.commandId, fingerprint);
     const replaySuccessorId = replay?.result.successorJobId;
     if (replay !== undefined && replaySuccessorId !== undefined) return snapshot({ status: "REPLAYED" as const, predecessor: this.#requiredBoundJob(replay.result.jobId, input), successor: this.#requiredBoundJob(replaySuccessorId, input) });
-    assertVersion(predecessor, input.expectedVersion);
-    if (predecessor.status !== "FAILED" || predecessor.failureCode !== "DEPENDENCY_UNAVAILABLE" || new Date(predecessor.deadline).getTime() <= this.#clock().getTime() || this.#lineageSuccessor(predecessor.id) !== undefined) throw failure("RETRY_NOT_SAFE");
     const successorId = this.#idFactory();
     if (!safeIdentifier(successorId)) throw failure("PERSISTENCE_INPUT_INVALID");
-    if (this.#readJob(successorId) !== undefined) throw failure("JOB_IDENTITY_CONFLICT");
-    const committedAt = this.#now();
-    const actor = principal(input.principalProvenance);
-    const successor = jobSnapshot({
-      ...predecessor,
-      id: successorId,
-      status: "QUEUED",
-      version: 1,
-      attempt: predecessor.attempt,
-      idempotencyKey: input.commandId,
-      requestedBy: actor.id,
-      requestedByType: actor.type,
-      ...(actor.teamId === undefined ? { teamId: undefined } : { teamId: actor.teamId }),
-      originatingDomainCommandId: input.commandId,
-      principalProvenance: input.principalProvenance,
-      authorityEvidenceRefs: input.authorityEvidenceRefs,
-      causationId: predecessor.id,
-      createdAt: committedAt,
-      predecessorJobId: predecessor.id,
-      startedAt: undefined,
-      completedAt: undefined,
-      workerId: undefined,
-      resultReference: undefined,
-      resultChecksum: undefined,
-      failureCode: undefined,
-      failureEvidenceRef: undefined,
-      systemErrorReference: undefined,
-      successorJobId: undefined,
-    } as unknown as DurableJobRecord);
-    const intent = auditIntent(successor, { eventType: "JOB_RETRY_SUBMITTED", eventCategory: "COMMAND_ACCEPTED", action: "job.retry", outcome: "ACCEPTED", mutationIdentity: input.commandId, principalProvenance: input.principalProvenance, correlationId: input.correlationId, evidenceRefs: [...input.authorityEvidenceRefs, ...input.eligibilityEvidenceRefs, input.reasonRef], committedAt });
-    this.#transaction(() => {
+    return this.#transaction(() => {
+      const lockedReplay = this.#readIdempotency("RetryAsSuccessor", input.commandId, fingerprint);
+      const lockedSuccessorId = lockedReplay?.result.successorJobId;
+      if (lockedReplay !== undefined && lockedSuccessorId !== undefined) return snapshot({ status: "REPLAYED" as const, predecessor: this.#requiredBoundJob(lockedReplay.result.jobId, input), successor: this.#requiredBoundJob(lockedSuccessorId, input) });
+      const predecessor = this.#requiredJob(input.predecessorJobId);
+      assertBinding(predecessor, input);
+      assertVersion(predecessor, input.expectedVersion);
+      if (predecessor.status !== "FAILED" || predecessor.failureCode !== "DEPENDENCY_UNAVAILABLE" || new Date(predecessor.deadline).getTime() <= this.#clock().getTime() || this.#lineageSuccessor(predecessor.id) !== undefined) throw failure("RETRY_NOT_SAFE");
+      if (this.#readJob(successorId) !== undefined) throw failure("JOB_IDENTITY_CONFLICT");
+      const committedAt = this.#now();
+      const actor = principal(input.principalProvenance);
+      const successor = jobSnapshot({
+        ...predecessor,
+        id: successorId,
+        status: "QUEUED",
+        version: 1,
+        attempt: predecessor.attempt,
+        idempotencyKey: input.commandId,
+        requestedBy: actor.id,
+        requestedByType: actor.type,
+        ...(actor.teamId === undefined ? { teamId: undefined } : { teamId: actor.teamId }),
+        originatingDomainCommandId: input.commandId,
+        principalProvenance: input.principalProvenance,
+        authorityEvidenceRefs: input.authorityEvidenceRefs,
+        causationId: predecessor.id,
+        createdAt: committedAt,
+        predecessorJobId: predecessor.id,
+        startedAt: undefined,
+        completedAt: undefined,
+        workerId: undefined,
+        resultReference: undefined,
+        resultChecksum: undefined,
+        failureCode: undefined,
+        failureEvidenceRef: undefined,
+        systemErrorReference: undefined,
+        successorJobId: undefined,
+      } as unknown as DurableJobRecord);
+      const intent = auditIntent(successor, { eventType: "JOB_RETRY_SUBMITTED", eventCategory: "COMMAND_ACCEPTED", action: "job.retry", outcome: "ACCEPTED", mutationIdentity: input.commandId, principalProvenance: input.principalProvenance, correlationId: input.correlationId, evidenceRefs: [...input.authorityEvidenceRefs, ...input.eligibilityEvidenceRefs, input.reasonRef], committedAt });
       this.#insertJob(successor);
       this.#insertHistory(successor);
       this.#database.prepare("INSERT INTO jobs_successor_lineage (predecessor_job_id, successor_job_id, command_id, created_at) VALUES (?, ?, ?, ?)").run(predecessor.id, successor.id, input.commandId, committedAt);
       this.#insertIntent(intent);
       this.#insertIdempotency("RetryAsSuccessor", input.commandId, fingerprint, { jobId: predecessor.id, successorJobId: successor.id });
+      return snapshot({ status: "STORED" as const, predecessor, successor });
     });
-    return snapshot({ status: "STORED" as const, predecessor, successor });
   }
 
   public listHistory(input: AccessInput): readonly DurableJobRecord[] {
@@ -439,19 +456,71 @@ export class DurableJobStore {
     return snapshot({ fingerprint, result: { jobId: parsed["jobId"], ...(parsed["successorJobId"] === undefined ? {} : { successorJobId: parsed["successorJobId"] }) } });
   }
   #readJob(jobId: string): DurableJobRecord | undefined {
-    const row = this.#database.prepare("SELECT tenant_id, scope_ref, version, status, immutable_fingerprint, payload_json FROM jobs_job_records WHERE job_id = ?").get(jobId);
+    try {
+      const job = this.#readJobRecord(jobId);
+      if (job === undefined) return undefined;
+      this.#assertHistoryIntegrity(job);
+      this.#assertLineageIntegrity(job);
+      return job;
+    } catch (error) {
+      if (error instanceof DurableJobStoreError) throw error;
+      throw failure("PERSISTENCE_UNAVAILABLE");
+    }
+  }
+  #readJobRecord(jobId: string): DurableJobRecord | undefined {
+    const row = this.#database.prepare("SELECT job_id, tenant_id, scope_ref, version, status, immutable_fingerprint, payload_json FROM jobs_job_records WHERE job_id = ?").get(jobId);
     if (row === undefined) return undefined;
     const job = decodeJob(required(row["payload_json"]));
-    if (row["tenant_id"] !== job.tenantId || row["scope_ref"] !== job.scopeRef || row["version"] !== job.version || row["status"] !== job.status || row["immutable_fingerprint"] !== immutableFingerprint(job)) throw failure("PERSISTENCE_UNAVAILABLE");
+    if (row["job_id"] !== jobId || job.id !== jobId || row["tenant_id"] !== job.tenantId || row["scope_ref"] !== job.scopeRef || row["version"] !== job.version || row["status"] !== job.status || row["immutable_fingerprint"] !== immutableFingerprint(job)) throw failure("PERSISTENCE_UNAVAILABLE");
     return job;
+  }
+  #assertHistoryIntegrity(job: DurableJobRecord): void {
+    const rows = this.#database.prepare("SELECT version, payload_json FROM jobs_job_history WHERE job_id = ? ORDER BY version").all(job.id);
+    if (rows.length !== job.version) throw failure("PERSISTENCE_UNAVAILABLE");
+    let latest: DurableJobRecord | undefined;
+    for (let index = 0; index < rows.length; index += 1) {
+      const historical = decodeJob(required(rows[index]?.["payload_json"]));
+      if (rows[index]?.["version"] !== index + 1 || historical.id !== job.id || historical.version !== index + 1 || immutableFingerprint(historical) !== immutableFingerprint(job)) throw failure("PERSISTENCE_UNAVAILABLE");
+      latest = historical;
+    }
+    if (latest === undefined || canonical(latest) !== canonical(job)) throw failure("PERSISTENCE_UNAVAILABLE");
+  }
+  #assertLineageIntegrity(job: DurableJobRecord): void {
+    const predecessorRow = this.#database.prepare("SELECT predecessor_job_id, command_id FROM jobs_successor_lineage WHERE successor_job_id = ?").get(job.id);
+    if (job.predecessorJobId === undefined) {
+      if (predecessorRow !== undefined) throw failure("PERSISTENCE_UNAVAILABLE");
+    } else {
+      if (predecessorRow?.["predecessor_job_id"] !== job.predecessorJobId || predecessorRow["command_id"] !== job.idempotencyKey) throw failure("PERSISTENCE_UNAVAILABLE");
+      const predecessor = this.#readJobRecord(job.predecessorJobId);
+      if (predecessor?.tenantId !== job.tenantId || predecessor.scopeRef !== job.scopeRef) throw failure("PERSISTENCE_UNAVAILABLE");
+      this.#assertSuccessorInheritance(predecessor, job);
+    }
+    const successorRow = this.#database.prepare("SELECT successor_job_id, command_id FROM jobs_successor_lineage WHERE predecessor_job_id = ?").get(job.id);
+    if (successorRow === undefined) return;
+    const successorId = stringValue(successorRow["successor_job_id"]);
+    const successor = this.#readJobRecord(successorId);
+    if (successor?.predecessorJobId !== job.id || successor.idempotencyKey !== successorRow["command_id"] || successor.tenantId !== job.tenantId || successor.scopeRef !== job.scopeRef) throw failure("PERSISTENCE_UNAVAILABLE");
+    this.#assertSuccessorInheritance(job, successor);
+  }
+  #assertSuccessorInheritance(predecessor: DurableJobRecord, successor: DurableJobRecord): void {
+    if (predecessor.status !== "FAILED" || predecessor.failureCode !== "DEPENDENCY_UNAVAILABLE" || successor.causationId !== predecessor.id || successor.jobType !== predecessor.jobType || canonical(successor.inputReferences) !== canonical(predecessor.inputReferences) || successor.purpose !== predecessor.purpose || successor.privacyClassification !== predecessor.privacyClassification || successor.deadline !== predecessor.deadline || successor.policyVersion !== predecessor.policyVersion || successor.attempt !== predecessor.attempt) throw failure("PERSISTENCE_UNAVAILABLE");
   }
   #requiredJob(jobId: string): DurableJobRecord { if (!safeIdentifier(jobId)) throw failure("PERSISTENCE_INPUT_INVALID"); const job = this.#readJob(jobId); if (job === undefined) throw failure("JOB_NOT_FOUND"); return job; }
   #requiredBoundJob(jobId: string, input: Readonly<{ tenantId: string; scopeRef: string }>): DurableJobRecord { const job = this.#requiredJob(jobId); assertBinding(job, input); return job; }
   #lineageSuccessor(predecessorId: string): string | undefined { const row = this.#database.prepare("SELECT successor_job_id FROM jobs_successor_lineage WHERE predecessor_job_id = ?").get(predecessorId); return row === undefined ? undefined : stringValue(row["successor_job_id"]); }
-  #transaction(run: () => void): void {
-    this.#database.exec("BEGIN IMMEDIATE");
-    try { run(); this.#database.exec("COMMIT"); }
-    catch (error) { try { this.#database.exec("ROLLBACK"); } catch { /* preserve original */ } if (error instanceof DurableJobStoreError) throw error; throw failure("PERSISTENCE_UNAVAILABLE"); }
+  #transaction<T>(run: () => T): T {
+    let began = false;
+    try {
+      this.#database.exec("BEGIN IMMEDIATE");
+      began = true;
+      const result = run();
+      this.#database.exec("COMMIT");
+      return result;
+    } catch (error) {
+      if (began) try { this.#database.exec("ROLLBACK"); } catch { /* preserve original */ }
+      if (error instanceof DurableJobStoreError) throw error;
+      throw failure("PERSISTENCE_UNAVAILABLE");
+    }
   }
   #now(): string { const value = this.#clock(); if (!(value instanceof Date) || Number.isNaN(value.getTime())) throw failure("PERSISTENCE_INPUT_INVALID"); return value.toISOString(); }
   #assertOpen(): void { if (this.#closed) throw failure("PERSISTENCE_UNAVAILABLE"); }
