@@ -42,3 +42,7 @@ Historical F20 Operations Console execution wave의 projection/control-surface �
 ## 4. Verification result
 
 `APPROVE_F20_FINAL_GATE`는 historical F20 Operations Console execution wave의 완료 판정이다. Frozen canonical FEAT-020 External Integration lifecycle의 whole-Feature closure를 의미하지 않는다. FEAT-016/017/019/020/021에는 직접 검증된 UI/read evidence만 귀속되며 canonical FEAT-021은 시작하지 않는다.
+
+## 5. REL-001 Phase 5A downstream inventory overlay
+
+Phase 5A는 FEAT-020의 existing read adapter, renderer와 13 routes를 재사용 대상으로 확인했다. Development surface는 executable이지만 Staging Platform Host read ports와 durable Session ingress가 조립되지 않아 Staging execution은 `0/6`이다. Direct Console store/provider access, 새 route, mutation, authority 또는 API는 추가하지 않았으며 FEAT-020 historical completion을 변경하지 않는다. Evidence: [Phase 5A inventory](REL001_PHASE5A_ADMIN_CONSOLE_STAGING_INVENTORY.md).

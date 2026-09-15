@@ -302,3 +302,19 @@ The deferred handlers remain non-executable. Phase 4D.5 adds no Job selection au
 | evidence | [Phase 4 Boundary](REL001_PHASE4D8_PHASE4_COMPLETION_BOUNDARY.md), [Dependency Hold](REL001_PHASE4D8_EXTERNAL_PROVIDER_DEPENDENCY_HOLD.md), [Completion Report](../reviews/REL001_PHASE4D8_COMPLETION_REPORT.md) |
 
 Provider-independent REL-001 work may continue. Any live AI handler execution remains fail-closed until the external hold and separate network-authorization gate are closed.
+
+## Phase 5A Admin Console Staging inventory handoff
+
+| Trace | Result |
+|---|---|
+| required canonical Console screens | `6` — UI-006/031/032/033/035/036 |
+| current eligible surface | `6/6`; Staging executable `0/6` |
+| Session bootstrap | `NO` — Phase 1D semantics ready, Console wiring absent |
+| API-015 / API-016 / API-017 Console readiness | `PARTIAL / PARTIAL / PARTIAL` |
+| FEAT-022 provider-independent / live | `3/3 READY / 0/3 NOT_READY` |
+| Core public transport | HOLD; API-001/002 dashboard data deferred |
+| UI-034 | dependency-gated; not promoted |
+| production/test/network/dependency change | `0/0/0/0` |
+| evidence | [Phase 5A Gap Matrix](REL001_PHASE5A_STAGING_BOOTSTRAP_GAP_MATRIX.md), [Completion Report](../reviews/REL001_PHASE5A_COMPLETION_REPORT.md) |
+
+Phase 5A is inventory only. It does not change Phase 3 runtime semantics, activate a provider, or claim Staging Console readiness.
