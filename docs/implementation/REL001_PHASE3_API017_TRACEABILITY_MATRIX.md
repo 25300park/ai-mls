@@ -318,3 +318,17 @@ Provider-independent REL-001 work may continue. Any live AI handler execution re
 | evidence | [Phase 5A Gap Matrix](REL001_PHASE5A_STAGING_BOOTSTRAP_GAP_MATRIX.md), [Completion Report](../reviews/REL001_PHASE5A_COMPLETION_REPORT.md) |
 
 Phase 5A is inventory only. It does not change Phase 3 runtime semantics, activate a provider, or claim Staging Console readiness.
+
+## Phase 5B Admin Console Staging handoff
+
+| Trace | Result |
+|---|---|
+| API-017 Console boundary | injected bounded status read port only |
+| Job mutation/retry/scheduler authority | `0` |
+| FEAT-022 provider-independent state | `READY` |
+| live provider execution | `0/3 NOT_READY` |
+| Phase 4D external hold / DEC-162 | preserved / `IN_REVIEW` |
+| evidence | [Backend wiring matrix](REL001_PHASE5B_BACKEND_WIRING_MATRIX.md), [Completion Report](../reviews/REL001_PHASE5B_COMPLETION_REPORT.md) |
+| verification | focused `17/17`; affected `939/939`; full `1460/1460`; independent review `READY` |
+
+Phase 5B는 API-017 lifecycle 또는 provider execution을 확장하지 않고 기존 six-screen Console에서 safe operational status만 투영한다.

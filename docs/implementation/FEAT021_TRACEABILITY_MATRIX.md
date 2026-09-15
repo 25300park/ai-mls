@@ -121,3 +121,12 @@ The approved Final Gate amendment supersedes only the earlier assumption that de
 ## 6. REL-001 Phase 5A downstream inventory overlay
 
 Phase 5A는 기존 `6 eligible / 30 dependency-blocked / 1 POST-MVP`를 그대로 적용한다. REL-001 required Console screens는 UI-006/031/032/033/035/036의 6개이며 current eligible surface `6/6`, Staging executable `0/6`이다. UI-034는 supporting Job status evidence가 있어도 canonical screen 구현으로 승격하지 않는다. 새 screen/route와 full 37-screen WCAG conformance claim은 모두 `0`이다. Evidence: [Phase 5A Screen Mapping](REL001_PHASE5A_CONSOLE_SCREEN_RUNTIME_MAPPING.md).
+
+## 7. REL-001 Phase 5B Staging preservation evidence
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Canonical screen boundary | UI-006/031/032/033/035/036 only; UI-034 remains dependency-blocked | VERIFIED |
+| Existing accessibility shell | existing renderer/server routes extended without new route or second Console | VERIFIED |
+| Safe status semantics | Core dependency `DEFERRED`/`NOT_AVAILABLE`; live provider `NOT_READY` | VERIFIED |
+| Completion evidence | [Phase 5B screen traceability](REL001_PHASE5B_SCREEN_EXECUTION_TRACEABILITY.md), [report](../reviews/REL001_PHASE5B_COMPLETION_REPORT.md) | VERIFIED — focused 17/17; affected 939/939; full 1460/1460; independent review READY |

@@ -46,3 +46,12 @@ Historical F20 Operations Console execution wave의 projection/control-surface �
 ## 5. REL-001 Phase 5A downstream inventory overlay
 
 Phase 5A는 FEAT-020의 existing read adapter, renderer와 13 routes를 재사용 대상으로 확인했다. Development surface는 executable이지만 Staging Platform Host read ports와 durable Session ingress가 조립되지 않아 Staging execution은 `0/6`이다. Direct Console store/provider access, 새 route, mutation, authority 또는 API는 추가하지 않았으며 FEAT-020 historical completion을 변경하지 않는다. Evidence: [Phase 5A inventory](REL001_PHASE5A_ADMIN_CONSOLE_STAGING_INVENTORY.md).
+
+## 6. REL-001 Phase 5B Staging execution evidence
+
+| Requirement | Implementation evidence | Direct verification | Result |
+|---|---|---|---|
+| Existing Console reuse | `composeStagingAdminConsole()`, existing `/system/operations` and six-screen route set | Phase 5B focused routing tests | VERIFIED |
+| Read-only operational integration | injected API-016/API-017/FEAT-022 ports; direct store/provider access 0 | unsafe evidence, mandatory port and import-boundary tests | VERIFIED |
+| Truthful provider state | provider-independent `READY`; live provider `NOT_READY`; DEC-162 `IN_REVIEW` | false readiness rejection tests | VERIFIED |
+| Completion evidence | [Phase 5B report](../reviews/REL001_PHASE5B_COMPLETION_REPORT.md) | focused 17/17; affected 939/939; full 1460/1460; lint/typecheck/build, architecture, Gitleaks, independent review PASS | VERIFIED |

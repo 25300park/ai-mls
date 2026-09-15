@@ -1,7 +1,7 @@
 import type { SessionContext } from "../../../modules/identity/src/session-service.js";
 import type { PublicationSessionResolver } from "../../../modules/publication/src/publication-authorization.js";
 
-export type ConsoleRuntimeEnvironment = "DEVELOPMENT" | "TEST" | "PRODUCTION";
+export type ConsoleRuntimeEnvironment = "DEVELOPMENT" | "TEST" | "STAGING" | "PRODUCTION";
 
 export interface DevelopmentConsoleSessionConfiguration {
   readonly enabled: boolean;
@@ -22,7 +22,7 @@ export function createDevelopmentConsoleSessionAdapter(
   configuration: DevelopmentConsoleSessionConfiguration,
 ): DevelopmentConsoleSessionAdapter {
   if (!configuration.enabled) throw new Error("DEVELOPMENT_SESSION_DISABLED");
-  if (configuration.runtimeEnvironment === "PRODUCTION") {
+  if (configuration.runtimeEnvironment !== "DEVELOPMENT" && configuration.runtimeEnvironment !== "TEST") {
     throw new Error("DEVELOPMENT_SESSION_FORBIDDEN");
   }
   const now = (configuration.now ?? currentDate)();

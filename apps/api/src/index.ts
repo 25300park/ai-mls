@@ -20,6 +20,8 @@ export * from "./publication-api-runtime-adapter.js";
 export * from "./publication-view-contracts.js";
 export * from "./source-intake-api.js";
 export * from "./staging-session-composition.js";
+export * from "./staging-console-session-ingress.js";
+export * from "./staging-admin-console-bootstrap.js";
 export * from "./api016-production-composition.js";
 export { createMaterializationReadyAuditIntentSources } from "./api016-enriched-intent-source-wiring.js";
 export * from "./verification-api.js";

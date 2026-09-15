@@ -1,11 +1,15 @@
-import type { AdminConsoleConfiguration } from "./console-configuration.js";
+import type { AdminConsoleConfiguration, DevelopmentAdminConsoleConfiguration } from "./console-configuration.js";
 import { immutableConsole, type ConsoleReadPort, type ConsoleReadRequest, type ConsoleReadResult } from "./console-read-adapter.js";
-import { createAdminConsoleServer, type AdminConsoleServer } from "./console-server.js";
+import { createAdminConsoleServer, type AdminConsoleServer, type ConsoleSessionIngressPort } from "./console-server.js";
 import type {
   AdministrationConsoleCommandPort,
   AdministrationSelectorReadRequest,
 } from "./administration-console-read-adapter.js";
 import { createDevelopmentConsoleSessionAdapter } from "./development-session.js";
+import {
+  isSensitiveSecurityDetailKey,
+  isUnsafeSecurityDetailValue,
+} from "../../../packages/security-contracts/src/index.js";
 
 export interface DevelopmentAdminConsoleComposition {
   readonly server: AdminConsoleServer;
@@ -24,7 +28,7 @@ export interface DevelopmentAdminConsoleDependencies {
 }
 
 export function composeDevelopmentAdminConsole(
-  configuration: AdminConsoleConfiguration,
+  configuration: DevelopmentAdminConsoleConfiguration,
   dependencies: DevelopmentAdminConsoleDependencies = {},
 ): DevelopmentAdminConsoleComposition {
   const session = createDevelopmentConsoleSessionAdapter({
@@ -57,6 +61,290 @@ export function composeDevelopmentAdminConsole(
       newRuntimeDependencies: 0 as const,
     }),
   });
+}
+
+export interface ConsoleJobRuntimeStatusReadPort {
+  readStatus(request: Readonly<{
+    sessionId: string;
+    tenantId: string;
+    scopeRef: string;
+    correlationId: string;
+  }>): Readonly<{
+    readiness: "READY" | "NOT_READY" | "DEGRADED" | "UNKNOWN";
+    jobs: readonly Readonly<{
+      jobId: string;
+      status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED" | "EXPIRED";
+      failureCategory?: string;
+      predecessorJobId?: string;
+      successorJobId?: string;
+    }>[];
+  }> | Promise<Readonly<{
+    readiness: "READY" | "NOT_READY" | "DEGRADED" | "UNKNOWN";
+    jobs: readonly Readonly<{
+      jobId: string;
+      status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED" | "EXPIRED";
+      failureCategory?: string;
+      predecessorJobId?: string;
+      successorJobId?: string;
+    }>[];
+  }>>;
+}
+
+export interface ConsoleAdvisoryRuntimeStatusReadPort {
+  readStatus(request: Readonly<{
+    sessionId: string;
+    tenantId: string;
+    scopeRef: string;
+    correlationId: string;
+  }>): Readonly<{
+    providerIndependentImplementation: "READY";
+    liveProviderExecution: "NOT_READY";
+    externalDependency: "EXTERNAL_ACCOUNT_AND_CONTRACT_DEPENDENCY";
+    decision162: "IN_REVIEW";
+  }> | Promise<Readonly<{
+    providerIndependentImplementation: "READY";
+    liveProviderExecution: "NOT_READY";
+    externalDependency: "EXTERNAL_ACCOUNT_AND_CONTRACT_DEPENDENCY";
+    decision162: "IN_REVIEW";
+  }>>;
+}
+
+export interface StagingAdminConsoleDependencies {
+  readonly sessionIngress: ConsoleSessionIngressPort;
+  readonly publicationReadAdapter: ConsoleReadPort;
+  readonly administrationReadAdapter: ConsoleReadPort;
+  readonly administrationCommandAdapter: AdministrationConsoleCommandPort;
+  readonly auditReadAdapter: ConsoleReadPort;
+  readonly jobRuntimeReadPort: ConsoleJobRuntimeStatusReadPort;
+  readonly advisoryRuntimeReadPort: ConsoleAdvisoryRuntimeStatusReadPort;
+  readonly administrationSelectorScopes: AdministrationSelectorReadRequest["selectorScopes"];
+}
+
+export interface StagingAdminConsoleComposition {
+  readonly server: AdminConsoleServer;
+  status(): Readonly<{
+    environment: "Staging";
+    readiness: "DEGRADED";
+    executableScreens: 6;
+    providerIndependentImplementation: "READY";
+    liveProviderExecution: "NOT_READY";
+  }>;
+}
+
+export function composeStagingAdminConsole(
+  configuration: AdminConsoleConfiguration,
+  dependencies: StagingAdminConsoleDependencies,
+): StagingAdminConsoleComposition {
+  if (configuration.runtimeEnvironment !== "STAGING" || !validStagingDependencies(configuration, dependencies)) {
+    throw new Error("STAGING_CONSOLE_NOT_READY");
+  }
+  const readAdapter: ConsoleReadPort = Object.freeze({
+    read: async (request: ConsoleReadRequest): Promise<ConsoleReadResult> => {
+      if (request.page === "ADMINISTRATION") {
+        return withCoreDependencyDeferral(safeBoundaryResult(await dependencies.administrationReadAdapter.read(request), request));
+      }
+      if (request.page === "UI-036") return safeBoundaryResult(await dependencies.administrationReadAdapter.read(request), request);
+      if (request.page === "UI-035") return safeBoundaryResult(await dependencies.auditReadAdapter.read(request), request);
+      if (request.page === "OPERATIONS") return readStagingOperations(request, dependencies);
+      return safeBoundaryResult(await dependencies.publicationReadAdapter.read(request), request);
+    },
+  });
+  return Object.freeze({
+    server: createAdminConsoleServer({
+      runtimeEnvironment: "STAGING",
+      host: configuration.host,
+      port: configuration.port,
+      tenantId: configuration.tenantId,
+      scopeRef: configuration.scopeRef,
+      sessionIngress: dependencies.sessionIngress,
+      readAdapter,
+      administrationCommandAdapter: dependencies.administrationCommandAdapter,
+      administrationSelectorScopes: dependencies.administrationSelectorScopes,
+    }),
+    status: () => Object.freeze({
+      environment: "Staging" as const,
+      readiness: "DEGRADED" as const,
+      executableScreens: 6 as const,
+      providerIndependentImplementation: "READY" as const,
+      liveProviderExecution: "NOT_READY" as const,
+    }),
+  });
+}
+
+function validStagingDependencies(configuration: Extract<AdminConsoleConfiguration, { runtimeEnvironment: "STAGING" }>, value: StagingAdminConsoleDependencies): boolean {
+  const scopes = value.administrationSelectorScopes;
+  return value !== null && typeof value === "object"
+    && typeof value.sessionIngress?.authorize === "function"
+    && typeof value.publicationReadAdapter?.read === "function"
+    && typeof value.administrationReadAdapter?.read === "function"
+    && typeof value.administrationCommandAdapter?.execute === "function"
+    && typeof value.auditReadAdapter?.read === "function"
+    && typeof value.jobRuntimeReadPort?.readStatus === "function"
+    && typeof value.advisoryRuntimeReadPort?.readStatus === "function"
+    && scopes !== undefined
+    && configuration.policyScopeId !== undefined
+    && configuration.sourceScopeId !== undefined
+    && configuration.targetScopeId !== undefined
+    && exactScope(scopes.roles, configuration.tenantId, "TENANT", configuration.tenantId)
+    && exactScope(scopes.teamScopes, configuration.tenantId, "TEAM", configuration.scopeRef)
+    && exactScope(scopes.policies, configuration.tenantId, "POLICY", configuration.policyScopeId)
+    && exactScope(scopes.sourceGovernance, configuration.tenantId, "SOURCE", configuration.sourceScopeId)
+    && exactScope(scopes.publicationTargets, configuration.tenantId, "TARGET", configuration.targetScopeId);
+}
+
+function exactScope(
+  scope: AdministrationSelectorReadRequest["selectorScopes"][keyof AdministrationSelectorReadRequest["selectorScopes"]],
+  tenantId: string,
+  scopeType: string,
+  scopeId: string,
+): boolean {
+  return scope.tenantId === tenantId && scope.scopeType === scopeType && scope.scopeId === scopeId;
+}
+
+async function readStagingOperations(
+  request: ConsoleReadRequest,
+  dependencies: StagingAdminConsoleDependencies,
+): Promise<ConsoleReadResult> {
+  try {
+    const context = Object.freeze({
+      sessionId: request.sessionId,
+      tenantId: request.tenantId,
+      scopeRef: request.teamId,
+      correlationId: request.correlationId,
+    });
+    const [jobs, advisory] = await Promise.all([
+      dependencies.jobRuntimeReadPort.readStatus(context),
+      dependencies.advisoryRuntimeReadPort.readStatus(context),
+    ]);
+    if (!validJobs(jobs) || !validAdvisory(advisory)) throw new Error("STAGING_CONSOLE_BACKEND_INVALID");
+    return immutableConsole({
+      page: "OPERATIONS" as const,
+      state: "READY" as const,
+      data: {
+        health: "DEGRADED",
+        readiness: {
+          session: "READY",
+          api015: "UNKNOWN",
+          api016: "UNKNOWN",
+          api017: jobs.readiness,
+          feat022ProviderIndependent: advisory.providerIndependentImplementation,
+          liveProvider: advisory.liveProviderExecution,
+        },
+        components: [
+          { component: "API-017", readiness: jobs.readiness, jobs: jobs.jobs },
+          { component: "FEAT-022", ...advisory },
+        ],
+        metrics: {
+          jobStatusCount: jobs.jobs.length,
+          providerIndependentImplementation: advisory.providerIndependentImplementation,
+          liveProviderExecution: advisory.liveProviderExecution,
+          externalDependency: advisory.externalDependency,
+          decision162: advisory.decision162,
+        },
+        telemetry: "UNAVAILABLE",
+        operationalStatuses: "UNAVAILABLE",
+        securityPrivacySummary: "UNAVAILABLE",
+        operationalReadiness: "UNAVAILABLE",
+        alerts: "UNAVAILABLE",
+        releaseTrace: "UNAVAILABLE",
+      },
+    });
+  } catch {
+    return immutableConsole({
+      page: "OPERATIONS" as const,
+      state: "ERROR" as const,
+      error: {
+        code: "CONSOLE_READ_UNAVAILABLE" as const,
+        message: "The requested Console view is unavailable.",
+        correlationId: request.correlationId,
+      },
+    });
+  }
+}
+
+function withCoreDependencyDeferral(result: ConsoleReadResult): ConsoleReadResult {
+  if (result.state !== "READY") return result;
+  return immutableConsole({
+    ...result,
+    data: {
+      ...(result.data ?? {}),
+      coreApi001002: "NOT_AVAILABLE",
+      coreDependency: "DEFERRED",
+    },
+  });
+}
+
+function safeBoundaryResult(result: ConsoleReadResult, request: ConsoleReadRequest): ConsoleReadResult {
+  if (result.page !== request.page || !new Set(["LOADING", "READY", "EMPTY", "UNAVAILABLE", "NOT_AUTHORIZED", "ERROR"]).has(result.state)
+    || !safeBoundaryValue(result, 0, { count: 0 })) {
+    return immutableConsole({
+      page: request.page,
+      state: "ERROR" as const,
+      error: {
+        code: "CONSOLE_READ_UNAVAILABLE" as const,
+        message: "The requested Console view is unavailable.",
+        correlationId: request.correlationId,
+      },
+    });
+  }
+  return immutableConsole(result);
+}
+
+function safeBoundaryValue(value: unknown, depth: number, budget: { count: number }): boolean {
+  budget.count += 1;
+  if (budget.count > 2_000 || depth > 8) return false;
+  if (value === null || typeof value === "boolean" || typeof value === "number") return true;
+  if (typeof value === "string") return value.length <= 2_048
+    && !isUnsafeSecurityDetailValue(value)
+    && !/\bsk-(?:proj-)?[A-Za-z0-9_-]{16,}\b/u.test(value)
+    && !/(?:\b(?:select|insert|update|delete|pragma)\b.+\b(?:from|into|table)\b|sqlite)/iu.test(value);
+  if (Array.isArray(value)) return value.length <= 200 && value.every((item) => safeBoundaryValue(item, depth + 1, budget));
+  if (typeof value !== "object") return false;
+  const entries = Object.entries(value);
+  return entries.length <= 200 && entries.every(([key, child]) => safeIdentifier(key)
+    && !isSensitiveSecurityDetailKey(key)
+    && safeBoundaryValue(child, depth + 1, budget));
+}
+
+function validJobs(value: Awaited<ReturnType<ConsoleJobRuntimeStatusReadPort["readStatus"]>>): boolean {
+  const readiness = new Set(["READY", "NOT_READY", "DEGRADED", "UNKNOWN"]);
+  return readiness.has(value.readiness)
+    && Array.isArray(value.jobs) && value.jobs.length <= 100
+    && (value.jobs as readonly unknown[]).every(validJob);
+}
+
+function validJob(value: unknown): boolean {
+  if (value === null || typeof value !== "object") return false;
+  const job = value as Record<string, unknown>;
+  const statuses = new Set(["QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED", "EXPIRED"]);
+  return typeof job["jobId"] === "string" && safeIdentifier(job["jobId"])
+    && typeof job["status"] === "string" && statuses.has(job["status"])
+    && (job["failureCategory"] === undefined
+      || (typeof job["failureCategory"] === "string" && optionalSafeText(job["failureCategory"])))
+    && (job["predecessorJobId"] === undefined
+      || (typeof job["predecessorJobId"] === "string" && optionalIdentifier(job["predecessorJobId"])))
+    && (job["successorJobId"] === undefined
+      || (typeof job["successorJobId"] === "string" && optionalIdentifier(job["successorJobId"])));
+}
+
+function validAdvisory(value: Awaited<ReturnType<ConsoleAdvisoryRuntimeStatusReadPort["readStatus"]>>): boolean {
+  return value.providerIndependentImplementation === "READY"
+    && value.liveProviderExecution === "NOT_READY"
+    && value.externalDependency === "EXTERNAL_ACCOUNT_AND_CONTRACT_DEPENDENCY"
+    && value.decision162 === "IN_REVIEW";
+}
+
+function safeIdentifier(value: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(value);
+}
+
+function optionalIdentifier(value: string | undefined): boolean {
+  return value === undefined || safeIdentifier(value);
+}
+
+function optionalSafeText(value: string | undefined): boolean {
+  return value === undefined || (/^[A-Za-z0-9][A-Za-z0-9 _.-]{0,127}$/u.test(value)
+    && !/(?:authorization|bearer|credential|password|secret|token|prompt|chain.?of.?thought|stack|sql|sqlite|database|[A-Z]:\\)/iu.test(value));
 }
 
 const unavailableReadAdapter: ConsoleReadPort = Object.freeze({

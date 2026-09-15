@@ -4,6 +4,9 @@ import { AdministrationConsoleHttpClient } from "./administration-console-http-c
 import { AdministrationConsoleReadAdapter } from "./administration-console-read-adapter.js";
 
 const configuration = parseAdminConsoleArguments(process.argv.slice(2));
+if (configuration.runtimeEnvironment === "STAGING") {
+  throw new Error("STAGING_PLATFORM_HOST_COMPOSITION_REQUIRED");
+}
 const administrationAdapter = new AdministrationConsoleReadAdapter(
   new AdministrationConsoleHttpClient(configuration.administrationApiOrigin),
 );
