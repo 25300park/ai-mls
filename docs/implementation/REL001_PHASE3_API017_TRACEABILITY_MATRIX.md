@@ -141,3 +141,29 @@ Phase 3E는 기존 API-017 contract와 state vocabulary를 변경하지 않는�
 | Scope protection | [Phase 3G-A Closure Report](../reviews/REL001_PHASE3GA_CANONICAL_CLOSURE_REPORT.md) | Production/Test/runtime interface/dependency changes `0` |
 
 Phase 3G-A는 OS-level sandbox를 주장하지 않는다. Phase 3G는 remaining blocker `1`로 `BLOCKED`이다. 별도 implementation authorization과 실제 세 handler source/runtime containment PASS 전에는 runtime `READY`를 선언하지 않는다.
+
+## 11. Phase 3G-C handler-specific application port contract delta
+
+| Trace | Canonical evidence | Result |
+|---|---|---|
+| DEC-153 ownership/direction | [Port Decision](REL001_PHASE3GC_AI_HANDLER_APPLICATION_PORT_DECISION.md) | `APPROVED`; FEAT-022 owns exactly three ports |
+| `AI-001` contract | [AI-001 Port](REL001_PHASE3GC_AI001_PORT_CONTRACT.md) | contract READY; Production implementation NO |
+| `AI-004` contract | [AI-004 Port](REL001_PHASE3GC_AI004_PORT_CONTRACT.md) | contract READY; Production implementation NO |
+| `AI-005` contract | [AI-005 Port](REL001_PHASE3GC_AI005_PORT_CONTRACT.md) | contract READY; Production implementation NO |
+| Runtime consequence | [Readiness Matrix](REL001_PHASE3GC_HANDLER_IMPLEMENTATION_READINESS_MATRIX.md) | ports `3/3`; Staging executable `0/3`; `NOT_READY` |
+| Scope/evidence | [Phase 3G-C Report](../reviews/REL001_PHASE3GC_COMPLETION_REPORT.md) | new semantics and Production/Test/dependency/network changes `0` |
+
+Phase 3G-C는 exact contracts만 닫는다. Current Production `AdvisoryRuntime`은 unavailable adapter를 사용하므로 세 capability는 `PROVIDER_REQUIRED`이고 successful zero-network execution은 `0/3`이다. Phase 3G는 runtime blocker categories `3`으로 계속 `BLOCKED`이다.
+
+## 12. Phase 3G-D provider deferral / Phase 3 final boundary delta
+
+| Trace | Canonical evidence | Result |
+|---|---|---|
+| DEC-154 boundary | [Provider Deferral Decision](REL001_PHASE3GD_PROVIDER_HANDLER_DEFERRAL_DECISION.md) | `APPROVED`; original Phase 3G remains `BLOCKED` |
+| Phase ownership | [Phase 3 / Phase 4 Boundary](REL001_PHASE3GD_PHASE3_PHASE4_OWNERSHIP_BOUNDARY.md) | API-017 foundation and FEAT-022 provider lifecycle separated |
+| provider-independent inputs | [Final Readiness Matrix](REL001_PHASE3GD_PHASE3_FINAL_READINESS_MATRIX.md) | all required Phase 3 inputs PASS; blockers `0` |
+| deferred execution | same matrix | provider-backed handlers `3`; actual AI execution `NOT_READY` |
+| Phase 3 disposition | [Phase 3G-D Report](../reviews/REL001_PHASE3GD_COMPLETION_REPORT.md) | `COMPLETE_FOR_PROVIDER_INTEGRATION_BOUNDARY` |
+| scope protection | bounded documentation diff | Production/Test/provider/network/dependency changes `0` |
+
+`READY_FOR_PROVIDER_INTEGRATION`과 `NOT_READY`는 documentation classifications only이며 새 FEAT-023 readiness enum 또는 Job lifecycle state가 아니다. Phase 3G의 original `3/3 Production handler E2E` 결과는 `BLOCKED`로 유지한다. Phase 4 implementation은 승인되지 않았다.
