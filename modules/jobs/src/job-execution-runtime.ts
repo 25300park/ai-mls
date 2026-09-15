@@ -18,6 +18,9 @@ export interface JobExecutionContext {
   }>[];
   readonly policyVersion: string;
   readonly admissionEvidenceRefs: readonly string[];
+  readonly originatingAuthorityEvidenceRefs: readonly string[];
+  readonly initiatingPrincipalProvenance: DurableJobRecord["principalProvenance"];
+  readonly correlationId: string;
 }
 
 export interface JobExecutionAdmissionContext {
@@ -163,6 +166,9 @@ export class JobExecutionRuntime {
       inputReferences: running.inputReferences,
       policyVersion: running.policyVersion,
       admissionEvidenceRefs: admission.evidenceRefs,
+      originatingAuthorityEvidenceRefs: running.authorityEvidenceRefs,
+      initiatingPrincipalProvenance: running.principalProvenance,
+      correlationId: input.correlationId,
     });
     let outcome: ReturnType<BoundedJobHandler["execute"]>;
     try {

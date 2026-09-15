@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -56,6 +57,27 @@ test("FEAT-022-C wrong tenant snapshot is concealed before adapter", () => fixtu
 
 test("FEAT-022-C exact replay returns one durable advisory without reinvocation", () => fixture(({ runtime, adapter }) => {
   const first = runtime.execute(request); const replay = runtime.execute(request); assert.deepEqual(replay, first); assert.equal(adapter.invocationCount, 1);
+}));
+
+test("Phase 4C preserves the legacy execution fingerprint when optional provenance fields are absent", () => fixture(({ store }) => {
+  let captured = "";
+  const adapter = {
+    adapterVersion: "legacy-compatible-adapter-v1",
+    generate: (intent: { executionFingerprint: string }) => { captured = intent.executionFingerprint; return envelope; },
+  };
+  const runtime = new AdvisoryRuntime({ persistence: store, snapshotResolver: { resolve: () => snapshot }, adapter, clock: () => new Date("2026-09-09T01:01:00.000Z") });
+  runtime.execute(request);
+  const canonical = JSON.stringify({
+    adapterVersion: adapter.adapterVersion,
+    capabilityId: request.capabilityId,
+    evidenceFingerprint: snapshot.evidenceFingerprint,
+    inputFingerprint: snapshot.inputFingerprint,
+    promptFingerprint: prompt.contentFingerprint,
+    promptId: prompt.promptId,
+    promptVersion: prompt.promptVersion,
+    schemaId: request.schemaId,
+  });
+  assert.equal(captured, `sha256:${createHash("sha256").update(canonical).digest("hex")}`);
 }));
 
 test("FEAT-022-C same idempotency identity with different trusted input conflicts", () => fixture(({ store, runtime, adapter }) => {

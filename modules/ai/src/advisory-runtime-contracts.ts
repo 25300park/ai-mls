@@ -1,4 +1,4 @@
-import type { DataClassification } from "../../../packages/security-contracts/src/index.js";
+import { isUnsafeSecurityDetailValue, type AuditPrincipal, type DataClassification, type RoleCode } from "../../../packages/security-contracts/src/index.js";
 import type { AdvisoryResultEnvelope, AdvisoryValidationDecision, AiCapabilityId, AiSchemaId, EntityReference } from "./advisory-ai-service.js";
 
 export type AdvisoryPromptStatus = "ACTIVE" | "RETIRED";
@@ -44,7 +44,15 @@ export interface AcceptedAdvisoryRecord {
   readonly reviewedAt?: string;
   readonly reviewerRef?: string;
   readonly authority: "ADVISORY";
+  readonly capabilityVersion?: string;
+  readonly correlationId?: string;
+  readonly initiatingPrincipalEvidenceRef?: string;
+  readonly initiatingPrincipalProvenance?: AdvisoryInitiatingPrincipalProvenance;
 }
+
+export type AdvisoryInitiatingPrincipalProvenance =
+  | Readonly<{ readonly kind: "TRUSTED_SNAPSHOT"; readonly principal: AuditPrincipal }>
+  | Readonly<{ readonly kind: "IMMUTABLE_REFERENCE"; readonly principalId: string; readonly evidenceRef: string }>;
 
 export interface AdvisoryIdempotencyBinding {
   readonly tenantId: string;
@@ -87,6 +95,10 @@ export interface AdvisoryExecutionRequest {
   readonly promptId: string;
   readonly promptVersion: string;
   readonly idempotencyKey: string;
+  readonly capabilityVersion?: string;
+  readonly correlationId?: string;
+  readonly initiatingPrincipalEvidenceRef?: string;
+  readonly initiatingPrincipalProvenance?: AdvisoryInitiatingPrincipalProvenance;
 }
 
 export interface AdvisorySnapshotResolver {
@@ -95,6 +107,8 @@ export interface AdvisorySnapshotResolver {
 
 export interface AdvisoryAdapterIntent {
   readonly capabilityId: AiCapabilityId;
+  readonly capabilityVersion?: string;
+  readonly correlationId?: string;
   readonly schemaId: AiSchemaId;
   readonly subjectRef: EntityReference;
   readonly provenance: readonly EntityReference[];
@@ -110,6 +124,7 @@ export interface AdvisoryAdapterIntent {
 export interface AdvisoryAdapter {
   readonly adapterVersion: string;
   generate(intent: AdvisoryAdapterIntent): unknown;
+  recordValidationOutcome?(intent: AdvisoryAdapterIntent, outcome: "SUCCESS" | "ADVISORY_OUTPUT_REJECTED"): void;
 }
 
 export type AdvisoryRuntimeErrorCode =
@@ -125,3 +140,33 @@ export class AdvisoryRuntimeError extends Error {
     this.name = "AdvisoryRuntimeError";
   }
 }
+
+const roleCodes = new Set<RoleCode>(["COL", "AGT", "SAG", "REV", "AIR", "DUR", "VER", "PMR", "PUA", "MGR", "DST", "OPS", "SEC", "ADM", "RELEASE_OWNER", "SVC", "EXT"]);
+
+export function isSafeAdvisoryText(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 512 && value.trim() === value
+    && !/[\u0000-\u001f\u007f]/u.test(value) && !isUnsafeSecurityDetailValue(value);
+}
+
+export function isSafeAdvisoryEvidenceRef(value: unknown): value is string {
+  return isSafeAdvisoryText(value) && /^[A-Za-z][A-Za-z0-9._-]{0,63}:[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/u.test(value);
+}
+
+export function isSafeAdvisoryPrincipalProvenance(value: unknown): value is AdvisoryInitiatingPrincipalProvenance {
+  if (!plain(value)) return false;
+  if (value["kind"] === "IMMUTABLE_REFERENCE") {
+    return exactKeys(value, ["kind", "principalId", "evidenceRef"])
+      && isSafeAdvisoryText(value["principalId"]) && isSafeAdvisoryEvidenceRef(value["evidenceRef"]);
+  }
+  if (value["kind"] !== "TRUSTED_SNAPSHOT" || !exactKeys(value, ["kind", "principal"]) || !plain(value["principal"])) return false;
+  const principal = value["principal"];
+  return exactKeys(principal, ["id", "type", "roles"], ["teamId", "sessionId"])
+    && isSafeAdvisoryText(principal["id"])
+    && ["HUMAN", "SERVICE"].includes(String(principal["type"]))
+    && Array.isArray(principal["roles"]) && principal["roles"].length <= 20 && principal["roles"].every((role) => roleCodes.has(role as RoleCode))
+    && (principal["teamId"] === undefined || isSafeAdvisoryText(principal["teamId"]))
+    && (principal["sessionId"] === undefined || isSafeAdvisoryText(principal["sessionId"]));
+}
+
+function plain(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === "object" && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype; }
+function exactKeys(value: Record<string, unknown>, required: readonly string[], optional: readonly string[] = []): boolean { const allowed = new Set([...required, ...optional]); return required.every((key) => Object.hasOwn(value, key)) && Object.keys(value).every((key) => allowed.has(key)); }

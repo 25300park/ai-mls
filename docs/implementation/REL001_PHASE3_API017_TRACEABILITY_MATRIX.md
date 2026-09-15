@@ -205,3 +205,17 @@ Phase 3 remains complete only for the provider-integration boundary. Phase 4B do
 | readiness | [Readiness Matrix](REL001_PHASE4B1_IMPLEMENTATION_READINESS_MATRIX.md) | semantic closure `3/3`; physical handlers/adapters `0/3` |
 
 API-017 foundation remains unchanged. DEC-156 permits later bounded implementation but creates no generic AI Job, handler, provider call or network authority.
+
+## 16. Phase 4C provider-independent handler implementation handoff
+
+| Trace | Phase 4C evidence | Result |
+|---|---|---|
+| exact handlers | `advisory-job-handlers.ts`, `advisory-job-handlers.test.ts` | three static handlers `3/3 PASS` |
+| end-to-end bounded path | `advisory-job-integration.test.ts` | handler→port→service→adapter→validator `3/3 PASS` |
+| trusted context | `job-execution-runtime.ts` | tenant/scope, correlation, immutable input and initiating provenance preserved |
+| Job failures | `AdvisoryJobFailureMapper` | existing `DEPENDENCY_UNAVAILABLE` / `JOB_RESULT_INVALID` only |
+| replay | existing Job/advisory durable idempotency | identical Job/attempt provider reinvocation `0` |
+| authority containment | [Application Traceability](REL001_PHASE4C_APPLICATION_SERVICE_TRACEABILITY.md) | handler provider/model/prompt/credential authority `0` |
+| runtime consequence | [Readiness Matrix](REL001_PHASE4C_CONFIG_READINESS_MATRIX.md) | provider-independent `3/3 READY`; actual Staging execution `0/3 NOT_READY` |
+
+Phase 3 remains `COMPLETE_FOR_PROVIDER_INTEGRATION_BOUNDARY`. Phase 4C implements that boundary without scheduler, automatic retry, public transport, provider network or new API-016 event.

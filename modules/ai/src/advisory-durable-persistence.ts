@@ -3,6 +3,8 @@ import { DatabaseSync, type SQLOutputValue } from "node:sqlite";
 import { canonicalAiSchemaId, validateAdvisoryResult } from "./advisory-ai-service.js";
 import {
   AdvisoryPersistenceError,
+  isSafeAdvisoryEvidenceRef,
+  isSafeAdvisoryPrincipalProvenance,
   type AcceptedAdvisoryRecord,
   type AdvisoryPersistence,
   type AdvisoryPromptRecord,
@@ -151,12 +153,15 @@ function validatePrompt(record: AdvisoryPromptRecord): AdvisoryPromptRecord {
 }
 
 function validateAcceptedRecord(record: AcceptedAdvisoryRecord): AcceptedAdvisoryRecord {
-  if (!hasExactKeys(record, ["advisoryId", "tenantId", "scopeRef", "capabilityId", "schemaId", "inputFingerprint", "evidenceFingerprint", "inputClassifications", "promptId", "promptVersion", "adapterVersion", "executionFingerprint", "envelope", "validationResult", "generatedAt", "reviewRequired", "reviewEvidenceRef", "authority"], ["reviewedAt", "reviewerRef"])) throw failure("PERSISTENCE_INPUT_INVALID", "Accepted Advisory envelope is invalid.");
+  if (!hasExactKeys(record, ["advisoryId", "tenantId", "scopeRef", "capabilityId", "schemaId", "inputFingerprint", "evidenceFingerprint", "inputClassifications", "promptId", "promptVersion", "adapterVersion", "executionFingerprint", "envelope", "validationResult", "generatedAt", "reviewRequired", "reviewEvidenceRef", "authority"], ["reviewedAt", "reviewerRef", "capabilityVersion", "correlationId", "initiatingPrincipalEvidenceRef", "initiatingPrincipalProvenance"])) throw failure("PERSISTENCE_INPUT_INVALID", "Accepted Advisory envelope is invalid.");
   validateText(record.advisoryId, record.tenantId, record.scopeRef, record.inputFingerprint, record.evidenceFingerprint, record.promptId, record.promptVersion, record.adapterVersion, record.executionFingerprint, record.generatedAt);
   if (record.authority !== "ADVISORY" || record.schemaId !== canonicalAiSchemaId(record.capabilityId) || record.envelope.schemaId !== record.schemaId || record.envelope.capabilityId !== record.capabilityId) {
     throw failure("PERSISTENCE_INPUT_INVALID", "Accepted Advisory binding is invalid.");
   }
   if (!Array.isArray(record.inputClassifications) || record.inputClassifications.length === 0) throw failure("PERSISTENCE_INPUT_INVALID", "Accepted Advisory classification evidence is invalid.");
+  for (const value of [record.capabilityVersion, record.correlationId, record.initiatingPrincipalEvidenceRef]) if (value !== undefined) validateText(value);
+  if (record.initiatingPrincipalEvidenceRef !== undefined && !isSafeAdvisoryEvidenceRef(record.initiatingPrincipalEvidenceRef)) throw failure("PERSISTENCE_INPUT_INVALID", "Principal evidence reference is invalid.");
+  if (record.initiatingPrincipalProvenance !== undefined && !isSafeAdvisoryPrincipalProvenance(record.initiatingPrincipalProvenance)) throw failure("PERSISTENCE_INPUT_INVALID", "Principal provenance is invalid.");
   const validation = validateAdvisoryResult({ expectedCapabilityId: record.capabilityId, expectedSubject: record.envelope.subjectRef, inputClassifications: record.inputClassifications, result: record.envelope });
   if (validation.status !== "VALID" || record.validationResult.status !== "VALID" || canonicalJson(validation) !== canonicalJson(record.validationResult)) {
     throw failure("PERSISTENCE_INPUT_INVALID", "Unvalidated Advisory cannot be persisted as accepted truth.");

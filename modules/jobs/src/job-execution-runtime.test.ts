@@ -203,6 +203,9 @@ test("Phase 3D one-shot execution passes only durable canonical context and pers
       inputReferences: [{ type: "RawSource", id: "raw-a", version: 3, checksum: "sha256:raw-a-v3" }],
       policyVersion: "jobs-policy-v1",
       admissionEvidenceRefs: ["evidence:execution-admission-a"],
+      originatingAuthorityEvidenceRefs: ["evidence:authority-a"],
+      initiatingPrincipalProvenance: principal,
+      correlationId: "correlation-execute-a",
     }]);
     assert.deepEqual(store.listAuditIntents({ tenantId: "tenant-a", scopeRef: "team:team-a" }).map((intent) => intent.eventType), ["JOB_SUBMITTED", "JOB_STARTED", "JOB_SUCCEEDED"]);
     store.close();
