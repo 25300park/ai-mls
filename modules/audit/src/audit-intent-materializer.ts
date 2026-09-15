@@ -31,8 +31,8 @@ export function createAuditIntentSourcePort(input: Readonly<{ sourceDomain: Mate
     readByIntentId: (intentId: string) => safeIdentifier(intentId) ? eligible().find((value) => value.intentId === intentId) : undefined,
     listEligible: (request: Readonly<{ continuation?: string; limit?: number }>) => {
       if ((request.continuation !== undefined && !safeIdentifier(request.continuation)) || (request.limit !== undefined && (!Number.isInteger(request.limit) || request.limit < 1 || request.limit > 100))) throw new Error("INTENT_SOURCE_INPUT_INVALID");
-      const ordered = eligible().slice().sort((left, right) => left.intentId.localeCompare(right.intentId));
-      const after = request.continuation === undefined ? ordered : ordered.filter((value) => value.intentId > request.continuation!);
+      const ordered = eligible().slice().sort((left, right) => compareIdentifiers(left.intentId, right.intentId));
+      const after = request.continuation === undefined ? ordered : ordered.filter((value) => compareIdentifiers(value.intentId, request.continuation!) > 0);
       const limit = request.limit ?? 100;
       const intents = after.slice(0, limit);
       const continuation = after.length > limit ? intents.at(-1)?.intentId : undefined;
@@ -96,8 +96,17 @@ export class AuditIntentMaterializer {
 
   public consume(source: AuditIntentSourcePort): readonly DurableMaterializedAuditEvent[] {
     if (!isMaterializationReadySourceDomain(source.sourceDomain)) throw failure("SOURCE_NOT_MATERIALIZATION_READY");
-    const batch = source.listEligible({ limit: 100 });
-    return Object.freeze(batch.intents.map((intent) => this.materialize(intent).event));
+    const events: DurableMaterializedAuditEvent[] = [];
+    let continuation: string | undefined;
+    do {
+      const batch = source.listEligible({ ...(continuation === undefined ? {} : { continuation }), limit: 100 });
+      events.push(...batch.intents.map((intent) => this.materialize(intent).event));
+      const next = batch.continuation;
+      if (next === undefined) break;
+      if (!safeIdentifier(next) || batch.intents.length === 0 || batch.intents.at(-1)?.intentId !== next || (continuation !== undefined && compareIdentifiers(next, continuation) <= 0)) throw failure("INTENT_INVALID");
+      continuation = next;
+    } while (true);
+    return Object.freeze(events);
   }
 }
 
@@ -118,6 +127,7 @@ function resolvePrincipal(intent: EnrichedAuditIntentV2, resolver: Dependencies[
   return validated.principalProvenance.kind === "TRUSTED_SNAPSHOT" ? validated.principalProvenance.principal : principal;
 }
 function safeIdentifier(value: unknown): value is string { return typeof value === "string" && value.length > 0 && value.length <= 256 && value.trim() === value && /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u.test(value); }
+function compareIdentifiers(left: string, right: string): number { return left < right ? -1 : left > right ? 1 : 0; }
 function plain(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === "object" && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype; }
 function fingerprintOf(value: unknown): string { return createHash("sha256").update(canonical(value)).digest("hex"); }
 function canonical(value: unknown): string { if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`; if (plain(value)) return `{${Object.keys(value).filter((key) => value[key] !== undefined).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`; return JSON.stringify(value); }

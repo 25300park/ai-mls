@@ -11,6 +11,7 @@ import { DurableListingStore } from "../../../modules/listing/src/listing-durabl
 import { DurableMatchingStore } from "../../../modules/matching/src/matching-durable-persistence.js";
 import { DurablePropertyStore } from "../../../modules/property/src/property-durable-persistence.js";
 import { DurableSourceRegistryStore } from "../../../modules/source/src/source-registry-durable-persistence.js";
+import { DurableJobStore } from "../../../modules/jobs/src/job-durable-persistence.js";
 import {
   AuditIntentMaterializationError,
   DurableAuditEventStore,
@@ -21,7 +22,7 @@ import {
 import { createMaterializationReadyAuditIntentSources } from "./api016-enriched-intent-source-wiring.js";
 import { createStagingApi016AuditRuntime } from "./api016-production-composition.js";
 
-const sourceDomains = ["SOURCE_REGISTRY", "INTAKE", "PROPERTY", "LISTING", "CONTACT", "MATCHING"] as const;
+const sourceDomains = ["SOURCE_REGISTRY", "INTAKE", "PROPERTY", "LISTING", "CONTACT", "MATCHING", "API-017"] as const;
 const committedAt = "2026-09-14T01:02:03.000Z";
 
 const mappings: Readonly<Record<MaterializationReadySourceDomain, Readonly<{
@@ -39,6 +40,7 @@ const mappings: Readonly<Record<MaterializationReadySourceDomain, Readonly<{
   LISTING: { eventType: "CANDIDATE_CREATED", eventCategory: "COMMAND_ACCEPTED", action: "candidate.create", targetType: "CandidateListing", classification: "CONFIDENTIAL_BUSINESS", purpose: "LISTING_GOVERNANCE", outcome: "COMPLETED" },
   CONTACT: { eventType: "CONTACT_CREATED", eventCategory: "COMMAND_ACCEPTED", action: "contact.create", targetType: "Contact", classification: "RESTRICTED_PERSONAL", purpose: "CLIENT_SERVICE", outcome: "COMPLETED" },
   MATCHING: { eventType: "MATCH_RUN_CREATED", eventCategory: "COMMAND_ACCEPTED", action: "matching.request", targetType: "MatchRun", classification: "RESTRICTED_PERSONAL", purpose: "CLIENT_MATCHING", outcome: "COMPLETED" },
+  "API-017": { eventType: "JOB_SUBMITTED", eventCategory: "COMMAND_ACCEPTED", action: "job.submit", targetType: "BackgroundJob", classification: "CONFIDENTIAL_BUSINESS", purpose: "LISTING_GOVERNANCE", outcome: "ACCEPTED" },
 };
 
 function enrichedIntent(sourceDomain: MaterializationReadySourceDomain): EnrichedAuditIntentV2 {
@@ -132,9 +134,25 @@ function seedAuditIntentRows(input: Readonly<{
   }
 }
 
-test("six enriched store reads compose into API-016 without reconstructing authoritative fields or materializing v1", () => {
+test("seven enriched store reads compose into API-016 without reconstructing authoritative fields or materializing v1", () => {
   const directory = mkdtempSync(join(tmpdir(), "rel001-api016-enriched-wiring-"));
   const databasePath = join(directory, "audit.sqlite");
+  const jobStore = new DurableJobStore({ databasePath: join(directory, "jobs.sqlite"), idFactory: () => "job-api017", clock: () => new Date(committedAt) });
+  jobStore.submitJob({
+    commandId: "command-api017",
+    jobType: "AI_LISTING_PARSE",
+    inputReferences: [{ type: "RawSource", id: "raw-api017", version: 1, checksum: "sha256:raw-api017-v1" }],
+    tenantId: "tenant-authoritative",
+    scopeRef: "team:team-authoritative",
+    purpose: "LISTING_GOVERNANCE",
+    privacyClassification: "CONFIDENTIAL_BUSINESS",
+    deadline: "2026-09-16T00:00:00.000Z",
+    principalProvenance: { kind: "TRUSTED_SNAPSHOT", principal: { id: "principal-api017", type: "HUMAN", roles: ["AGT"], teamId: "team-authoritative", sessionId: "session-api017" } },
+    authorityEvidenceRefs: ["evidence:api-017/authority"],
+    policyVersion: "policy-api-017",
+    correlationId: "correlation:api-017",
+    causationId: "causation-api-017",
+  });
   const expected: Record<MaterializationReadySourceDomain, EnrichedAuditIntentV2> = {
     SOURCE_REGISTRY: enrichedIntent("SOURCE_REGISTRY"),
     INTAKE: enrichedIntent("INTAKE"),
@@ -142,6 +160,7 @@ test("six enriched store reads compose into API-016 without reconstructing autho
     LISTING: enrichedIntent("LISTING"),
     CONTACT: enrichedIntent("CONTACT"),
     MATCHING: enrichedIntent("MATCHING"),
+    "API-017": jobStore.listAuditIntents({ tenantId: "tenant-authoritative", scopeRef: "team:team-authoritative" })[0]!,
   };
   const sourceStore = new DurableSourceRegistryStore({ databasePath: join(directory, "source.sqlite") });
   const intakeStore = new DurableIntakeStore({ databasePath: join(directory, "intake.sqlite"), tenantResolver: { resolveTenant: () => "tenant-authoritative" } });
@@ -156,14 +175,16 @@ test("six enriched store reads compose into API-016 without reconstructing autho
   seedAuditIntentRows({ databasePath: join(directory, "contact.sqlite"), table: "contact_audit_intents", sourceDomain: "CONTACT", intent: expected.CONTACT, tenantBound: true });
   seedAuditIntentRows({ databasePath: join(directory, "matching.sqlite"), table: "matching_audit_intents", sourceDomain: "MATCHING", intent: expected.MATCHING, tenantBound: true });
   let sourceRegistryRead = (): readonly unknown[] => sourceStore.listAuditIntents({ tenantId: "tenant-authoritative" });
-  const sources: readonly AuditIntentSourcePort[] = createMaterializationReadyAuditIntentSources({
+  const reads = {
     sourceRegistry: () => sourceRegistryRead(),
     intake: () => intakeStore.listAuditIntents({ tenantId: "tenant-authoritative" }),
     property: () => propertyStore.listAuditIntents(),
     listing: () => listingStore.listAuditIntents({ tenantId: "tenant-authoritative" }),
     contact: () => contactStore.listAuditIntents({ tenantId: "tenant-authoritative" }),
     matching: () => matchingStore.listAuditIntents({ tenantId: "tenant-authoritative" }),
-  });
+    jobs: () => jobStore.listAuditIntents({ tenantId: "tenant-authoritative", scopeRef: "team:team-authoritative" }),
+  };
+  const sources: readonly AuditIntentSourcePort[] = createMaterializationReadyAuditIntentSources(reads);
 
   try {
     assert.equal(Object.isFrozen(sources), true);
@@ -177,12 +198,12 @@ test("six enriched store reads compose into API-016 without reconstructing autho
     }
 
     let runtime = createStagingApi016AuditRuntime({ environment: "Staging", databasePath, sources, clock: () => new Date("2026-09-14T02:00:00.000Z") });
-    assert.equal(runtime.materializeAvailable().length, 6);
-    assert.equal(runtime.materializeAvailable().length, 6);
+    assert.equal(runtime.materializeAvailable().length, 7);
+    assert.equal(runtime.materializeAvailable().length, 7);
     runtime.close();
 
     let finalEvents = readFinalEvents(databasePath);
-    assert.equal(finalEvents.length, 6, "repeated processing appended zero duplicate final Audit Events");
+    assert.equal(finalEvents.length, 7, "repeated processing appended zero duplicate final Audit Events");
     for (const sourceDomain of sourceDomains) {
       const source = expected[sourceDomain];
       const event = finalEvents.find((candidate) => candidate.sourceDomain === sourceDomain);
@@ -220,10 +241,10 @@ test("six enriched store reads compose into API-016 without reconstructing autho
     }
 
     runtime = createStagingApi016AuditRuntime({ environment: "Staging", databasePath, sources, clock: () => new Date("2026-09-15T02:00:00.000Z") });
-    assert.equal(runtime.materializeAvailable().length, 6);
+    assert.equal(runtime.materializeAvailable().length, 7);
     runtime.close();
     finalEvents = readFinalEvents(databasePath);
-    assert.equal(finalEvents.length, 6, "restart appended zero duplicate final Audit Events");
+    assert.equal(finalEvents.length, 7, "restart appended zero duplicate final Audit Events");
 
     sourceRegistryRead = () => [legacyIntent("SOURCE_REGISTRY"), { ...expected.SOURCE_REGISTRY, evidenceRefs: [...expected.SOURCE_REGISTRY.evidenceRefs, "evidence:conflict"] }];
     runtime = createStagingApi016AuditRuntime({ environment: "Staging", databasePath, sources });
@@ -232,7 +253,7 @@ test("six enriched store reads compose into API-016 without reconstructing autho
       (error: unknown) => error instanceof AuditIntentMaterializationError && error.code === "MATERIALIZATION_IDENTITY_CONFLICT",
     );
     runtime.close();
-    assert.equal(readFinalEvents(databasePath).length, 6, "identity conflict appended zero final Audit Events");
+    assert.equal(readFinalEvents(databasePath).length, 7, "identity conflict appended zero final Audit Events");
   } finally {
     sourceStore.close();
     intakeStore.close();
@@ -240,6 +261,7 @@ test("six enriched store reads compose into API-016 without reconstructing autho
     listingStore.close();
     contactStore.close();
     matchingStore.close();
+    jobStore.close();
     rmSync(directory, { recursive: true, force: true });
   }
 });

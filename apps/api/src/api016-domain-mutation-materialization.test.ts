@@ -102,8 +102,8 @@ test("Phase 2E materializes six actual domain mutations with durable replay and 
     matchingStore.createRun({ tenantId: "tenant-a", record: run, commandId: "run-command", commandFingerprint: "sha256:matching", auditIntent: matchingIntent });
 
     const stores = { sourceRegistry: () => sourceStore!.listAuditIntents({ tenantId: "tenant-a" }), intake: () => intakeStore!.listAuditIntents({ tenantId: "tenant-a" }), property: () => propertyStore!.listAuditIntents(), listing: () => listingStore!.listAuditIntents({ tenantId: "tenant-a" }), contact: () => contactStore!.listAuditIntents({ tenantId: "tenant-a" }), matching: () => matchingStore!.listAuditIntents({ tenantId: "tenant-a" }) };
-    runtime = createStagingApi016AuditRuntime({ environment: "Staging", databasePath: paths.audit, sources: createMaterializationReadyAuditIntentSources(stores), clock: () => new Date(materializedAt) });
-    assert.deepEqual(runtime.status(), { health: "HEALTHY", readiness: "READY", sourceCount: 6 });
+    runtime = createStagingApi016AuditRuntime({ environment: "Staging", databasePath: paths.audit, sources: createMaterializationReadyAuditIntentSources({ ...stores, jobs: () => [] }), clock: () => new Date(materializedAt) });
+    assert.deepEqual(runtime.status(), { health: "HEALTHY", readiness: "READY", sourceCount: 7 });
     const first = runtime.materializeAvailable();
     assert.equal(first.length, 6);
     assert.deepEqual(first.map((event) => event.sourceDomain).sort(), ["CONTACT", "INTAKE", "LISTING", "MATCHING", "PROPERTY", "SOURCE_REGISTRY"]);
@@ -125,7 +125,7 @@ test("Phase 2E materializes six actual domain mutations with durable replay and 
     }
     assert.equal(runtime.materializeAvailable().length, 6);
     runtime.close(); runtime = undefined;
-    runtime = createStagingApi016AuditRuntime({ environment: "Staging", databasePath: paths.audit, sources: createMaterializationReadyAuditIntentSources(stores), clock: () => new Date("2026-09-14T02:00:00.000Z") });
+    runtime = createStagingApi016AuditRuntime({ environment: "Staging", databasePath: paths.audit, sources: createMaterializationReadyAuditIntentSources({ ...stores, jobs: () => [] }), clock: () => new Date("2026-09-14T02:00:00.000Z") });
     const replay = runtime.materializeAvailable();
     assert.equal(replay.length, 6);
     assert.ok(replay.every((event) => event.materializedAt === materializedAt));
@@ -178,7 +178,7 @@ test("Phase 2E Staging composition keeps immutable-reference source truth and fa
     sourceStore = new DurableSourceRegistryStore({ databasePath: sourcePath });
     sourceStore.create({ record, commandId: "shared-intent", commandFingerprint: "sha256:source-reference", auditIntent });
     const reads = { sourceRegistry: () => sourceStore!.listAuditIntents({ tenantId: "tenant-a" }), intake: () => [], property: () => [], listing: () => [], contact: () => [], matching: () => [] };
-    runtime = createStagingApi016AuditRuntime({ environment: "Staging", databasePath: auditPath, sources: createMaterializationReadyAuditIntentSources(reads), clock: () => new Date(materializedAt) });
+    runtime = createStagingApi016AuditRuntime({ environment: "Staging", databasePath: auditPath, sources: createMaterializationReadyAuditIntentSources({ ...reads, jobs: () => [] }), clock: () => new Date(materializedAt) });
     assert.throws(() => runtime!.materializeAvailable(), (error: unknown) => error instanceof Error && error.message === "INTENT_INVALID");
     runtime.close(); runtime = undefined;
     sourceStore.close(); sourceStore = undefined;

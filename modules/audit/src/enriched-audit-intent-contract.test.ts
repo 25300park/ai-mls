@@ -62,7 +62,7 @@ test("enriched v2 validator rejects wrong closed mapping, expected source, and t
   );
 });
 
-test("enriched v2 validator enforces the canonical outcome for every six-source event mapping", () => {
+test("enriched v2 validator enforces the canonical outcome for every materialization-ready event mapping", () => {
   const cases: readonly Readonly<{
     sourceDomain: EnrichedAuditIntentV2["sourceDomain"];
     eventType: string;
@@ -97,6 +97,13 @@ test("enriched v2 validator enforces the canonical outcome for every six-source 
     { sourceDomain: "MATCHING", eventType: "MATCH_RUN_CREATED", eventCategory: "COMMAND_ACCEPTED", action: "matching.request", targetType: "MatchRun", outcome: "COMPLETED" },
     { sourceDomain: "MATCHING", eventType: "MATCH_RESULT_REVIEWED", eventCategory: "STATE_CHANGED", action: "matching.review", targetType: "MatchResult", outcome: "COMPLETED" },
     { sourceDomain: "MATCHING", eventType: "MATCH_RESULT_STALE", eventCategory: "STATE_CHANGED", action: "matching.stale", targetType: "MatchResult", outcome: "COMPLETED" },
+    { sourceDomain: "API-017", eventType: "JOB_SUBMITTED", eventCategory: "COMMAND_ACCEPTED", action: "job.submit", targetType: "BackgroundJob", outcome: "ACCEPTED" },
+    { sourceDomain: "API-017", eventType: "JOB_STARTED", eventCategory: "STATE_CHANGED", action: "job.start", targetType: "BackgroundJob", outcome: "ACCEPTED" },
+    { sourceDomain: "API-017", eventType: "JOB_SUCCEEDED", eventCategory: "STATE_CHANGED", action: "job.succeed", targetType: "BackgroundJob", outcome: "COMPLETED" },
+    { sourceDomain: "API-017", eventType: "JOB_FAILED", eventCategory: "STATE_CHANGED", action: "job.fail", targetType: "BackgroundJob", outcome: "FAILED" },
+    { sourceDomain: "API-017", eventType: "JOB_CANCELLED", eventCategory: "STATE_CHANGED", action: "job.cancel", targetType: "BackgroundJob", outcome: "COMPLETED" },
+    { sourceDomain: "API-017", eventType: "JOB_EXPIRED", eventCategory: "STATE_CHANGED", action: "job.expire", targetType: "BackgroundJob", outcome: "COMPLETED" },
+    { sourceDomain: "API-017", eventType: "JOB_RETRY_SUBMITTED", eventCategory: "COMMAND_ACCEPTED", action: "job.retry", targetType: "BackgroundJob", outcome: "ACCEPTED" },
   ];
 
   for (const item of cases) {

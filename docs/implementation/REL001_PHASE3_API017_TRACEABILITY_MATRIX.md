@@ -113,4 +113,18 @@ Phase 3D는 Production FEAT-022 runtime, public API-017 transport, scheduler/pol
 | Audit / idempotency | existing owner-local Job mutation, history and enriched audit-intent transaction | one-winner audit count, replay/restart regressions | PASS |
 | Verification | [Recovery Traceability](REL001_PHASE3E_RECOVERY_TRACEABILITY.md), [Completion Report](../reviews/REL001_PHASE3E_COMPLETION_REPORT.md) | direct `16/16`; focused `61/61`; affected `159/159`; full `1412/1412` | PASS |
 
-Phase 3E는 기존 API-017 contract와 state vocabulary를 변경하지 않는다. Automatic retry, scheduler, polling, worker daemon, public HTTP/RPC, new handler, new API-016 Audit Event 및 external provider/network는 모두 `0`이다. Phase 3F+는 `NOT_STARTED`다.
+Phase 3E는 기존 API-017 contract와 state vocabulary를 변경하지 않는다. Automatic retry, scheduler, polling, worker daemon, public HTTP/RPC, new handler, new API-016 Audit Event 및 external provider/network는 모두 `0`이다.
+
+## 9. Phase 3F API-017 / API-016 audit evidence integration delta
+
+| Trace | Production evidence | Test evidence | Result |
+|---|---|---|---|
+| DEC-151 mapping | [`enriched-audit-intent-contract.ts`](../../modules/audit/src/enriched-audit-intent-contract.ts)의 exact API-017 source/event tuples | [`enriched-audit-intent-contract.test.ts`](../../modules/audit/src/enriched-audit-intent-contract.test.ts) | `7/7 MAPPED`, claim/heartbeat `2/2 N/A` |
+| Owner-local intent | [`DurableJobStore`](../../modules/jobs/src/job-durable-persistence.ts)의 Job mutation/history/idempotency/enriched intent transaction | [`api017-audit-evidence-integration.test.ts`](../../apps/api/src/api017-audit-evidence-integration.test.ts) | PASS |
+| Read-only source wiring | [`api016-enriched-intent-source-wiring.ts`](../../apps/api/src/api016-enriched-intent-source-wiring.ts)의 seventh API-017 source port | source wiring 및 production composition tests | exact sources `7/7` |
+| Materialization | existing `AuditIntentMaterializer`와 `DurableAuditEventStore` | 7 event E2E, replay/restart/conflict/append-only | PASS |
+| Provenance / chronology / isolation | mutation-time principal, tenant/scope, source `occurredAt` 보존 | cross-source identity, tenant/scope, chronology assertions | PASS |
+| Retry lineage | `JOB_RETRY_SUBMITTED` predecessor/successor evidence refs | lineage reference assertions | PASS |
+| Scope protection | final event direct write, scheduler, polling, automatic retry, HTTP/RPC | architecture assertions and regressions | all `0` |
+
+상세 mapping은 [Phase 3F Audit Point Traceability](REL001_PHASE3F_AUDIT_POINT_TRACEABILITY.md), compatibility는 [Phase 3F Materialization Compatibility Matrix](REL001_PHASE3F_MATERIALIZATION_COMPATIBILITY_MATRIX.md), 실행 결과는 [Phase 3F Completion Report](../reviews/REL001_PHASE3F_COMPLETION_REPORT.md)에 기록한다. Phase 3F는 API-017 enriched intent를 기존 API-016-owned final event pipeline에만 연결하며 후속 Phase는 시작하지 않는다.

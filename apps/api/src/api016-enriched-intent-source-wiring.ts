@@ -7,9 +7,11 @@ export interface MaterializationReadyAuditIntentStoreReads {
   readonly listing: () => readonly unknown[];
   readonly contact: () => readonly unknown[];
   readonly matching: () => readonly unknown[];
+  readonly jobs: () => readonly unknown[];
 }
 
 export type MaterializationReadyAuditIntentSources = readonly [
+  AuditIntentSourcePort,
   AuditIntentSourcePort,
   AuditIntentSourcePort,
   AuditIntentSourcePort,
@@ -28,5 +30,6 @@ export function createMaterializationReadyAuditIntentSources(
     createAuditIntentSourcePort({ sourceDomain: "LISTING", read: stores.listing }),
     createAuditIntentSourcePort({ sourceDomain: "CONTACT", read: stores.contact }),
     createAuditIntentSourcePort({ sourceDomain: "MATCHING", read: stores.matching }),
+    createAuditIntentSourcePort({ sourceDomain: "API-017", read: stores.jobs }),
   ]);
 }

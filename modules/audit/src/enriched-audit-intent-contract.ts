@@ -2,7 +2,7 @@ import type { AuditPrincipal, AuditTarget, DataClassification, RoleCode } from "
 import { isSensitiveSecurityDetailKey, isUnsafeSecurityDetailValue } from "../../../packages/security-contracts/src/index.js";
 import type { AuditVisibilityBinding } from "./durable-audit-event-store.js";
 
-export type MaterializationReadySourceDomain = "SOURCE_REGISTRY" | "INTAKE" | "PROPERTY" | "LISTING" | "CONTACT" | "MATCHING";
+export type MaterializationReadySourceDomain = "SOURCE_REGISTRY" | "INTAKE" | "PROPERTY" | "LISTING" | "CONTACT" | "MATCHING" | "API-017";
 export type AuditEventCategory = "COMMAND_ACCEPTED" | "STATE_CHANGED" | "EVIDENCE_APPENDED" | "SECURITY_DECISION";
 export type AuditPrincipalProvenance =
   | Readonly<{ kind: "TRUSTED_SNAPSHOT"; principal: AuditPrincipal }>
@@ -47,7 +47,7 @@ const decisions = new Set(["ALLOW", "DENY", "NOT_APPLICABLE"]);
 const outcomes = new Set(["ACCEPTED", "COMPLETED", "FAILED", "UNKNOWN"]);
 const categories = new Set<AuditEventCategory>(["COMMAND_ACCEPTED", "STATE_CHANGED", "EVIDENCE_APPENDED", "SECURITY_DECISION"]);
 const propertyTypes = new Set(["Location", "Property", "Building", "Tower", "Floor", "Unit"]);
-const sourceDomains: readonly MaterializationReadySourceDomain[] = Object.freeze(["SOURCE_REGISTRY", "INTAKE", "PROPERTY", "LISTING", "CONTACT", "MATCHING"]);
+const sourceDomains: readonly MaterializationReadySourceDomain[] = Object.freeze(["SOURCE_REGISTRY", "INTAKE", "PROPERTY", "LISTING", "CONTACT", "MATCHING", "API-017"]);
 
 const mappings = new Map<string, Readonly<{ action: string; targets: ReadonlySet<string>; category: AuditEventCategory; outcome: EnrichedAuditIntentV2["outcome"] }>>();
 function map(source: MaterializationReadySourceDomain, eventType: string, action: string, targets: readonly string[], category: AuditEventCategory, outcome: EnrichedAuditIntentV2["outcome"]): void {
@@ -80,6 +80,13 @@ map("CONTACT", "CONTACT_ATTEMPT_RECORDED", "contact.attempt", ["ContactCase"], "
 map("MATCHING", "MATCH_RUN_CREATED", "matching.request", ["MatchRun"], "COMMAND_ACCEPTED", "COMPLETED");
 map("MATCHING", "MATCH_RESULT_REVIEWED", "matching.review", ["MatchResult"], "STATE_CHANGED", "COMPLETED");
 map("MATCHING", "MATCH_RESULT_STALE", "matching.stale", ["MatchResult"], "STATE_CHANGED", "COMPLETED");
+map("API-017", "JOB_SUBMITTED", "job.submit", ["BackgroundJob"], "COMMAND_ACCEPTED", "ACCEPTED");
+map("API-017", "JOB_STARTED", "job.start", ["BackgroundJob"], "STATE_CHANGED", "ACCEPTED");
+map("API-017", "JOB_SUCCEEDED", "job.succeed", ["BackgroundJob"], "STATE_CHANGED", "COMPLETED");
+map("API-017", "JOB_FAILED", "job.fail", ["BackgroundJob"], "STATE_CHANGED", "FAILED");
+map("API-017", "JOB_CANCELLED", "job.cancel", ["BackgroundJob"], "STATE_CHANGED", "COMPLETED");
+map("API-017", "JOB_EXPIRED", "job.expire", ["BackgroundJob"], "STATE_CHANGED", "COMPLETED");
+map("API-017", "JOB_RETRY_SUBMITTED", "job.retry", ["BackgroundJob"], "COMMAND_ACCEPTED", "ACCEPTED");
 
 export function validateEnrichedAuditIntentV2<SourceDomain extends MaterializationReadySourceDomain>(
   value: unknown,

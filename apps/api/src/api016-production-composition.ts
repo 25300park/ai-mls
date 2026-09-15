@@ -2,10 +2,10 @@ import { isAbsolute } from "node:path";
 
 import { AuditIntentMaterializer, DurableAuditEventStore, type AuditIntentSourcePort, type DurableMaterializedAuditEvent, type MaterializationReadySourceDomain } from "../../../modules/audit/src/index.js";
 
-const requiredSources = Object.freeze<readonly MaterializationReadySourceDomain[]>(["SOURCE_REGISTRY", "INTAKE", "PROPERTY", "LISTING", "CONTACT", "MATCHING"]);
+const requiredSources = Object.freeze<readonly MaterializationReadySourceDomain[]>(["SOURCE_REGISTRY", "INTAKE", "PROPERTY", "LISTING", "CONTACT", "MATCHING", "API-017"]);
 
 export interface StagingApi016AuditRuntime {
-  status(): Readonly<{ health: "HEALTHY"; readiness: "READY"; sourceCount: 6 }>;
+  status(): Readonly<{ health: "HEALTHY"; readiness: "READY"; sourceCount: 7 }>;
   materializeAvailable(): readonly DurableMaterializedAuditEvent[];
   close(): void;
 }
@@ -20,7 +20,7 @@ export function createStagingApi016AuditRuntime(input: Readonly<{ environment: "
   return Object.freeze({
     status: () => {
       if (closed) throw new Error("AUDIT_RUNTIME_UNAVAILABLE");
-      return Object.freeze({ health: "HEALTHY", readiness: "READY", sourceCount: 6 as const });
+      return Object.freeze({ health: "HEALTHY", readiness: "READY", sourceCount: 7 as const });
     },
     materializeAvailable: () => {
       if (closed) throw new Error("AUDIT_RUNTIME_UNAVAILABLE");

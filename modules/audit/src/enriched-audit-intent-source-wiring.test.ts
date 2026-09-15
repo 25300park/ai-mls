@@ -220,6 +220,7 @@ const intents: Readonly<Record<MaterializationReadySourceDomain, EnrichedAuditIn
   LISTING: intent("LISTING", listingRecord.id, "CANDIDATE_CREATED", "COMMAND_ACCEPTED", "candidate.create", { type: "CandidateListing", id: listingRecord.id, version: 1 }, "LISTING_GOVERNANCE", "listing-v1", "CONFIDENTIAL_BUSINESS", "TENANT"),
   CONTACT: intent("CONTACT", contactRecord.id, "CONTACT_CREATED", "COMMAND_ACCEPTED", "contact.create", { type: "Contact", id: contactRecord.id, version: 1 }, "CLIENT_SERVICE", "contact-v1", "RESTRICTED_PERSONAL", "TENANT"),
   MATCHING: intent("MATCHING", matchingRecord.id, "MATCH_RUN_CREATED", "COMMAND_ACCEPTED", "matching.request", { type: "MatchRun", id: matchingRecord.id, version: 1 }, "CLIENT_MATCHING", "policy-v1", "RESTRICTED_PERSONAL", "TENANT"),
+  "API-017": intent("API-017", "job-a", "JOB_SUCCEEDED", "STATE_CHANGED", "job.succeed", { type: "BackgroundJob", id: "job-a", version: 3 }, "LISTING_GOVERNANCE", "jobs-policy-v1", "CONFIDENTIAL_BUSINESS", "TENANT"),
 };
 
 interface Harness {
