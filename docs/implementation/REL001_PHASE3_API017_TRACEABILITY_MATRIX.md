@@ -482,3 +482,20 @@ Blocker 3는 API-017 code, lifecycle, scheduler, handler 또는 audit mapping을
 | evidence | [External Hold Disposition](REL001_FINAL_BLOCKER_PROVIDER_EXTERNAL_HOLD_DISPOSITION.md), [Completion Report](../reviews/REL001_FINAL_BLOCKER_COMPLETION_REPORT.md) |
 
 Existing REL-001 scope retains live provider execution as required for acceptance. Repository completion does not authorize API-017 to select credentials, provider/model or network behavior.
+
+## REL-001 External Hold Freeze / Resume Runbook
+
+| Trace | Result |
+|---|---|
+| Exact freeze baseline | Main HEAD `585f7ec646a2bec9edca4c19a6abfff95beb96fb` |
+| repository / external blockers | `0 / 1` |
+| DEC-162 / DEC-163 | historical `IN_REVIEW` / `APPROVED` |
+| provider-independent / live provider | `3/3 READY` / `0/3 NOT_READY` |
+| Acceptance / Promotion Handoff | `INCOMPLETE / UNAVAILABLE` |
+| Production readiness | `NOT_AUTHORIZED` |
+| resume condition | one or more authoritative external prerequisites materially changed |
+| resume order | read-only evidence → decision reevaluation → scoped network approval → bounded 2/2/2 validation → exact candidate rebuild → Acceptance → Handoff |
+| frozen side effects | inference, credential mutation, network/Production activation, bypass code and false READY claims `0` |
+| evidence | [Freeze / Resume Runbook](REL001_EXTERNAL_HOLD_FREEZE_RESUME_RUNBOOK.md), [Completion Report](../reviews/REL001_EXTERNAL_HOLD_FREEZE_COMPLETION_REPORT.md) |
+
+The freeze does not create API-017 provider/model/credential authority and does not change Job lifecycle, retry, scheduler or handler semantics.
