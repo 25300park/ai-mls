@@ -466,3 +466,19 @@ Blocker 2C는 API-017 runtime을 변경하지 않는다. Live provider는 `0/3 N
 | evidence | [Fresh Audit Report](REL001_BLOCKER3_FRESH_DEPENDENCY_AUDIT_REPORT.md), [Finding Disposition](REL001_BLOCKER3_DEPENDENCY_FINDING_DISPOSITION.md) |
 
 Blocker 3는 API-017 code, lifecycle, scheduler, handler 또는 audit mapping을 변경하지 않는다.
+
+## REL-001 Final Blocker — live FEAT-022 provider external hold
+
+| Trace | Result |
+|---|---|
+| provider-independent FEAT-022 | AI-001/004/005 `3/3 READY` |
+| live provider | `0/3 NOT_READY` |
+| blocker classification | `EXTERNAL_ACCOUNT_AND_CONTRACT_DEPENDENCY` |
+| DEC-162 / DEC-163 | DEC-162 historical `IN_REVIEW` preserved; DEC-163 `APPROVED / DEFERRED_EXTERNAL_DEPENDENCY` |
+| repository / external blockers | `0 / 1` |
+| Staging acceptance / handoff | `INCOMPLETE / UNAVAILABLE` |
+| Production readiness | `NOT_AUTHORIZED` |
+| API-017 changes | handler, lifecycle, retry, scheduler, network changes `0` |
+| evidence | [External Hold Disposition](REL001_FINAL_BLOCKER_PROVIDER_EXTERNAL_HOLD_DISPOSITION.md), [Completion Report](../reviews/REL001_FINAL_BLOCKER_COMPLETION_REPORT.md) |
+
+Existing REL-001 scope retains live provider execution as required for acceptance. Repository completion does not authorize API-017 to select credentials, provider/model or network behavior.

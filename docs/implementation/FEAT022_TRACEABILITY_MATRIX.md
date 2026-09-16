@@ -196,3 +196,15 @@ Phase 4D.5 does not convert physical assets into network authority. FEAT-022 adv
 | closeout | [Completion Report](../reviews/REL001_PHASE4D8_COMPLETION_REPORT.md) | `APPROVE_REL001_PHASE4_PROVIDER_INTEGRATION_BOUNDARY_CLOSURE` |
 
 This overlay closes only the provider-independent executable boundary. It does not rewrite historical Phase 4D outcomes or claim Staging/Production provider readiness.
+
+## REL-001 Final Blocker external-hold disposition overlay
+
+| Trace | Evidence | Result |
+|---|---|---|
+| Provider-independent FEAT-022 | [External Hold Disposition](REL001_FINAL_BLOCKER_PROVIDER_EXTERNAL_HOLD_DISPOSITION.md) | AI-001/004/005 `3/3 READY`; repository blockers `0` |
+| Live provider | account/project/residency/MAM/ZDR/amendment/credential evidence remains unavailable | `0/3 NOT_READY` |
+| DEC-162 / DEC-163 | [Final Disposition](REL001_DEC162_FINAL_DISPOSITION.md) | DEC-162 historical `IN_REVIEW` preserved; DEC-163 `APPROVED / DEFERRED_EXTERNAL_DEPENDENCY` |
+| Release scope | [Acceptance Boundary](REL001_STAGING_ACCEPTANCE_BOUNDARY_UPDATE.md) | live execution remains `REQUIRED_FOR_ACCEPTANCE` |
+| Side effects | provider/network/credential/inference/billing | `0/0/0/0/0` |
+
+Historical FEAT-022 and Phase 4D outcomes remain unchanged. This overlay grants no live-provider or Production authority.

@@ -156,3 +156,15 @@
 | Blocker disposition | Fresh Dependency Audit `CLOSED`; live provider remains | `1` blocker |
 | Acceptance / handoff | `INCOMPLETE` / `UNAVAILABLE`; DEC-162 `IN_REVIEW` | FAIL_CLOSED |
 | Evidence | [Fresh Audit Report](REL001_BLOCKER3_FRESH_DEPENDENCY_AUDIT_REPORT.md), [Finding Disposition](REL001_BLOCKER3_DEPENDENCY_FINDING_DISPOSITION.md), [Completion Report](../reviews/REL001_BLOCKER3_COMPLETION_REPORT.md) | RECORDED |
+
+## 13. REL-001 final provider external-hold disposition overlay
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Repository completeness | provider-independent FEAT-022 `3/3 READY`; Core/UI/audit blockers closed | PASS |
+| External activation | [External Hold Disposition](REL001_FINAL_BLOCKER_PROVIDER_EXTERNAL_HOLD_DISPOSITION.md) | `EXTERNAL_ACCOUNT_AND_CONTRACT_DEPENDENCY`; blocker `1` |
+| Existing release scope | [Acceptance Boundary](REL001_STAGING_ACCEPTANCE_BOUNDARY_UPDATE.md) preserves live execution as mandatory | REQUIRED / BLOCKING |
+| DEC-162 / DEC-163 | [Final Disposition](REL001_DEC162_FINAL_DISPOSITION.md) | DEC-162 historical `IN_REVIEW` preserved; DEC-163 `APPROVED / DEFERRED_EXTERNAL_DEPENDENCY`; no activation authority |
+| Acceptance / handoff | exact current evidence | `INCOMPLETE / UNAVAILABLE` |
+| Production readiness | no deployment/provider/network/credential authorization | `NOT_AUTHORIZED` |
+| Evidence | [Completion Report](../reviews/REL001_FINAL_BLOCKER_COMPLETION_REPORT.md) | RECORDED |
