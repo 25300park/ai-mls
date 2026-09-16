@@ -32,6 +32,10 @@
 - Dependency/lockfile changes: `0`
 - UI-006 activation: `NOT_STARTED` (Blocker 2)
 
+## Blocker 2 downstream activation overlay
+
+API-001 `GET /v1/me`는 [UI-006 Runtime Traceability](REL001_BLOCKER2_UI006_RUNTIME_TRACEABILITY.md)에 따라 전용 `CoreIdentityConsoleReadAdapter`를 통해 UI-006의 4-field presentation DTO로 연결됐다. API-002 transport는 유지되지만 UI-006 ingress가 기존 `SessionAccessCoordinator`의 `resource.view`를 authoritative gate로 사용하므로 추가 호출은 `0`이다. API-003~010 exposure와 direct persistence access는 `0`이다.
+
 ## Completion disposition
 
 Focused and affected execution evidence is GREEN. The bounded transport closeout is approved with the exact-candidate failure explicitly accepted as the pre-rebuild result. The historical Phase 7 identity remains immutable; a later candidate rebuild/re-evaluation must use this implementation commit rather than rewrite prior evidence.

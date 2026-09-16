@@ -7,6 +7,7 @@ import type { StagingAdminConsoleConfiguration } from "../../admin-console/src/c
 import type { ConsoleReadPort, ConsoleReadRequest } from "../../admin-console/src/console-read-adapter.js";
 import { startStagingAdminConsoleBootstrap } from "./staging-admin-console-bootstrap.js";
 import { createStagingConsoleSessionIngress } from "./staging-console-session-ingress.js";
+import type { CoreIdentityAuthorizationHttpHandler } from "./core-identity-authorization-http.js";
 
 const session = Object.freeze({
   id: "session:evidence", principalId: "operator-staging", principalType: "HUMAN", roles: Object.freeze(["SEC"]),
@@ -14,6 +15,21 @@ const session = Object.freeze({
   authenticatedAt: "2026-09-16T00:00:00.000Z", expiresAt: "2026-09-16T12:00:00.000Z",
   absoluteExpiresAt: "2026-09-16T12:00:00.000Z", familyId: "session:family", refreshReference: "[PROTECTED]",
 } satisfies SessionContext);
+
+const coreIdentityHttpHandler: CoreIdentityAuthorizationHttpHandler = Object.freeze({
+  status: () => Object.freeze({ health: "HEALTHY" as const, readiness: "READY" as const }),
+  handle: () => Promise.resolve(Object.freeze({
+    statusCode: 200,
+    headers: Object.freeze({ "content-type": "application/json" }),
+    body: Object.freeze({ success: true, data: Object.freeze({
+      principalId: "operator-staging", principalType: "HUMAN",
+      roles: Object.freeze(["SEC"]),
+      scopes: Object.freeze([Object.freeze({ tenantId: "tenant-staging", teamId: "team-staging" })]),
+      expiresAt: "2026-09-16T12:00:00.000Z",
+    }) }),
+    requestId: "request-core",
+  })),
+});
 
 test("REL001-PHASE5B Phase 1D ingress preserves trusted Session tenant/scope and owning read action", () => {
   const observed: ResolveAuthorizedSessionRequest[] = [];
@@ -74,6 +90,7 @@ test("REL001-PHASE5B Platform Host starts the six-screen Staging Console without
   });
   const composition = await startStagingAdminConsoleBootstrap(configuration, {
     sessionAccess: { resolveAuthorized: () => session },
+    coreIdentityHttpHandler,
     publicationReadAdapter: unavailable,
     auditReadAdapter: unavailable,
     jobRuntimeReadPort: { readStatus: () => Object.freeze({ readiness: "READY" as const, jobs: Object.freeze([]) }) },
@@ -127,6 +144,7 @@ test("REL001-PHASE5C reload and runtime restart re-resolve live Session authorit
         return session;
       },
     },
+    coreIdentityHttpHandler,
     publicationReadAdapter: unavailable,
     auditReadAdapter: unavailable,
     jobRuntimeReadPort: { readStatus: () => Object.freeze({ readiness: "READY" as const, jobs: Object.freeze([]) }) },

@@ -23,10 +23,19 @@ import { createAdministrationCollectionView } from "./administration-api-contrac
 import { composeAdministrationApi015NodeHttpServer } from "./administration-production-composition.js";
 import { createStagingApi016AuditRuntime } from "./api016-production-composition.js";
 import { createStagingAdminConsoleBootstrap } from "./staging-admin-console-bootstrap.js";
+import { CoreIdentityAuthorizationApplication, createCoreIdentityAuthorizationHttpHandler } from "./core-identity-authorization-http.js";
 import { createIntegratedStagingRuntimeVerification } from "./staging-integrated-runtime-verification.js";
 import { createStagingSessionComposition, type StagingSessionCompositionOptions } from "./staging-session-composition.js";
 
 const now = new Date("2026-09-16T00:00:00.000Z");
+
+const liveAssignments: readonly LiveRoleAssignment[] = [{
+  id: "phase6-assignment", principalId: "phase6-actor", subjectPrincipalType: "HUMAN", role: "SEC",
+  teamIds: ["team-staging"], resourceTypes: ["AdminConsole", "IdentitySession"],
+  purposes: ["CONSOLE_ACCESS", "ACCESS_GOVERNANCE", "SECURITY_MONITORING"],
+  effectiveFrom: "2026-09-15T00:00:00.000Z", effectiveUntil: "2026-09-17T00:00:00.000Z",
+  status: "ACTIVE", version: 1, tenantId: "tenant-staging",
+}];
 
 class AuthenticationStub implements AuthenticationAdapter {
   public verify(_evidence: AuthenticationEvidence): AuthenticatedIdentity {
@@ -41,16 +50,10 @@ function sessionOptions(databasePath: string): StagingSessionCompositionOptions 
   let sequence = 0;
   const clock = (): Date => new Date(now);
   const auditSink = new AuditLog({ clock, idFactory: () => `phase6-audit-${String(++sequence)}` });
-  const assignments: readonly LiveRoleAssignment[] = [{
-    id: "phase6-assignment", principalId: "phase6-actor", subjectPrincipalType: "HUMAN", role: "SEC",
-    teamIds: ["team-staging"], resourceTypes: ["AdminConsole"], purposes: ["CONSOLE_ACCESS", "ACCESS_GOVERNANCE", "SECURITY_MONITORING"],
-    effectiveFrom: "2026-09-15T00:00:00.000Z", effectiveUntil: "2026-09-17T00:00:00.000Z",
-    status: "ACTIVE", version: 1, tenantId: "tenant-staging",
-  }];
   return {
     runtimeEnvironment: "STAGING", databasePath, authenticationAdapter: new AuthenticationStub(), auditSink,
     authorization: Object.assign(new AuthorizationService({
-      liveAssignmentResolver: { resolveCurrentAssignments: () => assignments }, auditSink, clock,
+      liveAssignmentResolver: { resolveCurrentAssignments: () => liveAssignments }, auditSink, clock,
       policyVersion: "phase6-authorization-v1",
     }), { isReady: () => true }),
     bindingResolver: {
@@ -63,6 +66,15 @@ function sessionOptions(databasePath: string): StagingSessionCompositionOptions 
     clock, idFactory: () => `phase6-identity-${String(++sequence)}`,
     tenantBindingOrigin: "assignment:phase6-actor:v1",
   };
+}
+
+function createCoreIdentityHttpHandler(sessionAccess: ReturnType<typeof createStagingSessionComposition>["sessionAccess"]) {
+  return createCoreIdentityAuthorizationHttpHandler(new CoreIdentityAuthorizationApplication({
+    trustedContext: Object.freeze({ tenantId: "tenant-staging", teamId: "team-staging", purpose: "CONSOLE_ACCESS" }),
+    sessionAccess,
+    liveAssignments: { resolveCurrentAssignments: () => liveAssignments },
+    readiness: { isReady: () => true },
+  }));
 }
 
 function auditSources(): readonly AuditIntentSourcePort[] {
@@ -181,6 +193,7 @@ test("REL001-PHASE6 concrete compositions become ready, perform no execution, an
     const origin = `http://127.0.0.1:${String(api015.diagnostics.boundPort)}`;
     const console = createStagingAdminConsoleBootstrap(consoleConfiguration(origin), {
       sessionAccess: session.sessionAccess,
+      coreIdentityHttpHandler: createCoreIdentityHttpHandler(session.sessionAccess),
       publicationReadAdapter: { read: (request) => readyRead(request.page) },
       auditReadAdapter: { read: (request) => { audit.status(); return readyRead(request.page); } },
       jobRuntimeReadPort: { readStatus: () => Object.freeze({ readiness: jobs.status().readiness, jobs: Object.freeze([]) }) },
@@ -217,6 +230,14 @@ test("REL001-PHASE6 concrete compositions become ready, perform no execution, an
 
   try {
     await prime();
+    const administration = await fetch(`${connected.console.server.localUrl}/api/console/view?page=ADMINISTRATION`, {
+      headers: { "x-session-id": sessionId },
+    });
+    const administrationBody = await administration.text();
+    assert.equal(administrationBody.includes("phase6-actor"), true);
+    assert.equal(administrationBody.includes("tenant-staging"), true);
+    assert.equal(administrationBody.includes("team-staging"), true);
+    assert.equal(administrationBody.includes("NOT_AVAILABLE"), false);
     const integrated = () => createIntegratedStagingRuntimeVerification({
       session, audit, jobs, advisory, console: connected.console,
     });

@@ -58,6 +58,16 @@ function dependencies(overrides: Partial<StagingAdminConsoleDependencies> = {}):
         decision162: "IN_REVIEW" as const,
       }),
     },
+    coreIdentityReadPort: {
+      readCurrentPrincipal: () => Object.freeze({
+        principalId: "principal-staging",
+        tenantId: "tenant-staging",
+        roles: Object.freeze(["ADMINISTRATOR"]),
+        scopes: Object.freeze([
+          Object.freeze({ tenantId: "tenant-staging", teamId: "team-staging" }),
+        ]),
+      }),
+    },
     administrationSelectorScopes: scopes,
     ...overrides,
   };
@@ -330,17 +340,78 @@ test("REL001-PHASE5B RED: false live-provider or DEC-162 readiness and unsafe ba
   await unknownJobField.server.stop();
 });
 
-test("REL001-PHASE5B RED: Core API-001/002 dependency is rendered as deferred on UI-006", async () => {
-  const composition = composeStagingAdminConsole(configuration(), dependencies());
+test("REL001-BLOCKER2: unavailable Core API-001 fails closed only within UI-006", async () => {
+  let coreAvailable = true;
+  const composition = composeStagingAdminConsole(configuration(), dependencies({
+    administrationReadAdapter: {
+      read: (request) => Object.freeze({
+        page: request.page,
+        state: "READY" as const,
+        data: {
+          marker: "ADMINISTRATION",
+          currentPrincipal: { principalId: "spoofed-stale-principal", tenantId: "tenant-staging", roles: ["ADMINISTRATOR"], scopes: [] },
+          coreApi001: "AVAILABLE",
+          coreDependency: "READY",
+        },
+      }),
+    },
+    coreIdentityReadPort: {
+      readCurrentPrincipal: () => {
+        if (!coreAvailable) throw new Error("SQLITE C:\\private\\identity.sqlite");
+        return Object.freeze({
+          principalId: "principal-live",
+          tenantId: "tenant-staging",
+          roles: Object.freeze(["ADMINISTRATOR"]),
+          scopes: Object.freeze([Object.freeze({ tenantId: "tenant-staging", teamId: "team-staging" })]),
+        });
+      },
+    },
+  }));
   await composition.server.start();
+  await primeMandatoryReads(composition);
+  const priorStatus = composition.status();
+  coreAvailable = false;
   const response = await fetch(`${composition.server.localUrl}/api/console/view?page=ADMINISTRATION`, {
     headers: { "x-session-id": "session-staging" },
   });
   const body = await response.text();
   assert.equal(body.includes("NOT_AVAILABLE"), true);
-  assert.equal(body.includes("DEFERRED"), true);
+  assert.equal(body.includes("NOT_READY"), true);
+  assert.equal(body.includes("spoofed-stale-principal"), false);
+  assert.equal(/SQLITE|private|identity\.sqlite/iu.test(body), false);
   assert.equal(body.includes("READY FOR PRODUCTION"), false);
+  assert.deepEqual(composition.status(), priorStatus);
   await composition.server.stop();
+});
+
+test("REL001-BLOCKER2 RED: UI-006 renders the bounded live principal instead of the Core placeholder", async () => {
+  const composition = composeStagingAdminConsole(configuration(), {
+    ...dependencies(),
+    coreIdentityReadPort: {
+      readCurrentPrincipal: () => Object.freeze({
+        principalId: "principal-live",
+        tenantId: "tenant-staging",
+        roles: Object.freeze(["ADMINISTRATOR"]),
+        scopes: Object.freeze([
+          Object.freeze({ tenantId: "tenant-staging", teamId: "team-staging" }),
+        ]),
+      }),
+    },
+  });
+  await composition.server.start();
+
+  const response = await readPage(composition, "ADMINISTRATION");
+  const body = await response.text();
+  await composition.server.stop();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.includes("principal-live"), true);
+  assert.equal(body.includes("Core API-001/002"), false);
+  assert.equal(body.includes("tenant-staging"), true);
+  assert.equal(body.includes("ADMINISTRATOR"), true);
+  assert.equal(body.includes("team-staging"), true);
+  assert.equal(body.includes("NOT_AVAILABLE"), false);
+  assert.equal(body.includes("DEFERRED"), false);
 });
 
 test("REL001-PHASE5B RED: unsafe API-016 evidence is never rendered", async () => {
@@ -401,7 +472,8 @@ test("REL001-PHASE5B RED: selector scopes must exactly match configured Staging 
 
 test("REL001-PHASE5B RED: Console owns no Session, Audit, Job, or provider persistence", () => {
   const source = readFileSync(join(process.cwd(), "apps", "admin-console", "src", "console-composition.ts"), "utf8")
-    + readFileSync(join(process.cwd(), "apps", "admin-console", "src", "console-server.ts"), "utf8");
+    + readFileSync(join(process.cwd(), "apps", "admin-console", "src", "console-server.ts"), "utf8")
+    + readFileSync(join(process.cwd(), "apps", "admin-console", "src", "core-identity-console-read-adapter.ts"), "utf8");
   assert.equal(/DurableSessionUnitOfWork|DurableAuditEventStore|DurableJobStore|node:sqlite|OPENAI_API_KEY|FEAT022_STAGING_OPENAI_API_KEY/u.test(source), false);
 });
 

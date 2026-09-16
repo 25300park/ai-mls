@@ -109,6 +109,25 @@ export interface ConsoleAdvisoryRuntimeStatusReadPort {
   }>>;
 }
 
+export interface ConsoleCurrentPrincipalView {
+  readonly principalId: string;
+  readonly tenantId: string;
+  readonly roles: readonly string[];
+  readonly scopes: readonly Readonly<{
+    tenantId: string;
+    teamId?: string;
+  }>[];
+}
+
+export interface ConsoleCoreIdentityReadPort {
+  readCurrentPrincipal(request: Readonly<{
+    sessionId: string;
+    tenantId: string;
+    scopeRef: string;
+    correlationId: string;
+  }>): ConsoleCurrentPrincipalView | Promise<ConsoleCurrentPrincipalView>;
+}
+
 export interface StagingAdminConsoleDependencies {
   readonly sessionIngress: ConsoleSessionIngressPort;
   readonly publicationReadAdapter: ConsoleReadPort;
@@ -117,6 +136,7 @@ export interface StagingAdminConsoleDependencies {
   readonly auditReadAdapter: ConsoleReadPort;
   readonly jobRuntimeReadPort: ConsoleJobRuntimeStatusReadPort;
   readonly advisoryRuntimeReadPort: ConsoleAdvisoryRuntimeStatusReadPort;
+  readonly coreIdentityReadPort?: ConsoleCoreIdentityReadPort;
   readonly administrationSelectorScopes: AdministrationSelectorReadRequest["selectorScopes"];
 }
 
@@ -170,7 +190,11 @@ export function composeStagingAdminConsole(
   const readAdapter: ConsoleReadPort = Object.freeze({
     read: async (request: ConsoleReadRequest): Promise<ConsoleReadResult> => {
       if (request.page === "ADMINISTRATION") {
-        return withCoreDependencyDeferral(await readBoundary("API-015", dependencies.administrationReadAdapter, request));
+        return withCoreIdentity(
+          await readBoundary("API-015", dependencies.administrationReadAdapter, request),
+          request,
+          dependencies.coreIdentityReadPort ?? unavailableCoreIdentityReadPort,
+        );
       }
       if (request.page === "UI-036") return readBoundary("API-015", dependencies.administrationReadAdapter, request);
       if (request.page === "UI-035") return readBoundary("API-016", dependencies.auditReadAdapter, request);
@@ -246,6 +270,7 @@ function validStagingDependencies(configuration: Extract<AdminConsoleConfigurati
     && typeof value.auditReadAdapter?.read === "function"
     && typeof value.jobRuntimeReadPort?.readStatus === "function"
     && typeof value.advisoryRuntimeReadPort?.readStatus === "function"
+    && (value.coreIdentityReadPort === undefined || typeof value.coreIdentityReadPort.readCurrentPrincipal === "function")
     && scopes !== undefined
     && configuration.policyScopeId !== undefined
     && configuration.sourceScopeId !== undefined
@@ -355,16 +380,71 @@ function isSessionBoundaryUnavailable(error: unknown): boolean {
   return code === "SESSION_PERSISTENCE_UNAVAILABLE" || code === "STAGING_SESSION_NOT_READY";
 }
 
-function withCoreDependencyDeferral(result: ConsoleReadResult): ConsoleReadResult {
+async function withCoreIdentity(
+  result: ConsoleReadResult,
+  request: ConsoleReadRequest,
+  port: ConsoleCoreIdentityReadPort,
+): Promise<ConsoleReadResult> {
   if (result.state !== "READY") return result;
+  try {
+    const principal = await port.readCurrentPrincipal({
+      sessionId: request.sessionId,
+      tenantId: request.tenantId,
+      scopeRef: request.teamId,
+      correlationId: request.correlationId,
+    });
+    if (!validCurrentPrincipal(principal, request.tenantId, request.teamId)) return coreUnavailable(result);
+    return immutableConsole({
+      ...result,
+      data: {
+        ...(result.data ?? {}),
+        currentPrincipal: principal,
+        coreApi001: "AVAILABLE",
+        coreDependency: "READY",
+      },
+    });
+  } catch {
+    return coreUnavailable(result);
+  }
+}
+
+function coreUnavailable(result: ConsoleReadResult): ConsoleReadResult {
+  const safeData = withoutCoreIdentityData(result.data);
   return immutableConsole({
     ...result,
     data: {
-      ...(result.data ?? {}),
-      coreApi001002: "NOT_AVAILABLE",
-      coreDependency: "DEFERRED",
+      ...safeData,
+      coreApi001: "NOT_AVAILABLE",
+      coreDependency: "NOT_READY",
     },
   });
+}
+
+function withoutCoreIdentityData(data: Readonly<Record<string, unknown>> | undefined): Readonly<Record<string, unknown>> {
+  const omitted = new Set(["currentPrincipal", "coreApi001", "coreApi001002", "coreDependency"]);
+  return Object.fromEntries(Object.entries(data ?? {}).filter(([key]) => !omitted.has(key)));
+}
+
+const unavailableCoreIdentityReadPort: ConsoleCoreIdentityReadPort = Object.freeze({
+  readCurrentPrincipal: () => { throw new Error("CORE_IDENTITY_UNAVAILABLE"); },
+});
+
+function validCurrentPrincipal(value: unknown, tenantId: string, scopeRef: string): value is ConsoleCurrentPrincipalView {
+  if (value === null || typeof value !== "object"
+    || !exactObjectKeys(value, ["principalId", "tenantId", "roles", "scopes"])) return false;
+  const candidate = value as Readonly<Record<string, unknown>>;
+  if (!safeIdentifier(candidate["principalId"])
+    || candidate["tenantId"] !== tenantId
+    || !Array.isArray(candidate["roles"]) || candidate["roles"].length > 64
+    || !candidate["roles"].every(safeIdentifier)
+    || !Array.isArray(candidate["scopes"]) || candidate["scopes"].length > 128) return false;
+  const scopes: readonly unknown[] = candidate["scopes"];
+  return scopes.every((scope) => scope !== null && typeof scope === "object"
+      && exactObjectKeys(scope, (scope as Readonly<Record<string, unknown>>)["teamId"] === undefined ? ["tenantId"] : ["tenantId", "teamId"])
+      && (scope as Readonly<Record<string, unknown>>)["tenantId"] === tenantId
+      && optionalIdentifier((scope as Readonly<Record<string, unknown>>)["teamId"]))
+    && scopes.some((scope) => scope !== null && typeof scope === "object"
+      && (scope as Readonly<Record<string, unknown>>)["teamId"] === scopeRef);
 }
 
 function safeBoundaryResult(result: ConsoleReadResult, request: ConsoleReadRequest): ConsoleReadResult {
@@ -436,11 +516,11 @@ function exactObjectKeys(value: object, keys: readonly string[]): boolean {
   return JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...keys].sort());
 }
 
-function safeIdentifier(value: string): boolean {
-  return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(value);
+function safeIdentifier(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(value);
 }
 
-function optionalIdentifier(value: string | undefined): boolean {
+function optionalIdentifier(value: unknown): value is string | undefined {
   return value === undefined || safeIdentifier(value);
 }
 

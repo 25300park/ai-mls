@@ -87,3 +87,13 @@ Phase 5A는 FEAT-020의 existing read adapter, renderer와 13 routes를 재사�
 | Completion evidence | [Phase 6 Component Traceability](REL001_PHASE6_COMPONENT_RUNTIME_TRACEABILITY.md), [report](../reviews/REL001_PHASE6_COMPLETION_REPORT.md) | full `1471/1471 PASS` |
 
 이 overlay는 frozen FEAT-020 identity, authority 또는 lifecycle을 변경하지 않는다.
+
+## 10. REL-001 Blocker 2 UI-006 live Core data overlay
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| existing Operations Console boundary | existing `/administration` route and `ConsoleCoreIdentityReadPort` | PASS |
+| live principal projection | API-001 `GET /v1/me`; [Blocker 2 traceability](REL001_BLOCKER2_UI006_RUNTIME_TRACEABILITY.md) | PASS |
+| read-only/no mutation | principal presentation only; new controls `0` | PASS |
+| authority preservation | Session ingress `resource.view`; API-002 duplicate path `0` | PASS |
+| safe data | exact four-field allowlist; direct persistence/raw DTO `0` | PASS |

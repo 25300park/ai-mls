@@ -430,3 +430,7 @@ Phase 7은 API-017의 기존 provider-independent one-shot runtime을 release ar
 | evidence | [Runtime Inventory](REL001_BLOCKER1C_RUNTIME_CLOSURE_INVENTORY.md), [Completion Report](../reviews/REL001_BLOCKER1C_COMPLETION_REPORT.md) |
 
 Blocker 1C는 API-017 runtime을 변경하지 않고 exact release closure에 기존 component를 보존한다. Live provider는 `0/3 NOT_READY`, DEC-162는 `IN_REVIEW`다.
+
+## REL-001 Blocker 2 downstream overlay
+
+[UI-006 Runtime Traceability](REL001_BLOCKER2_UI006_RUNTIME_TRACEABILITY.md)는 closed API-001 `GET /v1/me`를 UI-006의 bounded presentation에 연결한다. API-017 의미, lifecycle, scheduler, handler와 audit mapping은 변경하지 않는다. UI-006 blocker는 `CLOSED` 후보이며 남은 release blockers는 live FEAT-022 provider와 fresh dependency audit의 `2`개다.

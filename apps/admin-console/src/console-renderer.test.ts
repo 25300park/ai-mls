@@ -320,15 +320,26 @@ test("F16-PHASE-10 UI-006 renders compact supported data and unavailable canonic
     targetGovernance: { state: "UNAVAILABLE" },
     authorityStatus: "AUTHORIZED",
     administrationApiStatus: "AVAILABLE",
+    currentPrincipal: {
+      principalId: "principal-live", tenantId: "tenant-a", roles: ["ADMINISTRATOR"],
+      scopes: [{ tenantId: "tenant-a", teamId: "team-a" }],
+      sessionId: "session-must-not-render", expiresAt: "2026-09-16T12:00:00.000Z",
+    },
+    coreDependency: "READY",
+    coreApi001: "AVAILABLE",
   }));
 
-  for (const label of ["Administration Overview", "Visible Active", "Visible Assignments", "Role Assignments", "Pending Proposals", "Recent Decisions", "Policy Governance", "Source Governance", "Target Governance", "UNAVAILABLE", "AUTHORIZED", "AVAILABLE"]) {
+  for (const label of ["Administration Overview", "Current Principal", "principal-live", "tenant-a", "ADMINISTRATOR", "team-a", "Visible Active", "Visible Assignments", "Role Assignments", "Pending Proposals", "Recent Decisions", "Policy Governance", "Source Governance", "Target Governance", "UNAVAILABLE", "AUTHORIZED", "AVAILABLE"]) {
     assert.equal(html.includes(label), true, label);
   }
   assert.equal(html.includes("Total Assignments"), false);
   assert.equal(html.includes("No canonical proposal list operation"), false);
   assert.equal(html.includes("principal-<script>"), false);
   assert.equal(html.includes("principal-&lt;script&gt;unsafe()&lt;/script&gt;"), true);
+  assert.equal(html.includes("session-must-not-render"), false);
+  assert.equal(html.includes("2026-09-16T12:00:00.000Z"), false);
+  assert.equal(html.includes("Core API-001/002"), false);
+  assert.equal(html.includes("Core API-001"), true);
   assert.equal(/<form|<button|onclick=|data-command=/u.test(html), false);
   assert.equal(CONSOLE_STYLES.includes("grid-template-columns:240px 1fr"), true);
   assert.equal(CONSOLE_STYLES.includes("height:48px"), true);

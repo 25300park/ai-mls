@@ -162,6 +162,17 @@ Phase 5 completion은 `6 eligible / 30 dependency-blocked / 1 POST-MVP` canonica
 | Controlled writes | UI-036 authority/MFA boundary unchanged; new mutation control 0 | PASS |
 | Advisory provenance/human review | provider-independent advisory remains non-authoritative; live provider `NOT_READY` | PASS |
 | Deferred Core truth | UI-006 remains `SAFELY_DEFERRED`; fabricated data 0 | PASS |
+
 | Claim boundary | [Phase 6 report](../reviews/REL001_PHASE6_COMPLETION_REPORT.md) | bounded affected evidence only; new full WCAG conformance claim 0 |
 
 Phase 6는 FEAT-021의 canonical `37 = 6 eligible + 30 dependency-gated + 1 POST-MVP` 경계를 변경하지 않는다.
+
+## 11. REL-001 Blocker 2 UI-006 accessibility preservation
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| canonical screen/route | UI-006 `/administration`; new screen/route `0` | PASS |
+| semantic section | labelled `Current Principal` section within existing main landmark | PASS |
+| bounded status | accessible `READY` or `NOT_READY`; false enabled affordance `0` | PASS |
+| keyboard/focus | existing shell, skip link, focus and navigation primitives unchanged | PASS |
+| safe rendering | renderer selects four fields and escapes values | PASS |
