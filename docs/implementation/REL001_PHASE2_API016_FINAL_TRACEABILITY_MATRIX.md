@@ -73,3 +73,7 @@ Phase 2 is complete for the explicitly approved six-source API-016 durable mater
 
 Final Recommendation:
 `APPROVE_REL001_PHASE2_API016_RUNTIME_FINALIZATION`
+
+## 6. Phase 6 integrated Staging verification overlay
+
+Phase 6는 approved six-source boundary를 변경하지 않고 domain mutation → enriched v2 intent → durable materializer → append-only final Audit Event → Console read 경로를 재검증했다. API-016 affected `36/36`, full regression `1471/1471`이 PASS했다. Replay duplicate `0`, cross-source collision `0`, chronology/principal/tenant/scope 보존, Client/Requirement materialization `0`, v1 materialization `0/7`, unsafe leakage `0`이다. Evidence: [Component Traceability](REL001_PHASE6_COMPONENT_RUNTIME_TRACEABILITY.md), [Failure Matrix](REL001_PHASE6_FAILURE_ISOLATION_READINESS_MATRIX.md), [Completion Report](../reviews/REL001_PHASE6_COMPLETION_REPORT.md).

@@ -360,3 +360,16 @@ Phase 5C는 API-017 lifecycle을 확장하지 않고 existing status read projec
 | fresh verification | focused `21/21`; affected `452/452`; full `1464/1464` |
 
 이 closeout은 API-017 lifecycle, scheduler, Job mutation 또는 provider execution authority를 추가하지 않는다.
+
+## Phase 6 integrated Staging verification evidence
+
+| Trace | Result |
+|---|---|
+| API-017 runtime status | owning `StagingJobExecutionRuntime` status is re-observed; unavailable or malformed status makes API-017 and Console `NOT_READY` |
+| durable lifecycle | CAS/idempotency, restart recovery, single completion and manual RetryAsSuccessor lineage preserved |
+| API-016 evidence | DEC-151 mapping and append-only materialization regression PASS; direct final-event creation 0 |
+| runtime exclusions | automatic retry / scheduler / polling / network `0/0/0/0` |
+| integrated evidence | [Component Traceability](REL001_PHASE6_COMPONENT_RUNTIME_TRACEABILITY.md), [Restart Matrix](REL001_PHASE6_RESTART_RECOVERY_MATRIX.md), [Completion Report](../reviews/REL001_PHASE6_COMPLETION_REPORT.md) |
+| verification | API-017 affected `73/73 PASS`; full `1471/1471 PASS` |
+
+Phase 6는 API-017 lifecycle이나 handler authority를 확장하지 않고 existing bounded one-shot runtime을 integrated readiness에서 검증한다.

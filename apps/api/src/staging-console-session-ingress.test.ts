@@ -95,6 +95,10 @@ test("REL001-PHASE5B Platform Host starts the six-screen Staging Console without
   assert.deepEqual(composition.status(), {
     environment: "Staging", readiness: "NOT_READY", executableScreens: 6,
     providerIndependentImplementation: "READY", liveProviderExecution: "NOT_READY",
+    components: {
+      session: "NOT_READY", publication: "NOT_READY", api015: "NOT_READY",
+      api016: "NOT_READY", api017: "NOT_READY", feat022ProviderIndependent: "NOT_READY",
+    },
   });
   const response = await fetch(`${composition.server.localUrl}/api/console/view?page=UI-031`, {
     headers: { "x-session-id": "session-staging" },

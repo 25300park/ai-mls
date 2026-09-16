@@ -128,6 +128,14 @@ export interface StagingAdminConsoleComposition {
     executableScreens: 6;
     providerIndependentImplementation: "READY";
     liveProviderExecution: "NOT_READY";
+    components: Readonly<{
+      session: "READY" | "NOT_READY";
+      publication: "READY" | "NOT_READY";
+      api015: "READY" | "NOT_READY";
+      api016: "READY" | "NOT_READY";
+      api017: "READY" | "NOT_READY";
+      feat022ProviderIndependent: "READY" | "NOT_READY";
+    }>;
   }>;
 }
 
@@ -211,8 +219,21 @@ export function composeStagingAdminConsole(
       executableScreens: 6 as const,
       providerIndependentImplementation: "READY" as const,
       liveProviderExecution: "NOT_READY" as const,
+      components: Object.freeze({
+        session: observedReadiness(unavailableMandatoryBoundaries, "SESSION"),
+        publication: observedReadiness(unavailableMandatoryBoundaries, "PUBLICATION"),
+        api015: unavailableMandatoryBoundaries.has("API-015") || unavailableMandatoryBoundaries.has("API-015-COMMAND-FAULT")
+          ? "NOT_READY" as const : "READY" as const,
+        api016: observedReadiness(unavailableMandatoryBoundaries, "API-016"),
+        api017: observedReadiness(unavailableMandatoryBoundaries, "API-017"),
+        feat022ProviderIndependent: observedReadiness(unavailableMandatoryBoundaries, "FEAT-022"),
+      }),
     }),
   });
+}
+
+function observedReadiness(unavailable: ReadonlySet<string>, boundary: string): "READY" | "NOT_READY" {
+  return unavailable.has(boundary) ? "NOT_READY" : "READY";
 }
 
 function validStagingDependencies(configuration: Extract<AdminConsoleConfiguration, { runtimeEnvironment: "STAGING" }>, value: StagingAdminConsoleDependencies): boolean {
@@ -262,6 +283,19 @@ async function readStagingOperations(
       dependencies.advisoryRuntimeReadPort.readStatus(context),
     ]);
     if (!validJobs(jobs) || !validAdvisory(advisory)) throw new Error("STAGING_CONSOLE_BACKEND_INVALID");
+    const safeJobs = jobs.jobs.map((job) => Object.freeze({
+      jobId: job.jobId,
+      status: job.status,
+      ...(job.failureCategory === undefined ? {} : { failureCategory: job.failureCategory }),
+      ...(job.predecessorJobId === undefined ? {} : { predecessorJobId: job.predecessorJobId }),
+      ...(job.successorJobId === undefined ? {} : { successorJobId: job.successorJobId }),
+    }));
+    const safeAdvisory = Object.freeze({
+      providerIndependentImplementation: advisory.providerIndependentImplementation,
+      liveProviderExecution: advisory.liveProviderExecution,
+      externalDependency: advisory.externalDependency,
+      decision162: advisory.decision162,
+    });
     observe("API-017", jobs.readiness !== "NOT_READY" && jobs.readiness !== "UNKNOWN");
     observe("FEAT-022", true);
     return immutableConsole({
@@ -278,8 +312,8 @@ async function readStagingOperations(
           liveProvider: advisory.liveProviderExecution,
         },
         components: [
-          { component: "API-017", readiness: jobs.readiness, jobs: jobs.jobs },
-          { component: "FEAT-022", ...advisory },
+          { component: "API-017", readiness: jobs.readiness, jobs: safeJobs },
+          { component: "FEAT-022", ...safeAdvisory },
         ],
         metrics: {
           jobStatusCount: jobs.jobs.length,
@@ -367,7 +401,8 @@ function safeBoundaryValue(value: unknown, depth: number, budget: { count: numbe
 
 function validJobs(value: Awaited<ReturnType<ConsoleJobRuntimeStatusReadPort["readStatus"]>>): boolean {
   const readiness = new Set(["READY", "NOT_READY", "DEGRADED", "UNKNOWN"]);
-  return readiness.has(value.readiness)
+  return exactObjectKeys(value, ["jobs", "readiness"])
+    && readiness.has(value.readiness)
     && Array.isArray(value.jobs) && value.jobs.length <= 100
     && (value.jobs as readonly unknown[]).every(validJob);
 }
@@ -375,8 +410,11 @@ function validJobs(value: Awaited<ReturnType<ConsoleJobRuntimeStatusReadPort["re
 function validJob(value: unknown): boolean {
   if (value === null || typeof value !== "object") return false;
   const job = value as Record<string, unknown>;
+  const keys = Object.keys(job);
+  const allowedKeys = new Set(["failureCategory", "jobId", "predecessorJobId", "status", "successorJobId"]);
   const statuses = new Set(["QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED", "EXPIRED"]);
-  return typeof job["jobId"] === "string" && safeIdentifier(job["jobId"])
+  return keys.includes("jobId") && keys.includes("status") && keys.every((key) => allowedKeys.has(key))
+    && typeof job["jobId"] === "string" && safeIdentifier(job["jobId"])
     && typeof job["status"] === "string" && statuses.has(job["status"])
     && (job["failureCategory"] === undefined
       || (typeof job["failureCategory"] === "string" && optionalSafeText(job["failureCategory"])))
@@ -387,10 +425,15 @@ function validJob(value: unknown): boolean {
 }
 
 function validAdvisory(value: Awaited<ReturnType<ConsoleAdvisoryRuntimeStatusReadPort["readStatus"]>>): boolean {
-  return value.providerIndependentImplementation === "READY"
+  return exactObjectKeys(value, ["decision162", "externalDependency", "liveProviderExecution", "providerIndependentImplementation"])
+    && value.providerIndependentImplementation === "READY"
     && value.liveProviderExecution === "NOT_READY"
     && value.externalDependency === "EXTERNAL_ACCOUNT_AND_CONTRACT_DEPENDENCY"
     && value.decision162 === "IN_REVIEW";
+}
+
+function exactObjectKeys(value: object, keys: readonly string[]): boolean {
+  return JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...keys].sort());
 }
 
 function safeIdentifier(value: string): boolean {

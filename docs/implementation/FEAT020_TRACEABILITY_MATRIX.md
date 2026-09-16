@@ -75,3 +75,15 @@ Phase 5A는 FEAT-020의 existing read adapter, renderer와 13 routes를 재사�
 | Final evidence | [Finalization Report](../reviews/REL001_PHASE5_ADMIN_CONSOLE_FINALIZATION_REPORT.md) | focused 21/21; affected 452/452; full 1464/1464 |
 
 이 overlay는 historical F20 wave 또는 frozen FEAT-020 ownership을 다시 정의하지 않는다.
+
+## 9. REL-001 Phase 6 integrated Staging overlay
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Existing Operations Console | existing six-screen Staging composition plus `/system/operations`; new route/dashboard 0 | PASS |
+| Owning-port integration | Session/API-015/API-016/API-017/FEAT-022 status ports only; direct store access 0 | PASS |
+| Readiness truth | missing mandatory component makes Console/global `NOT_READY`; live provider remains `NOT_READY` | PASS |
+| Safe errors and read-only behavior | Console all `109/109 PASS`; mutation/network additions 0 | PASS |
+| Completion evidence | [Phase 6 Component Traceability](REL001_PHASE6_COMPONENT_RUNTIME_TRACEABILITY.md), [report](../reviews/REL001_PHASE6_COMPLETION_REPORT.md) | full `1471/1471 PASS` |
+
+이 overlay는 frozen FEAT-020 identity, authority 또는 lifecycle을 변경하지 않는다.

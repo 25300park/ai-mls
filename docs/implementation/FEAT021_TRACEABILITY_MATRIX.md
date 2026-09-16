@@ -152,3 +152,16 @@ Phase 5A는 기존 `6 eligible / 30 dependency-blocked / 1 POST-MVP`를 그대�
 | Claim boundary | [Finalization Report](../reviews/REL001_PHASE5_ADMIN_CONSOLE_FINALIZATION_REPORT.md) | bounded evidence only; full 37-screen conformance claim 0 |
 
 Phase 5 completion은 `6 eligible / 30 dependency-blocked / 1 POST-MVP` canonical boundary를 변경하지 않는다.
+
+## 10. REL-001 Phase 6 accessibility preservation
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Six-screen boundary | UI-006/031/032/033/035/036 preserved; new screen/route 0 | PASS |
+| Keyboard/focus/status/error | existing Console renderer/server suites in Console `109/109` regression | PASS |
+| Controlled writes | UI-036 authority/MFA boundary unchanged; new mutation control 0 | PASS |
+| Advisory provenance/human review | provider-independent advisory remains non-authoritative; live provider `NOT_READY` | PASS |
+| Deferred Core truth | UI-006 remains `SAFELY_DEFERRED`; fabricated data 0 | PASS |
+| Claim boundary | [Phase 6 report](../reviews/REL001_PHASE6_COMPLETION_REPORT.md) | bounded affected evidence only; new full WCAG conformance claim 0 |
+
+Phase 6는 FEAT-021의 canonical `37 = 6 eligible + 30 dependency-gated + 1 POST-MVP` 경계를 변경하지 않는다.

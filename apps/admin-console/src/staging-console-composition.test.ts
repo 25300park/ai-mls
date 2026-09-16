@@ -259,6 +259,10 @@ test("REL001-PHASE5B RED: Operations keeps API-017 and FEAT-022 readiness truth 
   assert.deepEqual(composition.status(), {
     environment: "Staging", readiness: "NOT_READY", executableScreens: 6,
     providerIndependentImplementation: "READY", liveProviderExecution: "NOT_READY",
+    components: {
+      session: "NOT_READY", publication: "NOT_READY", api015: "NOT_READY", api016: "NOT_READY",
+      api017: "NOT_READY", feat022ProviderIndependent: "NOT_READY",
+    },
   });
   await composition.server.start();
   const response = await fetch(`${composition.server.localUrl}/api/console/view?page=OPERATIONS`, {
@@ -276,6 +280,7 @@ test("REL001-PHASE5B RED: false live-provider or DEC-162 readiness and unsafe ba
   for (const advisory of [
     { providerIndependentImplementation: "READY", liveProviderExecution: "READY", externalDependency: "EXTERNAL_ACCOUNT_AND_CONTRACT_DEPENDENCY", decision162: "IN_REVIEW" },
     { providerIndependentImplementation: "READY", liveProviderExecution: "NOT_READY", externalDependency: "EXTERNAL_ACCOUNT_AND_CONTRACT_DEPENDENCY", decision162: "APPROVED" },
+    { providerIndependentImplementation: "READY", liveProviderExecution: "NOT_READY", externalDependency: "EXTERNAL_ACCOUNT_AND_CONTRACT_DEPENDENCY", decision162: "IN_REVIEW", providerResponse: "apparently-safe-value" },
   ]) {
     const composition = composeStagingAdminConsole(configuration(), dependencies({
       advisoryRuntimeReadPort: { readStatus: () => advisory as never },
@@ -306,6 +311,23 @@ test("REL001-PHASE5B RED: false live-provider or DEC-162 readiness and unsafe ba
   assert.equal(unsafeBody.includes("CONSOLE_READ_UNAVAILABLE"), true);
   assert.equal(/secret-token|private|sqlite/iu.test(unsafeBody), false);
   await unsafe.server.stop();
+
+  const unknownJobField = composeStagingAdminConsole(configuration(), dependencies({
+    jobRuntimeReadPort: {
+      readStatus: () => ({
+        readiness: "READY",
+        jobs: [{ jobId: "job-staging", status: "FAILED", rawPrompt: "apparently-safe-value" }],
+      } as never),
+    },
+  }));
+  await unknownJobField.server.start();
+  const unknownJobResponse = await fetch(`${unknownJobField.server.localUrl}/api/console/view?page=OPERATIONS`, {
+    headers: { "x-session-id": "session-staging" },
+  });
+  const unknownJobBody = await unknownJobResponse.text();
+  assert.equal(unknownJobBody.includes("CONSOLE_READ_UNAVAILABLE"), true);
+  assert.equal(/rawPrompt|apparently-safe-value/iu.test(unknownJobBody), false);
+  await unknownJobField.server.stop();
 });
 
 test("REL001-PHASE5B RED: Core API-001/002 dependency is rendered as deferred on UI-006", async () => {
@@ -430,6 +452,35 @@ test("REL001-PHASE5C RED: API-017 NOT_READY is reflected in global readiness wit
     const response = await readPage(composition, "OPERATIONS");
     assert.equal(response.status, 200);
     assert.equal(composition.status().readiness, "NOT_READY");
+    assert.equal(composition.status().liveProviderExecution, "NOT_READY");
+  } finally {
+    await composition.server.stop();
+  }
+});
+
+test("REL001-PHASE6 RED: Console status exposes each mandatory observation without hiding canonical holds", async () => {
+  const composition = composeStagingAdminConsole(configuration(), dependencies());
+  assert.deepEqual(composition.status().components, {
+    session: "NOT_READY",
+    publication: "NOT_READY",
+    api015: "NOT_READY",
+    api016: "NOT_READY",
+    api017: "NOT_READY",
+    feat022ProviderIndependent: "NOT_READY",
+  });
+
+  await composition.server.start();
+  try {
+    await primeMandatoryReads(composition);
+    assert.deepEqual(composition.status().components, {
+      session: "READY",
+      publication: "READY",
+      api015: "READY",
+      api016: "READY",
+      api017: "READY",
+      feat022ProviderIndependent: "READY",
+    });
+    assert.equal(composition.status().readiness, "DEGRADED");
     assert.equal(composition.status().liveProviderExecution, "NOT_READY");
   } finally {
     await composition.server.stop();

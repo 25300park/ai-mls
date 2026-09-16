@@ -13,8 +13,8 @@ import { AdvisoryJobFailureMapper } from "../../jobs/src/advisory-job-handlers.j
 const capabilities = ["AI-001", "AI-004", "AI-005"] as const;
 const configurations = Object.fromEntries(capabilities.map((capabilityId) => [capabilityId, Object.freeze({ environment: "Staging", capabilityId, capabilityVersion: "v1.0", providerRef: `provider:${capabilityId}`, modelRef: `model:${capabilityId}`, timeoutMs: 1000, credentialRef: `vault-ref:${capabilityId}`, promptId: `PRM-${capabilityId}-001`, promptVersion: "v1.0" })])) as Record<ExecutableAdvisoryCapabilityId, AdvisoryCapabilityConfiguration>;
 const failureMapper = new AdvisoryJobFailureMapper();
-function adapters(testOnly: boolean, networkAuthorized: boolean, credentialAvailable: boolean): Record<ExecutableAdvisoryCapabilityId, ConfiguredAdvisoryProviderAdapter> {
-  return Object.fromEntries(capabilities.map((capabilityId) => [capabilityId, new ConfiguredAdvisoryProviderAdapter({ configuration: configurations[capabilityId], networkAuthorized, credentialResolver: { isAvailable: () => credentialAvailable, resolve: () => credentialAvailable ? "test-boundary-value" : undefined }, executor: { testOnly, execute: () => ({}) }, telemetrySink: { append: () => undefined }, clock: () => new Date("2026-09-15T01:00:00.000Z") })])) as Record<ExecutableAdvisoryCapabilityId, ConfiguredAdvisoryProviderAdapter>;
+function adapters(testOnly: boolean, networkAuthorized: boolean, credentialAvailable: boolean, onExecute: () => void = () => undefined): Record<ExecutableAdvisoryCapabilityId, ConfiguredAdvisoryProviderAdapter> {
+  return Object.fromEntries(capabilities.map((capabilityId) => [capabilityId, new ConfiguredAdvisoryProviderAdapter({ configuration: configurations[capabilityId], networkAuthorized, credentialResolver: { isAvailable: () => credentialAvailable, resolve: () => credentialAvailable ? "test-boundary-value" : undefined }, executor: { testOnly, execute: () => { onExecute(); return {}; } }, telemetrySink: { append: () => undefined }, clock: () => new Date("2026-09-15T01:00:00.000Z") })])) as Record<ExecutableAdvisoryCapabilityId, ConfiguredAdvisoryProviderAdapter>;
 }
 
 test("Phase 4C readiness reports 3/3 provider-independent and 0/3 actual Staging execution for test adapters", () => {
@@ -51,9 +51,19 @@ test("Phase 4C readiness cannot be fabricated without the actual matching applic
   assert.equal(composeAdvisoryProviderReadiness({ adapters: configured, applicationPorts: disconnectedPorts, failureMapper }).providerIndependentReady, 0);
 });
 
-function withComposition(testOnly: boolean, networkAuthorized: boolean, credentialAvailable: boolean, run: (value: Readonly<{ adapters: Record<ExecutableAdvisoryCapabilityId, ConfiguredAdvisoryProviderAdapter>; applicationPorts: { "AI-001": Ai001ListingParseApplicationService; "AI-004": Ai004RequirementParseApplicationService; "AI-005": Ai005MatchingApplicationService } }>) => void): void {
+test("REL001-PHASE6 provider-independent readiness performs zero provider executions", () => {
+  let executions = 0;
+  withComposition(true, false, true, ({ adapters: configured, applicationPorts }) => {
+    const readiness = composeAdvisoryProviderReadiness({ adapters: configured, applicationPorts, failureMapper });
+    assert.equal(readiness.providerIndependentReady, 3);
+    assert.equal(readiness.stagingExecutionReady, 0);
+    assert.equal(executions, 0);
+  }, () => { executions += 1; });
+});
+
+function withComposition(testOnly: boolean, networkAuthorized: boolean, credentialAvailable: boolean, run: (value: Readonly<{ adapters: Record<ExecutableAdvisoryCapabilityId, ConfiguredAdvisoryProviderAdapter>; applicationPorts: { "AI-001": Ai001ListingParseApplicationService; "AI-004": Ai004RequirementParseApplicationService; "AI-005": Ai005MatchingApplicationService } }>) => void, onExecute: () => void = () => undefined): void {
   const directory = mkdtempSync(join(tmpdir(), "rel001-phase4c-readiness-"));
-  const configured = adapters(testOnly, networkAuthorized, credentialAvailable);
+  const configured = adapters(testOnly, networkAuthorized, credentialAvailable, onExecute);
   const stores: DurableAdvisoryStore[] = [];
   try {
     const services = Object.fromEntries(capabilities.map((capabilityId) => {
