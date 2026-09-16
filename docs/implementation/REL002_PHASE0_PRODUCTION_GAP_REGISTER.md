@@ -55,3 +55,9 @@ Severity는 Production 안전·복구·운영 영향으로 판정한다. `Blocki
 | Medium | 1 |
 
 The sole non-blocking gap is the exact-candidate dependency audit refresh at the final acceptance gate. The external provider gap remains separate from repository work. Closing repository gaps must not bypass DEC-162/163 or change REL-001's frozen state.
+
+## 4. Phase 1 design disposition
+
+DEC-164 approves the bounded design for `REL002-GAP-004`, `REL002-GAP-005` and `REL002-GAP-006`. The approved boundary centralizes closed typed Production configuration, provider-neutral secret references and startup validation while reusing existing durable Session and authorization authority.
+
+This design disposition does not close the gaps. Their classifications remain `PARTIAL`, `PARTIAL` and `STAGING_ONLY`; all three remain blocking until separately authorized implementation and Production-bound evidence pass. Infrastructure selection, credential values and live provider activation remain outside Phase 1 design scope.

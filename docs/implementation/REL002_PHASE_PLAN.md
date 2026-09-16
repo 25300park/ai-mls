@@ -39,3 +39,13 @@ Phase 4 and Phase 5 may be designed independently after Phase 3, but Phase 6 and
 ## 4. Mandatory stop conditions
 
 Stop for Architecture Owner review before new API IDs, roles/capabilities, lifecycle vocabulary, persistence technology, identity protocol, external destination, Production credential, migration execution, deployment authority or provider/network activation.
+
+## 5. Current phase status
+
+| Phase | Status | Evidence boundary |
+|---|---|---|
+| Phase 0 | COMPLETE | Inventory `26/26`, blocking gaps `24`, non-blocking gaps `1` |
+| Phase 1 | DESIGN APPROVED / IMPLEMENTATION NOT AUTHORIZED | DEC-164 and Phase 1 inventory/models/matrix/plan; gaps 004-006 remain blocking |
+| Phase 2 | NOT STARTED | Must not start before Phase 1 implementation and closeout approval |
+
+The Phase 1 design introduces no Production/Test change, credential value, infrastructure mutation or provider/network call. It does not change the Phase 0 gap counts or the eight-phase sequence.
