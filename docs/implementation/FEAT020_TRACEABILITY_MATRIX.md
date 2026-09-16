@@ -64,3 +64,14 @@ Phase 5A는 FEAT-020의 existing read adapter, renderer와 13 routes를 재사�
 | Failure/readiness truth | [Failure Matrix](REL001_PHASE5C_FAILURE_READINESS_MATRIX.md) | VERIFIED; observed mandatory loss → `NOT_READY` |
 | Safe read-only Console | Phase 5C focused and affected regression | VERIFIED; new mutation/authority/store access 0 |
 | Completion evidence | [Phase 5C report](../reviews/REL001_PHASE5C_COMPLETION_REPORT.md) | focused 21/21; affected 452/452; full 1464/1464 |
+
+## 8. REL-001 Phase 5 finalization overlay
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Existing Console boundary | [Phase 5 Final Traceability](REL001_PHASE5_ADMIN_CONSOLE_FINAL_TRACEABILITY_MATRIX.md) | six canonical screens executable; new route/screen 0 |
+| Safe operational reads | API-015/016/017 and FEAT-022 projections | PASS; direct store/provider access 0 |
+| Truthful holds | live provider `NOT_READY`; Core dependency `SAFELY_DEFERRED` | PASS |
+| Final evidence | [Finalization Report](../reviews/REL001_PHASE5_ADMIN_CONSOLE_FINALIZATION_REPORT.md) | focused 21/21; affected 452/452; full 1464/1464 |
+
+이 overlay는 historical F20 wave 또는 frozen FEAT-020 ownership을 다시 정의하지 않는다.
