@@ -148,23 +148,61 @@ test("FEAT-024-C persists a validated candidate and manifest across reopen", () 
   store.close();
 });
 
-test("REL-001 Blocker 1C durably persists the exact post-transport candidate across reopen", async () => {
+test("REL-001 Blocker 1C historical exact candidate and manifest identities remain immutable", () => {
+  const fingerprintEvidence = readFileSync(
+    "docs/implementation/REL001_BLOCKER1C_COMPONENT_FINGERPRINT_MATRIX.md",
+    "utf8",
+  );
+  const acceptanceEvidence = readFileSync(
+    "docs/implementation/REL001_BLOCKER1C_ACCEPTANCE_REEVALUATION.md",
+    "utf8",
+  );
+
+  assert.match(fingerprintEvidence, /557af70887a1d47b956f1f480dbb726a6b054cfec5d696dea134140e623887cf/u);
+  assert.match(fingerprintEvidence, /2f0044be01b5819469528e5f245c0f50b26575c6d6e1d327a5659aaf8f8373dd/u);
+  assert.match(fingerprintEvidence, /d5bd2cb64212141a28082bc2a604d5715fcba7972f68c30e97891a9370855570/u);
+  assert.match(acceptanceEvidence, /6b0df666b0f8f4227cfc0b5a9c60e37a4922039c3ae2324c3d46dd81be66042d/u);
+  assert.match(acceptanceEvidence, /fcf6f0584ea34ba835bfe129f48e74ce4c47ba910fb0daa83978b0a7ca64a804/u);
+});
+
+test("REL-001 Blocker 2C durably persists the exact post-UI-006 candidate across reopen", async () => {
   const exactCandidate = await materializeRel001StagingCandidate({
     distRoot: "dist",
-    sourceCommitSha: "97a3522fb301fea197d3fa2defc7bc2826c2d719",
+    sourceCommitSha: "b7d2a864b8dbed9c6b1f0c7874481035159af886",
     repositoryIdentity: "https://github.com/25300park/ai-mls.git",
     sourceBranch: "main",
-    generatedAt: "2026-09-16T12:00:00.000Z",
+    generatedAt: "2026-09-16T15:00:00.000Z",
   });
   const exactManifest = manifestFor(exactCandidate, {
-    evaluatedAt: "2026-09-16T13:00:00.000Z",
-    decisionEvidenceRef: "staging-reevaluation:blocker1c:decision:incomplete",
+    evidenceRefs: [{
+      evidenceType: "TEST_RESULT",
+      evidenceRef: "evidence:rel001-blocker2c-tests",
+      sourceFeatureOrRegistry: "FEAT-024",
+      sourceCommitSha: exactCandidate.sourceCommitSha,
+      candidateBindingFingerprint: exactCandidate.candidateFingerprint,
+      evaluatedAt: "2026-09-16T16:00:00.000Z",
+      safeResultSummary: "Blocker 2C exact-candidate verification passed",
+    }],
+    readinessRefs: [{
+      readinessType: "DEPLOYMENT",
+      readinessRef: "readiness-projection:rel001-blocker2c-staging",
+      releaseCandidateId: exactCandidate.releaseCandidateId,
+      candidateBindingFingerprint: exactCandidate.candidateFingerprint,
+      targetEnvironment: exactCandidate.targetEnvironment,
+      readiness: "NOT_READY",
+      freshness: "FRESH",
+      evaluatedAt: "2026-09-16T16:00:00.000Z",
+      safeReasonCodes: ["LIVE_PROVIDER_NOT_READY", "DEPENDENCY_AUDIT_NOT_RUN"],
+      evidenceRefs: ["evidence:rel001-blocker2-ui006", "evidence:rel001-blocker2c-tests"],
+    }],
+    evaluatedAt: "2026-09-16T16:00:00.000Z",
+    decisionEvidenceRef: "staging-reevaluation:blocker2c:decision:incomplete",
   });
-  assert.equal(exactCandidate.artifactFingerprint, "557af70887a1d47b956f1f480dbb726a6b054cfec5d696dea134140e623887cf");
-  assert.equal(exactCandidate.releaseCandidateId, "2f0044be01b5819469528e5f245c0f50b26575c6d6e1d327a5659aaf8f8373dd");
-  assert.equal(exactCandidate.candidateFingerprint, "d5bd2cb64212141a28082bc2a604d5715fcba7972f68c30e97891a9370855570");
-  assert.equal(exactManifest.acceptanceManifestId, "6b0df666b0f8f4227cfc0b5a9c60e37a4922039c3ae2324c3d46dd81be66042d");
-  assert.equal(exactManifest.manifestFingerprint, "fcf6f0584ea34ba835bfe129f48e74ce4c47ba910fb0daa83978b0a7ca64a804");
+  assert.equal(exactCandidate.artifactFingerprint, "7fef924f0178d732ca4a1bd4ee5c83c0eea7a5dafb8b1a2a28747784bbe5c659");
+  assert.equal(exactCandidate.releaseCandidateId, "3ad9f7a3ed241f2e04745c55cbd94a1058d5afac1c652d8c4b5830da5e24e5c1");
+  assert.equal(exactCandidate.candidateFingerprint, "c8874506b7c4a0b815210ca5bb0e8514ef06c42d391dd26c4c503037d0a65d8d");
+  assert.equal(exactManifest.acceptanceManifestId, "65744626ffcfa1bd21790be1cc18fb0e459788fbf726c01d21c66d3842efa845");
+  assert.equal(exactManifest.manifestFingerprint, "936a4c06a714f9f4661e870720f17a3bbd78de25101471bd402d1adab5827cec");
   assert.equal(exactManifest.acceptanceResult, "INCOMPLETE");
   assert.equal(exactManifest.acceptedBy, null);
   assert.equal(exactManifest.acceptedAt, null);

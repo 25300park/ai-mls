@@ -231,10 +231,13 @@ test("FEAT-024-F current REL-001 INCOMPLETE produces no promotion handoff", () =
   assert.equal(service(snapshot({ candidate, acceptanceManifest: manifest, manifestHistory: [manifest] })).materialize(request()), null);
 });
 
-test("REL-001 Blocker 1C exact INCOMPLETE candidate produces no promotion handoff", async () => {
+async function assertExactIncompleteCandidateProducesNoPromotionHandoff(
+  sourceCommitSha: string,
+  evidenceLabel: "blocker1c" | "blocker2c",
+): Promise<void> {
   const candidate = await materializeRel001StagingCandidate({
     distRoot: "dist",
-    sourceCommitSha: "97a3522fb301fea197d3fa2defc7bc2826c2d719",
+    sourceCommitSha,
     repositoryIdentity: "https://github.com/25300park/ai-mls.git",
     sourceBranch: "main",
     generatedAt: "2026-09-16T12:00:00.000Z",
@@ -242,16 +245,16 @@ test("REL-001 Blocker 1C exact INCOMPLETE candidate produces no promotion handof
   const manifest = createReleaseAcceptanceManifest(candidate, {
     evidenceRefs: [{
       evidenceType: "TEST_RESULT",
-      evidenceRef: "staging-reevaluation:blocker1c:focused-tests",
+      evidenceRef: `staging-reevaluation:${evidenceLabel}:focused-tests`,
       sourceFeatureOrRegistry: "REL-001",
       sourceCommitSha: candidate.sourceCommitSha,
       candidateBindingFingerprint: candidate.candidateFingerprint,
       evaluatedAt: "2026-09-16T13:00:00.000Z",
-      safeResultSummary: "Blocker 1C focused verification passed",
+      safeResultSummary: `${evidenceLabel === "blocker1c" ? "Blocker 1C" : "Blocker 2C"} focused verification passed`,
     }],
     readinessRefs: [{
       readinessType: "DEPLOYMENT",
-      readinessRef: "staging-reevaluation:blocker1c:deployment-not-ready",
+      readinessRef: `staging-reevaluation:${evidenceLabel}:deployment-not-ready`,
       releaseCandidateId: candidate.releaseCandidateId,
       candidateBindingFingerprint: candidate.candidateFingerprint,
       targetEnvironment: "Staging",
@@ -259,13 +262,13 @@ test("REL-001 Blocker 1C exact INCOMPLETE candidate produces no promotion handof
       freshness: "FRESH",
       evaluatedAt: "2026-09-16T13:00:00.000Z",
       safeReasonCodes: ["MISSING_RUNTIME_SURFACES"],
-      evidenceRefs: ["staging-reevaluation:blocker1c:focused-tests"],
+      evidenceRefs: [`staging-reevaluation:${evidenceLabel}:focused-tests`],
     }],
     acceptanceResult: "INCOMPLETE",
     acceptedBy: null,
     evaluatedAt: "2026-09-16T13:00:00.000Z",
     acceptedAt: null,
-    decisionEvidenceRef: "staging-reevaluation:blocker1c:decision:incomplete",
+    decisionEvidenceRef: `staging-reevaluation:${evidenceLabel}:decision:incomplete`,
     previousManifestId: null,
   });
   const boundary = new PromotionHandoffEvidenceService({
@@ -286,6 +289,20 @@ test("REL-001 Blocker 1C exact INCOMPLETE candidate produces no promotion handof
     releaseCandidateId: candidate.releaseCandidateId,
     acceptanceManifestId: manifest.acceptanceManifestId,
   }), null);
+}
+
+test("REL-001 Blocker 1C exact INCOMPLETE candidate produces no promotion handoff", async () => {
+  await assertExactIncompleteCandidateProducesNoPromotionHandoff(
+    "97a3522fb301fea197d3fa2defc7bc2826c2d719",
+    "blocker1c",
+  );
+});
+
+test("REL-001 Blocker 2C exact INCOMPLETE candidate produces no promotion handoff", async () => {
+  await assertExactIncompleteCandidateProducesNoPromotionHandoff(
+    "b7d2a864b8dbed9c6b1f0c7874481035159af886",
+    "blocker2c",
+  );
 });
 
 test("FEAT-024-F REJECTED manifest produces no promotion handoff", () => {

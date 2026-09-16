@@ -434,3 +434,19 @@ Blocker 1C는 API-017 runtime을 변경하지 않고 exact release closure에 �
 ## REL-001 Blocker 2 downstream overlay
 
 [UI-006 Runtime Traceability](REL001_BLOCKER2_UI006_RUNTIME_TRACEABILITY.md)는 closed API-001 `GET /v1/me`를 UI-006의 bounded presentation에 연결한다. API-017 의미, lifecycle, scheduler, handler와 audit mapping은 변경하지 않는다. UI-006 blocker는 `CLOSED` 후보이며 남은 release blockers는 live FEAT-022 provider와 fresh dependency audit의 `2`개다.
+
+## REL-001 Release Blocker 2C — exact candidate rebuild
+
+| Trace | Result |
+|---|---|
+| exact source | `b7d2a864b8dbed9c6b1f0c7874481035159af886` / `Staging` |
+| API-017 closure | existing `API-017_JOB_RUNTIME` component preserved; lifecycle/handler/audit semantics unchanged |
+| UI-006 closure | `CoreIdentityConsoleReadAdapter` reachable from Staging bootstrap; `/v1/me` exact 4-field projection |
+| candidate identity | `19` roots / `68` files; release candidate `3ad9f7a3ed241f2e04745c55cbd94a1058d5afac1c652d8c4b5830da5e24e5c1` |
+| remaining runtime gap | `LIVE_AI_PROVIDER_EXECUTION` |
+| remaining acceptance blockers | live provider; fresh dependency audit (`2`) |
+| acceptance / handoff | `INCOMPLETE` / `UNAVAILABLE` |
+| API-017 restrictions | automatic retry / scheduler / polling / provider call `0/0/0/0` |
+| evidence | [Runtime Inventory](REL001_BLOCKER2C_RUNTIME_CLOSURE_INVENTORY.md), [Acceptance Reevaluation](REL001_BLOCKER2C_ACCEPTANCE_REEVALUATION.md) |
+
+Blocker 2C는 API-017 runtime을 변경하지 않는다. Live provider는 `0/3 NOT_READY`, DEC-162는 `IN_REVIEW`, dependency audit은 `NOT_RUN`이다.

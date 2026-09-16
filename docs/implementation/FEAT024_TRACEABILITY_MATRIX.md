@@ -10,7 +10,7 @@
 
 ## 1. Boundary
 
-이 문서는 FEAT-024 실행 증거를 canonical release-candidate identity에 연결한다. FEAT-024는 release trace/acceptance evidence system으로 Final Gate를 통과했지만 `REL-001 / Staging`은 계속 `INCOMPLETE`이고 mandatory runtime gaps는 5개이며 promotion handoff는 `UNAVAILABLE`이다. 이 RTM은 release acceptance, deployment 또는 registry status 변경을 수행하지 않는다.
+이 문서는 FEAT-024 실행 증거를 canonical release-candidate identity에 연결한다. FEAT-024 Final Gate 당시 `REL-001 / Staging`의 mandatory runtime gaps는 5개였다. 후속 exact-candidate overlays는 runtime closure를 additive하게 재평가하며, Blocker 2C 현재 candidate는 runtime gap 1개와 acceptance blocker 2개를 보존한다. `REL-001`은 계속 `INCOMPLETE`이고 promotion handoff는 `UNAVAILABLE`이다. 이 RTM은 release acceptance, deployment 또는 registry status 변경을 수행하지 않는다.
 
 ## 2. A–H traceability
 
@@ -129,3 +129,18 @@
 | Acceptance / handoff | `INCOMPLETE` / `UNAVAILABLE` | FAIL_CLOSED |
 | Fresh verification | focused `94/94`; affected `101/101`; full `1493/1493` | PASS |
 | Evidence | [Acceptance Reevaluation](REL001_BLOCKER1C_ACCEPTANCE_REEVALUATION.md), [Completion Report](../reviews/REL001_BLOCKER1C_COMPLETION_REPORT.md) | RECORDED |
+
+## 11. REL-001 Blocker 2C post-UI-006 exact-candidate overlay
+
+이 overlay는 Phase 7 및 Blocker 1C candidate를 수정하지 않는다. Blocker 2 main exact HEAD에 같은 FEAT-024 contract를 실행한 새 immutable candidate evidence다.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Exact source binding | `b7d2a864b8dbed9c6b1f0c7874481035159af886`, `main`, `Staging` | PASS |
+| Runtime closure | `19` roots / `68` unique files; UI-006 adapter reachable | PASS |
+| Candidate identity | artifact `7fef924f...`; candidate `3ad9f7a3...`; fingerprint `c8874506...` | PASS |
+| Historical immutability | Phase 7 and Blocker 1C source/identity evidence unchanged | PASS |
+| Durable acceptance replay | exact candidate/manifest append, reopen and replay; duplicate row `0` | PASS |
+| Current disposition | Core transport `CLOSED`; UI-006 `CLOSED`; provider and audit blockers preserved | `2` blockers |
+| Acceptance / handoff | `INCOMPLETE` / `UNAVAILABLE` | FAIL_CLOSED |
+| Evidence | [Runtime Inventory](REL001_BLOCKER2C_RUNTIME_CLOSURE_INVENTORY.md), [Acceptance Reevaluation](REL001_BLOCKER2C_ACCEPTANCE_REEVALUATION.md), [Completion Report](../reviews/REL001_BLOCKER2C_COMPLETION_REPORT.md) | RECORDED |

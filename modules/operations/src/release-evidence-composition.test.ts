@@ -326,3 +326,23 @@ test("REL-001 Blocker 1C composes the post-transport candidate without historica
     "UI_006_CORE_DATA",
   ]);
 });
+
+test("REL-001 Blocker 2C composes the post-UI-006 candidate without historical identity pinning", async () => {
+  const rebuilt = await materializeRel001StagingCandidate({
+    distRoot: "dist",
+    sourceCommitSha: "b7d2a864b8dbed9c6b1f0c7874481035159af886",
+    repositoryIdentity: "https://github.com/25300park/ai-mls.git",
+    sourceBranch: "main",
+    generatedAt: "2026-09-16T00:00:00.000Z",
+  });
+  const service = new ReleaseEvidenceCompositionService({
+    resolve: () => ({ authoritativeEvidence: [], readinessRefs: [] }),
+  });
+
+  const value = service.compose(rebuilt, { evaluatedAt: "2026-09-16T01:00:00.000Z" });
+
+  assert.equal(value.acceptanceResult, "INCOMPLETE");
+  assert.deepEqual(value.runtimeGapComponentIds, [
+    "LIVE_AI_PROVIDER_EXECUTION",
+  ]);
+});

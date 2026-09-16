@@ -108,6 +108,7 @@ const LEGACY_RUNTIME_COMPONENT_ROOTS: Readonly<Partial<Record<Rel001RuntimeArtif
 });
 const PHASE7_SOURCE_COMMIT_SHA = "cd620b273c8e7672ffc1e015380ce36d486d9a9a";
 const BLOCKER1C_SOURCE_COMMIT_SHA = "97a3522fb301fea197d3fa2defc7bc2826c2d719";
+const BLOCKER2C_SOURCE_COMMIT_SHA = "b7d2a864b8dbed9c6b1f0c7874481035159af886";
 const BLOCKER1C_RUNTIME_COMPONENT_ROOTS: Readonly<Partial<Record<Rel001RuntimeArtifactComponentId, string>>> = Object.freeze({
   ...RUNTIME_COMPONENT_ROOTS,
   CORE_API_001_002_HTTP: "apps/api/src/core-identity-authorization-composition.js",
@@ -149,6 +150,11 @@ const PHASE7_RELEASE_SCOPE_COVERAGE: readonly ReleaseScopeCoverageEvidence[] = d
 const BLOCKER1C_RELEASE_SCOPE_COVERAGE: readonly ReleaseScopeCoverageEvidence[] = deepFreeze([
   ...PHASE7_RELEASE_SCOPE_COVERAGE.map((row) => row.artifactComponentId === "CORE_API_001_002_PUBLIC_TRANSPORT"
     ? coverage("CORE_API_001_002_PUBLIC_TRANSPORT", true, true, true, "apps/api/src/core-identity-authorization-composition.ts#composeCoreApi001002NodeHttpServer", "INCLUDED")
+    : row),
+]);
+const BLOCKER2C_RELEASE_SCOPE_COVERAGE: readonly ReleaseScopeCoverageEvidence[] = deepFreeze([
+  ...BLOCKER1C_RELEASE_SCOPE_COVERAGE.map((row) => row.artifactComponentId === "UI_006_CORE_DATA"
+    ? coverage("UI_006_CORE_DATA", true, true, true, "apps/admin-console/src/core-identity-console-read-adapter.ts#CoreIdentityConsoleReadAdapter", "INCLUDED")
     : row),
 ]);
 const LEGACY_RELEASE_SCOPE_COVERAGE: readonly ReleaseScopeCoverageEvidence[] = deepFreeze([
@@ -246,6 +252,9 @@ function candidateDefinition(sourceCommitSha: string): Readonly<{
   roots: Readonly<Partial<Record<Rel001RuntimeArtifactComponentId, string>>>;
   coverage: readonly ReleaseScopeCoverageEvidence[];
 }> {
+  if (sourceCommitSha === BLOCKER2C_SOURCE_COMMIT_SHA) {
+    return { roots: BLOCKER1C_RUNTIME_COMPONENT_ROOTS, coverage: BLOCKER2C_RELEASE_SCOPE_COVERAGE };
+  }
   if (sourceCommitSha === BLOCKER1C_SOURCE_COMMIT_SHA) {
     return { roots: BLOCKER1C_RUNTIME_COMPONENT_ROOTS, coverage: BLOCKER1C_RELEASE_SCOPE_COVERAGE };
   }
