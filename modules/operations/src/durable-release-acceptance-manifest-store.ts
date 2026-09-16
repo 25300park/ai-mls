@@ -348,7 +348,8 @@ function assertCanonicalCandidateShape(value: Rel001StagingCandidate): void {
   }
   const artifact = value.artifactManifest;
   assertExactKeys(artifact, ["artifactFingerprint", "artifactManifestVersion", "excludedClassPolicy", "generatedAt", "includedFilePaths", "logicalReleaseId", "repositoryIdentity", "runtimeComponents", "sourceCommitSha", "targetEnvironment"]);
-  if (!Array.isArray(artifact.runtimeComponents) || !Array.isArray(artifact.includedFilePaths) || !Array.isArray(artifact.excludedClassPolicy)) throw failure("PERSISTENCE_INPUT_INVALID");
+  if (!Array.isArray(artifact.runtimeComponents) || artifact.runtimeComponents.length === 0
+    || !Array.isArray(artifact.includedFilePaths) || !Array.isArray(artifact.excludedClassPolicy)) throw failure("PERSISTENCE_INPUT_INVALID");
   if (artifact.artifactManifestVersion !== "1" || artifact.logicalReleaseId !== value.logicalReleaseId
     || artifact.targetEnvironment !== value.targetEnvironment || artifact.sourceCommitSha !== value.sourceCommitSha
     || artifact.repositoryIdentity !== value.repositoryIdentity || artifact.artifactFingerprint !== value.artifactFingerprint
@@ -357,9 +358,10 @@ function assertCanonicalCandidateShape(value: Rel001StagingCandidate): void {
   if (artifact.excludedClassPolicy.some((item) => typeof item !== "string" || item.length === 0)) throw failure("PERSISTENCE_INPUT_INVALID");
   for (const component of artifact.runtimeComponents) {
     assertExactKeys(component, ["artifactComponentId", "componentFingerprint", "includedFiles", "runtimeEntryPoint"]);
-    if (component["artifactComponentId"] !== "API-015_ADMINISTRATION_HTTP"
-      || component["runtimeEntryPoint"] !== "apps/api/src/administration-production-composition.js"
+    if (typeof component["artifactComponentId"] !== "string" || component["artifactComponentId"].length === 0 || component["artifactComponentId"].length > 128
+      || typeof component["runtimeEntryPoint"] !== "string"
       || typeof component["componentFingerprint"] !== "string" || !/^[a-f0-9]{64}$/u.test(component["componentFingerprint"])) throw failure("PERSISTENCE_INPUT_INVALID");
+    assertBoundedRelativePath(component["runtimeEntryPoint"]);
     if (!Array.isArray(component["includedFiles"])) throw failure("PERSISTENCE_INPUT_INVALID");
     for (const file of component["includedFiles"]) {
       assertExactKeys(file, ["fileSha256", "fileSize", "path"]);

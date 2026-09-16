@@ -6,7 +6,10 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test, { afterEach } from "node:test";
 
-import type { Rel001StagingCandidate } from "./release-candidate-artifact.js";
+import {
+  materializeRel001StagingCandidate,
+  type Rel001StagingCandidate,
+} from "./release-candidate-artifact.js";
 import {
   createReleaseAcceptanceManifest,
   type ReleaseAcceptanceManifestInput,
@@ -142,6 +145,34 @@ test("FEAT-024-C persists a validated candidate and manifest across reopen", () 
   store = new DurableReleaseAcceptanceManifestStore({ databasePath });
   assert.deepEqual(store.findManifest(stored.acceptanceManifestId), stored);
   assert.deepEqual(store.findCandidate(candidate.releaseCandidateId), candidate);
+  store.close();
+});
+
+test("REL-001 Staging reevaluation durably persists the exact Phase 7 candidate across reopen", async () => {
+  const exactCandidate = await materializeRel001StagingCandidate({
+    distRoot: "dist",
+    sourceCommitSha: "cd620b273c8e7672ffc1e015380ce36d486d9a9a",
+    repositoryIdentity: "https://github.com/25300park/ai-mls.git",
+    sourceBranch: "main",
+    generatedAt: "2026-09-16T06:00:00.000Z",
+  });
+  const exactManifest = manifestFor(exactCandidate, {
+    evaluatedAt: "2026-09-16T07:10:38.468Z",
+    decisionEvidenceRef: "staging-reevaluation:decision:incomplete",
+  });
+  assert.equal(exactManifest.acceptanceManifestId, "0d7d498dc2d31805bc81b1f626ee0a20a22925d53c8ef0e4d819174dca370c7b");
+  assert.equal(exactManifest.manifestFingerprint, "f5ff455dae9f544b2aa2f1c918d7941ef0e40e4d6d53973d85bf402f09d830b7");
+  assert.equal(exactManifest.acceptanceResult, "INCOMPLETE");
+  assert.equal(exactManifest.acceptedBy, null);
+  assert.equal(exactManifest.acceptedAt, null);
+  const databasePath = fixtureDatabasePath();
+  let store = new DurableReleaseAcceptanceManifestStore({ databasePath });
+  store.append(exactCandidate, exactManifest, "2026-09-16T07:11:00.000Z");
+  store.close();
+
+  store = new DurableReleaseAcceptanceManifestStore({ databasePath });
+  assert.deepEqual(store.findCandidate(exactCandidate.releaseCandidateId), exactCandidate);
+  assert.deepEqual(store.findManifest(exactManifest.acceptanceManifestId), exactManifest);
   store.close();
 });
 

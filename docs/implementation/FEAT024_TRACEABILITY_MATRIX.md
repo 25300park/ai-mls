@@ -98,3 +98,18 @@
 | Fresh verification | Phase 7 `26/26`; affected `142/142`; full `1475/1475`; architecture `153/153` | PASS |
 | Audit | dependency audit `NOT_RUN` because no scoped network approval exists | BLOCKING |
 | Evidence | [Acceptance Rebuild](REL001_PHASE7_ACCEPTANCE_EVIDENCE_REBUILD.md), [Completion Report](../reviews/REL001_PHASE7_COMPLETION_REPORT.md) | RECORDED |
+
+## 9. REL-001 Staging acceptance / handoff reevaluation
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Exact candidate | Phase 7 identities unchanged; durable append/reopen validated | PASS |
+| Candidate scope | three `requiredByReleaseScope` gaps remain visible | INCOMPLETE |
+| Acceptance vocabulary | existing `ACCEPTED / REJECTED / INCOMPLETE` only | PASS |
+| Manifest provenance | result `INCOMPLETE`, `acceptedBy`/`acceptedAt` null, decision ref present | PASS |
+| Durable compatibility | exact 18-component candidate persists and reloads; closed integrity remains authoritative | PASS |
+| Authority / SoD | `RELEASE_OWNER`/`release.accept` identified; positive authority not invoked | NOT_APPLICABLE |
+| Dependency audit | `NOT_RUN` without network approval | BLOCKED for positive acceptance |
+| Promotion handoff | exact `INCOMPLETE` manifest and non-ready refs | `UNAVAILABLE` |
+| Production readiness | no deployment/provider/network/credential action | `NOT_AUTHORIZED` |
+| Evidence | [Prerequisite Matrix](REL001_STAGING_ACCEPTANCE_PREREQUISITE_MATRIX.md), [Manifest Reevaluation](REL001_STAGING_ACCEPTANCE_MANIFEST_REEVALUATION.md), [Completion Report](../reviews/REL001_STAGING_ACCEPTANCE_COMPLETION_REPORT.md) | RECORDED |

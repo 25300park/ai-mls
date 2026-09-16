@@ -386,3 +386,17 @@ Phase 6는 API-017 lifecycle이나 handler authority를 확장하지 않고 exis
 | evidence | [Runtime Closure](REL001_PHASE7_RUNTIME_CLOSURE_INVENTORY.md), [Completion Report](../reviews/REL001_PHASE7_COMPLETION_REPORT.md) |
 
 Phase 7은 API-017의 기존 provider-independent one-shot runtime을 release artifact에 포함할 뿐 새 Job lifecycle 또는 live provider execution을 추가하지 않는다.
+
+## REL-001 Staging acceptance reevaluation
+
+| Trace | Result |
+|---|---|
+| exact candidate | Phase 7 identity unchanged; 18 roots / 65 files |
+| API-017 foundation | included, provider-independent one-shot boundary only |
+| live provider | `0/3 NOT_READY`; DEC-162 `IN_REVIEW` |
+| acceptance / handoff | `INCOMPLETE` / `UNAVAILABLE` |
+| authority | positive `RELEASE_OWNER` acceptance not invoked; `acceptedBy`/`acceptedAt` null |
+| runtime side effects | Job/provider/deployment execution `0/0/0` |
+| evidence | [Acceptance Scope](REL001_STAGING_ACCEPTANCE_SCOPE.md), [Completion Report](../reviews/REL001_STAGING_ACCEPTANCE_COMPLETION_REPORT.md) |
+
+이 reevaluation은 API-017 lifecycle, automatic retry, scheduler 또는 provider selection authority를 추가하지 않는다.
