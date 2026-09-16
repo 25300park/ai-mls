@@ -10,7 +10,7 @@
 
 ## 1. Boundary
 
-이 문서는 FEAT-024 실행 증거를 canonical release-candidate identity에 연결한다. FEAT-024 Final Gate 당시 `REL-001 / Staging`의 mandatory runtime gaps는 5개였다. 후속 exact-candidate overlays는 runtime closure를 additive하게 재평가하며, Blocker 2C 현재 candidate는 runtime gap 1개와 acceptance blocker 2개를 보존한다. `REL-001`은 계속 `INCOMPLETE`이고 promotion handoff는 `UNAVAILABLE`이다. 이 RTM은 release acceptance, deployment 또는 registry status 변경을 수행하지 않는다.
+이 문서는 FEAT-024 실행 증거를 canonical release-candidate identity에 연결한다. FEAT-024 Final Gate 당시 `REL-001 / Staging`의 mandatory runtime gaps는 5개였다. 후속 exact-candidate overlays는 runtime closure를 additive하게 재평가한다. Blocker 2C evidence는 당시 runtime gap 1개와 acceptance blocker 2개를 역사적으로 보존하며, Blocker 3 fresh audit closure 후 현재 acceptance blocker는 live provider 1개다. `REL-001`은 계속 `INCOMPLETE`이고 promotion handoff는 `UNAVAILABLE`이다. 이 RTM은 release acceptance, deployment 또는 registry status 변경을 수행하지 않는다.
 
 ## 2. A–H traceability
 
@@ -144,3 +144,15 @@
 | Current disposition | Core transport `CLOSED`; UI-006 `CLOSED`; provider and audit blockers preserved | `2` blockers |
 | Acceptance / handoff | `INCOMPLETE` / `UNAVAILABLE` | FAIL_CLOSED |
 | Evidence | [Runtime Inventory](REL001_BLOCKER2C_RUNTIME_CLOSURE_INVENTORY.md), [Acceptance Reevaluation](REL001_BLOCKER2C_ACCEPTANCE_REEVALUATION.md), [Completion Report](../reviews/REL001_BLOCKER2C_COMPLETION_REPORT.md) | RECORDED |
+
+## 12. REL-001 Blocker 3 fresh dependency audit overlay
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Exact audit baseline | HEAD `05f1b050a87ecb23894cf121f40a2f5f4f6accb5`; package/lock SHA-256 captured before and after | PASS |
+| Production audit | Critical/High/Moderate/Low/Total `0/0/0/0/0` | PASS |
+| Full audit | approved dev-only High `5`; Critical/Moderate/Low `0`; new unapproved High/Critical `0/0` | PASS WITH ACCEPTED RISK |
+| Integrity | package/lockfile mutation `0`; production/test mutation `0` | PASS |
+| Blocker disposition | Fresh Dependency Audit `CLOSED`; live provider remains | `1` blocker |
+| Acceptance / handoff | `INCOMPLETE` / `UNAVAILABLE`; DEC-162 `IN_REVIEW` | FAIL_CLOSED |
+| Evidence | [Fresh Audit Report](REL001_BLOCKER3_FRESH_DEPENDENCY_AUDIT_REPORT.md), [Finding Disposition](REL001_BLOCKER3_DEPENDENCY_FINDING_DISPOSITION.md), [Completion Report](../reviews/REL001_BLOCKER3_COMPLETION_REPORT.md) | RECORDED |

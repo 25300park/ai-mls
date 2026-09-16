@@ -151,6 +151,17 @@ FEAT-023-C는 Health/Readiness/Freshness를 operational observation으로만 유
 
 상세 결과는 [FEAT-023 Final Gate Report](../reviews/FEAT023_FINAL_GATE_REPORT.md)에 기록한다. Frozen `FEAT-023`, `DEV-023`, `IMP-023`, `TRACE-023` identity와 primary rows는 변경하지 않고 post-freeze execution evidence overlay만 `DONE`으로 정렬한다.
 
+## 12. REL-001 Blocker 3 fresh dependency-security evidence overlay
+
+| Security evidence | Fresh result | Disposition |
+|---|---|---|
+| Production dependency audit | vulnerabilities `0`; Critical/High `0/0` | PASS |
+| Development toolchain audit | High `5`: `brace-expansion` 4 + `js-yaml` 1 | existing AO-approved bounded risk; unchanged |
+| Runtime reachability | production audit finding `0`; ESLint/typescript-eslint transitive paths only | `DEV_ONLY_NON_RUNTIME` |
+| New unapproved High/Critical | `0/0` | PASS |
+| Dependency integrity | package/lockfile SHA-256 unchanged; delta `0` | PASS |
+| Evidence | [Audit Report](REL001_BLOCKER3_FRESH_DEPENDENCY_AUDIT_REPORT.md), [Finding Disposition](REL001_BLOCKER3_DEPENDENCY_FINDING_DISPOSITION.md) | RECORDED |
+
 ## Completion statement
 
 FEAT-023-A~H와 approved SQL/SQLite sanitizer remediation은 exact integrated baseline에서 검증됐다. 최초 Final Gate의 mandatory leakage finding은 이력으로 보존되며 현재 Final Gate는 `IMPLEMENTED_AND_VERIFIED`다. FEAT-024 또는 다른 후속 작업은 시작하지 않았다.

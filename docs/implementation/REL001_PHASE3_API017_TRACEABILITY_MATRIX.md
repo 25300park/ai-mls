@@ -450,3 +450,19 @@ Blocker 1C는 API-017 runtime을 변경하지 않고 exact release closure에 �
 | evidence | [Runtime Inventory](REL001_BLOCKER2C_RUNTIME_CLOSURE_INVENTORY.md), [Acceptance Reevaluation](REL001_BLOCKER2C_ACCEPTANCE_REEVALUATION.md) |
 
 Blocker 2C는 API-017 runtime을 변경하지 않는다. Live provider는 `0/3 NOT_READY`, DEC-162는 `IN_REVIEW`, dependency audit은 `NOT_RUN`이다.
+
+## REL-001 Release Blocker 3 — fresh dependency audit
+
+| Trace | Result |
+|---|---|
+| fresh production audit | Critical/High/Moderate/Low/Total `0/0/0/0/0` |
+| fresh full audit | Critical/High/Moderate/Low/Total `0/5/0/0/5` |
+| finding classification | approved development-only transitive `brace-expansion` 4 + `js-yaml` 1; all `UNCHANGED` |
+| new unapproved High/Critical | `0/0` |
+| dependency/lockfile mutation | `0` |
+| audit blocker | `CLOSED` |
+| remaining release blocker | live provider external account/contract dependency (`1`) |
+| acceptance / handoff | `INCOMPLETE` / `UNAVAILABLE`; DEC-162 `IN_REVIEW` |
+| evidence | [Fresh Audit Report](REL001_BLOCKER3_FRESH_DEPENDENCY_AUDIT_REPORT.md), [Finding Disposition](REL001_BLOCKER3_DEPENDENCY_FINDING_DISPOSITION.md) |
+
+Blocker 3는 API-017 code, lifecycle, scheduler, handler 또는 audit mapping을 변경하지 않는다.
