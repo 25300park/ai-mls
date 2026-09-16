@@ -130,3 +130,12 @@ Phase 5A는 기존 `6 eligible / 30 dependency-blocked / 1 POST-MVP`를 그대�
 | Existing accessibility shell | existing renderer/server routes extended without new route or second Console | VERIFIED |
 | Safe status semantics | Core dependency `DEFERRED`/`NOT_AVAILABLE`; live provider `NOT_READY` | VERIFIED |
 | Completion evidence | [Phase 5B screen traceability](REL001_PHASE5B_SCREEN_EXECUTION_TRACEABILITY.md), [report](../reviews/REL001_PHASE5B_COMPLETION_REPORT.md) | VERIFIED — focused 17/17; affected 939/939; full 1460/1460; independent review READY |
+
+## 8. REL-001 Phase 5C accessibility preservation evidence
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Canonical boundary | [Phase 5C Screen E2E Traceability](REL001_PHASE5C_SCREEN_E2E_TRACEABILITY.md) | 6 screens preserved; new route/screen 0 |
+| Session/access error safety | Phase 5C focused Session restart and concealment tests | PASS |
+| Shared keyboard/focus/error/controlled-write behavior | FEAT-021 affected suites within `451/451` regression | PASS |
+| Claim boundary | [Phase 5C report](../reviews/REL001_PHASE5C_COMPLETION_REPORT.md) | existing bounded WCAG evidence preserved; new full-conformance claim 0 |

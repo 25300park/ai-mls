@@ -55,3 +55,12 @@ Phase 5A는 FEAT-020의 existing read adapter, renderer와 13 routes를 재사�
 | Read-only operational integration | injected API-016/API-017/FEAT-022 ports; direct store/provider access 0 | unsafe evidence, mandatory port and import-boundary tests | VERIFIED |
 | Truthful provider state | provider-independent `READY`; live provider `NOT_READY`; DEC-162 `IN_REVIEW` | false readiness rejection tests | VERIFIED |
 | Completion evidence | [Phase 5B report](../reviews/REL001_PHASE5B_COMPLETION_REPORT.md) | focused 17/17; affected 939/939; full 1460/1460; lint/typecheck/build, architecture, Gitleaks, independent review PASS | VERIFIED |
+
+## 7. REL-001 Phase 5C integrated hardening evidence
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Six-screen boundary | [Screen E2E Traceability](REL001_PHASE5C_SCREEN_E2E_TRACEABILITY.md) | VERIFIED; screen/route additions 0 |
+| Failure/readiness truth | [Failure Matrix](REL001_PHASE5C_FAILURE_READINESS_MATRIX.md) | VERIFIED; observed mandatory loss → `NOT_READY` |
+| Safe read-only Console | Phase 5C focused and affected regression | VERIFIED; new mutation/authority/store access 0 |
+| Completion evidence | [Phase 5C report](../reviews/REL001_PHASE5C_COMPLETION_REPORT.md) | focused 21/21; affected 452/452; full 1464/1464 |

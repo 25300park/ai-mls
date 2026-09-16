@@ -93,7 +93,7 @@ test("REL001-PHASE5B Platform Host starts the six-screen Staging Console without
   });
 
   assert.deepEqual(composition.status(), {
-    environment: "Staging", readiness: "DEGRADED", executableScreens: 6,
+    environment: "Staging", readiness: "NOT_READY", executableScreens: 6,
     providerIndependentImplementation: "READY", liveProviderExecution: "NOT_READY",
   });
   const response = await fetch(`${composition.server.localUrl}/api/console/view?page=UI-031`, {
@@ -101,4 +101,62 @@ test("REL001-PHASE5B Platform Host starts the six-screen Staging Console without
   });
   assert.equal(response.status, 200);
   await composition.server.stop();
+});
+
+test("REL001-PHASE5C reload and runtime restart re-resolve live Session authority without cached access", async () => {
+  const configuration = Object.freeze({
+    runtimeEnvironment: "STAGING", developmentSessionEnabled: false,
+    host: "127.0.0.1", port: 0, tenantId: "tenant-staging", scopeRef: "team-staging",
+    administrationApiOrigin: "http://127.0.0.1:4172",
+    policyScopeId: "policy-staging", sourceScopeId: "source-staging", targetScopeId: "target-staging",
+  } satisfies StagingAdminConsoleConfiguration);
+  const unavailable: ConsoleReadPort = Object.freeze({
+    read: (request: ConsoleReadRequest) => Object.freeze({ page: request.page, state: "UNAVAILABLE" as const }),
+  });
+  let authorized = true;
+  let resolutions = 0;
+  const runtimeDependencies = {
+    sessionAccess: {
+      resolveAuthorized: () => {
+        resolutions += 1;
+        if (!authorized) throw new Error("AUTHENTICATION_REQUIRED");
+        return session;
+      },
+    },
+    publicationReadAdapter: unavailable,
+    auditReadAdapter: unavailable,
+    jobRuntimeReadPort: { readStatus: () => Object.freeze({ readiness: "READY" as const, jobs: Object.freeze([]) }) },
+    advisoryRuntimeReadPort: { readStatus: () => Object.freeze({
+      providerIndependentImplementation: "READY" as const,
+      liveProviderExecution: "NOT_READY" as const,
+      externalDependency: "EXTERNAL_ACCOUNT_AND_CONTRACT_DEPENDENCY" as const,
+      decision162: "IN_REVIEW" as const,
+    }) },
+    administrationSelectorScopes: Object.freeze({
+      roles: Object.freeze({ tenantId: "tenant-staging", scopeType: "TENANT" as const, scopeId: "tenant-staging" }),
+      teamScopes: Object.freeze({ tenantId: "tenant-staging", scopeType: "TEAM" as const, scopeId: "team-staging" }),
+      policies: Object.freeze({ tenantId: "tenant-staging", scopeType: "POLICY" as const, scopeId: "policy-staging" }),
+      sourceGovernance: Object.freeze({ tenantId: "tenant-staging", scopeType: "SOURCE" as const, scopeId: "source-staging" }),
+      publicationTargets: Object.freeze({ tenantId: "tenant-staging", scopeType: "TARGET" as const, scopeId: "target-staging" }),
+    }),
+  };
+
+  const first = await startStagingAdminConsoleBootstrap(configuration, runtimeDependencies);
+  const allowed = await fetch(`${first.server.localUrl}/api/console/view?page=UI-031`, {
+    headers: { "x-session-id": "session-staging" },
+  });
+  assert.equal(allowed.status, 200);
+  await first.server.stop();
+
+  authorized = false;
+  const restarted = await startStagingAdminConsoleBootstrap(configuration, runtimeDependencies);
+  try {
+    const denied = await fetch(`${restarted.server.localUrl}/api/console/view?page=UI-031`, {
+      headers: { "x-session-id": "session-staging" },
+    });
+    assert.equal(denied.status, 401);
+    assert.equal(resolutions, 2);
+  } finally {
+    await restarted.server.stop();
+  }
 });

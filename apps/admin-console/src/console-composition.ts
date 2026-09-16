@@ -124,7 +124,7 @@ export interface StagingAdminConsoleComposition {
   readonly server: AdminConsoleServer;
   status(): Readonly<{
     environment: "Staging";
-    readiness: "DEGRADED";
+    readiness: "DEGRADED" | "NOT_READY";
     executableScreens: 6;
     providerIndependentImplementation: "READY";
     liveProviderExecution: "NOT_READY";
@@ -138,15 +138,59 @@ export function composeStagingAdminConsole(
   if (configuration.runtimeEnvironment !== "STAGING" || !validStagingDependencies(configuration, dependencies)) {
     throw new Error("STAGING_CONSOLE_NOT_READY");
   }
+  const unavailableMandatoryBoundaries = new Set<string>([
+    "SESSION", "PUBLICATION", "API-015", "API-016", "API-017", "FEAT-022",
+  ]);
+  const observe = (boundary: string, available: boolean): void => {
+    if (available) unavailableMandatoryBoundaries.delete(boundary);
+    else unavailableMandatoryBoundaries.add(boundary);
+  };
+  const readBoundary = async (
+    boundary: string,
+    port: ConsoleReadPort,
+    request: ConsoleReadRequest,
+  ): Promise<ConsoleReadResult> => {
+    try {
+      const result = safeBoundaryResult(await port.read(request), request);
+      observe(boundary, result.state !== "ERROR" && result.state !== "UNAVAILABLE");
+      return result;
+    } catch {
+      observe(boundary, false);
+      return unavailableBoundaryResult(request);
+    }
+  };
   const readAdapter: ConsoleReadPort = Object.freeze({
     read: async (request: ConsoleReadRequest): Promise<ConsoleReadResult> => {
       if (request.page === "ADMINISTRATION") {
-        return withCoreDependencyDeferral(safeBoundaryResult(await dependencies.administrationReadAdapter.read(request), request));
+        return withCoreDependencyDeferral(await readBoundary("API-015", dependencies.administrationReadAdapter, request));
       }
-      if (request.page === "UI-036") return safeBoundaryResult(await dependencies.administrationReadAdapter.read(request), request);
-      if (request.page === "UI-035") return safeBoundaryResult(await dependencies.auditReadAdapter.read(request), request);
-      if (request.page === "OPERATIONS") return readStagingOperations(request, dependencies);
-      return safeBoundaryResult(await dependencies.publicationReadAdapter.read(request), request);
+      if (request.page === "UI-036") return readBoundary("API-015", dependencies.administrationReadAdapter, request);
+      if (request.page === "UI-035") return readBoundary("API-016", dependencies.auditReadAdapter, request);
+      if (request.page === "OPERATIONS") return readStagingOperations(request, dependencies, observe);
+      return readBoundary("PUBLICATION", dependencies.publicationReadAdapter, request);
+    },
+  });
+  const sessionIngress: ConsoleSessionIngressPort = Object.freeze({
+    authorize: async (request: Parameters<ConsoleSessionIngressPort["authorize"]>[0]) => {
+      try {
+        await dependencies.sessionIngress.authorize(request);
+        observe("SESSION", true);
+      } catch (error) {
+        if (isSessionBoundaryUnavailable(error)) observe("SESSION", false);
+        throw error;
+      }
+    },
+  });
+  const administrationCommandAdapter: AdministrationConsoleCommandPort = Object.freeze({
+    execute: async (request: Parameters<AdministrationConsoleCommandPort["execute"]>[0]) => {
+      try {
+        const result = await dependencies.administrationCommandAdapter.execute(request);
+        observe("API-015-COMMAND-FAULT", result.state !== "REJECTED" || result.errorCode !== "INTERNAL_ERROR");
+        return result;
+      } catch (error) {
+        observe("API-015-COMMAND-FAULT", false);
+        throw error;
+      }
     },
   });
   return Object.freeze({
@@ -156,14 +200,14 @@ export function composeStagingAdminConsole(
       port: configuration.port,
       tenantId: configuration.tenantId,
       scopeRef: configuration.scopeRef,
-      sessionIngress: dependencies.sessionIngress,
+      sessionIngress,
       readAdapter,
-      administrationCommandAdapter: dependencies.administrationCommandAdapter,
+      administrationCommandAdapter,
       administrationSelectorScopes: dependencies.administrationSelectorScopes,
     }),
     status: () => Object.freeze({
       environment: "Staging" as const,
-      readiness: "DEGRADED" as const,
+      readiness: unavailableMandatoryBoundaries.size === 0 ? "DEGRADED" as const : "NOT_READY" as const,
       executableScreens: 6 as const,
       providerIndependentImplementation: "READY" as const,
       liveProviderExecution: "NOT_READY" as const,
@@ -204,6 +248,7 @@ function exactScope(
 async function readStagingOperations(
   request: ConsoleReadRequest,
   dependencies: StagingAdminConsoleDependencies,
+  observe: (boundary: string, available: boolean) => void,
 ): Promise<ConsoleReadResult> {
   try {
     const context = Object.freeze({
@@ -217,6 +262,8 @@ async function readStagingOperations(
       dependencies.advisoryRuntimeReadPort.readStatus(context),
     ]);
     if (!validJobs(jobs) || !validAdvisory(advisory)) throw new Error("STAGING_CONSOLE_BACKEND_INVALID");
+    observe("API-017", jobs.readiness !== "NOT_READY" && jobs.readiness !== "UNKNOWN");
+    observe("FEAT-022", true);
     return immutableConsole({
       page: "OPERATIONS" as const,
       state: "READY" as const,
@@ -250,16 +297,28 @@ async function readStagingOperations(
       },
     });
   } catch {
-    return immutableConsole({
-      page: "OPERATIONS" as const,
-      state: "ERROR" as const,
-      error: {
-        code: "CONSOLE_READ_UNAVAILABLE" as const,
-        message: "The requested Console view is unavailable.",
-        correlationId: request.correlationId,
-      },
-    });
+    observe("API-017", false);
+    observe("FEAT-022", false);
+    return unavailableBoundaryResult(request);
   }
+}
+
+function unavailableBoundaryResult(request: ConsoleReadRequest): ConsoleReadResult {
+  return immutableConsole({
+    page: request.page,
+    state: "ERROR" as const,
+    error: {
+      code: "CONSOLE_READ_UNAVAILABLE" as const,
+      message: "The requested Console view is unavailable.",
+      correlationId: request.correlationId,
+    },
+  });
+}
+
+function isSessionBoundaryUnavailable(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const code = (error as Readonly<{ code?: unknown }>).code;
+  return code === "SESSION_PERSISTENCE_UNAVAILABLE" || code === "STAGING_SESSION_NOT_READY";
 }
 
 function withCoreDependencyDeferral(result: ConsoleReadResult): ConsoleReadResult {

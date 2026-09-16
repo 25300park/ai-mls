@@ -7,6 +7,7 @@ import { parseAdminConsoleArguments } from "./console-configuration.js";
 import type { ConsoleReadRequest, ConsoleReadResult } from "./console-read-adapter.js";
 import {
   composeStagingAdminConsole,
+  type StagingAdminConsoleComposition,
   type StagingAdminConsoleDependencies,
 } from "./console-composition.js";
 
@@ -60,6 +61,19 @@ function dependencies(overrides: Partial<StagingAdminConsoleDependencies> = {}):
     administrationSelectorScopes: scopes,
     ...overrides,
   };
+}
+
+async function readPage(composition: StagingAdminConsoleComposition, page: string): Promise<Response> {
+  return fetch(`${composition.server.localUrl}/api/console/view?page=${page}`, {
+    headers: { "x-session-id": "session-staging" },
+  });
+}
+
+async function primeMandatoryReads(composition: StagingAdminConsoleComposition): Promise<void> {
+  for (const page of ["ADMINISTRATION", "UI-031", "UI-035", "OPERATIONS"]) {
+    const response = await readPage(composition, page);
+    assert.equal(response.status, 200, page);
+  }
 }
 
 test("REL001-PHASE5B RED: Staging configuration is explicit and has no development identity", () => {
@@ -243,7 +257,7 @@ test("REL001-PHASE5B RED: exactly six screens route through owning injected boun
 test("REL001-PHASE5B RED: Operations keeps API-017 and FEAT-022 readiness truth separate", async () => {
   const composition = composeStagingAdminConsole(configuration(), dependencies());
   assert.deepEqual(composition.status(), {
-    environment: "Staging", readiness: "DEGRADED", executableScreens: 6,
+    environment: "Staging", readiness: "NOT_READY", executableScreens: 6,
     providerIndependentImplementation: "READY", liveProviderExecution: "NOT_READY",
   });
   await composition.server.start();
@@ -367,4 +381,142 @@ test("REL001-PHASE5B RED: Console owns no Session, Audit, Job, or provider persi
   const source = readFileSync(join(process.cwd(), "apps", "admin-console", "src", "console-composition.ts"), "utf8")
     + readFileSync(join(process.cwd(), "apps", "admin-console", "src", "console-server.ts"), "utf8");
   assert.equal(/DurableSessionUnitOfWork|DurableAuditEventStore|DurableJobStore|node:sqlite|OPENAI_API_KEY|FEAT022_STAGING_OPENAI_API_KEY/u.test(source), false);
+});
+
+test("REL001-PHASE5C RED: observed mandatory backend loss makes global readiness NOT_READY and a healthy refresh clears it", async () => {
+  let auditAvailable = false;
+  const composition = composeStagingAdminConsole(configuration(), dependencies({
+    auditReadAdapter: {
+      read: (request) => {
+        if (!auditAvailable) throw new Error("SQLITE_IOERR at C:\\private\\audit.sqlite");
+        return result(request, "API-016");
+      },
+    },
+  }));
+  await composition.server.start();
+  try {
+    const failed = await fetch(`${composition.server.localUrl}/api/console/view?page=UI-035`, {
+      headers: { "x-session-id": "session-staging" },
+    });
+    const failedBody = await failed.text();
+    assert.equal(failed.status, 200);
+    assert.equal(failedBody.includes("CONSOLE_READ_UNAVAILABLE"), true);
+    assert.equal(/SQLITE_IOERR|private|sqlite/iu.test(failedBody), false);
+    assert.equal(composition.status().readiness, "NOT_READY");
+
+    auditAvailable = true;
+    await primeMandatoryReads(composition);
+    const refreshed = await readPage(composition, "UI-035");
+    assert.equal(refreshed.status, 200);
+    assert.equal(composition.status().readiness, "DEGRADED");
+  } finally {
+    await composition.server.stop();
+  }
+});
+
+test("REL001-PHASE5C RED: API-017 NOT_READY is reflected in global readiness without changing provider truth", async () => {
+  let jobsReady = true;
+  const composition = composeStagingAdminConsole(configuration(), dependencies({
+    jobRuntimeReadPort: {
+      readStatus: () => Object.freeze({ readiness: jobsReady ? "READY" as const : "NOT_READY" as const, jobs: Object.freeze([]) }),
+    },
+  }));
+  await composition.server.start();
+  try {
+    assert.equal(composition.status().readiness, "NOT_READY");
+    await primeMandatoryReads(composition);
+    assert.equal(composition.status().readiness, "DEGRADED");
+    jobsReady = false;
+    const response = await readPage(composition, "OPERATIONS");
+    assert.equal(response.status, 200);
+    assert.equal(composition.status().readiness, "NOT_READY");
+    assert.equal(composition.status().liveProviderExecution, "NOT_READY");
+  } finally {
+    await composition.server.stop();
+  }
+});
+
+test("REL001-PHASE5C RED: Session backend loss and API-015 command failure invalidate observed readiness", async () => {
+  let sessionAllowed = true;
+  let sessionBackendAvailable = true;
+  let commandAvailable = true;
+  const composition = composeStagingAdminConsole(configuration(), dependencies({
+    sessionIngress: { authorize: () => {
+      if (!sessionBackendAvailable) {
+        throw Object.assign(new Error("unsafe internal detail"), { code: "SESSION_PERSISTENCE_UNAVAILABLE" });
+      }
+      if (!sessionAllowed) throw new Error("AUTHENTICATION_REQUIRED");
+    } },
+    administrationCommandAdapter: {
+      execute: (request) => {
+        if (!commandAvailable) return Promise.resolve(Object.freeze({
+          state: "REJECTED" as const,
+          errorCode: "INTERNAL_ERROR",
+          message: "Administration service unavailable.",
+          correlationId: "phase5c-command-failure",
+        }));
+        return Promise.resolve(Object.freeze({
+          state: "CONFIRMED" as const, operation: request.operation, proposalId: "proposal-staging",
+          resourceType: "POLICY", resourceId: "policy-staging", status: "PROPOSED", version: 1,
+          decisionReferences: Object.freeze([]),
+        }));
+      },
+    },
+  }));
+  await composition.server.start();
+  try {
+    await primeMandatoryReads(composition);
+    assert.equal(composition.status().readiness, "DEGRADED");
+
+    sessionAllowed = false;
+    assert.equal((await readPage(composition, "UI-031")).status, 401);
+    assert.equal(composition.status().readiness, "DEGRADED");
+    sessionAllowed = true;
+    await readPage(composition, "UI-031");
+    assert.equal(composition.status().readiness, "DEGRADED");
+
+    sessionBackendAvailable = false;
+    assert.equal((await readPage(composition, "UI-031")).status, 401);
+    assert.equal(composition.status().readiness, "NOT_READY");
+    sessionBackendAvailable = true;
+    await readPage(composition, "UI-031");
+    assert.equal(composition.status().readiness, "DEGRADED");
+
+    commandAvailable = false;
+    const failedCommand = await fetch(`${composition.server.localUrl}/api/console/administration/command`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-session-id": "session-staging" },
+      body: JSON.stringify({
+        operation: "PROPOSE_POLICY_CHANGE",
+        payload: {
+          policyId: "policy-staging", proposedChangeReference: "policy-change-staging",
+          scopeType: "POLICY", scopeId: "policy-staging", expectedVersion: 0,
+          idempotencyKey: "phase5c-command-failure-repeat", reason: "Verify bounded failure",
+          evidenceReferences: [{ type: "AUDIT", id: "evidence-phase5c", version: 1 }],
+        },
+      }),
+    });
+    assert.equal(failedCommand.status, 200);
+    assert.equal((await failedCommand.text()).includes("INTERNAL_ERROR"), true);
+    assert.equal(composition.status().readiness, "NOT_READY");
+
+    commandAvailable = true;
+    const recoveredCommand = await fetch(`${composition.server.localUrl}/api/console/administration/command`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-session-id": "session-staging" },
+      body: JSON.stringify({
+        operation: "PROPOSE_POLICY_CHANGE",
+        payload: {
+          policyId: "policy-staging", proposedChangeReference: "policy-change-staging",
+          scopeType: "POLICY", scopeId: "policy-staging", expectedVersion: 0,
+          idempotencyKey: "phase5c-command-recovery-repeat", reason: "Verify bounded recovery",
+          evidenceReferences: [{ type: "AUDIT", id: "evidence-phase5c", version: 1 }],
+        },
+      }),
+    });
+    assert.equal(recoveredCommand.status, 200);
+    assert.equal(composition.status().readiness, "DEGRADED");
+  } finally {
+    await composition.server.stop();
+  }
 });

@@ -332,3 +332,16 @@ Phase 5A is inventory only. It does not change Phase 3 runtime semantics, activa
 | verification | focused `17/17`; affected `939/939`; full `1460/1460`; independent review `READY` |
 
 Phase 5B는 API-017 lifecycle 또는 provider execution을 확장하지 않고 기존 six-screen Console에서 safe operational status만 투영한다.
+
+## Phase 5C integrated Console hardening evidence
+
+| Trace | Result |
+|---|---|
+| API-017 status truth | `NOT_READY`/`UNKNOWN` observation makes global Console readiness `NOT_READY` |
+| provider-independent / live provider | `READY` / `0/3 NOT_READY` preserved |
+| Job mutation/control/retry/scheduler | `0` |
+| restart authority | Session re-resolved; cached access `0` |
+| evidence | [Failure Matrix](REL001_PHASE5C_FAILURE_READINESS_MATRIX.md), [Completion Report](../reviews/REL001_PHASE5C_COMPLETION_REPORT.md) |
+| verification | focused `21/21`; affected `452/452`; full `1464/1464` |
+
+Phase 5C는 API-017 lifecycle을 확장하지 않고 existing status read projection의 global readiness 반영만 검증한다.
