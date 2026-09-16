@@ -113,3 +113,19 @@
 | Promotion handoff | exact `INCOMPLETE` manifest and non-ready refs | `UNAVAILABLE` |
 | Production readiness | no deployment/provider/network/credential action | `NOT_AUTHORIZED` |
 | Evidence | [Prerequisite Matrix](REL001_STAGING_ACCEPTANCE_PREREQUISITE_MATRIX.md), [Manifest Reevaluation](REL001_STAGING_ACCEPTANCE_MANIFEST_REEVALUATION.md), [Completion Report](../reviews/REL001_STAGING_ACCEPTANCE_COMPLETION_REPORT.md) | RECORDED |
+
+## 10. REL-001 Blocker 1C post-transport exact-candidate overlay
+
+이 overlay는 Phase 7 candidate를 수정하지 않는다. Blocker 1B main exact HEAD에 대해 같은 FEAT-024 contract를 다시 실행한 별도 immutable candidate evidence다.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Exact source binding | `97a3522fb301fea197d3fa2defc7bc2826c2d719`, `main`, `Staging` | PASS |
+| Runtime closure | `19` roots / `67` unique files; Core shared HTTP root included | PASS |
+| Candidate identity | artifact `557af708...`; candidate `2f0044be...`; fingerprint `d5bd2cb...` | PASS |
+| Historical immutability | Phase 7 source, `18/65`, artifact/candidate fingerprints unchanged | PASS |
+| Durable acceptance replay | exact candidate append/reopen/replay, duplicate row `0` | PASS |
+| Current disposition | Core transport `CLOSED`; UI-006 `STILL_DEFERRED`; provider and audit blockers preserved | `3` blockers |
+| Acceptance / handoff | `INCOMPLETE` / `UNAVAILABLE` | FAIL_CLOSED |
+| Fresh verification | focused `94/94`; affected `101/101`; full `1493/1493` | PASS |
+| Evidence | [Acceptance Reevaluation](REL001_BLOCKER1C_ACCEPTANCE_REEVALUATION.md), [Completion Report](../reviews/REL001_BLOCKER1C_COMPLETION_REPORT.md) | RECORDED |

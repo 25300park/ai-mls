@@ -7,6 +7,7 @@ import { materializeRel001StagingCandidate } from "./release-candidate-artifact.
 
 const SOURCE_SHA = "7e9747a50c643152532e06fb443bbb1b5d945350";
 const PHASE7_SOURCE_SHA = "cd620b273c8e7672ffc1e015380ce36d486d9a9a";
+const BLOCKER1C_SOURCE_SHA = "97a3522fb301fea197d3fa2defc7bc2826c2d719";
 
 async function withFixture(
   files: Readonly<Record<string, string>>,
@@ -84,6 +85,47 @@ async function materializePhase7(distRoot: string, generatedAt = "2026-09-16T00:
     generatedAt,
   });
 }
+
+async function materializeBlocker1C(distRoot: string, generatedAt = "2026-09-16T12:00:00.000Z") {
+  return materializeRel001StagingCandidate({
+    distRoot,
+    sourceCommitSha: BLOCKER1C_SOURCE_SHA,
+    repositoryIdentity: "https://github.com/25300park/ai-mls.git",
+    sourceBranch: "main",
+    generatedAt,
+  });
+}
+
+test("REL-001 Blocker 1C rebuilds the exact post-transport candidate without mutating Phase 7", async () => {
+  await withFixture({
+    ...phase7FixtureFiles("blocker1c"),
+    "apps/api/src/core-identity-authorization-composition.js": 'export const coreApi001002 = "bounded";',
+  }, async (distRoot) => {
+    const current = await materializeBlocker1C(distRoot);
+    const historical = await materializePhase7(distRoot);
+
+    assert.equal(current.sourceCommitSha, BLOCKER1C_SOURCE_SHA);
+    assert.equal(current.artifactManifest.runtimeComponents.length, 19);
+    assert.equal(current.artifactManifest.runtimeComponents.some((component) =>
+      String(component.artifactComponentId) === "CORE_API_001_002_HTTP"
+      && component.runtimeEntryPoint === "apps/api/src/core-identity-authorization-composition.js"), true);
+    assert.deepEqual(current.releaseScopeCoverage.find((row) =>
+      row.artifactComponentId === "CORE_API_001_002_PUBLIC_TRANSPORT"), {
+      artifactComponentId: "CORE_API_001_002_PUBLIC_TRANSPORT",
+      requiredByReleaseScope: true,
+      executableRuntimeAvailable: true,
+      artifactIncluded: true,
+      implementationRuntimeEvidenceRef: "apps/api/src/core-identity-authorization-composition.ts#composeCoreApi001002NodeHttpServer",
+      gapDisposition: "INCLUDED",
+    });
+    assert.equal(current.releaseScopeCoverage.filter((row) => row.requiredByReleaseScope && !row.artifactIncluded).length, 2);
+    assert.equal(current.acceptanceResult, "INCOMPLETE");
+
+    assert.equal(historical.sourceCommitSha, PHASE7_SOURCE_SHA);
+    assert.equal(historical.artifactManifest.runtimeComponents.length, 18);
+    assert.equal(historical.releaseScopeCoverage.filter((row) => row.requiredByReleaseScope && !row.artifactIncluded).length, 3);
+  });
+});
 
 test("REL-001 Phase 7 rebuilds the exact authorized multi-component Staging candidate", async () => {
   await withFixture(phase7FixtureFiles(), async (distRoot) => {

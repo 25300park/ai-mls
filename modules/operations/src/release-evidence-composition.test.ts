@@ -306,10 +306,10 @@ test("FEAT-024-E authority evidence cannot bypass blocking or missing evidence",
   assert.equal(value.acceptanceResult, "INCOMPLETE");
 });
 
-test("REL-001 Phase 7 composes the rebuilt exact candidate without historical identity pinning", async () => {
+test("REL-001 Blocker 1C composes the post-transport candidate without historical identity pinning", async () => {
   const rebuilt = await materializeRel001StagingCandidate({
     distRoot: "dist",
-    sourceCommitSha: "cd620b273c8e7672ffc1e015380ce36d486d9a9a",
+    sourceCommitSha: "97a3522fb301fea197d3fa2defc7bc2826c2d719",
     repositoryIdentity: "https://github.com/25300park/ai-mls.git",
     sourceBranch: "main",
     generatedAt: "2026-09-16T00:00:00.000Z",
@@ -322,7 +322,6 @@ test("REL-001 Phase 7 composes the rebuilt exact candidate without historical id
 
   assert.equal(value.acceptanceResult, "INCOMPLETE");
   assert.deepEqual(value.runtimeGapComponentIds, [
-    "CORE_API_001_002_PUBLIC_TRANSPORT",
     "LIVE_AI_PROVIDER_EXECUTION",
     "UI_006_CORE_DATA",
   ]);

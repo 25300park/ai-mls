@@ -148,20 +148,23 @@ test("FEAT-024-C persists a validated candidate and manifest across reopen", () 
   store.close();
 });
 
-test("REL-001 Staging reevaluation durably persists the exact Phase 7 candidate across reopen", async () => {
+test("REL-001 Blocker 1C durably persists the exact post-transport candidate across reopen", async () => {
   const exactCandidate = await materializeRel001StagingCandidate({
     distRoot: "dist",
-    sourceCommitSha: "cd620b273c8e7672ffc1e015380ce36d486d9a9a",
+    sourceCommitSha: "97a3522fb301fea197d3fa2defc7bc2826c2d719",
     repositoryIdentity: "https://github.com/25300park/ai-mls.git",
     sourceBranch: "main",
-    generatedAt: "2026-09-16T06:00:00.000Z",
+    generatedAt: "2026-09-16T12:00:00.000Z",
   });
   const exactManifest = manifestFor(exactCandidate, {
-    evaluatedAt: "2026-09-16T07:10:38.468Z",
-    decisionEvidenceRef: "staging-reevaluation:decision:incomplete",
+    evaluatedAt: "2026-09-16T13:00:00.000Z",
+    decisionEvidenceRef: "staging-reevaluation:blocker1c:decision:incomplete",
   });
-  assert.equal(exactManifest.acceptanceManifestId, "0d7d498dc2d31805bc81b1f626ee0a20a22925d53c8ef0e4d819174dca370c7b");
-  assert.equal(exactManifest.manifestFingerprint, "f5ff455dae9f544b2aa2f1c918d7941ef0e40e4d6d53973d85bf402f09d830b7");
+  assert.equal(exactCandidate.artifactFingerprint, "557af70887a1d47b956f1f480dbb726a6b054cfec5d696dea134140e623887cf");
+  assert.equal(exactCandidate.releaseCandidateId, "2f0044be01b5819469528e5f245c0f50b26575c6d6e1d327a5659aaf8f8373dd");
+  assert.equal(exactCandidate.candidateFingerprint, "d5bd2cb64212141a28082bc2a604d5715fcba7972f68c30e97891a9370855570");
+  assert.equal(exactManifest.acceptanceManifestId, "6b0df666b0f8f4227cfc0b5a9c60e37a4922039c3ae2324c3d46dd81be66042d");
+  assert.equal(exactManifest.manifestFingerprint, "fcf6f0584ea34ba835bfe129f48e74ce4c47ba910fb0daa83978b0a7ca64a804");
   assert.equal(exactManifest.acceptanceResult, "INCOMPLETE");
   assert.equal(exactManifest.acceptedBy, null);
   assert.equal(exactManifest.acceptedAt, null);
@@ -173,7 +176,15 @@ test("REL-001 Staging reevaluation durably persists the exact Phase 7 candidate 
   store = new DurableReleaseAcceptanceManifestStore({ databasePath });
   assert.deepEqual(store.findCandidate(exactCandidate.releaseCandidateId), exactCandidate);
   assert.deepEqual(store.findManifest(exactManifest.acceptanceManifestId), exactManifest);
+  const replay = store.append(exactCandidate, exactManifest, "2026-09-16T14:00:00.000Z");
+  assert.deepEqual(replay, exactManifest);
   store.close();
+  assert.deepEqual(rowCounts(databasePath), {
+    release_candidates: 1,
+    release_acceptance_manifests: 1,
+    release_manifest_replay: 1,
+    release_manifest_evidence_links: 2,
+  });
 });
 
 test("FEAT-024-C exact replay returns the durable result without duplicate rows", () => {

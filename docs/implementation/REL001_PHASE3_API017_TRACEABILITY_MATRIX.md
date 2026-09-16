@@ -414,3 +414,19 @@ Phase 7은 API-017의 기존 provider-independent one-shot runtime을 release ar
 | evidence | [Blocker 1 Traceability](REL001_BLOCKER1_CORE_API001002_TRACEABILITY.md), [Completion Report](../reviews/REL001_BLOCKER1_COMPLETION_REPORT.md) |
 
 이 후속 closure는 REL-001의 API-001/002 acceptance transport만 추가하며 UI-006 data activation과 acceptance reevaluation은 수행하지 않는다.
+
+## REL-001 Release Blocker 1C — exact candidate rebuild
+
+| Trace | Result |
+|---|---|
+| exact source | `97a3522fb301fea197d3fa2defc7bc2826c2d719` / `Staging` |
+| API-017 closure | existing `API-017_JOB_RUNTIME` component preserved; lifecycle/handler semantics unchanged |
+| new Core closure | `CORE_API_001_002_HTTP` shared root included; API-003~010 exposure 0 |
+| candidate identity | `19` roots / `67` files; release candidate `2f0044be01b5819469528e5f245c0f50b26575c6d6e1d327a5659aaf8f8373dd` |
+| remaining runtime gaps | `LIVE_AI_PROVIDER_EXECUTION`, `UI_006_CORE_DATA` |
+| acceptance / handoff | `INCOMPLETE` / `UNAVAILABLE` |
+| API-017 restrictions | automatic retry / scheduler / polling / provider call `0/0/0/0` |
+| verification | release focused `94/94`; Console/Staging affected `101/101`; full `1493/1493` |
+| evidence | [Runtime Inventory](REL001_BLOCKER1C_RUNTIME_CLOSURE_INVENTORY.md), [Completion Report](../reviews/REL001_BLOCKER1C_COMPLETION_REPORT.md) |
+
+Blocker 1C는 API-017 runtime을 변경하지 않고 exact release closure에 기존 component를 보존한다. Live provider는 `0/3 NOT_READY`, DEC-162는 `IN_REVIEW`다.

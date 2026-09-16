@@ -33,6 +33,7 @@ export type Rel001RuntimeArtifactComponentId =
   | "API-017_JOB_RUNTIME"
   | "CORE_CLIENT_REQUIREMENT_STORE"
   | "CORE_CONTACT_STORE"
+  | "CORE_API_001_002_HTTP"
   | "CORE_INTAKE_STORE"
   | "CORE_LISTING_STORE"
   | "CORE_MATCHING_STORE"
@@ -82,7 +83,7 @@ export interface Rel001StagingCandidate {
   readonly artifactManifest: RuntimeArtifactManifest;
 }
 
-const RUNTIME_COMPONENT_ROOTS: Readonly<Record<Rel001RuntimeArtifactComponentId, string>> = Object.freeze({
+const RUNTIME_COMPONENT_ROOTS: Readonly<Partial<Record<Rel001RuntimeArtifactComponentId, string>>> = Object.freeze({
   ADMIN_CONSOLE_STAGING: "apps/api/src/staging-admin-console-bootstrap.js",
   "API-015_ADMINISTRATION_HTTP": "apps/api/src/administration-production-composition.js",
   "API-016_AUDIT_RUNTIME": "apps/api/src/api016-production-composition.js",
@@ -106,6 +107,11 @@ const LEGACY_RUNTIME_COMPONENT_ROOTS: Readonly<Partial<Record<Rel001RuntimeArtif
   "API-015_ADMINISTRATION_HTTP": "apps/api/src/administration-production-composition.js",
 });
 const PHASE7_SOURCE_COMMIT_SHA = "cd620b273c8e7672ffc1e015380ce36d486d9a9a";
+const BLOCKER1C_SOURCE_COMMIT_SHA = "97a3522fb301fea197d3fa2defc7bc2826c2d719";
+const BLOCKER1C_RUNTIME_COMPONENT_ROOTS: Readonly<Partial<Record<Rel001RuntimeArtifactComponentId, string>>> = Object.freeze({
+  ...RUNTIME_COMPONENT_ROOTS,
+  CORE_API_001_002_HTTP: "apps/api/src/core-identity-authorization-composition.js",
+});
 const REPOSITORY_IDENTITY = "https://github.com/25300park/ai-mls.git" as const;
 const RUNTIME_EXTENSIONS = new Set([".js", ".mjs", ".cjs", ".json"]);
 const EXCLUDED_PATH = /(?:^|\/)(?:tests?|__tests__|fixtures?|mocks?|coverage|docs?|reviews?|reports?|logs?|temp|tmp|cache|backups?)(?:\/|$)|\.(?:test|spec)\.[^.]+$|\.map$|\.d\.ts$|\.tsbuildinfo$|\.(?:ts|tsx)$/i;
@@ -139,6 +145,11 @@ const PHASE7_RELEASE_SCOPE_COVERAGE: readonly ReleaseScopeCoverageEvidence[] = d
   coverage("UI_006_CORE_DATA", true, false, false, "docs/implementation/REL001_PHASE5_ADMIN_CONSOLE_FINAL_TRACEABILITY_MATRIX.md", "INCOMPLETE_RUNTIME_SURFACE"),
   coverage("PUBLICATION_API_014", false, true, false, "apps/api/src/composition.ts#composeProductionPublicationApi014NodeHttpServer", "OUT_OF_SCOPE"),
   coverage("CONNECTOR_API_018_019", false, true, false, "apps/api/src/connector-production-composition.ts#createProductionConnectorApi018Composition", "OUT_OF_SCOPE"),
+]);
+const BLOCKER1C_RELEASE_SCOPE_COVERAGE: readonly ReleaseScopeCoverageEvidence[] = deepFreeze([
+  ...PHASE7_RELEASE_SCOPE_COVERAGE.map((row) => row.artifactComponentId === "CORE_API_001_002_PUBLIC_TRANSPORT"
+    ? coverage("CORE_API_001_002_PUBLIC_TRANSPORT", true, true, true, "apps/api/src/core-identity-authorization-composition.ts#composeCoreApi001002NodeHttpServer", "INCLUDED")
+    : row),
 ]);
 const LEGACY_RELEASE_SCOPE_COVERAGE: readonly ReleaseScopeCoverageEvidence[] = deepFreeze([
   coverage("API-015_ADMINISTRATION_HTTP", true, true, true, "apps/api/src/administration-production-composition.ts#composeProductionAdministrationApi015NodeHttpServer", "INCLUDED"),
@@ -235,9 +246,13 @@ function candidateDefinition(sourceCommitSha: string): Readonly<{
   roots: Readonly<Partial<Record<Rel001RuntimeArtifactComponentId, string>>>;
   coverage: readonly ReleaseScopeCoverageEvidence[];
 }> {
-  return sourceCommitSha === PHASE7_SOURCE_COMMIT_SHA
-    ? { roots: RUNTIME_COMPONENT_ROOTS, coverage: PHASE7_RELEASE_SCOPE_COVERAGE }
-    : { roots: LEGACY_RUNTIME_COMPONENT_ROOTS, coverage: LEGACY_RELEASE_SCOPE_COVERAGE };
+  if (sourceCommitSha === BLOCKER1C_SOURCE_COMMIT_SHA) {
+    return { roots: BLOCKER1C_RUNTIME_COMPONENT_ROOTS, coverage: BLOCKER1C_RELEASE_SCOPE_COVERAGE };
+  }
+  if (sourceCommitSha === PHASE7_SOURCE_COMMIT_SHA) {
+    return { roots: RUNTIME_COMPONENT_ROOTS, coverage: PHASE7_RELEASE_SCOPE_COVERAGE };
+  }
+  return { roots: LEGACY_RUNTIME_COMPONENT_ROOTS, coverage: LEGACY_RELEASE_SCOPE_COVERAGE };
 }
 
 function fingerprintFiles(files: readonly RuntimeArtifactFile[]): string {

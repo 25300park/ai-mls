@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import type { Rel001StagingCandidate } from "./release-candidate-artifact.js";
+import { materializeRel001StagingCandidate, type Rel001StagingCandidate } from "./release-candidate-artifact.js";
 import {
   createReleaseAcceptanceManifest,
   type ReleaseAcceptanceManifest,
@@ -229,6 +229,63 @@ test("FEAT-024-F current REL-001 INCOMPLETE produces no promotion handoff", () =
   const candidate = canonicalCandidate();
   const manifest = acceptedManifest({ acceptanceResult: "INCOMPLETE", acceptedBy: null, acceptedAt: null });
   assert.equal(service(snapshot({ candidate, acceptanceManifest: manifest, manifestHistory: [manifest] })).materialize(request()), null);
+});
+
+test("REL-001 Blocker 1C exact INCOMPLETE candidate produces no promotion handoff", async () => {
+  const candidate = await materializeRel001StagingCandidate({
+    distRoot: "dist",
+    sourceCommitSha: "97a3522fb301fea197d3fa2defc7bc2826c2d719",
+    repositoryIdentity: "https://github.com/25300park/ai-mls.git",
+    sourceBranch: "main",
+    generatedAt: "2026-09-16T12:00:00.000Z",
+  });
+  const manifest = createReleaseAcceptanceManifest(candidate, {
+    evidenceRefs: [{
+      evidenceType: "TEST_RESULT",
+      evidenceRef: "staging-reevaluation:blocker1c:focused-tests",
+      sourceFeatureOrRegistry: "REL-001",
+      sourceCommitSha: candidate.sourceCommitSha,
+      candidateBindingFingerprint: candidate.candidateFingerprint,
+      evaluatedAt: "2026-09-16T13:00:00.000Z",
+      safeResultSummary: "Blocker 1C focused verification passed",
+    }],
+    readinessRefs: [{
+      readinessType: "DEPLOYMENT",
+      readinessRef: "staging-reevaluation:blocker1c:deployment-not-ready",
+      releaseCandidateId: candidate.releaseCandidateId,
+      candidateBindingFingerprint: candidate.candidateFingerprint,
+      targetEnvironment: "Staging",
+      readiness: "NOT_READY",
+      freshness: "FRESH",
+      evaluatedAt: "2026-09-16T13:00:00.000Z",
+      safeReasonCodes: ["MISSING_RUNTIME_SURFACES"],
+      evidenceRefs: ["staging-reevaluation:blocker1c:focused-tests"],
+    }],
+    acceptanceResult: "INCOMPLETE",
+    acceptedBy: null,
+    evaluatedAt: "2026-09-16T13:00:00.000Z",
+    acceptedAt: null,
+    decisionEvidenceRef: "staging-reevaluation:blocker1c:decision:incomplete",
+    previousManifestId: null,
+  });
+  const boundary = new PromotionHandoffEvidenceService({
+    sourceResolver: {
+      resolve: (releaseCandidateId, acceptanceManifestId) =>
+        releaseCandidateId === candidate.releaseCandidateId && acceptanceManifestId === manifest.acceptanceManifestId
+          ? Object.freeze({
+            candidate,
+            acceptanceManifest: manifest,
+            manifestHistory: Object.freeze([manifest]),
+            currentReadinessRefs: Object.freeze([]),
+          })
+          : undefined,
+    },
+  });
+
+  assert.equal(boundary.materialize({
+    releaseCandidateId: candidate.releaseCandidateId,
+    acceptanceManifestId: manifest.acceptanceManifestId,
+  }), null);
 });
 
 test("FEAT-024-F REJECTED manifest produces no promotion handoff", () => {
