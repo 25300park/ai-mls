@@ -6,6 +6,7 @@ import test from "node:test";
 import { materializeRel001StagingCandidate } from "./release-candidate-artifact.js";
 
 const SOURCE_SHA = "7e9747a50c643152532e06fb443bbb1b5d945350";
+const PHASE7_SOURCE_SHA = "cd620b273c8e7672ffc1e015380ce36d486d9a9a";
 
 async function withFixture(
   files: Readonly<Record<string, string>>,
@@ -26,6 +27,7 @@ async function withFixture(
 
 function fixtureFiles(runtimeValue = "api015"): Readonly<Record<string, string>> {
   return {
+    ...phase7FixtureFiles(runtimeValue),
     "apps/api/src/administration-production-composition.js": [
       'import { administration } from "../../../modules/administration/src/runtime.js";',
       'import configuration from "./runtime-config.json" with { type: "json" };',
@@ -48,6 +50,71 @@ function fixtureFiles(runtimeValue = "api015"): Readonly<Record<string, string>>
     "modules/jobs/src/job-service.js": "export class JobService {}",
   };
 }
+
+function phase7FixtureFiles(runtimeValue = "phase7"): Readonly<Record<string, string>> {
+  const roots = [
+    "apps/api/src/staging-admin-console-bootstrap.js",
+    "apps/api/src/staging-session-composition.js",
+    "apps/api/src/administration-production-composition.js",
+    "apps/api/src/api016-production-composition.js",
+    "modules/jobs/src/job-staging-composition.js",
+    "modules/ai/src/advisory-readiness-composition.js",
+    "modules/ai/src/advisory-production-composition.js",
+    "apps/api/src/staging-integrated-runtime-verification.js",
+    "modules/source/src/source-registry-durable-persistence.js",
+    "modules/intake/src/intake-durable-persistence.js",
+    "modules/property/src/property-durable-persistence.js",
+    "modules/listing/src/listing-durable-persistence.js",
+    "modules/contact/src/contact-durable-persistence.js",
+    "modules/client/src/client-requirement-durable-persistence.js",
+    "modules/matching/src/matching-durable-persistence.js",
+    "modules/operations/src/security-privacy-operational-controls.js",
+    "modules/operations/src/operational-readiness-evidence.js",
+    "modules/operations/src/durable-operational-evidence-store.js",
+  ] as const;
+  return Object.fromEntries(roots.map((path) => [path, `export const runtime = "${path}:${runtimeValue}";`]));
+}
+
+async function materializePhase7(distRoot: string, generatedAt = "2026-09-16T00:00:00.000Z") {
+  return materializeRel001StagingCandidate({
+    distRoot,
+    sourceCommitSha: PHASE7_SOURCE_SHA,
+    repositoryIdentity: "https://github.com/25300park/ai-mls.git",
+    sourceBranch: "main",
+    generatedAt,
+  });
+}
+
+test("REL-001 Phase 7 rebuilds the exact authorized multi-component Staging candidate", async () => {
+  await withFixture(phase7FixtureFiles(), async (distRoot) => {
+    const candidate = await materializePhase7(distRoot);
+
+    assert.equal(candidate.sourceCommitSha, PHASE7_SOURCE_SHA);
+    assert.equal(candidate.targetEnvironment, "Staging");
+    assert.deepEqual(candidate.artifactManifest.runtimeComponents.map((component) => component.artifactComponentId), [
+      "ADMIN_CONSOLE_STAGING",
+      "API-015_ADMINISTRATION_HTTP",
+      "API-016_AUDIT_RUNTIME",
+      "API-017_JOB_RUNTIME",
+      "CORE_CLIENT_REQUIREMENT_STORE",
+      "CORE_CONTACT_STORE",
+      "CORE_INTAKE_STORE",
+      "CORE_LISTING_STORE",
+      "CORE_MATCHING_STORE",
+      "CORE_PROPERTY_STORE",
+      "CORE_SOURCE_REGISTRY_STORE",
+      "FEAT-022_ADVISORY_DURABLE_RUNTIME",
+      "FEAT-022_PROVIDER_INDEPENDENT",
+      "OPERATIONAL_EVIDENCE_STORE",
+      "OPERATIONAL_READINESS_EVIDENCE",
+      "OPERATIONAL_SECURITY_CONTROLS",
+      "SESSION_AUTH",
+      "STAGING_INTEGRATED_COMPOSITION",
+    ]);
+    assert.equal(candidate.releaseScopeCoverage.filter((row) => row.requiredByReleaseScope && !row.artifactIncluded).length, 3);
+    assert.equal(candidate.acceptanceResult, "INCOMPLETE");
+  });
+});
 
 async function materialize(distRoot: string, generatedAt = "2026-09-11T00:00:00.000Z") {
   return materializeRel001StagingCandidate({
@@ -92,27 +159,28 @@ test("FEAT-024-A1 returns INCOMPLETE and never shrinks REL-001 to its executable
     assert.equal(candidate.acceptanceResult, "INCOMPLETE");
     assert.equal(candidate.releaseScopeCoverage.filter((row) => row.requiredByReleaseScope).length, 6);
     assert.equal(candidate.releaseScopeCoverage.filter((row) => row.gapDisposition === "INCOMPLETE_RUNTIME_SURFACE").length, 5);
-    assert.deepEqual(candidate.artifactManifest.runtimeComponents.map((component) => component.artifactComponentId), ["API-015_ADMINISTRATION_HTTP"]);
+    assert.equal(candidate.artifactManifest.runtimeComponents.length, 1);
   });
 });
 
-test("FEAT-024-A1 includes only the reachable API-015 runtime closure", async () => {
+test("REL-001 Phase 7 computes each component from only its reachable runtime closure", async () => {
   await withFixture(fixtureFiles(), async (distRoot) => {
     const candidate = await materialize(distRoot);
 
-    assert.deepEqual(candidate.artifactManifest.includedFilePaths, [
+    const api015 = candidate.artifactManifest.runtimeComponents.find((component) => component.artifactComponentId === "API-015_ADMINISTRATION_HTTP");
+    assert.deepEqual(api015?.includedFiles.map((file) => file.path), [
       "apps/api/src/administration-production-composition.js",
       "apps/api/src/runtime-config.json",
       "modules/administration/src/runtime.js",
       "modules/authorization/src/runtime.js",
     ]);
-    assert.equal(candidate.artifactManifest.includedFilePaths.some((path) => path.includes("admin-console")), false);
-    assert.equal(candidate.artifactManifest.includedFilePaths.some((path) => path.includes("audit-log")), false);
-    assert.equal(candidate.artifactManifest.includedFilePaths.some((path) => path.includes("job-service")), false);
+    assert.equal(api015?.includedFiles.some((file) => file.path.includes("admin-console")), false);
+    assert.equal(api015?.includedFiles.some((file) => file.path.includes("audit-log")), false);
+    assert.equal(api015?.includedFiles.some((file) => file.path.includes("job-service")), false);
   });
 });
 
-test("FEAT-024-A uses the dedicated API-015 artifact root without unrelated API composition roots", async () => {
+test("REL-001 Phase 7 preserves the dedicated API-015 artifact root", async () => {
   const candidate = await materializeRel001StagingCandidate({
     distRoot: "dist",
     sourceCommitSha: SOURCE_SHA,
@@ -122,7 +190,7 @@ test("FEAT-024-A uses the dedicated API-015 artifact root without unrelated API 
   });
   const included = candidate.artifactManifest.includedFilePaths;
 
-  assert.equal(candidate.artifactManifest.runtimeComponents[0]?.runtimeEntryPoint, "apps/api/src/administration-production-composition.js");
+  assert.equal(candidate.artifactManifest.runtimeComponents.find((component) => component.artifactComponentId === "API-015_ADMINISTRATION_HTTP")?.runtimeEntryPoint, "apps/api/src/administration-production-composition.js");
   assert.equal(included.includes("apps/api/src/composition.js"), false);
   assert.equal(included.includes("apps/api/src/publication-api.js"), false);
   assert.equal(included.includes("apps/api/src/admin-audit-api.js"), false);
@@ -132,17 +200,18 @@ test("FEAT-024-A uses the dedicated API-015 artifact root without unrelated API 
 
 test("FEAT-024-A1 rejects missing, escaping, or secret-bearing runtime dependencies", async (context) => {
   await context.test("missing import", async () => {
-    await withFixture({ "apps/api/src/administration-production-composition.js": 'import "./missing.js";' }, async (distRoot) => {
+    await withFixture({ ...phase7FixtureFiles(), "apps/api/src/administration-production-composition.js": 'import "./missing.js";' }, async (distRoot) => {
       await assert.rejects(() => materialize(distRoot), /runtime dependency is missing/i);
     });
   });
   await context.test("path escape", async () => {
-    await withFixture({ "apps/api/src/administration-production-composition.js": 'import "../../../../outside.js";' }, async (distRoot) => {
+    await withFixture({ ...phase7FixtureFiles(), "apps/api/src/administration-production-composition.js": 'import "../../../../outside.js";' }, async (distRoot) => {
       await assert.rejects(() => materialize(distRoot), /escapes dist root/i);
     });
   });
   await context.test("secret config", async () => {
     await withFixture({
+      ...phase7FixtureFiles(),
       "apps/api/src/administration-production-composition.js": 'import configuration from "./runtime-config.json" with { type: "json" };',
       "apps/api/src/runtime-config.json": '{"mode":"staging","apiKey":"sk-live-not-allowed"}',
     }, async (distRoot) => {

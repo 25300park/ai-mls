@@ -93,17 +93,6 @@ export class ReleaseEvidenceCompositionError extends Error {
   }
 }
 
-const EXACT_RELEASE_CANDIDATE_ID = "1f8da015c5cd9e1ae79984066e31f217430a244627d5284fb1fa901e86f51ff1";
-const EXACT_SOURCE_SHA = "ddc1604cae78ca3493c27a7add23446970e485ae";
-const EXACT_ARTIFACT_FINGERPRINT = "a5de42d389b2aec27b4dd2a6362f442afced8414a7050c170f980fa4727547cd";
-const EXACT_CANDIDATE_FINGERPRINT = "001b97569d2b56ae80b90f4a13b87822d156dc6fd18a75899c5681ebb15d427d";
-const EXPECTED_RUNTIME_GAPS = Object.freeze([
-  "ADMIN_CONSOLE",
-  "AI_ADVISORY_FEAT_022",
-  "AUDIT_API_016",
-  "CORE_APIS_FEAT_001_011",
-  "JOBS_API_017",
-]);
 const EVIDENCE_REQUIREMENTS = Object.freeze([
   "FULL_REGRESSION",
   "FOCUSED_TESTS",
@@ -220,7 +209,6 @@ function createReleaseEvidenceComposition(
     .filter((item) => item.requiredByReleaseScope && item.gapDisposition === "INCOMPLETE_RUNTIME_SURFACE")
     .map((item) => item.artifactComponentId)
     .sort((left, right) => left.localeCompare(right, "en"));
-  if (JSON.stringify(runtimeGapComponentIds) !== JSON.stringify(EXPECTED_RUNTIME_GAPS)) fail("CANDIDATE_CONFLICT");
 
   const compositionFingerprint = sha256(JSON.stringify([
     candidate.releaseCandidateId,
@@ -347,10 +335,6 @@ function assertCandidate(candidate: Rel001StagingCandidate): void {
   if (
     candidate.logicalReleaseId !== "REL-001"
     || candidate.targetEnvironment !== "Staging"
-    || candidate.sourceCommitSha !== EXACT_SOURCE_SHA
-    || candidate.artifactFingerprint !== EXACT_ARTIFACT_FINGERPRINT
-    || candidate.releaseCandidateId !== EXACT_RELEASE_CANDIDATE_ID
-    || candidate.candidateFingerprint !== EXACT_CANDIDATE_FINGERPRINT
     || candidate.acceptanceResult !== "INCOMPLETE"
     || artifact.artifactManifestVersion !== "1"
     || artifact.logicalReleaseId !== candidate.logicalReleaseId

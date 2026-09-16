@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import type { Rel001StagingCandidate } from "./release-candidate-artifact.js";
+import { materializeRel001StagingCandidate, type Rel001StagingCandidate } from "./release-candidate-artifact.js";
 import {
   ReleaseEvidenceCompositionError,
   ReleaseEvidenceCompositionService,
@@ -304,4 +304,26 @@ test("FEAT-024-E authority evidence cannot bypass blocking or missing evidence",
   assert.equal(value.requirementResults.find((item) => item.requirementId === "DEPENDENCY_AUDIT")?.disposition, "MISSING");
   assert.equal(value.requirementResults.find((item) => item.requirementId === "DEPLOYMENT_READINESS")?.disposition, "BLOCKING");
   assert.equal(value.acceptanceResult, "INCOMPLETE");
+});
+
+test("REL-001 Phase 7 composes the rebuilt exact candidate without historical identity pinning", async () => {
+  const rebuilt = await materializeRel001StagingCandidate({
+    distRoot: "dist",
+    sourceCommitSha: "cd620b273c8e7672ffc1e015380ce36d486d9a9a",
+    repositoryIdentity: "https://github.com/25300park/ai-mls.git",
+    sourceBranch: "main",
+    generatedAt: "2026-09-16T00:00:00.000Z",
+  });
+  const service = new ReleaseEvidenceCompositionService({
+    resolve: () => ({ authoritativeEvidence: [], readinessRefs: [] }),
+  });
+
+  const value = service.compose(rebuilt, { evaluatedAt: "2026-09-16T01:00:00.000Z" });
+
+  assert.equal(value.acceptanceResult, "INCOMPLETE");
+  assert.deepEqual(value.runtimeGapComponentIds, [
+    "CORE_API_001_002_PUBLIC_TRANSPORT",
+    "LIVE_AI_PROVIDER_EXECUTION",
+    "UI_006_CORE_DATA",
+  ]);
 });

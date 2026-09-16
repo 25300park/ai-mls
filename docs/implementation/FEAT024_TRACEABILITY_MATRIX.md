@@ -82,3 +82,19 @@
 - [FEAT-024-G Gap Matrix](../reviews/FEAT024_G_TRACEABILITY_CONSOLE_READ_GAP_MATRIX.md)
 - [FEAT-024-G Completion](../reviews/FEAT024_G_TRACEABILITY_CONSOLE_READ_INTEGRATION_COMPLETION.md)
 - [FEAT-024-F Completion](../reviews/FEAT024_F_PROMOTION_HANDOFF_EVIDENCE_COMPLETION.md)
+
+## 8. REL-001 Phase 7 exact-candidate reevaluation overlay
+
+이 section은 FEAT-024 Final Gate의 역사적 `ddc1604...` candidate를 변경하지 않는다. 현재 main exact HEAD에 대해 기존 FEAT-024 identity/evidence 계약을 다시 실행한 post-completion overlay이다.
+
+| Requirement | Exact Phase 7 evidence | Result |
+|---|---|---|
+| Candidate binding | source `cd620b273c8e7672ffc1e015380ce36d486d9a9a`, repository, branch `main`, environment `Staging` | PASS |
+| Artifact closure | `18` roots / `65` unique reachable runtime files; artifact fingerprint `0bdee557c89a99491c4b0194e5b3828c6df8772a32706de452896c53fd66f27e` | PASS |
+| Candidate identity | release candidate `e9244c1df51ef29b2ae61fe0323f05d29d4127f688a5eda2bc8ef10c14f957a2`; binding fingerprint `9a74e4d1052998d8603cd9504c256dfaf5264cc02a22bc929384aaf0caaf2a14` | PASS |
+| Evidence manifest | composition `83724aa86bcf1cba0dcaeb3cc4d2ec77755817da085830b7f4ae4d1ffe570be0`; manifest `4d3a39f35d3883577d1a4dbbb25797e2fae898c477d8946496dcf524ca174b06` | PASS |
+| Current disposition | `INCOMPLETE`; three mandatory runtime gaps remain explicit | TRUTHFUL |
+| Readiness / handoff | deployment `NOT_READY`; backup/rollback `UNKNOWN`; promotion handoff `UNAVAILABLE` | FAIL_CLOSED |
+| Fresh verification | Phase 7 `26/26`; affected `142/142`; full `1475/1475`; architecture `153/153` | PASS |
+| Audit | dependency audit `NOT_RUN` because no scoped network approval exists | BLOCKING |
+| Evidence | [Acceptance Rebuild](REL001_PHASE7_ACCEPTANCE_EVIDENCE_REBUILD.md), [Completion Report](../reviews/REL001_PHASE7_COMPLETION_REPORT.md) | RECORDED |

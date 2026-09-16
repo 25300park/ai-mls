@@ -20,11 +20,31 @@ export interface RuntimeArtifactFile {
 }
 
 export interface RuntimeArtifactComponent {
-  readonly artifactComponentId: "API-015_ADMINISTRATION_HTTP";
-  readonly runtimeEntryPoint: "apps/api/src/administration-production-composition.js";
+  readonly artifactComponentId: Rel001RuntimeArtifactComponentId;
+  readonly runtimeEntryPoint: string;
   readonly includedFiles: readonly RuntimeArtifactFile[];
   readonly componentFingerprint: string;
 }
+
+export type Rel001RuntimeArtifactComponentId =
+  | "ADMIN_CONSOLE_STAGING"
+  | "API-015_ADMINISTRATION_HTTP"
+  | "API-016_AUDIT_RUNTIME"
+  | "API-017_JOB_RUNTIME"
+  | "CORE_CLIENT_REQUIREMENT_STORE"
+  | "CORE_CONTACT_STORE"
+  | "CORE_INTAKE_STORE"
+  | "CORE_LISTING_STORE"
+  | "CORE_MATCHING_STORE"
+  | "CORE_PROPERTY_STORE"
+  | "CORE_SOURCE_REGISTRY_STORE"
+  | "FEAT-022_ADVISORY_DURABLE_RUNTIME"
+  | "FEAT-022_PROVIDER_INDEPENDENT"
+  | "OPERATIONAL_EVIDENCE_STORE"
+  | "OPERATIONAL_READINESS_EVIDENCE"
+  | "OPERATIONAL_SECURITY_CONTROLS"
+  | "SESSION_AUTH"
+  | "STAGING_INTEGRATED_COMPOSITION";
 
 export interface RuntimeArtifactManifest {
   readonly artifactManifestVersion: "1";
@@ -62,7 +82,30 @@ export interface Rel001StagingCandidate {
   readonly artifactManifest: RuntimeArtifactManifest;
 }
 
-const RUNTIME_ENTRY_POINT = "apps/api/src/administration-production-composition.js" as const;
+const RUNTIME_COMPONENT_ROOTS: Readonly<Record<Rel001RuntimeArtifactComponentId, string>> = Object.freeze({
+  ADMIN_CONSOLE_STAGING: "apps/api/src/staging-admin-console-bootstrap.js",
+  "API-015_ADMINISTRATION_HTTP": "apps/api/src/administration-production-composition.js",
+  "API-016_AUDIT_RUNTIME": "apps/api/src/api016-production-composition.js",
+  "API-017_JOB_RUNTIME": "modules/jobs/src/job-staging-composition.js",
+  CORE_CLIENT_REQUIREMENT_STORE: "modules/client/src/client-requirement-durable-persistence.js",
+  CORE_CONTACT_STORE: "modules/contact/src/contact-durable-persistence.js",
+  CORE_INTAKE_STORE: "modules/intake/src/intake-durable-persistence.js",
+  CORE_LISTING_STORE: "modules/listing/src/listing-durable-persistence.js",
+  CORE_MATCHING_STORE: "modules/matching/src/matching-durable-persistence.js",
+  CORE_PROPERTY_STORE: "modules/property/src/property-durable-persistence.js",
+  CORE_SOURCE_REGISTRY_STORE: "modules/source/src/source-registry-durable-persistence.js",
+  "FEAT-022_ADVISORY_DURABLE_RUNTIME": "modules/ai/src/advisory-production-composition.js",
+  "FEAT-022_PROVIDER_INDEPENDENT": "modules/ai/src/advisory-readiness-composition.js",
+  OPERATIONAL_EVIDENCE_STORE: "modules/operations/src/durable-operational-evidence-store.js",
+  OPERATIONAL_READINESS_EVIDENCE: "modules/operations/src/operational-readiness-evidence.js",
+  OPERATIONAL_SECURITY_CONTROLS: "modules/operations/src/security-privacy-operational-controls.js",
+  SESSION_AUTH: "apps/api/src/staging-session-composition.js",
+  STAGING_INTEGRATED_COMPOSITION: "apps/api/src/staging-integrated-runtime-verification.js",
+});
+const LEGACY_RUNTIME_COMPONENT_ROOTS: Readonly<Partial<Record<Rel001RuntimeArtifactComponentId, string>>> = Object.freeze({
+  "API-015_ADMINISTRATION_HTTP": "apps/api/src/administration-production-composition.js",
+});
+const PHASE7_SOURCE_COMMIT_SHA = "cd620b273c8e7672ffc1e015380ce36d486d9a9a";
 const REPOSITORY_IDENTITY = "https://github.com/25300park/ai-mls.git" as const;
 const RUNTIME_EXTENSIONS = new Set([".js", ".mjs", ".cjs", ".json"]);
 const EXCLUDED_PATH = /(?:^|\/)(?:tests?|__tests__|fixtures?|mocks?|coverage|docs?|reviews?|reports?|logs?|temp|tmp|cache|backups?)(?:\/|$)|\.(?:test|spec)\.[^.]+$|\.map$|\.d\.ts$|\.tsbuildinfo$|\.(?:ts|tsx)$/i;
@@ -81,7 +124,23 @@ const EXCLUDED_CLASS_POLICY = Object.freeze([
   "unreachable dist output",
 ]);
 
-const RELEASE_SCOPE_COVERAGE: readonly ReleaseScopeCoverageEvidence[] = deepFreeze([
+const PHASE7_RELEASE_SCOPE_COVERAGE: readonly ReleaseScopeCoverageEvidence[] = deepFreeze([
+  coverage("API-015_ADMINISTRATION_HTTP", true, true, true, "apps/api/src/administration-production-composition.ts#composeProductionAdministrationApi015NodeHttpServer", "INCLUDED"),
+  coverage("ADMIN_CONSOLE_STAGING", true, true, true, "apps/api/src/staging-admin-console-bootstrap.ts#createStagingAdminConsoleBootstrap", "INCLUDED"),
+  coverage("CORE_DURABLE_STORES", true, true, true, "docs/implementation/REL001_PHASE1G_PERSISTENCE_TRACEABILITY_MATRIX.md", "INCLUDED"),
+  coverage("AUDIT_API_016", true, true, true, "apps/api/src/api016-production-composition.ts#createStagingApi016AuditRuntime", "INCLUDED"),
+  coverage("JOBS_API_017", true, true, true, "modules/jobs/src/job-staging-composition.ts#createStagingJobExecutionRuntime", "INCLUDED"),
+  coverage("AI_ADVISORY_PROVIDER_INDEPENDENT", true, true, true, "modules/ai/src/advisory-readiness-composition.ts#composeAdvisoryProviderReadiness", "INCLUDED"),
+  coverage("SESSION_AUTH", true, true, true, "apps/api/src/staging-session-composition.ts#createStagingSessionComposition", "INCLUDED"),
+  coverage("STAGING_INTEGRATED_COMPOSITION", true, true, true, "apps/api/src/staging-integrated-runtime-verification.ts#createIntegratedStagingRuntimeVerification", "INCLUDED"),
+  coverage("OPERATIONAL_SECURITY_READINESS", true, true, true, "modules/operations/src/security-privacy-operational-controls.ts#SecurityPrivacyOperationalControlService", "INCLUDED"),
+  coverage("LIVE_AI_PROVIDER_EXECUTION", true, false, false, "docs/implementation/REL001_PHASE4D8_EXTERNAL_PROVIDER_DEPENDENCY_HOLD.md", "INCOMPLETE_RUNTIME_SURFACE"),
+  coverage("CORE_API_001_002_PUBLIC_TRANSPORT", true, false, false, "docs/implementation/REL001_PHASE6_COMPONENT_RUNTIME_TRACEABILITY.md", "INCOMPLETE_RUNTIME_SURFACE"),
+  coverage("UI_006_CORE_DATA", true, false, false, "docs/implementation/REL001_PHASE5_ADMIN_CONSOLE_FINAL_TRACEABILITY_MATRIX.md", "INCOMPLETE_RUNTIME_SURFACE"),
+  coverage("PUBLICATION_API_014", false, true, false, "apps/api/src/composition.ts#composeProductionPublicationApi014NodeHttpServer", "OUT_OF_SCOPE"),
+  coverage("CONNECTOR_API_018_019", false, true, false, "apps/api/src/connector-production-composition.ts#createProductionConnectorApi018Composition", "OUT_OF_SCOPE"),
+]);
+const LEGACY_RELEASE_SCOPE_COVERAGE: readonly ReleaseScopeCoverageEvidence[] = deepFreeze([
   coverage("API-015_ADMINISTRATION_HTTP", true, true, true, "apps/api/src/administration-production-composition.ts#composeProductionAdministrationApi015NodeHttpServer", "INCLUDED"),
   coverage("ADMIN_CONSOLE", true, false, false, "apps/admin-console/src/main.ts#composeDevelopmentAdminConsole", "INCOMPLETE_RUNTIME_SURFACE"),
   coverage("CORE_APIS_FEAT_001_011", true, false, false, "apps/api/src/composition.ts#composeApiModules", "INCOMPLETE_RUNTIME_SURFACE"),
@@ -94,15 +153,17 @@ const RELEASE_SCOPE_COVERAGE: readonly ReleaseScopeCoverageEvidence[] = deepFree
 
 export async function materializeRel001StagingCandidate(input: Rel001StagingCandidateInput): Promise<Rel001StagingCandidate> {
   validateCandidateInput(input);
-  const files = await deriveRuntimeClosure(input.distRoot, RUNTIME_ENTRY_POINT);
-  const componentFingerprint = sha256(files.map((file) => `${file.path}\0${file.fileSha256}\0${file.fileSize}`).join("\n"));
-  const runtimeComponent = deepFreeze({
-    artifactComponentId: "API-015_ADMINISTRATION_HTTP" as const,
-    runtimeEntryPoint: RUNTIME_ENTRY_POINT,
-    includedFiles: files,
-    componentFingerprint,
-  });
-  const artifactFingerprint = sha256(["REL-001", "Staging", input.sourceCommitSha, `API-015_ADMINISTRATION_HTTP:${componentFingerprint}`].join("\0"));
+  const definition = candidateDefinition(input.sourceCommitSha);
+  const runtimeComponents = await Promise.all(Object.entries(definition.roots)
+    .sort(([left], [right]) => left.localeCompare(right, "en"))
+    .map(async ([artifactComponentId, runtimeEntryPoint]): Promise<RuntimeArtifactComponent> => {
+      const includedFiles = await deriveRuntimeClosure(input.distRoot, runtimeEntryPoint);
+      const componentFingerprint = fingerprintFiles(includedFiles);
+      return deepFreeze({ artifactComponentId: artifactComponentId as Rel001RuntimeArtifactComponentId, runtimeEntryPoint, includedFiles, componentFingerprint });
+    }));
+  const includedFilePaths = [...new Set(runtimeComponents.flatMap((component) => component.includedFiles.map((file) => file.path)))]
+    .sort((left, right) => left.localeCompare(right, "en"));
+  const artifactFingerprint = fingerprintArtifact(input.sourceCommitSha, runtimeComponents);
   const releaseCandidateId = sha256(["REL-001", input.sourceCommitSha, input.repositoryIdentity, input.sourceBranch, artifactFingerprint, "Staging"].join("\0"));
   const candidateFingerprint = sha256([releaseCandidateId, "REL-001", input.sourceCommitSha, input.repositoryIdentity, input.sourceBranch, artifactFingerprint, "Staging"].join("\0"));
   const artifactManifest = deepFreeze({
@@ -111,8 +172,8 @@ export async function materializeRel001StagingCandidate(input: Rel001StagingCand
     targetEnvironment: "Staging" as const,
     sourceCommitSha: input.sourceCommitSha,
     repositoryIdentity: input.repositoryIdentity,
-    runtimeComponents: [runtimeComponent],
-    includedFilePaths: files.map((file) => file.path),
+    runtimeComponents,
+    includedFilePaths,
     excludedClassPolicy: EXCLUDED_CLASS_POLICY,
     artifactFingerprint,
     generatedAt: input.generatedAt,
@@ -128,7 +189,7 @@ export async function materializeRel001StagingCandidate(input: Rel001StagingCand
     generatedAt: input.generatedAt,
     candidateFingerprint,
     acceptanceResult: "INCOMPLETE" as const,
-    releaseScopeCoverage: RELEASE_SCOPE_COVERAGE,
+    releaseScopeCoverage: definition.coverage,
     artifactManifest,
   });
   assertRel001StagingCandidateIntegrity(candidate);
@@ -137,34 +198,54 @@ export async function materializeRel001StagingCandidate(input: Rel001StagingCand
 
 export function assertRel001StagingCandidateIntegrity(candidate: Rel001StagingCandidate): void {
   assertRel001StagingCandidateArtifactIntegrity(candidate);
-  if (!sameCanonicalRows(candidate.releaseScopeCoverage, RELEASE_SCOPE_COVERAGE)) invalidCandidate();
+  if (!sameCanonicalRows(candidate.releaseScopeCoverage, candidateDefinition(candidate.sourceCommitSha).coverage)) invalidCandidate();
 }
 
 export function assertRel001StagingCandidateArtifactIntegrity(candidate: Rel001StagingCandidate): void {
   const artifact = candidate.artifactManifest;
   if (candidate.repositoryIdentity !== REPOSITORY_IDENTITY || !isSafeSourceBranch(candidate.sourceBranch)) invalidCandidate();
-  if (artifact.runtimeComponents.length !== 1) invalidCandidate();
-  const component = artifact.runtimeComponents[0]!;
-  if (component.artifactComponentId !== "API-015_ADMINISTRATION_HTTP" || component.runtimeEntryPoint !== RUNTIME_ENTRY_POINT
-    || component.includedFiles.length === 0) invalidCandidate();
+  const expectedComponents = Object.entries(candidateDefinition(candidate.sourceCommitSha).roots).sort(([left], [right]) => left.localeCompare(right, "en"));
+  if (artifact.runtimeComponents.length !== expectedComponents.length) invalidCandidate();
+  for (const [index, component] of artifact.runtimeComponents.entries()) {
+    const expected = expectedComponents[index]!;
+    const includedPaths = component.includedFiles.map((file) => file.path);
+    if (component.artifactComponentId !== expected[0]
+      || component.runtimeEntryPoint !== expected[1]
+      || component.includedFiles.length === 0
+      || component.componentFingerprint !== fingerprintFiles(component.includedFiles)
+      || new Set(includedPaths).size !== includedPaths.length
+      || includedPaths.some((path, pathIndex) => pathIndex > 0 && includedPaths[pathIndex - 1]!.localeCompare(path, "en") >= 0)) invalidCandidate();
+  }
+  const includedPaths = [...new Set(artifact.runtimeComponents.flatMap((component) => component.includedFiles.map((file) => file.path)))]
+    .sort((left, right) => left.localeCompare(right, "en"));
+  if (!sameOrderedValues(artifact.includedFilePaths, includedPaths)) invalidCandidate();
 
-  const includedPaths = component.includedFiles.map((file) => file.path);
-  if (new Set(includedPaths).size !== includedPaths.length
-    || includedPaths.some((path, index) => index > 0 && includedPaths[index - 1]!.localeCompare(path, "en") >= 0)
-    || !sameOrderedValues(artifact.includedFilePaths, includedPaths)) invalidCandidate();
-
-  const componentFingerprint = sha256(component.includedFiles
-    .map((file) => `${file.path}\0${file.fileSha256}\0${file.fileSize}`).join("\n"));
-  const artifactFingerprint = sha256(["REL-001", "Staging", candidate.sourceCommitSha, `API-015_ADMINISTRATION_HTTP:${componentFingerprint}`].join("\0"));
+  const artifactFingerprint = fingerprintArtifact(candidate.sourceCommitSha, artifact.runtimeComponents);
   const releaseCandidateId = sha256(["REL-001", candidate.sourceCommitSha, candidate.repositoryIdentity, candidate.sourceBranch, artifactFingerprint, "Staging"].join("\0"));
   const candidateFingerprint = sha256([releaseCandidateId, "REL-001", candidate.sourceCommitSha, candidate.repositoryIdentity, candidate.sourceBranch, artifactFingerprint, "Staging"].join("\0"));
 
-  if (component.componentFingerprint !== componentFingerprint
-    || candidate.artifactFingerprint !== artifactFingerprint
+  if (candidate.artifactFingerprint !== artifactFingerprint
     || artifact.artifactFingerprint !== artifactFingerprint
     || candidate.releaseCandidateId !== releaseCandidateId
     || candidate.candidateFingerprint !== candidateFingerprint
     || !sameOrderedValues(artifact.excludedClassPolicy, EXCLUDED_CLASS_POLICY)) invalidCandidate();
+}
+
+function candidateDefinition(sourceCommitSha: string): Readonly<{
+  roots: Readonly<Partial<Record<Rel001RuntimeArtifactComponentId, string>>>;
+  coverage: readonly ReleaseScopeCoverageEvidence[];
+}> {
+  return sourceCommitSha === PHASE7_SOURCE_COMMIT_SHA
+    ? { roots: RUNTIME_COMPONENT_ROOTS, coverage: PHASE7_RELEASE_SCOPE_COVERAGE }
+    : { roots: LEGACY_RUNTIME_COMPONENT_ROOTS, coverage: LEGACY_RELEASE_SCOPE_COVERAGE };
+}
+
+function fingerprintFiles(files: readonly RuntimeArtifactFile[]): string {
+  return sha256(files.map((file) => `${file.path}\0${file.fileSha256}\0${file.fileSize}`).join("\n"));
+}
+
+function fingerprintArtifact(sourceCommitSha: string, components: readonly RuntimeArtifactComponent[]): string {
+  return sha256(["REL-001", "Staging", sourceCommitSha, ...components.map((component) => `${component.artifactComponentId}:${component.componentFingerprint}`)].join("\0"));
 }
 
 function coverage(
