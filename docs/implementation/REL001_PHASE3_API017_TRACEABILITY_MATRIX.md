@@ -400,3 +400,17 @@ Phase 7은 API-017의 기존 provider-independent one-shot runtime을 release ar
 | evidence | [Acceptance Scope](REL001_STAGING_ACCEPTANCE_SCOPE.md), [Completion Report](../reviews/REL001_STAGING_ACCEPTANCE_COMPLETION_REPORT.md) |
 
 이 reevaluation은 API-017 lifecycle, automatic retry, scheduler 또는 provider selection authority를 추가하지 않는다.
+
+## REL-001 Release Blocker 1 — Core API-001/002 transport
+
+| Trace | Result |
+|---|---|
+| exact operations | API-001 Read Current Principal; API-002 Evaluate Capability |
+| routes | `GET /v1/me`; `POST /v1/authorization-decisions` |
+| trusted ingress | Phase 1D `SessionAccessCoordinator`; direct `SessionService`/repository path 0 |
+| bounds | approved header/body/key/depth/identifier/string/collection bounds; truncation 0 |
+| Core expansion | API-003~010 routes 0 |
+| API-017 effect | lifecycle/runtime/audit semantics unchanged |
+| evidence | [Blocker 1 Traceability](REL001_BLOCKER1_CORE_API001002_TRACEABILITY.md), [Completion Report](../reviews/REL001_BLOCKER1_COMPLETION_REPORT.md) |
+
+이 후속 closure는 REL-001의 API-001/002 acceptance transport만 추가하며 UI-006 data activation과 acceptance reevaluation은 수행하지 않는다.

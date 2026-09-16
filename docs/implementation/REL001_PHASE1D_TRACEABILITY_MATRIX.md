@@ -50,3 +50,9 @@ Failed authentication, invalid freshness, rejected authority, binding mismatch a
 `REL-001 Phase 1D = IMPLEMENTED_AND_VERIFIED` within the bounded Session foundation. This does not close REL-001 Phase 1 Core Runtime and does not authorize integration, commit, push or Production reuse.
 
 Related completion evidence: [Phase 1D Completion Report](../reviews/REL001_PHASE1D_BOUNDED_DURABLE_SESSION_IMPLEMENTATION_REPORT.md).
+
+## 5. Later REL-001 Blocker 1 transport reuse
+
+Blocker 1B adds `resolveAuthorizedWithDecision()` as a backward-compatible projection of the same Phase 1D transaction. Existing `resolveAuthorized()` delegates to it and preserves the exact freshness, revocation, MFA, live-authority and CAS behavior. The returned decision is immutable and lets API-002 avoid a second authorization evaluation. No repository/UoW access moves into HTTP.
+
+Evidence: [Blocker 1 Traceability](REL001_BLOCKER1_CORE_API001002_TRACEABILITY.md), `session-access-coordinator.test.ts`.

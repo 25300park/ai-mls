@@ -27,6 +27,7 @@ export {
 } from "./session-durable-persistence.js";
 export {
   SessionAccessCoordinator,
+  type AuthorizedSessionResolution,
   type ResolveAuthorizedSessionRequest,
   type SessionAccessCoordinatorDependencies,
 } from "./session-access-coordinator.js";

@@ -143,6 +143,16 @@ const request = {
   correlationId: "correlation-session-access-1",
 } as const;
 
+test("returns the same live authorization decision with the authorized Session resolution", () => {
+  const state = fixture({ now: new Date(instant(60_000)) });
+  const result = state.coordinator.resolveAuthorizedWithDecision(request);
+  assert.equal(result.session.principalId, "agent-access-1");
+  assert.equal(result.decision.effect, "ALLOW");
+  assert.deepEqual(result.decision.assignmentIds, ["assignment-access-1"]);
+  assert.equal(Object.isFrozen(result), true);
+  assert.equal(Object.isFrozen(result.decision.assignmentIds), true);
+});
+
 function expectAuthenticationCode(code: string): (error: unknown) => boolean {
   return (error: unknown): boolean =>
     error instanceof AuthenticationError && error.code === code;

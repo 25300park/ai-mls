@@ -37,6 +37,11 @@ export interface SessionAccessCoordinatorDependencies {
   readonly clock: () => Date;
 }
 
+export interface AuthorizedSessionResolution {
+  readonly session: SessionContext;
+  readonly decision: AuthorizationDecision;
+}
+
 export class SessionAccessCoordinator {
   readonly #unitOfWork: SessionUnitOfWork;
   readonly #bindingResolver: TrustedSessionBindingResolver;
@@ -51,6 +56,12 @@ export class SessionAccessCoordinator {
   }
 
   public resolveAuthorized(request: ResolveAuthorizedSessionRequest): SessionContext {
+    return this.resolveAuthorizedWithDecision(request).session;
+  }
+
+  public resolveAuthorizedWithDecision(
+    request: ResolveAuthorizedSessionRequest,
+  ): AuthorizedSessionResolution {
     if (!validLocator(request.sessionId)) throw authenticationRequired();
     const record = this.#unitOfWork.sessions.find(request.sessionId);
     if (record?.state !== "ACTIVE") throw authenticationRequired();
@@ -101,7 +112,10 @@ export class SessionAccessCoordinator {
       }
       throw error;
     }
-    return projectSession(updated, binding);
+    return Object.freeze({
+      session: projectSession(updated, binding),
+      decision: immutableDecision(decision),
+    });
   }
 
   #resolveBinding(
@@ -129,6 +143,13 @@ export class SessionAccessCoordinator {
     }
     return binding;
   }
+}
+
+function immutableDecision(decision: AuthorizationDecision): AuthorizationDecision {
+  const snapshot = structuredClone(decision);
+  Object.freeze(snapshot.obligations);
+  Object.freeze(snapshot.assignmentIds);
+  return Object.freeze(snapshot);
 }
 
 function projectSession(
