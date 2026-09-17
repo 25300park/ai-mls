@@ -61,3 +61,15 @@ The sole non-blocking gap is the exact-candidate dependency audit refresh at the
 DEC-164 approves the bounded design for `REL002-GAP-004`, `REL002-GAP-005` and `REL002-GAP-006`. The approved boundary centralizes closed typed Production configuration, provider-neutral secret references and startup validation while reusing existing durable Session and authorization authority.
 
 This design disposition does not close the gaps. Their classifications remain `PARTIAL`, `PARTIAL` and `STAGING_ONLY`; all three remain blocking until separately authorized implementation and Production-bound evidence pass. Infrastructure selection, credential values and live provider activation remain outside Phase 1 design scope.
+
+## 5. Phase 1C proposed amendment impact
+
+Phase 1B implementation inspection identified that a canonical Production SERVICE/WORKLOAD registration authority and shared Production bootstrap are absent. DEC-165 and DEC-166 approve the corresponding design amendments; implementation remains separately gated.
+
+| Gap | Proposed design impact | Current status |
+|---|---|---|
+| REL002-GAP-004 | DEC-166 assigns ordered validation and lifecycle ownership to `ProductionBootstrap` | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-005 | DEC-166 places exact-consumer secret-reference validation/resolution before aggregate PASS | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-006 | DEC-165 defines Identity-owned `RegisteredServiceWorkload`; DEC-166 defines explicit Production Session/composition ownership | `STAGING_ONLY`, `BLOCKING` |
+
+The approved decisions do not close or reclassify any gap. Implementation and fresh Production-bound verification remain required; physical table/schema selection remains `DEFERRED`.

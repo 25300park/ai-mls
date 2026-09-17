@@ -49,3 +49,9 @@ Stop for Architecture Owner review before new API IDs, roles/capabilities, lifec
 | Phase 2 | NOT STARTED | Must not start before Phase 1 implementation and closeout approval |
 
 The Phase 1 design introduces no Production/Test change, credential value, infrastructure mutation or provider/network call. It does not change the Phase 0 gap counts or the eight-phase sequence.
+
+### Phase 1C amendment gate
+
+Phase 1B remains blocked because the canonical SERVICE/WORKLOAD registration authority and shared Production bootstrap are not implemented. Phase 1C approved DEC-165 and DEC-166 at the design boundary; physical table/schema selection remains `DEFERRED`.
+
+Phase 1B may resume only under separate implementation authorization and the [Phase 1B Resume Plan](REL002_PHASE1C_PHASE1B_RESUME_PLAN.md). Phase 2 remains `NOT STARTED`, and gaps 004/005/006 remain blocking until implementation and verification complete.
