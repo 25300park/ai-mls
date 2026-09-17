@@ -73,3 +73,15 @@ Phase 1B implementation inspection identified that a canonical Production SERVIC
 | REL002-GAP-006 | DEC-165 defines Identity-owned `RegisteredServiceWorkload`; DEC-166 defines explicit Production Session/composition ownership | `STAGING_ONLY`, `BLOCKING` |
 
 The approved decisions do not close or reclassify any gap. Implementation and fresh Production-bound verification remain required; physical table/schema selection remains `DEFERRED`.
+
+## 6. Phase 1D implementation-design impact
+
+Phase 1D-approved DEC-167 and DEC-168 close the remaining physical-design questions without closing the Production gaps.
+
+| Gap | Phase 1D design impact | Current status |
+|---|---|---|
+| REL002-GAP-004 | DEC-168 approves non-forgeable bootstrap construction context, exact startup ordering and aggregate readiness ownership | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-005 | Bootstrap validates mandatory references, resolves secrets only for exact consumers and stores no credential values | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-006 | DEC-167 approves Identity-owned durable registration table/store and `registrationId`-only resolver; live authz remains existing authority | `STAGING_ONLY`, `BLOCKING` |
+
+Phase 1D does not reclassify a gap. Separately authorized implementation, Phase 2 migration readiness and fresh Production-bound verification are still required.

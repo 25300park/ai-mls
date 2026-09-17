@@ -46,7 +46,7 @@ Stop for Architecture Owner review before new API IDs, roles/capabilities, lifec
 |---|---|---|
 | Phase 0 | COMPLETE | Inventory `26/26`, blocking gaps `24`, non-blocking gaps `1` |
 | Phase 1 | DESIGN APPROVED / IMPLEMENTATION NOT AUTHORIZED | DEC-164 and Phase 1 inventory/models/matrix/plan; gaps 004-006 remain blocking |
-| Phase 2 | NOT STARTED | Must not start before Phase 1 implementation and closeout approval |
+| Phase 2 | NOT STARTED | May start only after the bounded Phase 1 implementation checkpoint receives AO approval; migration execution requires separate Phase 2 authorization |
 
 The Phase 1 design introduces no Production/Test change, credential value, infrastructure mutation or provider/network call. It does not change the Phase 0 gap counts or the eight-phase sequence.
 
@@ -54,4 +54,12 @@ The Phase 1 design introduces no Production/Test change, credential value, infra
 
 Phase 1B remains blocked because the canonical SERVICE/WORKLOAD registration authority and shared Production bootstrap are not implemented. Phase 1C approved DEC-165 and DEC-166 at the design boundary; physical table/schema selection remains `DEFERRED`.
 
-Phase 1B may resume only under separate implementation authorization and the [Phase 1B Resume Plan](REL002_PHASE1C_PHASE1B_RESUME_PLAN.md). Phase 2 remains `NOT STARTED`, and gaps 004/005/006 remain blocking until implementation and verification complete.
+The Phase 1C resume plan is preserved as historical design evidence and is not the current execution plan. Phase 1B may resume only under separate implementation authorization and the Phase 1D plan below. Phase 2 remains `NOT STARTED`, and gaps 004/005/006 remain blocking.
+
+### Phase 1D implementation-design gate
+
+Phase 1D selects the existing Identity database boundary with a separate `identity_registered_service_workloads` table/store proposal and assigns all Production schema/migration execution to Phase 2. It also proposes a module-private, non-forgeable `ProductionBootstrapContext` and exact pre-gate/post-gate lifecycle contract.
+
+DEC-167 and DEC-168 are `APPROVED`. The [Phase 1D Resume Implementation Plan](REL002_PHASE1D_PHASE1B_RESUME_IMPLEMENTATION_PLAN.md) may execute only after separate implementation authorization. Phase 2 remains `NOT STARTED`; Gaps 004/005/006 remain blocking.
+
+To avoid a migration dependency cycle, Phase 1 uses a split gate: bounded fail-closed adapter/bootstrap implementation and test-only schema fixtures reach an AO checkpoint first; separately authorized Phase 2 then owns Production migration and rehearsal; Phase 1 resumes at a return gate for exact Production schema/startup verification and final gap reevaluation. Phase 1 code never executes the Phase 2 migration.
