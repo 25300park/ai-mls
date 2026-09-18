@@ -109,3 +109,15 @@ Phase 1G implements the bounded DEC-169/170/171 contracts without Production mig
 | REL002-GAP-006 | evidence-bound workload subject, live policy evaluation and strict schema checker are implemented | `STAGING_ONLY`, `BLOCKING` |
 
 `IMPLEMENTATION_COMPLETE` does not mean `PRODUCTION_SCHEMA_READY`. Phase 2 migration/provisioning and exact Production-bound evidence remain required. Counts remain `24` blocking and `1` non-blocking.
+
+## 9. Phase 2A migration/schema-readiness design impact
+
+Phase 2A maps the Phase 1G exact code contract to an approved versioned migration design, internal readiness states, non-destructive rollback and separate identity registration policy. DEC-172/173/174 are `APPROVED`; no migration, Production database access or identity initialization occurred.
+
+| Gap | Phase 2A design evidence | Current status |
+|---|---|---|
+| REL002-GAP-004 | exact schema readiness results and `startProductionRuntime()` fail-closed mapping defined; Production-bound execution evidence absent | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-005 | migration stores no credentials and changes no secret boundary; concrete Production secret backend/rotation absent | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-006 | exact v1 migration/schema and separate evidence-bound registration process designed; schema/rows not provisioned | `STAGING_ONLY`, `BLOCKING` |
+
+Phase 2A design does not reclassify a gap or change the Phase 0 counts (`24` blocking, `1` non-blocking).

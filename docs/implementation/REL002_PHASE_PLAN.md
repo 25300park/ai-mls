@@ -45,8 +45,8 @@ Stop for Architecture Owner review before new API IDs, roles/capabilities, lifec
 | Phase | Status | Evidence boundary |
 |---|---|---|
 | Phase 0 | COMPLETE | Inventory `26/26`, blocking gaps `24`, non-blocking gaps `1` |
-| Phase 1 | DESIGN APPROVED / IMPLEMENTATION NOT AUTHORIZED | DEC-164 and Phase 1 inventory/models/matrix/plan; gaps 004-006 remain blocking |
-| Phase 2 | NOT STARTED | May start only after the bounded Phase 1 implementation checkpoint receives AO approval; migration execution requires separate Phase 2 authorization |
+| Phase 1 | IMPLEMENTATION COMPLETE / PRODUCTION RETURN GATE OPEN | Phase 1G implements DEC-169/170/171; gaps 004-006 remain blocking pending Production-bound schema/config evidence |
+| Phase 2 | PHASE 2A DESIGN COMPLETE / EXECUTION NOT AUTHORIZED | Phase 2A migration/schema-readiness design at exact Main `8f217f3`; DEC-172/173/174 approved; migration execution remains 0 |
 
 The Phase 1 design introduces no Production/Test change, credential value, infrastructure mutation or provider/network call. It does not change the Phase 0 gap counts or the eight-phase sequence.
 
@@ -78,3 +78,17 @@ The [Phase 1E Salvage / Resume Plan](REL002_PHASE1F_PHASE1E_SALVAGE_RESUME_PLAN.
 ### Phase 1G salvage implementation checkpoint
 
 Phase 1G reuses the valid Phase 1E durable-store/resolver/bootstrap work and implements DEC-169/170/171. Evidence adapter, non-Session workload subject, live assignment/policy revalidation, exact Identity schema checker and actual five-root registry are implemented and verified. Runtime migration/schema creation remains `0`; Phase 2 still owns Production migration. Therefore Gaps 004/005/006 remain `BLOCKING` pending Production-bound evidence and no Phase 2 work starts under this phase.
+
+### Phase 2A migration/schema-readiness design checkpoint
+
+Phase 2A starts only the design lane authorized at Main `8f217f3e3dfeabed4cdc9413b6f230b26ea61f30`. It defines:
+
+- exact Identity v1 DDL and contract fingerprint matching Phase 1G
+- approved migration ID/artifact location design and atomic forward-only execution contract
+- `READY` plus four bounded internal `NOT_READY_*` schema states
+- backup/authorization/lock/preflight/verification evidence prerequisites
+- non-destructive rollback/forward-fix posture
+- zero-row schema migration and separate evidence-bound registration process
+- column-level privacy/retention/log exposure classification
+
+DEC-172/173/174 are `APPROVED`. No migration artifact, runner, Production database write, row seed, credential, infrastructure or network action is authorized. Production schema remains `NOT_READY_PHASE2_REQUIRED`; Gaps 004/005/006 remain blocking.
