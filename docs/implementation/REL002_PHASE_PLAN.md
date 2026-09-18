@@ -46,7 +46,7 @@ Stop for Architecture Owner review before new API IDs, roles/capabilities, lifec
 |---|---|---|
 | Phase 0 | COMPLETE | Inventory `26/26`, blocking gaps `24`, non-blocking gaps `1` |
 | Phase 1 | IMPLEMENTATION COMPLETE / PRODUCTION RETURN GATE OPEN | Phase 1G implements DEC-169/170/171; gaps 004-006 remain blocking pending Production-bound schema/config evidence |
-| Phase 2 | PHASE 2A DESIGN COMPLETE / EXECUTION NOT AUTHORIZED | Phase 2A migration/schema-readiness design at exact Main `8f217f3`; DEC-172/173/174 approved; migration execution remains 0 |
+| Phase 2 | PHASE 2B ARTIFACT/COMPATIBILITY IMPLEMENTED / CONTROLLED EXECUTION NOT AUTHORIZED | Phase 2A design and DEC-172/173/174 approved; Phase 2B explicit artifact and read-only classifier implemented; Production migration execution remains 0 |
 
 The Phase 1 design introduces no Production/Test change, credential value, infrastructure mutation or provider/network call. It does not change the Phase 0 gap counts or the eight-phase sequence.
 
@@ -91,4 +91,10 @@ Phase 2A starts only the design lane authorized at Main `8f217f3e3dfeabed4cdc941
 - zero-row schema migration and separate evidence-bound registration process
 - column-level privacy/retention/log exposure classification
 
-DEC-172/173/174 are `APPROVED`. No migration artifact, runner, Production database write, row seed, credential, infrastructure or network action is authorized. Production schema remains `NOT_READY_PHASE2_REQUIRED`; Gaps 004/005/006 remain blocking.
+DEC-172/173/174 are `APPROVED`. At the Phase 2A checkpoint no migration artifact, runner, Production database write, row seed, credential, infrastructure or network action was authorized. Production schema remained `NOT_READY_PHASE2_REQUIRED`; Gaps 004/005/006 remained blocking.
+
+### Phase 2B migration/schema implementation checkpoint
+
+Phase 2B implements the separately authorized explicit v1 forward artifact, read-only verification artifact, immutable artifact checksum, execution-ledger compatibility contract and five-state runtime classifier. Tests execute only against disposable SQLite fixtures and verify zero identity seed, zero artifact-authored execution ledger, exact schema, partial state, version drift and constraint/index/checksum drift.
+
+Production migration execution, Production DB writes, identity initialization, runtime schema auto-create, credentials, infrastructure and network activity remain `0`. Production schema is `NOT_READY_UNTIL_CONTROLLED_EXECUTION`; Gaps 004/005/006 remain `BLOCKING` until later authorized Production-bound evidence exists.

@@ -51,5 +51,9 @@ export {
 export {
   REGISTERED_SERVICE_WORKLOAD_SCHEMA_CONTRACT,
   REGISTERED_SERVICE_WORKLOAD_SCHEMA_FINGERPRINT,
+  REGISTERED_SERVICE_WORKLOAD_MIGRATION_ID,
+  REGISTERED_SERVICE_WORKLOAD_MIGRATION_ARTIFACT_SHA256,
+  inspectRegisteredServiceWorkloadSchema,
   assertRegisteredServiceWorkloadSchemaCompatible,
 } from "./registered-service-workload-schema.js";
+export type { RegisteredServiceWorkloadSchemaReadiness } from "./registered-service-workload-schema.js";

@@ -10,7 +10,12 @@ import {
   RegisteredServiceWorkloadError,
   type RegisteredServiceWorkloadEvidenceVerifier,
 } from "./registered-service-workload.js";
-import { REGISTERED_SERVICE_WORKLOAD_SCHEMA_CONTRACT, REGISTERED_SERVICE_WORKLOAD_SCHEMA_FINGERPRINT } from "./registered-service-workload-schema.js";
+import {
+  REGISTERED_SERVICE_WORKLOAD_MIGRATION_ARTIFACT_SHA256,
+  REGISTERED_SERVICE_WORKLOAD_MIGRATION_ID,
+  REGISTERED_SERVICE_WORKLOAD_SCHEMA_CONTRACT,
+  REGISTERED_SERVICE_WORKLOAD_SCHEMA_FINGERPRINT,
+} from "./registered-service-workload-schema.js";
 
 const SCHEMA = `
 CREATE TABLE identity_registered_service_workloads (
@@ -37,6 +42,19 @@ CREATE TABLE identity_schema_contracts (
   schema_version INTEGER NOT NULL,
   contract_fingerprint TEXT NOT NULL
 );
+CREATE TABLE identity_schema_migrations (
+  migration_id TEXT PRIMARY KEY NOT NULL,
+  artifact_checksum TEXT NOT NULL,
+  contract_id TEXT NOT NULL,
+  schema_version INTEGER NOT NULL,
+  contract_fingerprint TEXT NOT NULL,
+  target_environment TEXT NOT NULL CHECK (target_environment = 'PRODUCTION'),
+  change_evidence_ref TEXT NOT NULL,
+  operator_evidence_ref TEXT NOT NULL,
+  applied_at TEXT NOT NULL,
+  result TEXT NOT NULL CHECK (result = 'APPLIED'),
+  UNIQUE (contract_id, schema_version)
+);
 `;
 
 function fixture(): Readonly<{ directory: string; databasePath: string }> {
@@ -56,6 +74,13 @@ function provision(databasePath: string, statement = SCHEMA): DatabaseSync {
   if (statement.includes("identity_schema_contracts")) {
     database.prepare("INSERT INTO identity_schema_contracts (contract_id, schema_version, contract_fingerprint) VALUES (?, ?, ?)")
       .run(REGISTERED_SERVICE_WORKLOAD_SCHEMA_CONTRACT.contractId, REGISTERED_SERVICE_WORKLOAD_SCHEMA_CONTRACT.schemaVersion, REGISTERED_SERVICE_WORKLOAD_SCHEMA_FINGERPRINT);
+    database.prepare(`INSERT INTO identity_schema_migrations (
+      migration_id, artifact_checksum, contract_id, schema_version, contract_fingerprint,
+      target_environment, change_evidence_ref, operator_evidence_ref, applied_at, result
+    ) VALUES (?, ?, ?, ?, ?, 'PRODUCTION', 'change-evidence:test', 'operator-evidence:test', '2026-09-18T00:00:00.000Z', 'APPLIED')`)
+      .run(REGISTERED_SERVICE_WORKLOAD_MIGRATION_ID, REGISTERED_SERVICE_WORKLOAD_MIGRATION_ARTIFACT_SHA256,
+        REGISTERED_SERVICE_WORKLOAD_SCHEMA_CONTRACT.contractId, REGISTERED_SERVICE_WORKLOAD_SCHEMA_CONTRACT.schemaVersion,
+        REGISTERED_SERVICE_WORKLOAD_SCHEMA_FINGERPRINT);
   }
   return database;
 }
@@ -112,7 +137,10 @@ test("missing prepared schema fails closed and runtime creates no table or index
 test("missing required tenant/status index fails closed without repairing the schema", () => {
   const item = fixture();
   try {
-    const database = provision(item.databasePath, SCHEMA.replace(/CREATE INDEX[\s\S]*$/u, ""));
+    const database = provision(item.databasePath, SCHEMA.replace(
+      /CREATE INDEX identity_registered_service_workloads_tenant_status_idx\s+ON identity_registered_service_workloads \(tenant_id, status\);/u,
+      "",
+    ));
     database.close();
     expectUnavailable(() => new DurableRegisteredServiceWorkloadStore({ databasePath: item.databasePath, evidenceVerifier: verifier() }));
     const inspection = new DatabaseSync(item.databasePath);
