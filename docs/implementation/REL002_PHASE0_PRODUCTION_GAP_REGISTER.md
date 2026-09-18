@@ -133,3 +133,15 @@ Phase 2B implements the approved explicit v1 artifact, immutable artifact checks
 | REL002-GAP-006 | exact Identity schema artifact and compatibility validation are implemented; Production schema and registrations are not provisioned | `STAGING_ONLY`, `BLOCKING` |
 
 Phase 2B does not reclassify these gaps or change the Phase 0 counts (`24` blocking, `1` non-blocking). Production schema readiness is `NOT_READY_UNTIL_CONTROLLED_EXECUTION`.
+
+## 11. Phase 2C controlled execution readiness impact
+
+Phase 2C defines the controlled Production migration gate without executing it. The logical target is the existing Identity-owned Production Identity/Session database boundary and the environment is exactly `PRODUCTION`. The exact physical database binding, named operator execution evidence and current exact-target backup/restore evidence are not present and remain blocking.
+
+| Gap | Phase 2C readiness evidence | Current status |
+|---|---|---|
+| REL002-GAP-004 | execution packet must bind an exact opaque Production database/configuration reference; current physical binding is absent | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-005 | migration stores no credential; concrete Production secret injection/rotation remains absent | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-006 | migration/verification/Bootstrap transition are defined, but Production schema, registrations and operator execution evidence are not provisioned | `STAGING_ONLY`, `BLOCKING` |
+
+Phase 2C does not reclassify these gaps or change the Phase 0 counts (`24` blocking, `1` non-blocking). Migration execution, Production DB writes, identity seed and runtime schema auto-create remain `0`; Production schema remains `NOT_READY_UNTIL_CONTROLLED_EXECUTION`.

@@ -46,7 +46,7 @@ Stop for Architecture Owner review before new API IDs, roles/capabilities, lifec
 |---|---|---|
 | Phase 0 | COMPLETE | Inventory `26/26`, blocking gaps `24`, non-blocking gaps `1` |
 | Phase 1 | IMPLEMENTATION COMPLETE / PRODUCTION RETURN GATE OPEN | Phase 1G implements DEC-169/170/171; gaps 004-006 remain blocking pending Production-bound schema/config evidence |
-| Phase 2 | PHASE 2B ARTIFACT/COMPATIBILITY IMPLEMENTED / CONTROLLED EXECUTION NOT AUTHORIZED | Phase 2A design and DEC-172/173/174 approved; Phase 2B explicit artifact and read-only classifier implemented; Production migration execution remains 0 |
+| Phase 2 | PHASE 2C EXECUTION PLAN COMPLETE / CONTROLLED EXECUTION BLOCKED | Phase 2A decisions and Phase 2B artifact/classifier are complete; Phase 2C defines the controlled gate, but physical target/operator/backup-restore evidence is absent and Production migration execution remains 0 |
 
 The Phase 1 design introduces no Production/Test change, credential value, infrastructure mutation or provider/network call. It does not change the Phase 0 gap counts or the eight-phase sequence.
 
@@ -98,3 +98,9 @@ DEC-172/173/174 are `APPROVED`. At the Phase 2A checkpoint no migration artifact
 Phase 2B implements the separately authorized explicit v1 forward artifact, read-only verification artifact, immutable artifact checksum, execution-ledger compatibility contract and five-state runtime classifier. Tests execute only against disposable SQLite fixtures and verify zero identity seed, zero artifact-authored execution ledger, exact schema, partial state, version drift and constraint/index/checksum drift.
 
 Production migration execution, Production DB writes, identity initialization, runtime schema auto-create, credentials, infrastructure and network activity remain `0`. Production schema is `NOT_READY_UNTIL_CONTROLLED_EXECUTION`; Gaps 004/005/006 remain `BLOCKING` until later authorized Production-bound evidence exists.
+
+### Phase 2C controlled execution readiness checkpoint
+
+Phase 2C defines the exact preflight, backup/restore, locking, same-transaction schema/metadata/ledger, fail-closed rollback/forward-fix, evidence and post-migration verification contracts. Logical target ownership is the existing Identity-owned Production Identity/Session database boundary and the environment is exact `PRODUCTION`.
+
+The repository does not yet bind an exact physical Production database identity, migration operator authorization instance or current exact-target backup/restore evidence. Those values must be supplied through a separately approved execution packet and must not be inferred or embedded as secret/path values. Therefore the plan is complete while actual execution remains `BLOCKED`; migration execution, Production writes, seed and runtime schema auto-create remain `0`.
