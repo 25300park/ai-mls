@@ -63,3 +63,14 @@ Phase 1D selects the existing Identity database boundary with a separate `identi
 DEC-167 and DEC-168 are `APPROVED`. The [Phase 1D Resume Implementation Plan](REL002_PHASE1D_PHASE1B_RESUME_IMPLEMENTATION_PLAN.md) may execute only after separate implementation authorization. Phase 2 remains `NOT STARTED`; Gaps 004/005/006 remain blocking.
 
 To avoid a migration dependency cycle, Phase 1 uses a split gate: bounded fail-closed adapter/bootstrap implementation and test-only schema fixtures reach an AO checkpoint first; separately authorized Phase 2 then owns Production migration and rehearsal; Phase 1 resumes at a return gate for exact Production schema/startup verification and final gap reevaluation. Phase 1 code never executes the Phase 2 migration.
+
+### Phase 1F authority/root-governance design gate
+
+Phase 1E implementation evidence remains isolated and BLOCKED after independent review. Phase 1F does not restart implementation; it defines the missing authority and governance contracts:
+
+- DEC-169 (`APPROVED`): read-only binding of Identity registration evidence and API-016 final evidence plus an evidence-backed non-Session `WorkloadAuthorizationSubject`
+- DEC-170 (`APPROVED`): sole Production entry and closed registry for the five actual roots
+- DEC-171 (`APPROVED`): versioned Identity schema contract with strict read-only compatibility check
+- live authorization: human requests reuse `SessionAccessCoordinator`; service/job/worker Session authority remains `NOT_FOUND` and uses the DEC-169-approved workload subject with the existing live-assignment/policy engine
+
+The [Phase 1E Salvage / Resume Plan](REL002_PHASE1F_PHASE1E_SALVAGE_RESUME_PLAN.md) remains subject to separate implementation authorization. Phase 2 remains `NOT STARTED` and owns all Production migration execution. Gaps 004/005/006 remain blocking.

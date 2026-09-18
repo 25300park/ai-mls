@@ -85,3 +85,15 @@ Phase 1D-approved DEC-167 and DEC-168 close the remaining physical-design questi
 | REL002-GAP-006 | DEC-167 approves Identity-owned durable registration table/store and `registrationId`-only resolver; live authz remains existing authority | `STAGING_ONLY`, `BLOCKING` |
 
 Phase 1D does not reclassify a gap. Separately authorized implementation, Phase 2 migration readiness and fresh Production-bound verification are still required.
+
+## 7. Phase 1F authority/root-governance design impact
+
+Phase 1E review proved four concrete design gaps. Phase 1F records bounded proposals without reclassifying Production readiness.
+
+| Gap | Phase 1F design impact | Current status |
+|---|---|---|
+| REL002-GAP-004 | DEC-170 approves one closed registry governing the five actual Production roots; synthetic slots are insufficient | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-005 | Existing exact-consumer secret boundary is preserved; no new secret or provider path is introduced | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-006 | DEC-169 approves immutable Identity/API-016 evidence binding and a non-Session workload subject for the existing live policy engine; DEC-171 approves exact schema authority | `STAGING_ONLY`, `BLOCKING` |
+
+DEC-169/170/171 are `APPROVED`. Their approval does not close any gap, authorize Phase 1E implementation or alter the Phase 0 counts (`24` blocking, `1` non-blocking).
