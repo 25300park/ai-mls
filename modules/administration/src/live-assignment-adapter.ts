@@ -4,6 +4,7 @@ import {
   isCanonicalRoleCode,
   type AuthorizationDecision,
   type AuthorizationRequest,
+  type WorkloadAuthorizationRequest,
   type LiveAssignmentResolutionContext,
   type LiveAssignmentResolver,
   type LiveRoleAssignment,
@@ -51,6 +52,7 @@ const liveAdministrationAuthorityBrand: unique symbol = Symbol("LIVE_ADMINISTRAT
 export interface LiveAdministrationAuthorizationService {
   readonly [liveAdministrationAuthorityBrand]: true;
   evaluate(request: AuthorizationRequest): AuthorizationDecision;
+  evaluateWorkload(request: WorkloadAuthorizationRequest): AuthorizationDecision;
 }
 
 export function createAdministrationBackedAuthorizationService(
@@ -65,6 +67,7 @@ export function createAdministrationBackedAuthorizationService(
   return Object.freeze({
     [liveAdministrationAuthorityBrand]: true as const,
     evaluate: (request: AuthorizationRequest) => service.evaluate(request),
+    evaluateWorkload: (request: WorkloadAuthorizationRequest) => service.evaluateWorkload(request),
   });
 }
 

@@ -16,7 +16,7 @@ const request = Object.freeze<AdvisoryExecutionRequest>({ tenantId: snapshot.ten
 function expectCode(run: () => unknown, code: string): void { assert.throws(run, (error: unknown) => error instanceof Error && "code" in error && error.code === code); }
 
 test("FEAT-022-C production requires durable configuration and rejects adapter injection", () => {
-  assert.throws(() => createProductionAdvisoryRuntime({ databasePath: "", snapshotResolver: { resolve: () => snapshot } }), /configuration is invalid/u);
+  assert.throws(() => createProductionAdvisoryRuntime({ runtimeEnvironment: "TEST", databasePath: "", snapshotResolver: { resolve: () => snapshot } }), /configuration is invalid/u);
   const directory = mkdtempSync(join(tmpdir(), "feat-022-c-prod-options-"));
   try {
     assert.throws(() => createProductionAdvisoryRuntime({ databasePath: join(directory, "advisory.sqlite"), snapshotResolver: { resolve: () => snapshot }, adapter: { adapterVersion: "arbitrary", generate: () => ({}) } } as never), /configuration is invalid/u);
@@ -27,7 +27,7 @@ test("FEAT-022-C production is unavailable and persists no advisory", () => {
   const directory = mkdtempSync(join(tmpdir(), "feat-022-c-prod-unavailable-"));
   const databasePath = join(directory, "advisory.sqlite");
   const seed = new DurableAdvisoryStore({ databasePath }); seed.registerPrompt(prompt); seed.close();
-  const graph = createProductionAdvisoryRuntime({ databasePath, snapshotResolver: { resolve: () => snapshot } });
+  const graph = createProductionAdvisoryRuntime({ runtimeEnvironment: "TEST", databasePath, snapshotResolver: { resolve: () => snapshot } });
   try {
     expectCode(() => graph.runtime.execute(request), "ADVISORY_UNAVAILABLE");
   } finally { graph.close(); }

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
+import { existsSync } from "node:fs";
 
 export type ExternalIntegrationScope = Readonly<{ tenantId: string; scopeType: "TENANT"|"TEAM"|"ORGANIZATION"|"SOURCE"; scopeId: string; connectorId: string; sourceId?: string }>;
 export type IntegrationContract = ExternalIntegrationScope & Readonly<{ integrationContractId:string; providerNamespace:string; governedBindingRef:string; status:"ACTIVE"|"SUSPENDED"; version:number; evidenceRef:string; createdAt:string; updatedAt:string }>;
@@ -15,10 +16,12 @@ const WHERE="tenant_id=? AND scope_type=? AND scope_id=? AND connector_id=? AND 
 
 export class DurableExternalIntegrationStore {
   readonly #database:DatabaseSync; #closed=false;
-  public constructor(options:Readonly<{databasePath:string}>){
-    if(typeof options.databasePath!=="string"||options.databasePath.trim()===""||options.databasePath===":memory:") throw failure("PERSISTENCE_INPUT_INVALID","Durable external integration configuration is invalid.");
-    try { this.#database=new DatabaseSync(options.databasePath); this.#database.exec("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;"); this.#database.exec(SCHEMA); if(this.#database.prepare("PRAGMA integrity_check").get()?.["integrity_check"]!=="ok") throw new Error("integrity"); }
-    catch { throw failure("PERSISTENCE_UNAVAILABLE","Durable external integration persistence is unavailable."); }
+  public constructor(options:Readonly<{databasePath:string;schemaMode?:"INITIALIZE"|"REQUIRE_EXISTING"}>){
+    const schemaMode=options.schemaMode??"INITIALIZE";
+    if(typeof options.databasePath!=="string"||options.databasePath.trim()===""||options.databasePath===":memory:"||(schemaMode!=="INITIALIZE"&&schemaMode!=="REQUIRE_EXISTING")||(schemaMode==="REQUIRE_EXISTING"&&!existsSync(options.databasePath))) throw failure("PERSISTENCE_INPUT_INVALID","Durable external integration configuration is invalid.");
+    let database:DatabaseSync|undefined;
+    try { database=new DatabaseSync(options.databasePath); database.exec("PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;"); if(schemaMode==="INITIALIZE"){database.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;");database.exec(SCHEMA);} assertPreparedSchema(database); this.#database=database; }
+    catch { try{database?.close();}catch{} throw failure("PERSISTENCE_UNAVAILABLE","Durable external integration persistence is unavailable."); }
   }
 
   public provisionContract(input:ExternalIntegrationScope&Readonly<{integrationContractId:string;providerNamespace:string;governedBindingRef:string;evidenceRef:string;provisionedAt:string}>):IntegrationContract {
@@ -121,6 +124,7 @@ function copyScope(scope:ExternalIntegrationScope):ExternalIntegrationScope{retu
 function stableId(prefix:string,parts:readonly string[]):string{return prefix+"-"+createHash("sha256").update(parts.join("\u001f")).digest("hex").slice(0,32);}
 function parse<T>(json:string):T{return Object.freeze(JSON.parse(json) as T);}
 function failure(code:ExternalIntegrationPersistenceErrorCode,message:string):ExternalIntegrationPersistenceError{return new ExternalIntegrationPersistenceError(code,message);}
+function assertPreparedSchema(database:DatabaseSync):void{if(database.prepare("PRAGMA integrity_check").get()?.["integrity_check"]!=="ok")throw new Error("integrity");for(const name of ["ext_contracts","ext_mappings","ext_observations","ext_idempotency","ext_evidence"]){if(database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(name)===undefined)throw new Error("schema");}}
 const SCOPE="tenant_id TEXT NOT NULL,scope_type TEXT NOT NULL,scope_id TEXT NOT NULL,connector_id TEXT NOT NULL,source_id TEXT NOT NULL";
 const SCHEMA="CREATE TABLE IF NOT EXISTS ext_contracts("+SCOPE+",contract_id TEXT NOT NULL,version INTEGER NOT NULL,status TEXT NOT NULL CHECK(status IN('ACTIVE','SUSPENDED')),payload_json TEXT NOT NULL CHECK(json_valid(payload_json)),PRIMARY KEY("+COLUMNS+",contract_id));"+
 "CREATE TABLE IF NOT EXISTS ext_mappings("+SCOPE+",mapping_id TEXT NOT NULL,contract_id TEXT NOT NULL,provider_namespace TEXT NOT NULL,external_object_id TEXT NOT NULL,version INTEGER NOT NULL,payload_json TEXT NOT NULL CHECK(json_valid(payload_json)),PRIMARY KEY("+COLUMNS+",mapping_id),UNIQUE("+COLUMNS+",provider_namespace,external_object_id));"+

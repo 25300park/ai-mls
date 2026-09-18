@@ -64,6 +64,27 @@ export interface AuthorizationRequest {
   readonly correlationId: string;
 }
 
+export interface WorkloadAuthorizationSubject {
+  readonly registrationId: string;
+  readonly registrationVersion: number;
+  readonly tenantId: string;
+  readonly principalId: string;
+  readonly principalType: "SERVICE";
+  readonly assurance: "WORKLOAD";
+  readonly identityEvidenceRef: string;
+  readonly auditEvidenceRef: string;
+}
+
+export interface WorkloadAuthorizationRequest {
+  readonly subject: WorkloadAuthorizationSubject;
+  readonly action: string;
+  readonly resource: AuthorizationResource;
+  readonly purpose: string;
+  readonly reason?: string;
+  readonly requestId?: string;
+  readonly correlationId: string;
+}
+
 export interface AuthorizationDecision {
   readonly effect: "ALLOW" | "DENY";
   readonly reasonCode: string;
@@ -387,21 +408,42 @@ export class AuthorizationService {
   }
 
   public evaluate(request: AuthorizationRequest): AuthorizationDecision {
+    return this.#evaluate({
+      action: request.action, resource: request.resource, purpose: request.purpose,
+      ...(request.reason === undefined ? {} : { reason: request.reason }),
+      ...(request.requestId === undefined ? {} : { requestId: request.requestId }), correlationId: request.correlationId,
+      subject: {
+        principalId: request.session.principalId, principalType: request.session.principalType,
+        roles: request.session.roles, ...(request.session.teamId === undefined ? {} : { teamId: request.session.teamId }),
+        session: request.session,
+      },
+    });
+  }
+
+  public evaluateWorkload(request: WorkloadAuthorizationRequest): AuthorizationDecision {
+    if (!this.#usesLiveAuthority || !validWorkloadSubject(request.subject)
+      || request.resource.tenantId !== request.subject.tenantId) {
+      return this.#complete(workloadEvaluation(request), "DENY", "AUTHORITY_RESOLUTION_FAILED", ["AUDIT"], []);
+    }
+    return this.#evaluate(workloadEvaluation(request));
+  }
+
+  #evaluate(request: AuthorizationEvaluationRequest): AuthorizationDecision {
     const now = this.#clock();
     const obligations = privilegedActions.has(request.action)
       ? (["MFA", "REASON", "AUDIT"] as const)
       : (["AUDIT"] as const);
 
     if (
-      request.session.state !== "ACTIVE" ||
-      now.getTime() >= new Date(request.session.expiresAt).getTime() ||
-      now.getTime() >= new Date(request.session.absoluteExpiresAt).getTime()
+      request.subject.session !== undefined && (request.subject.session.state !== "ACTIVE" ||
+      now.getTime() >= new Date(request.subject.session.expiresAt).getTime() ||
+      now.getTime() >= new Date(request.subject.session.absoluteExpiresAt).getTime())
     ) {
       return this.#complete(request, "DENY", "AUTHENTICATION_REQUIRED", obligations, []);
     }
 
     if (
-      request.session.principalType === "SERVICE" &&
+      request.subject.principalType === "SERVICE" &&
       humanRequiredActions.has(request.action)
     ) {
       return this.#complete(request, "DENY", "HUMAN_AUTHORITY_REQUIRED", obligations, []);
@@ -414,8 +456,8 @@ export class AuthorizationService {
         throw new Error("trusted tenant context is required");
       }
       resolvedAssignments = this.#assignmentResolver.resolveCurrentAssignments({
-        subjectPrincipalId: request.session.principalId,
-        subjectPrincipalType: request.session.principalType,
+        subjectPrincipalId: request.subject.principalId,
+        subjectPrincipalType: request.subject.principalType,
         tenantId: tenantId ?? "STATIC_TEST_COMPATIBILITY",
         resourceType: request.resource.type,
         ...(request.resource.teamId === undefined ? {} : { teamId: request.resource.teamId }),
@@ -424,8 +466,8 @@ export class AuthorizationService {
       assertResolvedAssignments(resolvedAssignments, this.#usesLiveAuthority);
       if (this.#usesLiveAuthority && resolvedAssignments.some((assignment) =>
         assignment.tenantId !== tenantId
-        || assignment.subjectPrincipalType !== request.session.principalType
-        || assignment.principalId !== request.session.principalId)) {
+        || assignment.subjectPrincipalType !== request.subject.principalType
+        || assignment.principalId !== request.subject.principalId)) {
         throw new Error("resolved assignment scope is inconsistent");
       }
     } catch {
@@ -434,10 +476,10 @@ export class AuthorizationService {
 
     const activeAssignments = resolvedAssignments.filter(
       (item) =>
-        item.principalId === request.session.principalId &&
+        item.principalId === request.subject.principalId &&
         item.status === "ACTIVE" &&
-        (!this.#usesLiveAuthority || item.principalId === request.session.principalId) &&
-        (this.#usesLiveAuthority || request.session.roles.includes(item.role)) &&
+        (!this.#usesLiveAuthority || item.principalId === request.subject.principalId) &&
+        (this.#usesLiveAuthority || request.subject.roles.includes(item.role)) &&
         now.getTime() >= new Date(item.effectiveFrom).getTime() &&
         now.getTime() < new Date(item.effectiveUntil).getTime(),
     );
@@ -489,7 +531,8 @@ export class AuthorizationService {
       );
     }
 
-    if (privilegedActions.has(request.action) && !hasVerifiedMfaAssurance(request.session)) {
+    if (privilegedActions.has(request.action)
+      && (request.subject.session === undefined || !hasVerifiedMfaAssurance(request.subject.session))) {
       return this.#complete(
         request,
         "DENY",
@@ -512,7 +555,7 @@ export class AuthorizationService {
     }
     if (
       humanAuthorityActions.has(request.action) &&
-      request.resource.createdBy === request.session.principalId
+      request.resource.createdBy === request.subject.principalId
     ) {
       return this.#complete(
         request,
@@ -527,7 +570,7 @@ export class AuthorizationService {
   }
 
   #complete(
-    request: AuthorizationRequest,
+    request: AuthorizationEvaluationRequest,
     effect: AuthorizationDecision["effect"],
     reasonCode: string,
     obligations: AuthorizationDecision["obligations"],
@@ -547,11 +590,11 @@ export class AuthorizationService {
     this.#auditSink.append({
       eventType: "AUTHORIZATION_DECISION",
       principal: {
-        id: request.session.principalId,
-        type: request.session.principalType,
-        roles: request.session.roles,
-        ...(request.session.teamId === undefined ? {} : { teamId: request.session.teamId }),
-        sessionId: request.session.id,
+        id: request.subject.principalId,
+        type: request.subject.principalType,
+        roles: request.subject.roles.length > 0 ? request.subject.roles : Object.freeze([...new Set(assignments.map((item) => item.role))]),
+        ...(request.subject.teamId === undefined ? {} : { teamId: request.subject.teamId }),
+        ...(request.subject.session === undefined ? {} : { sessionId: request.subject.session.id }),
       },
       action: "authorization.evaluate",
       target: {
@@ -614,7 +657,7 @@ function assertResolvedAssignments(assignments: readonly RoleAssignment[], requi
 }
 
 function projectionRestrictionScope(
-  request: AuthorizationRequest,
+  request: Pick<AuthorizationEvaluationRequest, "resource" | "purpose">,
 ): Readonly<{ resourceType: string }> | undefined {
   const resource = request.resource;
   const restrictionValues = [
@@ -638,6 +681,43 @@ function projectionRestrictionScope(
     return undefined;
   }
   return Object.freeze({ resourceType: projectionRestrictionResourceType(resource) });
+}
+
+interface AuthorizationEvaluationRequest {
+  readonly subject: Readonly<{
+    principalId: string;
+    principalType: SessionContext["principalType"];
+    roles: readonly RoleCode[];
+    teamId?: string;
+    session?: SessionContext;
+  }>;
+  readonly action: string;
+  readonly resource: AuthorizationResource;
+  readonly purpose: string;
+  readonly reason?: string;
+  readonly requestId?: string;
+  readonly correlationId: string;
+}
+
+function workloadEvaluation(request: WorkloadAuthorizationRequest): AuthorizationEvaluationRequest {
+  return {
+    action: request.action, resource: request.resource, purpose: request.purpose,
+    ...(request.reason === undefined ? {} : { reason: request.reason }),
+    ...(request.requestId === undefined ? {} : { requestId: request.requestId }), correlationId: request.correlationId,
+    subject: { principalId: request.subject.principalId, principalType: "SERVICE", roles: Object.freeze([]) },
+  };
+}
+
+function validWorkloadSubject(value: WorkloadAuthorizationSubject): boolean {
+  return value.principalType === "SERVICE" && value.assurance === "WORKLOAD"
+    && safeSubjectText(value.registrationId) && safeSubjectText(value.tenantId) && safeSubjectText(value.principalId)
+    && safeSubjectText(value.identityEvidenceRef) && safeSubjectText(value.auditEvidenceRef)
+    && Number.isSafeInteger(value.registrationVersion) && value.registrationVersion > 0;
+}
+
+function safeSubjectText(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 512 && value.trim() === value
+    && !/[\u0000-\u001f\u007f]/u.test(value);
 }
 
 /**

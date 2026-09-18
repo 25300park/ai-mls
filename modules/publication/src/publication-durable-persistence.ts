@@ -1,4 +1,5 @@
 import { DatabaseSync, type SQLOutputValue } from "node:sqlite";
+import { existsSync } from "node:fs";
 
 import { InMemoryPublicationAuditStore, type PublicationAuditStore } from "./publication-audit-store.js";
 import { InMemoryIdempotencyStore, type PublicationIdempotencyStore } from "./publication-idempotency-store.js";
@@ -20,6 +21,7 @@ const SCHEMA_VERSION = 1;
 export interface DurablePublicationUnitOfWorkOptions {
   readonly databasePath: string;
   readonly busyTimeoutMilliseconds?: 5000;
+  readonly schemaMode?: "INITIALIZE" | "REQUIRE_EXISTING";
 }
 
 export class DurablePublicationUnitOfWork implements PublicationUnitOfWork {
@@ -36,14 +38,21 @@ export class DurablePublicationUnitOfWork implements PublicationUnitOfWork {
   public readonly execution: PublicationExecutionJournal;
 
   public constructor(options: DurablePublicationUnitOfWorkOptions) {
-    if (!isFileDatabasePath(options.databasePath) || (options.busyTimeoutMilliseconds !== undefined && options.busyTimeoutMilliseconds !== 5000)) {
+    const schemaMode = options.schemaMode ?? "INITIALIZE";
+    if (!isFileDatabasePath(options.databasePath) || (options.busyTimeoutMilliseconds !== undefined && options.busyTimeoutMilliseconds !== 5000)
+      || (schemaMode !== "INITIALIZE" && schemaMode !== "REQUIRE_EXISTING")
+      || (schemaMode === "REQUIRE_EXISTING" && !existsSync(options.databasePath))) {
       throw persistenceError("PERSISTENCE_INPUT_INVALID", "Durable Publication database configuration is invalid.");
     }
     let database: DatabaseSync | undefined;
     try {
       database = new DatabaseSync(options.databasePath);
-      configureDatabase(database, options.busyTimeoutMilliseconds ?? 5000);
-      bootstrapSchema(database);
+      if (schemaMode === "INITIALIZE") {
+        configureDatabase(database, options.busyTimeoutMilliseconds ?? 5000);
+        bootstrapSchema(database);
+      } else {
+        configurePreparedDatabase(database, options.busyTimeoutMilliseconds ?? 5000);
+      }
       validateDatabase(database);
       this.#state.replaceAllWith(loadState(database));
       this.#database = database;
@@ -270,6 +279,7 @@ function loadState(database: DatabaseSync): InMemoryPersistenceState {
 }
 
 function configureDatabase(database: DatabaseSync, timeout: number): void { database.exec("PRAGMA foreign_keys = ON"); database.exec("PRAGMA journal_mode = WAL"); database.exec("PRAGMA synchronous = FULL"); database.exec(`PRAGMA busy_timeout = ${timeout}`); }
+function configurePreparedDatabase(database: DatabaseSync, timeout: number): void { database.exec("PRAGMA foreign_keys = ON"); database.exec(`PRAGMA busy_timeout = ${timeout}`); }
 function bootstrapSchema(database: DatabaseSync): void {
   database.exec("BEGIN EXCLUSIVE");
   try {

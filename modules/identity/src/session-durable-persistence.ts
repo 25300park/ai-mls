@@ -1,4 +1,5 @@
 import { isAbsolute } from "node:path";
+import { existsSync } from "node:fs";
 import { DatabaseSync, type SQLOutputValue } from "node:sqlite";
 
 import {
@@ -42,6 +43,7 @@ END;
 export interface DurableSessionUnitOfWorkOptions {
   readonly databasePath: string;
   readonly busyTimeoutMilliseconds?: number;
+  readonly schemaMode?: "INITIALIZE" | "REQUIRE_EXISTING";
 }
 
 export class DurableSessionUnitOfWork implements SessionUnitOfWork {
@@ -52,7 +54,10 @@ export class DurableSessionUnitOfWork implements SessionUnitOfWork {
 
   public constructor(options: DurableSessionUnitOfWorkOptions) {
     const busyTimeout = options.busyTimeoutMilliseconds ?? 5000;
+    const schemaMode = options.schemaMode ?? "INITIALIZE";
     if (!isFileDatabasePath(options.databasePath)
+      || (schemaMode !== "INITIALIZE" && schemaMode !== "REQUIRE_EXISTING")
+      || (schemaMode === "REQUIRE_EXISTING" && !existsSync(options.databasePath))
       || !Number.isInteger(busyTimeout)
       || busyTimeout < 1
       || busyTimeout > 60_000) {
@@ -63,10 +68,12 @@ export class DurableSessionUnitOfWork implements SessionUnitOfWork {
     try {
       database = new DatabaseSync(options.databasePath);
       database.exec("PRAGMA foreign_keys = ON");
-      database.exec("PRAGMA journal_mode = WAL");
-      database.exec("PRAGMA synchronous = FULL");
       database.exec(`PRAGMA busy_timeout = ${String(busyTimeout)}`);
-      database.exec(SCHEMA);
+      if (schemaMode === "INITIALIZE") {
+        database.exec("PRAGMA journal_mode = WAL");
+        database.exec("PRAGMA synchronous = FULL");
+        database.exec(SCHEMA);
+      }
       validateDatabase(database);
       this.#database = database;
     } catch {

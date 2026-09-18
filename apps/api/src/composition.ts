@@ -45,6 +45,7 @@ import {
   type PublicationApi014HttpRequestHandler,
 } from "./publication-api-http-adapter.js";
 import { PublicationApiRuntimeAdapter } from "./publication-api-runtime-adapter.js";
+import { assertProductionRootBootstrapContext, type ProductionBootstrapContextView } from "../../../packages/security-contracts/src/production-bootstrap-proof.js";
 
 export function composePublicationApiModule(infrastructure: PublicationInfrastructure): PublicationApi {
   return new PublicationApi(infrastructure);
@@ -60,6 +61,10 @@ export {
 
 export interface ProductionPublicationApi014NodeHttpCompositionOptions {
   readonly databasePath: string;
+  readonly runtimeEnvironment: "TEST" | "STAGING" | "PRODUCTION";
+  readonly bootstrapContext?: ProductionBootstrapContextView;
+  readonly schemaMode?: "INITIALIZE" | "REQUIRE_EXISTING";
+  readonly deferRuntimeActivation?: true;
   readonly infrastructureConfiguration?: PublicationInfrastructureConfigurationInput;
   readonly configuration?: unknown;
   readonly existingHttpHandler?: PublicationApi014HttpRequestHandler;
@@ -68,14 +73,19 @@ export interface ProductionPublicationApi014NodeHttpCompositionOptions {
 
 export interface ProductionPublicationApi014NodeHttpComposition {
   readonly server: PublicationNodeHttpServer;
+  activateRuntime(): void;
   close(): Promise<void>;
 }
 
 export function composeProductionPublicationApi014NodeHttpServer(
   options: ProductionPublicationApi014NodeHttpCompositionOptions,
 ): ProductionPublicationApi014NodeHttpComposition {
+  if (!isRuntimeEnvironment(options.runtimeEnvironment)) throw new TypeError("Runtime environment is required.");
+  if (options.runtimeEnvironment === "PRODUCTION") assertProductionRootBootstrapContext(options.bootstrapContext);
+  else if (options.bootstrapContext !== undefined) throw new TypeError("Bootstrap context is Production-only.");
   const infrastructure = createProductionPublicationInfrastructure({
     databasePath: options.databasePath,
+    ...(options.schemaMode === undefined ? {} : { schemaMode: options.schemaMode }),
     ...(options.infrastructureConfiguration === undefined ? {} : { configuration: options.infrastructureConfiguration }),
   });
   let host: PublicationApplicationHost | undefined;
@@ -92,7 +102,7 @@ export function composeProductionPublicationApi014NodeHttpServer(
         },
       },
     );
-    host.start();
+    if (options.deferRuntimeActivation !== true) host.start();
     const server = createPublicationNodeHttpServer({
       configuration: options.configuration,
       httpAdapter: createPublicationApi014HttpRequestHandler(host, options.existingHttpHandler),
@@ -100,6 +110,9 @@ export function composeProductionPublicationApi014NodeHttpServer(
     });
     return Object.freeze({
       server,
+      activateRuntime: (): void => {
+        if (host?.status.state !== "READY") host?.start();
+      },
       close: async (): Promise<void> => {
         try {
           if (server.diagnostics.listening) await server.stop();
@@ -120,6 +133,10 @@ export function composeProductionPublicationApi014NodeHttpServer(
     }
     throw error;
   }
+}
+
+function isRuntimeEnvironment(value: unknown): value is "TEST" | "STAGING" | "PRODUCTION" {
+  return value === "TEST" || value === "STAGING" || value === "PRODUCTION";
 }
 
 export interface ApiModuleDependencies {

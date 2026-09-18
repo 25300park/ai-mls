@@ -1,4 +1,5 @@
 import { DatabaseSync, type SQLOutputValue } from "node:sqlite";
+import { existsSync } from "node:fs";
 
 import {
   AdministrationPersistenceError,
@@ -57,6 +58,7 @@ export interface DurableAdministrationUnitOfWorkOptions {
   readonly databasePath: string;
   readonly busyTimeoutMilliseconds?: 5000;
   readonly failures?: AdministrationPersistenceFailurePort;
+  readonly schemaMode?: "INITIALIZE" | "REQUIRE_EXISTING";
 }
 
 export class DurableAdministrationUnitOfWork implements AdministrationUnitOfWork {
@@ -79,16 +81,23 @@ export class DurableAdministrationUnitOfWork implements AdministrationUnitOfWork
   public readonly idempotency: AdministrationIdempotencyReadRepository;
 
   public constructor(options: DurableAdministrationUnitOfWorkOptions) {
+    const schemaMode = options.schemaMode ?? "INITIALIZE";
     if (!isFileDatabasePath(options.databasePath)
-      || (options.busyTimeoutMilliseconds !== undefined && options.busyTimeoutMilliseconds !== 5000)) {
+      || (options.busyTimeoutMilliseconds !== undefined && options.busyTimeoutMilliseconds !== 5000)
+      || (schemaMode !== "INITIALIZE" && schemaMode !== "REQUIRE_EXISTING")
+      || (schemaMode === "REQUIRE_EXISTING" && !existsSync(options.databasePath))) {
       throw persistenceError("PERSISTENCE_INPUT_INVALID");
     }
     this.#failures = options.failures ?? NO_FAILURES;
     let database: DatabaseSync | undefined;
     try {
       database = new DatabaseSync(options.databasePath);
-      configureDatabase(database, options.busyTimeoutMilliseconds ?? 5000);
-      bootstrapSchema(database);
+      if (schemaMode === "INITIALIZE") {
+        configureDatabase(database, options.busyTimeoutMilliseconds ?? 5000);
+        bootstrapSchema(database);
+      } else {
+        configurePreparedDatabase(database, options.busyTimeoutMilliseconds ?? 5000);
+      }
       this.#state = readStateSnapshot(database, true);
       this.#database = database;
     } catch (error) {
@@ -212,6 +221,11 @@ function configureDatabase(database: DatabaseSync, busyTimeoutMilliseconds: numb
   database.exec("PRAGMA foreign_keys = ON");
   database.exec("PRAGMA journal_mode = WAL");
   database.exec("PRAGMA synchronous = FULL");
+  database.exec(`PRAGMA busy_timeout = ${busyTimeoutMilliseconds}`);
+}
+
+function configurePreparedDatabase(database: DatabaseSync, busyTimeoutMilliseconds: number): void {
+  database.exec("PRAGMA foreign_keys = ON");
   database.exec(`PRAGMA busy_timeout = ${busyTimeoutMilliseconds}`);
 }
 

@@ -15,6 +15,7 @@ import {
   AdministrationGovernanceApplication,
   type AdministrationGovernanceApplicationDependencies,
 } from "./administration-governance-api.js";
+import { assertProductionRootBootstrapContext, type ProductionBootstrapContextView } from "../../../packages/security-contracts/src/production-bootstrap-proof.js";
 
 export interface AdministrationApi015NodeHttpCompositionOptions {
   readonly application: AdministrationGovernanceApplicationPort;
@@ -39,6 +40,9 @@ export interface ProductionAdministrationCompositionOptions
     "teamScopes" | "sourceGovernance" | "publicationTargets" |
     "proposals" | "decisions" | "idempotency"> {
   readonly databasePath: string;
+  readonly runtimeEnvironment: "TEST" | "STAGING" | "PRODUCTION";
+  readonly bootstrapContext?: ProductionBootstrapContextView;
+  readonly schemaMode?: "INITIALIZE" | "REQUIRE_EXISTING";
   readonly auditSink: AuditSink;
   readonly policyVersion: string;
   readonly configuration?: unknown;
@@ -52,7 +56,10 @@ export interface ProductionAdministrationComposition {
 export function composeProductionAdministrationApi015NodeHttpServer(
   options: ProductionAdministrationCompositionOptions,
 ): ProductionAdministrationComposition {
-  const unitOfWork = new DurableAdministrationUnitOfWork({ databasePath: options.databasePath });
+  if (!isRuntimeEnvironment(options.runtimeEnvironment)) throw new TypeError("Runtime environment is required.");
+  if (options.runtimeEnvironment === "PRODUCTION") assertProductionRootBootstrapContext(options.bootstrapContext);
+  else if (options.bootstrapContext !== undefined) throw new TypeError("Bootstrap context is Production-only.");
+  const unitOfWork = new DurableAdministrationUnitOfWork({ databasePath: options.databasePath, ...(options.schemaMode === undefined ? {} : { schemaMode: options.schemaMode }) });
   try {
     const authorizationService = createAdministrationBackedAuthorizationService({
       roleAssignments: unitOfWork.roleAssignments,
@@ -97,4 +104,8 @@ export function composeProductionAdministrationApi015NodeHttpServer(
     unitOfWork.close();
     throw error;
   }
+}
+
+function isRuntimeEnvironment(value: unknown): value is "TEST" | "STAGING" | "PRODUCTION" {
+  return value === "TEST" || value === "STAGING" || value === "PRODUCTION";
 }

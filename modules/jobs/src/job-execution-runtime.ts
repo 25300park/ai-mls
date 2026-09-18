@@ -33,6 +33,7 @@ export interface JobExecutionAdmissionContext {
   readonly inputReferences: JobExecutionContext["inputReferences"];
   readonly policyVersion: string;
   readonly originatingAuthorityEvidenceRefs: readonly string[];
+  readonly correlationId: string;
 }
 
 export interface JobExecutionAdmissionPort {
@@ -149,6 +150,7 @@ export class JobExecutionRuntime {
       inputReferences: job.inputReferences,
       policyVersion: job.policyVersion,
       originatingAuthorityEvidenceRefs: job.authorityEvidenceRefs,
+      correlationId: input.correlationId,
     });
     const admission = this.#admission.evaluate(admissionContext);
     if (!validAdmission(admission)) throw runtimeFailure("ADMISSION_INVALID");
@@ -177,6 +179,9 @@ export class JobExecutionRuntime {
     } catch (error) {
       return this.#persistFailure(error, executionContext, running, input.correlationId, registration.handlerId);
     }
+    const commitAdmission = this.#admission.evaluate(admissionContext);
+    if (!validAdmission(commitAdmission)) throw runtimeFailure("ADMISSION_INVALID");
+    if (commitAdmission.status === "BLOCKED") throw runtimeFailure("JOB_NOT_EXECUTABLE");
     let succeeded: DurableJobRecord;
     try {
       succeeded = this.#store.succeedJob({

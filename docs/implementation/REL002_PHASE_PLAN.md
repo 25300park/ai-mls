@@ -74,3 +74,7 @@ Phase 1E implementation evidence remains isolated and BLOCKED after independent 
 - live authorization: human requests reuse `SessionAccessCoordinator`; service/job/worker Session authority remains `NOT_FOUND` and uses the DEC-169-approved workload subject with the existing live-assignment/policy engine
 
 The [Phase 1E Salvage / Resume Plan](REL002_PHASE1F_PHASE1E_SALVAGE_RESUME_PLAN.md) remains subject to separate implementation authorization. Phase 2 remains `NOT STARTED` and owns all Production migration execution. Gaps 004/005/006 remain blocking.
+
+### Phase 1G salvage implementation checkpoint
+
+Phase 1G reuses the valid Phase 1E durable-store/resolver/bootstrap work and implements DEC-169/170/171. Evidence adapter, non-Session workload subject, live assignment/policy revalidation, exact Identity schema checker and actual five-root registry are implemented and verified. Runtime migration/schema creation remains `0`; Phase 2 still owns Production migration. Therefore Gaps 004/005/006 remain `BLOCKING` pending Production-bound evidence and no Phase 2 work starts under this phase.

@@ -21,6 +21,7 @@ import {
 } from "./composition.js";
 
 const requiredDependencies = Object.freeze({
+  runtimeEnvironment: "TEST" as const,
   sessionResolver: undefined as never,
   clock: () => new Date("2026-08-26T01:00:00.000Z"),
   idFactory: () => "f16-r1-id",
@@ -59,6 +60,7 @@ function productionOptions(databasePath: string): ProductionAdministrationCompos
   let sequence = 0;
   return {
     databasePath,
+    runtimeEnvironment: "TEST",
     sessionResolver: {
       resolve: (requestedSessionId) => requestedSessionId === sessionId ? session
         : requestedSessionId === decisionSessionId ? decisionSession : undefined,

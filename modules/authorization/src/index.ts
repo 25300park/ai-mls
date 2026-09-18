@@ -9,4 +9,6 @@ export {
   type LiveAssignmentResolver,
   type LiveRoleAssignment,
   type RoleAssignment,
+  type WorkloadAuthorizationRequest,
+  type WorkloadAuthorizationSubject,
 } from "./authorization-service.js";

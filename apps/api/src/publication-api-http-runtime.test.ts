@@ -104,12 +104,14 @@ test("F17-D HTTP handler separates command/query routes and rejects unknown rout
 
 test("F17-D production composition requires durable configuration and serves API-014 through Node HTTP", async () => {
   assert.throws(() => composeProductionPublicationApi014NodeHttpServer({
+    runtimeEnvironment: "TEST",
     databasePath: "",
   }));
 
   const directory = mkdtempSync(join(tmpdir(), "f17-d-production-"));
   const databasePath = join(directory, "publication.sqlite");
   const composition = composeProductionPublicationApi014NodeHttpServer({
+    runtimeEnvironment: "TEST",
     databasePath,
     configuration: { host: "127.0.0.1", port: 0, maximumBodyBytes: 65_536, shutdownTimeout: 250 },
   });
@@ -242,7 +244,7 @@ test("F17-D durable HTTP restart contains DISPATCH_STARTED ambiguity and has zer
   });
   const infrastructureConfiguration = { ...authorizedConfiguration() };
   delete infrastructureConfiguration.connectorDispatcher;
-  let composition = composeProductionPublicationApi014NodeHttpServer({
+  let composition = composeProductionPublicationApi014NodeHttpServer({ runtimeEnvironment: "TEST",
     databasePath,
     infrastructureConfiguration,
     configuration: serverConfiguration,
@@ -280,7 +282,7 @@ test("F17-D durable HTTP restart contains DISPATCH_STARTED ambiguity and has zer
     assert.equal(reopenedEvidence.idempotency.find({ ...identity, aggregateId: publicationId, commandKey: "idempotency-ambiguous:publish" })?.fingerprint, "sha256:ambiguous:publish");
     reopenedEvidence.close();
 
-    composition = composeProductionPublicationApi014NodeHttpServer({
+    composition = composeProductionPublicationApi014NodeHttpServer({ runtimeEnvironment: "TEST",
       databasePath,
       infrastructureConfiguration,
       configuration: serverConfiguration,
@@ -321,7 +323,7 @@ test("F17-H real HTTP production execution persists unavailable outcome and repl
   const identity = { tenantScopeId: "team-a", publicationId };
   const configuration = { ...authorizedConfiguration() };
   delete configuration.connectorDispatcher;
-  const open = () => composeProductionPublicationApi014NodeHttpServer({ databasePath, infrastructureConfiguration: configuration, configuration: serverConfiguration });
+  const open = () => composeProductionPublicationApi014NodeHttpServer({ runtimeEnvironment: "TEST", databasePath, infrastructureConfiguration: configuration, configuration: serverConfiguration });
   let composition = open();
   const attempt = { id: "attempt-final-http", commandId: "command-final-http", operation: "INITIAL_PUBLISH", occurredAt: createPayload.occurredAt, evidenceRefs: [] };
   const publish = { ...commandRequest("PUBLISH_PUBLICATION", publicationId), idempotencyKey: "key-final-publish", intentFingerprint: "sha256:final-publish", payload: { expectedAggregateVersion: 1, attempt, occurredAt: createPayload.occurredAt } };
@@ -405,7 +407,7 @@ test("F17-H real HTTP live authorization matrix blocks dispatch and durable stat
         }
       } },
     };
-    const composition = composeProductionPublicationApi014NodeHttpServer({ databasePath, infrastructureConfiguration: configuration, configuration: serverConfiguration });
+    const composition = composeProductionPublicationApi014NodeHttpServer({ runtimeEnvironment: "TEST", databasePath, infrastructureConfiguration: configuration, configuration: serverConfiguration });
     try {
       await composition.server.start();
       const port = composition.server.diagnostics.boundPort!;
@@ -437,7 +439,7 @@ test("F17-H real HTTP reconciliation and recovery never elevate caller-authored 
   const databasePath = join(directory, "publication.sqlite");
   const configuration = { ...authorizedConfiguration() };
   delete configuration.connectorDispatcher;
-  const composition = composeProductionPublicationApi014NodeHttpServer({ databasePath, infrastructureConfiguration: configuration, configuration: serverConfiguration });
+  const composition = composeProductionPublicationApi014NodeHttpServer({ runtimeEnvironment: "TEST", databasePath, infrastructureConfiguration: configuration, configuration: serverConfiguration });
   const identity = { tenantScopeId: "team-a", publicationId: "publication-final-evidence" };
   try {
     await composition.server.start();

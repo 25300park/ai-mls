@@ -1,4 +1,5 @@
 import { DatabaseSync, type SQLOutputValue } from "node:sqlite";
+import { existsSync } from "node:fs";
 
 const SCHEMA_VERSION = 1;
 
@@ -123,6 +124,7 @@ export type ConnectorPersistenceErrorCode =
 export interface DurableConnectorExecutionUnitOfWorkOptions {
   readonly databasePath: string;
   readonly busyTimeoutMilliseconds?: 5000;
+  readonly schemaMode?: "INITIALIZE" | "REQUIRE_EXISTING";
 }
 
 type LeaseInput = ConnectorExecutionScope & Readonly<{
@@ -163,17 +165,22 @@ export class DurableConnectorExecutionUnitOfWork {
   #quarantined = false;
 
   public constructor(options: DurableConnectorExecutionUnitOfWorkOptions) {
-    if (!isFileDatabasePath(options.databasePath) || (options.busyTimeoutMilliseconds !== undefined && options.busyTimeoutMilliseconds !== 5000)) {
+    const schemaMode = options.schemaMode ?? "INITIALIZE";
+    if (!isFileDatabasePath(options.databasePath) || (options.busyTimeoutMilliseconds !== undefined && options.busyTimeoutMilliseconds !== 5000)
+      || (schemaMode !== "INITIALIZE" && schemaMode !== "REQUIRE_EXISTING")
+      || (schemaMode === "REQUIRE_EXISTING" && !existsSync(options.databasePath))) {
       throw failure("PERSISTENCE_INPUT_INVALID", "Durable Connector database configuration is invalid.");
     }
     let database: DatabaseSync | undefined;
     try {
       database = new DatabaseSync(options.databasePath);
       database.exec("PRAGMA foreign_keys = ON");
-      database.exec("PRAGMA journal_mode = WAL");
-      database.exec("PRAGMA synchronous = FULL");
       database.exec(`PRAGMA busy_timeout = ${options.busyTimeoutMilliseconds ?? 5000}`);
-      bootstrap(database);
+      if (schemaMode === "INITIALIZE") {
+        database.exec("PRAGMA journal_mode = WAL");
+        database.exec("PRAGMA synchronous = FULL");
+        bootstrap(database);
+      }
       validate(database);
       this.#database = database;
     } catch (error) {
@@ -484,6 +491,8 @@ function bootstrap(database: DatabaseSync): void {
 function validate(database: DatabaseSync): void {
   if (database.prepare("PRAGMA integrity_check").get()?.["integrity_check"] !== "ok") throw failure("PERSISTENCE_INPUT_INVALID", "Durable Connector database failed integrity validation.");
   if (database.prepare("PRAGMA foreign_key_check").all().length > 0) throw failure("PERSISTENCE_INPUT_INVALID", "Durable Connector database failed linkage validation.");
+  const schema = database.prepare("SELECT schema_version FROM connector_schema WHERE singleton_id = 1").get();
+  if (number(schema?.["schema_version"]) !== SCHEMA_VERSION) throw failure("PERSISTENCE_INPUT_INVALID", "Durable Connector schema is incompatible.");
 }
 
 const SCOPE_COLUMNS = "tenant_id, scope_type, scope_id, source_id, connector_id";

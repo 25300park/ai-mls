@@ -97,3 +97,15 @@ Phase 1E review proved four concrete design gaps. Phase 1F records bounded propo
 | REL002-GAP-006 | DEC-169 approves immutable Identity/API-016 evidence binding and a non-Session workload subject for the existing live policy engine; DEC-171 approves exact schema authority | `STAGING_ONLY`, `BLOCKING` |
 
 DEC-169/170/171 are `APPROVED`. Their approval does not close any gap, authorize Phase 1E implementation or alter the Phase 0 counts (`24` blocking, `1` non-blocking).
+
+## 8. Phase 1G salvage implementation impact
+
+Phase 1G implements the bounded DEC-169/170/171 contracts without Production migration, secret backend, infrastructure or provider activation.
+
+| Gap | Phase 1G evidence | Current status |
+|---|---|---|
+| REL002-GAP-004 | canonical startup ordering and actual root registry are implemented | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-005 | mandatory reference ordering and provider hold are preserved; concrete backend/rotation is absent | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-006 | evidence-bound workload subject, live policy evaluation and strict schema checker are implemented | `STAGING_ONLY`, `BLOCKING` |
+
+`IMPLEMENTATION_COMPLETE` does not mean `PRODUCTION_SCHEMA_READY`. Phase 2 migration/provisioning and exact Production-bound evidence remain required. Counts remain `24` blocking and `1` non-blocking.

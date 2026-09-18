@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 import {
@@ -180,4 +181,23 @@ test("durable generic update cannot bypass append-only revocation evidence", () 
   } finally {
     unit.close();
   }
+}));
+
+test("Production prepared-schema mode fails closed without creating Session tables", () => withDatabase((databasePath) => {
+  assert.throws(
+    () => new DurableSessionUnitOfWork({ databasePath, schemaMode: "REQUIRE_EXISTING" }),
+    expectCode("SESSION_PERSISTENCE_UNAVAILABLE"),
+  );
+  const inspection = new DatabaseSync(databasePath);
+  assert.equal(inspection.prepare("SELECT name FROM sqlite_master WHERE name LIKE 'identity_session%'").all().length, 0);
+  inspection.close();
+}));
+
+test("Production prepared-schema mode opens an already provisioned Session schema without mutation", () => withDatabase((databasePath) => {
+  const provisioner = new DurableSessionUnitOfWork({ databasePath });
+  provisioner.close();
+  const production = new DurableSessionUnitOfWork({ databasePath, schemaMode: "REQUIRE_EXISTING" });
+  create(production);
+  assert.equal(production.sessions.find("session-durable-1")?.principalId, "user-durable-1");
+  production.close();
 }));

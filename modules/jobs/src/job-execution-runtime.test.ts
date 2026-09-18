@@ -182,6 +182,7 @@ test("Phase 3D one-shot execution passes only durable canonical context and pers
           inputReferences: [{ type: "RawSource", id: "raw-a", version: 3, checksum: "sha256:raw-a-v3" }],
           policyVersion: "jobs-policy-v1",
           originatingAuthorityEvidenceRefs: ["evidence:authority-a"],
+          correlationId: "correlation-execute-a",
         });
         return Object.freeze({ status: "ALLOWED" as const, evidenceRefs: Object.freeze(["evidence:execution-admission-a"]) });
       },
@@ -234,6 +235,31 @@ test("Phase 3D concealment and terminal replay prevent duplicate handler executi
     assert.equal(replay.status, "REPLAYED");
     assert.equal(replay.job.status, "SUCCEEDED");
     assert.equal(handlerCalls, 1);
+    store.close();
+  } finally {
+    rmSync(f.directory, { recursive: true, force: true });
+  }
+});
+
+test("Production commit revalidation denial leaves the durable running result uncommitted without a false failure mutation", () => {
+  const f = fixture();
+  try {
+    const store = new DurableJobStore({ databasePath: f.databasePath, idFactory: sequence("job-a"), clock: clockSequence("2026-09-15T00:00:00.000Z", "2026-09-15T00:01:00.000Z") });
+    store.submitJob(submission());
+    let admissionCalls = 0;
+    const admission: JobExecutionAdmissionPort = Object.freeze({ evaluate: () => {
+      admissionCalls += 1;
+      return admissionCalls === 1
+        ? Object.freeze({ status: "ALLOWED" as const, evidenceRefs: Object.freeze(["evidence:execution-admission-a"]) })
+        : Object.freeze({ status: "BLOCKED" as const });
+    } });
+    const runtime = new JobExecutionRuntime({ store, registry: new JobExecutionRegistry({ AI_LISTING_PARSE: handler, AI_REQUIREMENT_PARSE: requirementHandler, AI_MATCHING: matchingHandler }), admission, failureMapper: rejectingFailureMapper });
+    assert.throws(
+      () => runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" }),
+      (error: unknown) => error instanceof JobExecutionRuntimeError && error.code === "JOB_NOT_EXECUTABLE",
+    );
+    assert.equal(admissionCalls, 2);
+    assert.deepEqual(store.listHistory({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a" }).map((job) => job.status), ["QUEUED", "RUNNING"]);
     store.close();
   } finally {
     rmSync(f.directory, { recursive: true, force: true });

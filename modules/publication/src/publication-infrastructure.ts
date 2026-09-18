@@ -106,13 +106,13 @@ export function createPublicationInfrastructure(
 }
 
 export function createProductionPublicationInfrastructure(
-  input: Readonly<{ readonly databasePath: string; readonly configuration?: PublicationInfrastructureConfigurationInput }>,
+  input: Readonly<{ readonly databasePath: string; readonly configuration?: PublicationInfrastructureConfigurationInput; readonly schemaMode?: "INITIALIZE" | "REQUIRE_EXISTING" }>,
 ): PublicationInfrastructure & Readonly<{ readonly unitOfWork: DurablePublicationUnitOfWork }> {
   const configuration = createPublicationInfrastructureConfiguration(input.configuration ?? {});
   if (configuration.connectorDispatcher !== undefined) {
     throw new TypeError("Production Publication connector configuration is not approved.");
   }
-  const unitOfWork = new DurablePublicationUnitOfWork({ databasePath: input.databasePath });
+  const unitOfWork = new DurablePublicationUnitOfWork({ databasePath: input.databasePath, ...(input.schemaMode === undefined ? {} : { schemaMode: input.schemaMode }) });
   return createPublicationInfrastructureWithPersistence(configuration, unitOfWork) as PublicationInfrastructure & Readonly<{ readonly unitOfWork: DurablePublicationUnitOfWork }>;
 }
 

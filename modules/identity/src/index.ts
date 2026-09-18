@@ -31,3 +31,25 @@ export {
   type ResolveAuthorizedSessionRequest,
   type SessionAccessCoordinatorDependencies,
 } from "./session-access-coordinator.js";
+export {
+  DurableRegisteredServiceWorkloadStore,
+  RegisteredServiceWorkloadError,
+  type DurableRegisteredServiceWorkloadStoreOptions,
+  type RegisteredServiceWorkloadAuthorityLease,
+  type RegisteredServiceWorkloadEvidenceVerifier,
+  type RegisteredServiceWorkloadErrorCode,
+  type RegisteredServiceWorkloadRecord,
+  type RegisteredServiceWorkloadStatus,
+} from "./registered-service-workload.js";
+export {
+  RegisteredServiceWorkloadEvidenceAuthorityAdapter,
+  type ReadOnlyAuditEvidenceQueryPort,
+  type RegisteredServiceWorkloadAuditEvidence,
+  type RegisteredServiceWorkloadIdentityEvidence,
+  type RegisteredServiceWorkloadIdentityEvidenceQueryPort,
+} from "./registered-service-workload-evidence-authority.js";
+export {
+  REGISTERED_SERVICE_WORKLOAD_SCHEMA_CONTRACT,
+  REGISTERED_SERVICE_WORKLOAD_SCHEMA_FINGERPRINT,
+  assertRegisteredServiceWorkloadSchemaCompatible,
+} from "./registered-service-workload-schema.js";

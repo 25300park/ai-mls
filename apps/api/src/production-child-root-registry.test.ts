@@ -1,0 +1,74 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import test from "node:test";
+
+import { createCanonicalProductionChildRootFactories } from "./production-child-root-registry.js";
+
+test("canonical Production registry is closed to the five approved actual roots", () => {
+  const registry = createCanonicalProductionChildRootFactories({
+    api014: {} as never, api015: {} as never, api018: {} as never, api019: {} as never, feat022: {} as never,
+  });
+  assert.deepEqual(Object.keys(registry).sort(), ["API-014", "API-015", "API-018", "API-019", "FEAT-022"]);
+  assert.equal(Object.isFrozen(registry), true);
+});
+
+test("registry binds existing actual Production compositions and prepared-schema mode without adding roots", () => {
+  const source = readFileSync(new URL("./production-child-root-registry.js", import.meta.url), "utf8");
+  for (const factory of [
+    "composeProductionPublicationApi014NodeHttpServer", "composeProductionAdministrationApi015NodeHttpServer",
+    "createProductionConnectorApi018Composition", "createProductionExternalIntegrationComposition", "createProductionAdvisoryRuntime",
+  ]) assert.match(source, new RegExp(`${factory}\\(`, "u"));
+  assert.equal((source.match(/schemaMode: "REQUIRE_EXISTING"/gu) ?? []).length, 5);
+  assert.doesNotMatch(source, /API-017|API-001|API-002/u);
+});
+
+test("only the canonical bootstrap imports the internal context issuer", () => {
+  const bootstrap = readFileSync(new URL("./production-bootstrap.js", import.meta.url), "utf8");
+  const engine = readFileSync(new URL("./production-bootstrap-engine.js", import.meta.url), "utf8");
+  const registry = readFileSync(new URL("./production-child-root-registry.js", import.meta.url), "utf8");
+  assert.match(bootstrap, /createCanonicalProductionChildRootFactories/u);
+  assert.match(engine, /issueProductionBootstrapContext/u);
+  assert.doesNotMatch(registry, /issueProductionBootstrapContext/u);
+});
+
+test("canonical entry binds the closed actual registry and the engine remains an internal test seam", () => {
+  const bootstrap = readFileSync(new URL("./production-bootstrap.js", import.meta.url), "utf8");
+  const sourceTest = readFileSync(new URL("./production-bootstrap.test.js", import.meta.url), "utf8");
+  assert.match(bootstrap, /childRootFactories:\s*createCanonicalProductionChildRootFactories\(dependencies\.childRootOptions\)/u);
+  assert.match(sourceTest, /executeProductionBootstrap/u);
+  assert.doesNotMatch(bootstrap, /childRootFactories:\s*dependencies\.childRootFactories/u);
+});
+
+test("actual root registry defers process activation until all roots have been prepared", () => {
+  const source = readFileSync(new URL("./production-child-root-registry.js", import.meta.url), "utf8");
+  assert.equal((source.match(/runtimeEnvironment: "PRODUCTION"/gu) ?? []).length, 5);
+  assert.equal((source.match(/deferRuntimeActivation: true/gu) ?? []).length, 3);
+  assert.equal((source.match(/activateRuntime:/gu) ?? []).length, 5);
+  assert.match(source, /listener: root\.server/u);
+});
+
+test("internal bootstrap engine and context issuer have no alternate production importer", () => {
+  const grep = (pattern: string): string[] => {
+    const result = spawnSync("rg", ["-F", "-l", pattern, "apps", "modules", "packages", "-g", "*.ts", "-g", "!*.test.ts"], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim().split(/\r?\n/u).map((value) => value.replaceAll("\\", "/")).sort();
+  };
+  assert.deepEqual(grep("issueProductionBootstrapContext"), [
+    "apps/api/src/production-bootstrap-engine.ts",
+    "packages/security-contracts/src/production-bootstrap-proof.ts",
+  ]);
+  assert.deepEqual(grep("executeProductionBootstrap"), [
+    "apps/api/src/production-bootstrap-engine.ts",
+    "apps/api/src/production-bootstrap.ts",
+  ]);
+  const expectedRegistryAndDefinition = (definition: string): string[] => [
+    definition,
+    "apps/api/src/production-child-root-registry.ts",
+  ].sort();
+  assert.deepEqual(grep("composeProductionPublicationApi014NodeHttpServer("), expectedRegistryAndDefinition("apps/api/src/composition.ts"));
+  assert.deepEqual(grep("composeProductionAdministrationApi015NodeHttpServer("), expectedRegistryAndDefinition("apps/api/src/administration-production-composition.ts"));
+  assert.deepEqual(grep("createProductionConnectorApi018Composition("), expectedRegistryAndDefinition("apps/api/src/connector-production-composition.ts"));
+  assert.deepEqual(grep("createProductionExternalIntegrationComposition("), expectedRegistryAndDefinition("apps/api/src/external-integration-production-composition.ts"));
+  assert.deepEqual(grep("createProductionAdvisoryRuntime("), expectedRegistryAndDefinition("modules/ai/src/advisory-production-composition.ts"));
+});
