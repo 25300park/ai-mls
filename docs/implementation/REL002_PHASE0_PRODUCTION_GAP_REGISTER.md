@@ -145,3 +145,15 @@ Phase 2C defines the controlled Production migration gate without executing it. 
 | REL002-GAP-006 | migration/verification/Bootstrap transition are defined, but Production schema, registrations and operator execution evidence are not provisioned | `STAGING_ONLY`, `BLOCKING` |
 
 Phase 2C does not reclassify these gaps or change the Phase 0 counts (`24` blocking, `1` non-blocking). Migration execution, Production DB writes, identity seed and runtime schema auto-create remain `0`; Production schema remains `NOT_READY_UNTIL_CONTROLLED_EXECUTION`.
+
+## 12. Phase 2D-0A infrastructure binding amendment impact
+
+Phase 2D-0A ratifies Vercel delivery, Railway runtime and Supabase PostgreSQL persistence through approved DEC-175~178. The decisions do not approve infrastructure mutation or execute a migration. The previous SQLite Production execution path is `RETIRED_FOR_PRODUCTION`; existing canonical local/test use and historical Phase 2B evidence remain immutable. PostgreSQL-specific migration, store adapters, compatibility validation, physical binding and exact backup/restore evidence do not yet exist.
+
+| Gap | Phase 2D-0A evidence | Current status |
+|---|---|---|
+| REL002-GAP-004 | provider/engine/environment are proposed, but Supabase project/database/region/connection mode and PostgreSQL schema are unbound | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-005 | provider-neutral `IDENTITY_DATABASE_CONNECTION_REF` boundary is defined; actual secret backend/reference/rotation binding is absent | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-006 | Identity authority is preserved, but PostgreSQL migration/compatibility adapter, Production schema and registrations are absent | `STAGING_ONLY`, `BLOCKING` |
+
+Phase 0 counts remain `24` blocking and `1` non-blocking. `PHYSICAL_DB_BINDING = UNBOUND`, operator/backup/restore remain `BLOCKED`, and migration execution/Production DB writes/deployment remain `0`.

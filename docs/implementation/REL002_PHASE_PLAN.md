@@ -104,3 +104,15 @@ Production migration execution, Production DB writes, identity initialization, r
 Phase 2C defines the exact preflight, backup/restore, locking, same-transaction schema/metadata/ledger, fail-closed rollback/forward-fix, evidence and post-migration verification contracts. Logical target ownership is the existing Identity-owned Production Identity/Session database boundary and the environment is exact `PRODUCTION`.
 
 The repository does not yet bind an exact physical Production database identity, migration operator authorization instance or current exact-target backup/restore evidence. Those values must be supplied through a separately approved execution packet and must not be inferred or embedded as secret/path values. Therefore the plan is complete while actual execution remains `BLOCKED`; migration execution, Production writes, seed and runtime schema auto-create remain `0`.
+
+### Phase 2D-0A infrastructure binding amendment checkpoint
+
+Phase 2D-0A proposes the canonical Production topology:
+
+- Vercel: frontend/Admin Console/browser delivery only
+- Railway: canonical backend/runtime, `startProductionRuntime()` and separately bounded persistent workers
+- Supabase: canonical Production PostgreSQL relational persistence
+
+DEC-175~178 are `APPROVED`. Existing Identity/Session/authorization/RoleAssignment/RegisteredServiceWorkload authority remains unchanged and Supabase Auth is not adopted. The SQLite Production assumption is `RETIRED_FOR_PRODUCTION`; existing canonical local/test use and historical Phase 2B evidence remain preserved, but its executable migration/verification artifacts are not valid for PostgreSQL Production execution.
+
+Before Phase 2 execution can resume, a separately authorized lane must close the PostgreSQL adapter/async port boundary, driver/package choice, new migration and compatibility contract, exact Supabase physical binding, Railway service binding, secret backend, named operator and exact-project backup/restore evidence. Until then Gaps 004/005/006 remain `BLOCKING`; migration, Production DB writes, deployment, credential use and infrastructure mutation remain `0`.
