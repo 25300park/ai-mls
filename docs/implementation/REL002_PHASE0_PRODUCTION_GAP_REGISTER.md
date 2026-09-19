@@ -157,3 +157,15 @@ Phase 2D-0A ratifies Vercel delivery, Railway runtime and Supabase PostgreSQL pe
 | REL002-GAP-006 | Identity authority is preserved, but PostgreSQL migration/compatibility adapter, Production schema and registrations are absent | `STAGING_ONLY`, `BLOCKING` |
 
 Phase 0 counts remain `24` blocking and `1` non-blocking. `PHYSICAL_DB_BINDING = UNBOUND`, operator/backup/restore remain `BLOCKED`, and migration execution/Production DB writes/deployment remain `0`.
+
+## 13. Phase 2D-0B PostgreSQL transition design impact
+
+Phase 2D-0B defines the bounded async PostgreSQL adapter, `app_identity` physical contract, per-Railway-process pool/transaction ownership, read-only `pg_catalog` validator, separate PostgreSQL migration artifact and Railway/Supabase binding design. DEC-179~182 are `APPROVED`; `pg` is approved for the next separately authorized implementation and `@types/pg` only if compilation requires it. This documentation closeout changes no dependency, code, infrastructure, credential or database.
+
+| Gap | Phase 2D-0B design evidence | Current status |
+|---|---|---|
+| REL002-GAP-004 | Supabase PostgreSQL configuration/reference/pool/TLS contract is defined, but exact project/database/region/connection mode and secret values remain unbound | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-005 | Railway-only provider-neutral secret references and Vercel exclusion are defined, but exact secret backend/reference/rotation evidence is absent | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-006 | PostgreSQL schema/migration/adapter/validator contracts are designed, but no implementation, schema execution or Production identity exists | `STAGING_ONLY`, `BLOCKING` |
+
+Phase 0 counts remain `24` blocking and `1` non-blocking. Physical binding remains `UNBOUND`; migration execution, Production DB writes, identity seed, deployment and provider/network actions remain `0`.

@@ -46,7 +46,7 @@ Stop for Architecture Owner review before new API IDs, roles/capabilities, lifec
 |---|---|---|
 | Phase 0 | COMPLETE | Inventory `26/26`, blocking gaps `24`, non-blocking gaps `1` |
 | Phase 1 | IMPLEMENTATION COMPLETE / PRODUCTION RETURN GATE OPEN | Phase 1G implements DEC-169/170/171; gaps 004-006 remain blocking pending Production-bound schema/config evidence |
-| Phase 2 | PHASE 2C EXECUTION PLAN COMPLETE / CONTROLLED EXECUTION BLOCKED | Phase 2A decisions and Phase 2B artifact/classifier are complete; Phase 2C defines the controlled gate, but physical target/operator/backup-restore evidence is absent and Production migration execution remains 0 |
+| Phase 2 | PHASE 2D-0B POSTGRESQL TRANSITION DESIGN COMPLETE / IMPLEMENTATION AND CONTROLLED EXECUTION BLOCKED | Phase 2D-0A replaces the Production engine assumption; Phase 2D-0B defines PostgreSQL adapter/migration/pool/validator design, while decisions, driver, implementation, physical target/operator/backup-restore evidence and Production execution remain gated |
 
 The Phase 1 design introduces no Production/Test change, credential value, infrastructure mutation or provider/network call. It does not change the Phase 0 gap counts or the eight-phase sequence.
 
@@ -116,3 +116,16 @@ Phase 2D-0A proposes the canonical Production topology:
 DEC-175~178 are `APPROVED`. Existing Identity/Session/authorization/RoleAssignment/RegisteredServiceWorkload authority remains unchanged and Supabase Auth is not adopted. The SQLite Production assumption is `RETIRED_FOR_PRODUCTION`; existing canonical local/test use and historical Phase 2B evidence remain preserved, but its executable migration/verification artifacts are not valid for PostgreSQL Production execution.
 
 Before Phase 2 execution can resume, a separately authorized lane must close the PostgreSQL adapter/async port boundary, driver/package choice, new migration and compatibility contract, exact Supabase physical binding, Railway service binding, secret backend, named operator and exact-project backup/restore evidence. Until then Gaps 004/005/006 remain `BLOCKING`; migration, Production DB writes, deployment, credential use and infrastructure mutation remain `0`.
+
+### Phase 2D-0B PostgreSQL transition design checkpoint
+
+Phase 2D-0B defines the recommended engine-specific transition without changing runtime code:
+
+- async PostgreSQL Production ports/adapters for Session and RegisteredServiceWorkload;
+- synchronous SQLite adapters preserved for local/test and immutable historical evidence only;
+- `app_identity` schema contract, engine-aware metadata/ledger and read-only `pg_catalog` compatibility validation;
+- per-Railway-service-process Bootstrap-owned pool and checked-out-client transaction ownership;
+- separate PostgreSQL Up/Verify artifact with runtime migration `0` and identity seed `0`;
+- Vercel database/secret/backend authority `0`, Supabase Auth adoption `0`.
+
+DEC-179~182 are `APPROVED`. The next implementation driver is limited to `pg` and `@types/pg` only if TypeScript compilation requires it; ORMs, Supabase client persistence authority and additional PostgreSQL drivers are prohibited. Separate implementation authorization, connection/pool/timeouts, physical Supabase/Railway binding, secret backend, operator and backup/restore evidence remain open. Therefore this closeout's dependency changes, implementation, migration, Production DB writes, deployment, credentials and network operations remain `0`; Gaps 004/005/006 remain `BLOCKING`.
