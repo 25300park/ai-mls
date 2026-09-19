@@ -18,6 +18,21 @@ export interface CanonicalProductionChildRootOptions {
   readonly feat022: ProductionAdvisoryRuntimeOptions;
 }
 
+/**
+ * Phase 2D-0C migrates the Identity boundary only. Existing child roots still
+ * accept SQLite databasePath configuration and therefore cannot truthfully be
+ * composed into the canonical Production PostgreSQL runtime yet.
+ */
+export function assertCanonicalProductionChildRootsPostgreSqlReady(
+  options: CanonicalProductionChildRootOptions,
+): void {
+  for (const child of Object.values(options)) {
+    if (Object.prototype.hasOwnProperty.call(child, "databasePath")) {
+      throw new Error("Production child-root persistence is unavailable.");
+    }
+  }
+}
+
 export function createCanonicalProductionChildRootFactories(
   options: CanonicalProductionChildRootOptions,
 ): ProductionChildRootFactories {
@@ -25,12 +40,12 @@ export function createCanonicalProductionChildRootFactories(
     "API-014": (context, configuration, identities) => {
       assertRootIdentity("API-014", context, configuration, identities);
       const root = composeProductionPublicationApi014NodeHttpServer({ ...options.api014, runtimeEnvironment: "PRODUCTION", bootstrapContext: context, schemaMode: "REQUIRE_EXISTING", deferRuntimeActivation: true });
-      return Object.freeze({ componentId: "API-014" as const, listener: root.server, activateRuntime: () => root.activateRuntime(), close: () => { void root.close(); } });
+      return Object.freeze({ componentId: "API-014" as const, listener: root.server, activateRuntime: () => root.activateRuntime(), close: () => root.close() });
     },
     "API-015": (context, configuration, identities) => {
       assertRootIdentity("API-015", context, configuration, identities);
       const root = composeProductionAdministrationApi015NodeHttpServer({ ...options.api015, runtimeEnvironment: "PRODUCTION", bootstrapContext: context, schemaMode: "REQUIRE_EXISTING" });
-      return Object.freeze({ componentId: "API-015" as const, listener: root.server, activateRuntime: () => { /* no process-local host */ }, close: () => { void root.close(); } });
+      return Object.freeze({ componentId: "API-015" as const, listener: root.server, activateRuntime: () => { /* no process-local host */ }, close: () => root.close() });
     },
     "API-018": (context, configuration, identities) => {
       assertRootIdentity("API-018", context, configuration, identities);

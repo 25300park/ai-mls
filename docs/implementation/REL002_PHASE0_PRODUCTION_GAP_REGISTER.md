@@ -169,3 +169,15 @@ Phase 2D-0B defines the bounded async PostgreSQL adapter, `app_identity` physica
 | REL002-GAP-006 | PostgreSQL schema/migration/adapter/validator contracts are designed, but no implementation, schema execution or Production identity exists | `STAGING_ONLY`, `BLOCKING` |
 
 Phase 0 counts remain `24` blocking and `1` non-blocking. Physical binding remains `UNBOUND`; migration execution, Production DB writes, identity seed, deployment and provider/network actions remain `0`.
+
+## 14. Phase 2D-0C PostgreSQL implementation impact
+
+Phase 2D-0C implements the approved `pg` pool, async Session UoW, read-only RegisteredServiceWorkload store, exact catalog validator, explicit PostgreSQL Up/Verify artifact and async Production bootstrap boundary. Production Identity composition now rejects SQLite; existing SQLite local/test/historical adapters remain unchanged. No Supabase project, connection, migration execution, Production DB write, identity seed or deployment occurred.
+
+| Gap | Phase 2D-0C evidence | Current status |
+|---|---|---|
+| REL002-GAP-004 | async PostgreSQL startup and pool lifecycle are implemented; exact Supabase project/database/region/connection mode remains unbound | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-005 | TLS and provider-neutral secret-reference consumption boundary are implemented; exact secret backend/reference/rotation evidence remains absent | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-006 | PostgreSQL adapters, validator and migration artifacts are implemented; controlled migration, compatible Production schema and authoritative registrations remain absent | `STAGING_ONLY`, `BLOCKING` |
+
+Phase 0 counts remain `24` blocking and `1` non-blocking. `PHYSICAL_DB_BINDING = UNBOUND`; migration execution, Production DB writes, identity seed, deployment and provider/network actions remain `0`.

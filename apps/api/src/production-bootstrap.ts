@@ -1,8 +1,15 @@
-import type { RegisteredServiceWorkloadAuthorityLease } from "../../../modules/identity/src/index.js";
+import type {
+  AsyncRegisteredServiceWorkloadAuthorityLease,
+  PostgreSqlPoolPort,
+} from "../../../modules/identity/src/index.js";
 import {
   type ProductionBootstrapContextView,
 } from "../../../packages/security-contracts/src/production-bootstrap-proof.js";
-import { createCanonicalProductionChildRootFactories, type CanonicalProductionChildRootOptions } from "./production-child-root-registry.js";
+import {
+  assertCanonicalProductionChildRootsPostgreSqlReady,
+  createCanonicalProductionChildRootFactories,
+  type CanonicalProductionChildRootOptions,
+} from "./production-child-root-registry.js";
 import { executeProductionBootstrap } from "./production-bootstrap-engine.js";
 import type { ProductionServiceIdentityBinding } from "./production-service-identity-resolver.js";
 
@@ -17,10 +24,15 @@ export interface ProductionRuntimeConfiguration {
   readonly configurationReference: string;
   readonly requiredServiceRegistrations: readonly string[];
   readonly providerExecutionAuthorized: false;
+  readonly identityPersistenceEngine: "POSTGRESQL";
 }
 
 export interface ProductionClosableResource {
-  close(): void;
+  close(): void | Promise<void>;
+}
+
+export interface ProductionAsyncClosableResource {
+  close(): Promise<void>;
 }
 
 export interface ProductionChildRoot extends ProductionClosableResource {
@@ -40,19 +52,20 @@ export interface ProductionBootstrapDependencies {
   readonly parseConfiguration: (raw: unknown) => ProductionRuntimeConfiguration;
   readonly validateConfiguration: (configuration: ProductionRuntimeConfiguration) => void;
   readonly validateMandatorySecretReferences: (configuration: ProductionRuntimeConfiguration) => void;
-  readonly openIdentityAuthorityReadOnly: () => RegisteredServiceWorkloadAuthorityLease;
+  readonly openPostgreSqlPool: (configuration: ProductionRuntimeConfiguration) => Promise<PostgreSqlPoolPort>;
+  readonly openIdentityAuthorityReadOnly: (pool: PostgreSqlPoolPort) => Promise<AsyncRegisteredServiceWorkloadAuthorityLease>;
   readonly validateHumanIdentityAuthority: (configuration: ProductionRuntimeConfiguration) => void;
   readonly resolveRequiredServiceIdentities: (
-    authority: RegisteredServiceWorkloadAuthorityLease,
+    authority: AsyncRegisteredServiceWorkloadAuthorityLease,
     configuration: ProductionRuntimeConfiguration,
-  ) => readonly ProductionServiceIdentityBinding[];
-  readonly resolveRequiredSecrets: (configuration: ProductionRuntimeConfiguration) => void;
+  ) => Promise<readonly ProductionServiceIdentityBinding[]>;
+  readonly resolveRequiredSecrets: (configuration: ProductionRuntimeConfiguration) => Promise<void>;
   readonly validateStartupGate: (
     configuration: ProductionRuntimeConfiguration,
     identities: readonly ProductionServiceIdentityBinding[],
   ) => string;
-  readonly createSessionUnitOfWork: () => ProductionClosableResource;
-  readonly assertComponentSchemasReady: (configuration: ProductionRuntimeConfiguration) => void;
+  readonly createSessionUnitOfWork: (pool: PostgreSqlPoolPort) => Promise<ProductionAsyncClosableResource>;
+  readonly assertComponentSchemasReady: (configuration: ProductionRuntimeConfiguration) => Promise<void>;
   readonly childRootOptions: CanonicalProductionChildRootOptions;
   readonly startListeners: (
     context: ProductionBootstrapContextView,
@@ -67,7 +80,7 @@ export interface ProductionBootstrapDependencies {
 export interface ProductionRuntimeHandle {
   readonly validationFingerprint: string;
   readiness(): "READY" | "NOT_READY";
-  close(): void;
+  close(): Promise<void>;
 }
 
 export type ProductionBootstrapErrorCode = "PRODUCTION_STARTUP_UNAVAILABLE";
@@ -79,8 +92,9 @@ export class ProductionBootstrapError extends Error {
   }
 }
 
-export function startProductionRuntime(rawConfiguration: unknown, dependencies: ProductionBootstrapDependencies): ProductionRuntimeHandle {
-  return executeProductionBootstrap(rawConfiguration, {
+export async function startProductionRuntime(rawConfiguration: unknown, dependencies: ProductionBootstrapDependencies): Promise<ProductionRuntimeHandle> {
+  assertCanonicalProductionChildRootsPostgreSqlReady(dependencies.childRootOptions);
+  return await executeProductionBootstrap(rawConfiguration, {
     ...dependencies,
     childRootFactories: createCanonicalProductionChildRootFactories(dependencies.childRootOptions),
   });

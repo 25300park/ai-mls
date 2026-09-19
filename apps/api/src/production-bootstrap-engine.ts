@@ -14,26 +14,28 @@ export interface ProductionBootstrapEngineDependencies extends Omit<ProductionBo
 }
 
 /** Internal bootstrap engine. Production code must enter through startProductionRuntime(). */
-export function executeProductionBootstrap(rawConfiguration: unknown, dependencies: ProductionBootstrapEngineDependencies): ProductionRuntimeHandle {
-  const cleanup: (() => void)[] = [];
+export async function executeProductionBootstrap(rawConfiguration: unknown, dependencies: ProductionBootstrapEngineDependencies): Promise<ProductionRuntimeHandle> {
+  const cleanup: (() => void | Promise<void>)[] = [];
   try {
     const configuration = dependencies.parseConfiguration(rawConfiguration);
     assertProductionConfiguration(configuration);
     dependencies.validateConfiguration(configuration);
     dependencies.validateMandatorySecretReferences(configuration);
-    const authority = dependencies.openIdentityAuthorityReadOnly();
+    const pool = await dependencies.openPostgreSqlPool(configuration);
+    cleanup.push(() => pool.close());
+    const authority = await dependencies.openIdentityAuthorityReadOnly(pool);
     cleanup.push(() => authority.close());
-    authority.assertSchemaReady();
+    await authority.assertSchemaReady();
     dependencies.validateHumanIdentityAuthority(configuration);
-    const identities = Object.freeze([...dependencies.resolveRequiredServiceIdentities(authority, configuration)]);
+    const identities = Object.freeze([...(await dependencies.resolveRequiredServiceIdentities(authority, configuration))]);
     assertRequiredIdentities(configuration, identities);
-    dependencies.resolveRequiredSecrets(configuration);
+    await dependencies.resolveRequiredSecrets(configuration);
     const validationFingerprint = dependencies.validateStartupGate(configuration, identities);
     if (!safeReference(validationFingerprint)) throw unavailable();
     const context = issueProductionBootstrapContext({ validationFingerprint, configurationReference: configuration.configurationReference });
-    const session = dependencies.createSessionUnitOfWork();
+    const session = await dependencies.createSessionUnitOfWork(pool);
     cleanup.push(() => session.close());
-    dependencies.assertComponentSchemasReady(configuration);
+    await dependencies.assertComponentSchemasReady(configuration);
 
     const roots: ProductionChildRoot[] = [];
     for (const componentId of ["API-014", "API-015", "API-018", "API-019", "FEAT-022"] as const) {
@@ -54,21 +56,22 @@ export function executeProductionBootstrap(rawConfiguration: unknown, dependenci
     return Object.freeze({
       validationFingerprint,
       readiness: () => state,
-      close: () => {
+      close: async () => {
         if (closed) return;
         closed = true;
         state = "NOT_READY";
-        cleanupReverse(cleanup);
+        await cleanupReverse(cleanup);
       },
     });
   } catch {
-    cleanupReverse(cleanup);
+    await cleanupReverse(cleanup);
     throw unavailable();
   }
 }
 
 function assertProductionConfiguration(value: ProductionRuntimeConfiguration): void {
   if (value?.runtimeEnvironment !== "PRODUCTION" || value.providerExecutionAuthorized !== false
+    || value.identityPersistenceEngine !== "POSTGRESQL"
     || !safeReference(value.configurationReference) || !Array.isArray(value.requiredServiceRegistrations)
     || !value.requiredServiceRegistrations.length || value.requiredServiceRegistrations.some((item) => !safeReference(item))) throw unavailable();
 }
@@ -79,9 +82,9 @@ function assertRequiredIdentities(configuration: ProductionRuntimeConfiguration,
   if (expected.length !== actual.length || expected.some((value, index) => value !== actual[index])) throw unavailable();
 }
 
-function cleanupReverse(cleanup: readonly (() => void)[]): void {
+async function cleanupReverse(cleanup: readonly (() => void | Promise<void>)[]): Promise<void> {
   for (let index = cleanup.length - 1; index >= 0; index -= 1) {
-    try { cleanup[index]?.(); } catch { /* continue fail-safe cleanup */ }
+    try { await cleanup[index]?.(); } catch { /* continue fail-safe cleanup */ }
   }
 }
 
