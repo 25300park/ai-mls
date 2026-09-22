@@ -1,10 +1,39 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
 
 const runtimeSql = readFileSync(resolve("modules/identity/migrations/postgresql/production/002_runtime_role_grants.sql"), "utf8");
 const migrationSql = readFileSync(resolve("modules/identity/migrations/postgresql/production/003_migration_operator_role_grants.sql"), "utf8");
+const roleCreationPath = resolve("modules/identity/migrations/postgresql/production/000_production_role_creation.sql");
+const roleVerificationPath = resolve("modules/identity/migrations/postgresql/production/004_production_role_privilege_verification.sql");
+
+test("role creation artifact creates the exact two passwordless least-privilege LOGIN roles", () => {
+  assert.equal(existsSync(roleCreationPath), true);
+  const sql = readFileSync(roleCreationPath, "utf8");
+  for (const role of ["ai_mls_production_runtime", "ai_mls_production_migration_operator"]) {
+    assert.match(sql, new RegExp(`CREATE\\s+ROLE\\s+${role}\\s+LOGIN\\s+NOSUPERUSER\\s+NOCREATEDB\\s+NOCREATEROLE\\s+NOINHERIT\\s+NOREPLICATION\\s+NOBYPASSRLS`, "iu"));
+  }
+  assert.doesNotMatch(sql, /PASSWORD|SECRET|CREDENTIAL|DO\s+\$\$|IF\s+NOT\s+EXISTS/iu);
+});
+
+test("role privilege verification artifact is read-only and checks positive and negative authority", () => {
+  assert.equal(existsSync(roleVerificationPath), true);
+  const sql = readFileSync(roleVerificationPath, "utf8");
+  assert.match(sql, /ai_mls_production_runtime/u);
+  assert.match(sql, /ai_mls_production_migration_operator/u);
+  assert.match(sql, /has_database_privilege/iu);
+  assert.match(sql, /has_schema_privilege/iu);
+  assert.match(sql, /has_table_privilege/iu);
+  assert.match(sql, /rolsuper/iu);
+  assert.match(sql, /rolcreatedb/iu);
+  assert.match(sql, /rolcreaterole/iu);
+  assert.match(sql, /rolinherit/iu);
+  assert.match(sql, /rolreplication/iu);
+  assert.match(sql, /rolbypassrls/iu);
+  assert.doesNotMatch(sql, /^\s*(?:CREATE|ALTER|GRANT|REVOKE|INSERT|UPDATE|DELETE|DROP|TRUNCATE)\b/imu);
+  assert.doesNotMatch(sql, /PASSWORD|SECRET|CREDENTIAL/iu);
+});
 
 test("runtime role grants only steady-state Identity and Session privileges", () => {
   assert.match(runtimeSql, /ai_mls_production_runtime/u);

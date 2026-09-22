@@ -239,3 +239,13 @@ Phase 0 counts remain `24` blocking and `1` non-blocking. Production connection,
 | REL002-GAP-006 | Startup rejects absent/malformed bindings before PostgreSQL, but Production schema, registrations and controlled execution evidence remain absent. | `STAGING_ONLY`, `BLOCKING` |
 
 Phase 0 counts remain `24` blocking and `1` non-blocking. `SECRET_BACKEND_EXECUTION = READY_FOR_HUMAN_BINDING`; Production connection, DB writes, migration execution, role execution, secret writes, deployment and infrastructure mutation remain `0`.
+
+### Phase 2D-0K PostgreSQL role execution preparation checkpoint
+
+| Gap | Phase 2D-0K evidence | Current state |
+|---|---|---|
+| REL002-GAP-004 | Exact role creation, secure binding procedure and controlled execution order are repository-defined; physical Railway/Supabase execution remains absent. | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-005 | Runtime secret consumer/reference contract is preserved; human runtime password binding remains absent. | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-006 | Positive/negative privilege verification is executable and read-only; Production schema, registration and execution evidence remain absent. | `STAGING_ONLY`, `BLOCKING` |
+
+Phase 0 counts remain `24` blocking and `1` non-blocking. Role creation, password binding, Production connection/write, migration, secret writes and infrastructure mutation remain `0`.

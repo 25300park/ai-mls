@@ -161,3 +161,7 @@ Phase 2D-0I recommends Production `ai-mls-api` service-scoped sealed Railway var
 ### Phase 2D-0J Docker / sealed-secret implementation checkpoint
 
 Repository-side Dockerfile isolation, exact two-reference Railway sealed-variable resolver, `PG_IDENTITY_POOL`-only consumption, raw `DATABASE_URL` rejection, scoped Railway Production binding validation, safe PEM handling and runtime image inspection are implemented. Actual no-cache Docker build, whole-image 373-file inspection, image ENV/history inspection and network-disabled fake-only resolver smoke pass. Human Railway sealed-variable binding remains absent. Therefore `SECRET_BACKEND_EXECUTION = READY_FOR_HUMAN_BINDING`; Production connection, DB writes, migration, role execution, secrets written, deployment and infrastructure mutation remain `0`.
+
+### Phase 2D-0K PostgreSQL role execution preparation checkpoint
+
+Exact two-role passwordless creation, secure interactive password binding, controlled execution ordering and read-only positive/negative privilege verification are repository-defined. Existing 001/002/003 migration and grant semantics remain unchanged. Physical binding, named operator, exact-target backup and restore evidence remain mandatory; role creation, password binding, migration, Production DB write and platform mutation remain `0`.
