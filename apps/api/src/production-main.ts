@@ -6,10 +6,15 @@ import {
   startProductionRuntime,
   type ProductionAsyncClosableResource,
   type ProductionBootstrapDependencies,
+  type ProductionRuntimeConfiguration,
   type ProductionRuntimeHandle,
 } from "./production-bootstrap.js";
 import { createProductionReadinessState, type ProductionReadinessState } from "./production-readiness-http.js";
-import { parseRailwayProductionRuntimeConfiguration } from "./production-runtime-configuration.js";
+import {
+  parseRailwayProductionRuntimeConfiguration,
+  type RailwayProductionRuntimeConfiguration,
+} from "./production-runtime-configuration.js";
+import { createRailwaySealedProductionPostgreSqlPool } from "./production-secret-reference-resolver.js";
 import type { ProductionServiceIdentityBinding } from "./production-service-identity-resolver.js";
 
 export type ProductionSignal = "SIGINT" | "SIGTERM";
@@ -128,18 +133,27 @@ function hardTerminateProcess(exitCode: 1): void {
 }
 
 /**
- * The physical secret-value backend remains intentionally unavailable. This
- * composition validates repository-side configuration and then fails before
- * opening a Production connection or constructing any governed runtime root.
+ * The Railway sealed-value boundary is repository-ready, but startup remains
+ * fail closed until the exact Production service variables are human-bound.
+ * Every dependency outside the bounded secret/pool boundary remains governed
+ * by its existing separately authorized composition.
  */
-function createSecretBackendBlockedDependencies(): ProductionBootstrapDependencies {
+export function createRailwayProductionDependencies(
+  environment: Readonly<Record<string, string | undefined>>,
+): ProductionBootstrapDependencies {
   const unreachable = (): never => { throw new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE"); };
   const unavailablePromise = <Value>(): Promise<Value> => Promise.reject(new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE"));
   return Object.freeze({
     parseConfiguration: parseRailwayProductionRuntimeConfiguration,
     validateConfiguration: () => undefined,
     validateMandatorySecretReferences: () => undefined,
-    openPostgreSqlPool: (): Promise<PostgreSqlPoolPort> => unavailablePromise(),
+    openPostgreSqlPool: (configuration: ProductionRuntimeConfiguration): Promise<PostgreSqlPoolPort> =>
+      Promise.resolve().then(() =>
+        createRailwaySealedProductionPostgreSqlPool(
+          configuration as RailwayProductionRuntimeConfiguration,
+          environment,
+          "PG_IDENTITY_POOL",
+        )),
     openIdentityAuthorityReadOnly: (): Promise<AsyncRegisteredServiceWorkloadAuthorityLease> => unavailablePromise(),
     validateHumanIdentityAuthority: unreachable,
     resolveRequiredServiceIdentities: (): Promise<readonly ProductionServiceIdentityBinding[]> => unavailablePromise(),
@@ -159,7 +173,7 @@ function isDirectExecution(): boolean {
 }
 
 if (isDirectExecution()) {
-  void runProductionMain(process.env, createSecretBackendBlockedDependencies(), {
+  void runProductionMain(process.env, createRailwayProductionDependencies(process.env), {
     readiness: createProductionReadinessState(),
   }).then(
     (running) => running.shutdownComplete,

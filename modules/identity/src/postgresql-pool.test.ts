@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { rootCertificates } from "node:tls";
 
 import {
   PgConnectionPoolAdapter,
@@ -8,6 +9,8 @@ import {
   type PostgreSqlClientPort,
   type PostgreSqlQueryResult,
 } from "./postgresql-pool.js";
+
+const caCertificate = rootCertificates[0] ?? "";
 
 function client(events: string[]): PostgreSqlClientPort {
   return {
@@ -26,7 +29,7 @@ function options(): ConstructorParameters<typeof PgConnectionPoolAdapter>[0] {
     shutdownTimeoutMilliseconds: 5_000,
     maxConnections: 8,
     applicationName: "ai-mls-production-api",
-    ssl: { rejectUnauthorized: true, ca: "test-ca" },
+    ssl: { rejectUnauthorized: true, ca: caCertificate },
   };
 }
 
@@ -57,7 +60,7 @@ test("owns one bounded pg pool and closes it gracefully", async () => {
     idle_in_transaction_session_timeout: 10_000,
     max: 8,
     application_name: "ai-mls-production-api",
-    ssl: { rejectUnauthorized: true, ca: "test-ca" },
+    ssl: { rejectUnauthorized: true, ca: caCertificate },
   });
 });
 
@@ -73,6 +76,8 @@ test("rejects unbounded or unverifiable pool configuration", () => {
     { ...options(), maxConnections: 0 },
     { ...options(), maxConnections: 101 },
     { ...options(), ssl: { rejectUnauthorized: false as const } },
+    { ...options(), ssl: { rejectUnauthorized: true as const, ca: "test-ca" } },
+    { ...options(), ssl: { rejectUnauthorized: true as const, ca: "-----BEGIN CERTIFICATE-----\nVEVTVC1DQQ==\n-----END CERTIFICATE-----" } },
   ] as unknown as ConstructorParameters<typeof PgConnectionPoolAdapter>[0][]) {
     assert.throws(() => new PgConnectionPoolAdapter(replacement, () => {
       throw new Error("must not construct");
@@ -80,6 +85,23 @@ test("rejects unbounded or unverifiable pool configuration", () => {
       && error.code === "POSTGRESQL_UNAVAILABLE"
       && error.message === "PostgreSQL persistence is unavailable.");
   }
+});
+
+test("accepts a bounded PEM CA certificate required by VERIFY_FULL", async () => {
+  let received: unknown;
+  const adapter = new PgConnectionPoolAdapter({
+    ...options(),
+    ssl: { rejectUnauthorized: true, ca: caCertificate },
+  }, (configuration) => {
+    received = configuration.ssl;
+    return { connect: () => Promise.resolve(client([])), end: () => Promise.resolve() };
+  });
+
+  assert.deepEqual(received, {
+    rejectUnauthorized: true,
+    ca: caCertificate,
+  });
+  await adapter.close();
 });
 
 test("sanitizes pool construction, connection, and shutdown failures", async () => {

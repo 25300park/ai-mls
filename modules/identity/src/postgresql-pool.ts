@@ -1,3 +1,5 @@
+import { X509Certificate } from "node:crypto";
+
 import { Pool, type PoolClient, type PoolConfig, type QueryResultRow } from "pg";
 
 export interface PostgreSqlQueryResult<Row extends Record<string, unknown> = Record<string, unknown>> {
@@ -131,7 +133,7 @@ function validOptions(options: PgConnectionPoolOptions): boolean {
     && options.maxConnections >= 1
     && options.maxConnections <= 100
     && options.ssl?.rejectUnauthorized === true
-    && (options.ssl.ca === undefined || safeText(options.ssl.ca, 65_536));
+    && (options.ssl.ca === undefined || safeCertificate(options.ssl.ca));
 }
 
 function boundedTimeout(value: number): boolean {
@@ -156,6 +158,13 @@ async function withTimeout(operation: Promise<void>, milliseconds: number): Prom
 function safeText(value: unknown, maximum: number): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= maximum
     && value.trim() === value && !/[\u0000-\u001f\u007f]/u.test(value);
+}
+
+function safeCertificate(value: unknown): value is string {
+  if (!(typeof value === "string" && value.length > 0 && value.length <= 65_536 && value.trim() === value
+    && /^-----BEGIN CERTIFICATE-----\r?\n[A-Za-z0-9+/=\r\n]+\r?\n-----END CERTIFICATE-----$/u.test(value)
+    && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value))) return false;
+  try { new X509Certificate(value); return true; } catch { return false; }
 }
 
 function unavailable(): PostgreSqlPersistenceError {

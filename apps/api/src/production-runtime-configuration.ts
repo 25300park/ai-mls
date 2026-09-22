@@ -1,8 +1,12 @@
+import { X509Certificate } from "node:crypto";
+
 import type { PgConnectionPoolOptions } from "../../../modules/identity/src/index.js";
 import type { ProductionRuntimeConfiguration } from "./production-bootstrap.js";
 
 const exactDatabaseHost = "db.mfonujjeokvpsfucfxuq.supabase.co";
 const exactDatabaseUser = "ai_mls_production_runtime";
+const exactConnectionReference = "railway-sealed-env:AI_MLS_PRODUCTION_IDENTITY_DATABASE_CONNECTION_V1";
+const exactCaCertificateReference = "railway-sealed-env:AI_MLS_PRODUCTION_IDENTITY_DATABASE_CA_CERT_V1";
 
 export interface RailwayProductionRuntimeConfiguration extends ProductionRuntimeConfiguration {
   readonly port: number;
@@ -39,6 +43,7 @@ export class ProductionRuntimeConfigurationError extends Error {
 
 export function parseRailwayProductionRuntimeConfiguration(raw: unknown): RailwayProductionRuntimeConfiguration {
   const source = asStringRecord(raw);
+  if (source["DATABASE_URL"] !== undefined) throw unavailable();
   const runtimeEnvironment = exact(source, "RUNTIME_ENVIRONMENT", "PRODUCTION");
   const configurationReference = reference(source, "CONFIGURATION_REFERENCE");
   const requiredServiceRegistrations = registrations(required(source, "REQUIRED_SERVICE_REGISTRATIONS"));
@@ -51,8 +56,8 @@ export function parseRailwayProductionRuntimeConfiguration(raw: unknown): Railwa
     port: exactInteger(source, "IDENTITY_DATABASE_PORT", 5432),
     name: exact(source, "IDENTITY_DATABASE_NAME", "postgres"),
     user: exact(source, "IDENTITY_DATABASE_USER", exactDatabaseUser),
-    connectionReference: secretReference(source, "IDENTITY_DATABASE_CONNECTION_REF"),
-    caCertificateReference: secretReference(source, "IDENTITY_DATABASE_CA_CERT_REF"),
+    connectionReference: exact(source, "IDENTITY_DATABASE_CONNECTION_REF", exactConnectionReference),
+    caCertificateReference: exact(source, "IDENTITY_DATABASE_CA_CERT_REF", exactCaCertificateReference),
     sslMode: exact(source, "IDENTITY_DATABASE_SSL_MODE", "VERIFY_FULL"),
     connectionTimeoutMilliseconds: exactInteger(source, "IDENTITY_DATABASE_CONNECTION_TIMEOUT_MS", 10_000),
     poolIdleTimeoutMilliseconds: exactInteger(source, "IDENTITY_DATABASE_POOL_IDLE_TIMEOUT_MS", 30_000),
@@ -79,14 +84,15 @@ export function createProductionPostgreSqlPoolOptions(
   configuration: RailwayProductionRuntimeConfiguration,
   secrets: ResolvedProductionDatabaseSecrets,
 ): PgConnectionPoolOptions {
-  if (!safeValue(secrets.connectionString, 4096) || !safeValue(secrets.caCertificate, 65_536)) throw unavailable();
+  if (!safeValue(secrets.connectionString, 4096) || !safeCertificate(secrets.caCertificate)) throw unavailable();
   const database = configuration.identityDatabase;
   try {
     const connection = new URL(secrets.connectionString);
     if (connection.protocol !== "postgresql:" || connection.hostname !== database.host
       || connection.port !== String(database.port) || connection.pathname !== `/${database.name}`
       || connection.search !== "" || connection.hash !== ""
-      || decodeURIComponent(connection.username) !== database.user) throw unavailable();
+      || decodeURIComponent(connection.username) !== database.user
+      || !safeValue(decodeURIComponent(connection.password), 1024)) throw unavailable();
   } catch {
     throw unavailable();
   }
@@ -138,12 +144,6 @@ function reference(source: Readonly<Record<string, string | undefined>>, key: st
   return value;
 }
 
-function secretReference(source: Readonly<Record<string, string | undefined>>, key: string): string {
-  const value = reference(source, key);
-  if (/^(?:postgres(?:ql)?|file|data):/iu.test(value) || value.includes("BEGIN CERTIFICATE")) throw unavailable();
-  return value;
-}
-
 function registrations(value: string): readonly string[] {
   const values = value.split(",");
   if (values.length < 1 || values.length > 64 || values.some((item) => !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/u.test(item))) throw unavailable();
@@ -154,6 +154,13 @@ function registrations(value: string): readonly string[] {
 function safeValue(value: unknown, maximum: number): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= maximum && value.trim() === value
     && !/[\u0000-\u001f\u007f]/u.test(value);
+}
+
+function safeCertificate(value: unknown): value is string {
+  if (!(typeof value === "string" && value.length > 0 && value.length <= 65_536 && value.trim() === value
+    && /^-----BEGIN CERTIFICATE-----\r?\n[A-Za-z0-9+/=\r\n]+\r?\n-----END CERTIFICATE-----$/u.test(value)
+    && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value))) return false;
+  try { new X509Certificate(value); return true; } catch { return false; }
 }
 
 function unavailable(): ProductionRuntimeConfigurationError {

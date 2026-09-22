@@ -1408,6 +1408,8 @@
 | DOC-DEV-351 | REL-002 Phase 2D-0I Secret Backend Implementation / Configuration Plan | [REL002_PHASE2D0I_IMPLEMENTATION_CONFIGURATION_PLAN.md](implementation/REL002_PHASE2D0I_IMPLEMENTATION_CONFIGURATION_PLAN.md) |
 | DOC-DEV-352 | REL-002 Phase 2D-0I Secret Backend Design Traceability Matrix | [REL002_PHASE2D0I_TRACEABILITY_MATRIX.md](implementation/REL002_PHASE2D0I_TRACEABILITY_MATRIX.md) |
 | DOC-REVIEW-237 | REL-002 Phase 2D-0I Production Secret Backend Finalization Design Completion Report | [REL002_PHASE2D0I_COMPLETION_REPORT.md](reviews/REL002_PHASE2D0I_COMPLETION_REPORT.md) |
+| DOC-DEV-353 | REL-002 Phase 2D-0J Secret Binding Implementation Traceability Matrix | [REL002_PHASE2D0J_TRACEABILITY_MATRIX.md](implementation/REL002_PHASE2D0J_TRACEABILITY_MATRIX.md) |
+| DOC-REVIEW-238 | REL-002 Phase 2D-0J Dockerfile Build Isolation / Railway Secret Binding Completion Report | [REL002_PHASE2D0J_COMPLETION_REPORT.md](reviews/REL002_PHASE2D0J_COMPLETION_REPORT.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books

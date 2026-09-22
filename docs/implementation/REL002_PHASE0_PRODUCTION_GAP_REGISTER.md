@@ -229,3 +229,13 @@ Phase 0 counts remain `24` blocking and `1` non-blocking. Migration execution, P
 | REL002-GAP-006 | Production startup continues to fail closed until the approved backend is implemented/configured and the physical database prerequisites pass. | `STAGING_ONLY`, `BLOCKING` |
 
 Phase 0 counts remain `24` blocking and `1` non-blocking. Production connection, DB writes, migration execution, role execution, secret writes, deployment and infrastructure mutation remain `0`.
+
+### Phase 2D-0J Docker / sealed-secret implementation checkpoint
+
+| Gap | Phase 2D-0J implementation evidence | Current state |
+|---|---|---|
+| REL002-GAP-004 | Production Dockerfile, executable composition and actual whole-image Docker verification are complete; Railway human binding and deployment evidence remain absent. | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-005 | Exact V1 sealed references, closed Railway Production binding and `PG_IDENTITY_POOL`-only resolver are implemented; actual image evidence passes and human-bound sealed variables remain absent. | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-006 | Startup rejects absent/malformed bindings before PostgreSQL, but Production schema, registrations and controlled execution evidence remain absent. | `STAGING_ONLY`, `BLOCKING` |
+
+Phase 0 counts remain `24` blocking and `1` non-blocking. `SECRET_BACKEND_EXECUTION = READY_FOR_HUMAN_BINDING`; Production connection, DB writes, migration execution, role execution, secret writes, deployment and infrastructure mutation remain `0`.

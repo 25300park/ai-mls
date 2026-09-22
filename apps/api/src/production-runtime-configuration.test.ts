@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { rootCertificates } from "node:tls";
 
 import {
   createProductionPostgreSqlPoolOptions,
   parseRailwayProductionRuntimeConfiguration,
 } from "./production-runtime-configuration.js";
+
+const caCertificate = rootCertificates[0] ?? "";
 
 function environment(): Readonly<Record<string, string>> {
   return Object.freeze({
@@ -18,8 +21,8 @@ function environment(): Readonly<Record<string, string>> {
     IDENTITY_DATABASE_PORT: "5432",
     IDENTITY_DATABASE_NAME: "postgres",
     IDENTITY_DATABASE_USER: "ai_mls_production_runtime",
-    IDENTITY_DATABASE_CONNECTION_REF: "secret-ref:production:identity-db",
-    IDENTITY_DATABASE_CA_CERT_REF: "secret-ref:production:supabase-ca",
+    IDENTITY_DATABASE_CONNECTION_REF: "railway-sealed-env:AI_MLS_PRODUCTION_IDENTITY_DATABASE_CONNECTION_V1",
+    IDENTITY_DATABASE_CA_CERT_REF: "railway-sealed-env:AI_MLS_PRODUCTION_IDENTITY_DATABASE_CA_CERT_V1",
     IDENTITY_DATABASE_SSL_MODE: "VERIFY_FULL",
     IDENTITY_DATABASE_CONNECTION_TIMEOUT_MS: "10000",
     IDENTITY_DATABASE_POOL_IDLE_TIMEOUT_MS: "30000",
@@ -52,6 +55,8 @@ test("missing, lower-environment, SQLite, unsafe, or hidden-default configuratio
     { ...environment(), IDENTITY_DATABASE_MAX_CONNECTIONS: "6" },
     { ...environment(), IDENTITY_DATABASE_SSL_MODE: "DISABLE" },
     { ...environment(), IDENTITY_DATABASE_CONNECTION_REF: "postgresql://runtime:secret@host/db" },
+    { ...environment(), IDENTITY_DATABASE_CONNECTION_REF: "railway-sealed-env:AI_MLS_PRODUCTION_IDENTITY_DATABASE_CONNECTION_V2" },
+    { ...environment(), DATABASE_URL: "postgresql://runtime:secret@host/db" },
     { ...environment(), PORT: "0" },
     Object.fromEntries(Object.entries(environment()).filter(([key]) => key !== "IDENTITY_DATABASE_CA_CERT_REF")),
   ]) {
@@ -63,7 +68,7 @@ test("maps exact approved timeout, pool, and VERIFY_FULL TLS values without logg
   const configuration = parseRailwayProductionRuntimeConfiguration(environment());
   const options = createProductionPostgreSqlPoolOptions(configuration, {
     connectionString: "postgresql://ai_mls_production_runtime:secret@db.mfonujjeokvpsfucfxuq.supabase.co:5432/postgres",
-    caCertificate: "test-ca",
+    caCertificate,
   });
   assert.deepEqual(options, {
     connectionString: "postgresql://ai_mls_production_runtime:secret@db.mfonujjeokvpsfucfxuq.supabase.co:5432/postgres",
@@ -74,21 +79,26 @@ test("maps exact approved timeout, pool, and VERIFY_FULL TLS values without logg
     shutdownTimeoutMilliseconds: 30_000,
     maxConnections: 5,
     applicationName: "ai-mls-api-production",
-    ssl: { rejectUnauthorized: true, ca: "test-ca" },
+    ssl: { rejectUnauthorized: true, ca: caCertificate },
   });
   assert.throws(() => createProductionPostgreSqlPoolOptions(configuration, {
     connectionString: "postgresql://ai_mls_production_runtime:secret@wrong.example:5432/postgres",
-    caCertificate: "test-ca",
+    caCertificate,
   }), /configuration is unavailable/u);
   for (const connectionString of [
+    "postgresql://ai_mls_production_runtime@db.mfonujjeokvpsfucfxuq.supabase.co:5432/postgres",
     "postgresql://ai_mls_production_runtime:secret@db.mfonujjeokvpsfucfxuq.supabase.co:5432/postgres?sslmode=disable",
     "postgresql://ai_mls_production_runtime:secret@db.mfonujjeokvpsfucfxuq.supabase.co:5432/postgres?sslrootcert=attacker",
     "postgresql://ai_mls_production_%ZZ:secret@db.mfonujjeokvpsfucfxuq.supabase.co:5432/postgres",
   ]) {
     assert.throws(() => createProductionPostgreSqlPoolOptions(configuration, {
-      connectionString, caCertificate: "test-ca",
+      connectionString, caCertificate,
     }), (error: unknown) => error instanceof Error
       && error.name === "ProductionRuntimeConfigurationError"
       && error.message === "Production runtime configuration is unavailable.");
   }
+  assert.throws(() => createProductionPostgreSqlPoolOptions(configuration, {
+    connectionString: options.connectionString,
+    caCertificate: "-----BEGIN CERTIFICATE-----\nVEVTVC1DQQ==\n-----END CERTIFICATE-----",
+  }), /configuration is unavailable/u);
 });
