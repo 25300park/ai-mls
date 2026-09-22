@@ -219,3 +219,13 @@ Phase 2D-0E approves the exact Railway Production executable/start lifecycle, sa
 | REL002-GAP-006 | Repository executable is implemented but live Production startup remains fail-closed on the unresolved secret backend and physical prerequisites. | `STAGING_ONLY`, `BLOCKING` |
 
 Phase 0 counts remain `24` blocking and `1` non-blocking. Migration execution, Production connection/writes, identity seed, role execution, deployment, credential use and infrastructure mutation remain `0`.
+
+### Phase 2D-0I Production secret backend design checkpoint
+
+| Gap | Phase 2D-0I design evidence | Current state |
+|---|---|---|
+| REL002-GAP-004 | Railway Production API service remains the sole runtime owner; Docker builder/platform configuration and deployment evidence remain absent. | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-005 | Physical backend, exact sealed variable/reference mapping, build isolation, runtime consumption and rotation are approved by DEC-189~191; resolver/Docker/platform implementation and secret configuration evidence are absent. | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-006 | Production startup continues to fail closed until the approved backend is implemented/configured and the physical database prerequisites pass. | `STAGING_ONLY`, `BLOCKING` |
+
+Phase 0 counts remain `24` blocking and `1` non-blocking. Production connection, DB writes, migration execution, role execution, secret writes, deployment and infrastructure mutation remain `0`.
