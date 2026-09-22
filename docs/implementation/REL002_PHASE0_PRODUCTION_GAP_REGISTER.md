@@ -204,4 +204,18 @@ Phase 2D-0E approves the exact Railway Production executable/start lifecycle, sa
 | REL002-GAP-005 | Railway build-time variable exposure is identified; exact references are designed but runtime-only value backend, resolver/platform configuration and rotation evidence remain absent | `PARTIAL`, `BLOCKING` |
 | REL002-GAP-006 | exact runtime/migration roles and pool/TLS bounds are designed; roles/schema/registrations and Production-bound authority evidence are not provisioned | `STAGING_ONLY`, `BLOCKING` |
 
+### Phase 2D-0G same-listener design checkpoint
+
+| Gap | Phase 2D-0G evidence | Current state |
+|---|---|---|
+| REL002-GAP-004 | API-014/API-015/`/readyz` one-listener ownership, route table and lifecycle are designed; DEC-188 remains proposed and implementation/deployment evidence is absent | `PARTIAL`, `BLOCKING` |
+
+### Phase 2D-0H same-listener implementation checkpoint
+
+| Gap | Phase 2D-0H evidence | Current state |
+|---|---|---|
+| REL002-GAP-004 | `DEC-188 = APPROVED`; one listener, closed route table, listener-first shutdown and independent-listener prohibition are implemented and tested. Physical secret backend, Production connection and deployment evidence remain absent. | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-005 | PostgreSQL role artifacts remain implementation-only; role execution and migration evidence remain `0`. | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-006 | Repository executable is implemented but live Production startup remains fail-closed on the unresolved secret backend and physical prerequisites. | `STAGING_ONLY`, `BLOCKING` |
+
 Phase 0 counts remain `24` blocking and `1` non-blocking. Migration execution, Production connection/writes, identity seed, role execution, deployment, credential use and infrastructure mutation remain `0`.

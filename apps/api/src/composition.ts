@@ -77,9 +77,15 @@ export interface ProductionPublicationApi014NodeHttpComposition {
   close(): Promise<void>;
 }
 
-export function composeProductionPublicationApi014NodeHttpServer(
+export interface ProductionPublicationApi014HttpHandlerComposition {
+  readonly httpHandler: PublicationApi014HttpRequestHandler;
+  activateRuntime(): void;
+  close(): Promise<void>;
+}
+
+export function composeProductionPublicationApi014HttpHandler(
   options: ProductionPublicationApi014NodeHttpCompositionOptions,
-): ProductionPublicationApi014NodeHttpComposition {
+): ProductionPublicationApi014HttpHandlerComposition {
   if (!isRuntimeEnvironment(options.runtimeEnvironment)) throw new TypeError("Runtime environment is required.");
   if (options.runtimeEnvironment === "PRODUCTION") assertProductionRootBootstrapContext(options.bootstrapContext);
   else if (options.bootstrapContext !== undefined) throw new TypeError("Bootstrap context is Production-only.");
@@ -95,42 +101,48 @@ export function composeProductionPublicationApi014NodeHttpServer(
     host = new PublicationApplicationHost(
       composePublicationHostApplication,
       new SystemPublicationHostClock(),
-      {
-        runtimeOptions: {
-          infrastructureFactory: (): PublicationInfrastructure => infrastructure,
-          canonicalApiPort,
-        },
-      },
+      { runtimeOptions: { infrastructureFactory: (): PublicationInfrastructure => infrastructure, canonicalApiPort } },
     );
     if (options.deferRuntimeActivation !== true) host.start();
-    const server = createPublicationNodeHttpServer({
+    const httpHandler = createPublicationApi014HttpRequestHandler(host, options.existingHttpHandler);
+    return Object.freeze({
+      httpHandler,
+      activateRuntime: (): void => { if (host?.status.state !== "READY") host?.start(); },
+      close: (): Promise<void> => {
+        try { if (host?.status.state === "READY") host.stop(); }
+        finally { infrastructure.unitOfWork.close(); }
+        return Promise.resolve();
+      },
+    });
+  } catch (error) {
+    try { if (host?.status.state === "READY") host.stop(); }
+    finally { infrastructure.unitOfWork.close(); }
+    throw error;
+  }
+}
+
+export function composeProductionPublicationApi014NodeHttpServer(
+  options: ProductionPublicationApi014NodeHttpCompositionOptions,
+): ProductionPublicationApi014NodeHttpComposition {
+  if (options.runtimeEnvironment === "PRODUCTION") throw new TypeError("Independent Production listener is unavailable.");
+  const root = composeProductionPublicationApi014HttpHandler(options);
+  let server: PublicationNodeHttpServer | undefined;
+  try {
+    server = createPublicationNodeHttpServer({
       configuration: options.configuration,
-      httpAdapter: createPublicationApi014HttpRequestHandler(host, options.existingHttpHandler),
+      httpAdapter: root.httpHandler,
       ...(options.requestIdFactory === undefined ? {} : { requestIdFactory: options.requestIdFactory }),
     });
     return Object.freeze({
       server,
-      activateRuntime: (): void => {
-        if (host?.status.state !== "READY") host?.start();
-      },
+      activateRuntime: () => root.activateRuntime(),
       close: async (): Promise<void> => {
-        try {
-          if (server.diagnostics.listening) await server.stop();
-        } finally {
-          try {
-            if (host?.status.state === "READY") host.stop();
-          } finally {
-            infrastructure.unitOfWork.close();
-          }
-        }
+        try { if (server?.diagnostics.listening) await server.stop(); }
+        finally { await root.close(); }
       },
     });
   } catch (error) {
-    try {
-      if (host?.status.state === "READY") host.stop();
-    } finally {
-      infrastructure.unitOfWork.close();
-    }
+    void root.close();
     throw error;
   }
 }

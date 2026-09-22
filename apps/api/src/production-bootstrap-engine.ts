@@ -16,6 +16,19 @@ export interface ProductionBootstrapEngineDependencies extends Omit<ProductionBo
 /** Internal bootstrap engine. Production code must enter through startProductionRuntime(). */
 export async function executeProductionBootstrap(rawConfiguration: unknown, dependencies: ProductionBootstrapEngineDependencies): Promise<ProductionRuntimeHandle> {
   const cleanup: (() => void | Promise<void>)[] = [];
+  let listener: { close(): void | Promise<void> } | undefined;
+  let workers: { close(): void | Promise<void> } | undefined;
+  const shutdown = async (): Promise<void> => {
+    let failed = false;
+    if (listener !== undefined) {
+      try { await listener.close(); } catch { failed = true; }
+    }
+    if (workers !== undefined) {
+      try { await workers.close(); } catch { failed = true; }
+    }
+    if (await cleanupReverse(cleanup)) failed = true;
+    if (failed) throw unavailable();
+  };
   try {
     const configuration = dependencies.parseConfiguration(rawConfiguration);
     assertProductionConfiguration(configuration);
@@ -45,11 +58,9 @@ export async function executeProductionBootstrap(rawConfiguration: unknown, depe
       roots.push(root);
     }
     Object.freeze(roots);
+    listener = await dependencies.startListeners(context, roots);
     for (const root of roots) root.activateRuntime();
-    const listeners = dependencies.startListeners(context, roots);
-    cleanup.push(() => listeners.close());
-    const workers = dependencies.startWorkers(context, roots);
-    cleanup.push(() => workers.close());
+    workers = dependencies.startWorkers(context, roots);
 
     let state: "READY" | "NOT_READY" = "READY";
     let closed = false;
@@ -60,11 +71,11 @@ export async function executeProductionBootstrap(rawConfiguration: unknown, depe
         if (closed) return;
         closed = true;
         state = "NOT_READY";
-        await cleanupReverse(cleanup);
+        await shutdown();
       },
     });
   } catch {
-    await cleanupReverse(cleanup);
+    try { await shutdown(); } catch { /* startup remains unavailable after exhaustive cleanup */ }
     throw unavailable();
   }
 }
@@ -82,10 +93,12 @@ function assertRequiredIdentities(configuration: ProductionRuntimeConfiguration,
   if (expected.length !== actual.length || expected.some((value, index) => value !== actual[index])) throw unavailable();
 }
 
-async function cleanupReverse(cleanup: readonly (() => void | Promise<void>)[]): Promise<void> {
+async function cleanupReverse(cleanup: readonly (() => void | Promise<void>)[]): Promise<boolean> {
+  let failed = false;
   for (let index = cleanup.length - 1; index >= 0; index -= 1) {
-    try { await cleanup[index]?.(); } catch { /* continue fail-safe cleanup */ }
+    try { await cleanup[index]?.(); } catch { failed = true; }
   }
+  return failed;
 }
 
 function safeReference(value: unknown): value is string {

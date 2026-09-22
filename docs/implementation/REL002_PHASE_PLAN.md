@@ -140,6 +140,14 @@ Repository root `.` and build command `pnpm install --frozen-lockfile && pnpm ru
 
 Phase 2D-0E approves `node dist/apps/api/src/production-main.js` as the exact Railway Start Command, with one future executable calling `startProductionRuntime()` exactly once. `/livez` is process liveness only and `/readyz` returns success only after Production bootstrap PASS; `/readyz` is infrastructure readiness rather than a business/public domain API. Route implementation remains separately gated.
 
+### Phase 2D-0G same-listener composition design checkpoint
+
+Phase 2D-0G inventories the actual API-014 and API-015 Production roots and finds no route collision. Existing `PublicationNodeHttpServer` and handler fallback composition are reusable, but each Production root currently creates its own server; therefore the shared host state is `PARTIAL`. DEC-188 proposes one bootstrap-owned Railway listener mounting API-014, API-015 and `/readyz`, while child roots retain separate business authority and stop binding Production ports. DEC-188 remains `PROPOSED`; implementation is not authorized, Phase 2D-0F remains `BLOCKED`, and Gaps 004/005/006 remain blocking.
+
+### Phase 2D-0H same-listener implementation checkpoint
+
+`DEC-188 = APPROVED`. Phase 2D-0H implements one bootstrap-owned Production listener with a closed API-014/API-015/`/readyz` route table, prevents independent Production listeners, binds before runtime/worker activation, and shuts the listener before workers/roots/resources. Phase 2D-0F repository-side salvage is complete. `SECRET_BACKEND_EXECUTION = BLOCKED`; no Production connection, migration, role execution, DB write or Railway deployment occurred, so Gaps 004/005/006 remain blocking.
+
 The database design separates `ai_mls_production_runtime` from `ai_mls_production_migration_operator`, prohibits administrative `postgres` as runtime identity, and grants runtime only the actual Session/registration/schema-evidence read/DML operations. Because Railway variables are exposed to builds, they may carry non-secret config and opaque references but not the required runtime-only secret values; physical secret backend remains `OTHER_REQUIRED / BLOCKED`. Approved initial bounds are pool max 5, connect 10 seconds, idle/statement/idle-transaction/shutdown 30 seconds, with `VERIFY_FULL` TLS and project CA. Direct reachability additionally requires Railway outbound IPv6 or verified Supabase IPv4 add-on evidence.
 
-`DEC-183~187 = APPROVED`. Physical secret-value backend remains `OTHER_REQUIRED / BLOCKED` and `SECRET_BACKEND_EXECUTION = BLOCKED`. Executable/health/resolver/pool implementation, role creation, Railway configuration, Production connection/deployment/migration and credential use remain `0`; Gaps 004/005/006 remain `BLOCKING`.
+`DEC-183~188 = APPROVED`. Phase 2D-0F repository artifacts and Phase 2D-0H same-listener application composition are implemented. Physical secret-value backend remains `OTHER_REQUIRED / BLOCKED` and `SECRET_BACKEND_EXECUTION = BLOCKED`. Role execution, Railway configuration, Production connection/deployment/migration and credential use remain `0`; Gaps 004/005/006 remain `BLOCKING`.

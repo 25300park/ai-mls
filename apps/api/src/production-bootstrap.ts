@@ -12,6 +12,7 @@ import {
 } from "./production-child-root-registry.js";
 import { executeProductionBootstrap } from "./production-bootstrap-engine.js";
 import type { ProductionServiceIdentityBinding } from "./production-service-identity-resolver.js";
+import type { PublicationHttpRequestHandler } from "../../../modules/publication/src/publication-node-http-contracts.js";
 
 export {
   assertProductionBootstrapContext,
@@ -38,7 +39,7 @@ export interface ProductionAsyncClosableResource {
 export interface ProductionChildRoot extends ProductionClosableResource {
   readonly componentId: "API-014" | "API-015" | "API-018" | "API-019" | "FEAT-022";
   activateRuntime(): void;
-  readonly listener?: Readonly<{ start(): Promise<unknown>; stop(): Promise<unknown> }>;
+  readonly httpHandler?: PublicationHttpRequestHandler;
 }
 
 export type ProductionChildComponentId = ProductionChildRoot["componentId"];
@@ -70,7 +71,7 @@ export interface ProductionBootstrapDependencies {
   readonly startListeners: (
     context: ProductionBootstrapContextView,
     roots: readonly ProductionChildRoot[],
-  ) => ProductionClosableResource;
+  ) => ProductionClosableResource | Promise<ProductionClosableResource>;
   readonly startWorkers: (
     context: ProductionBootstrapContextView,
     roots: readonly ProductionChildRoot[],

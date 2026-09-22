@@ -20,6 +20,7 @@ function options(): ConstructorParameters<typeof PgConnectionPoolAdapter>[0] {
   return {
     connectionString: "postgresql://runtime:secret@db.example.invalid:5432/app",
     connectionTimeoutMilliseconds: 5_000,
+    idleTimeoutMilliseconds: 30_000,
     statementTimeoutMilliseconds: 10_000,
     idleTransactionTimeoutMilliseconds: 10_000,
     shutdownTimeoutMilliseconds: 5_000,
@@ -51,6 +52,7 @@ test("owns one bounded pg pool and closes it gracefully", async () => {
   assert.deepEqual(received, {
     connectionString: options().connectionString,
     connectionTimeoutMillis: 5_000,
+    idleTimeoutMillis: 30_000,
     statement_timeout: 10_000,
     idle_in_transaction_session_timeout: 10_000,
     max: 8,
@@ -64,6 +66,7 @@ test("rejects unbounded or unverifiable pool configuration", () => {
     { ...options(), connectionString: "" },
     { ...options(), connectionTimeoutMilliseconds: 0 },
     { ...options(), connectionTimeoutMilliseconds: 60_001 },
+    { ...options(), idleTimeoutMilliseconds: 0 },
     { ...options(), statementTimeoutMilliseconds: 0 },
     { ...options(), idleTransactionTimeoutMilliseconds: 60_001 },
     { ...options(), shutdownTimeoutMilliseconds: 0 },

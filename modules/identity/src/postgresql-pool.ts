@@ -26,6 +26,7 @@ export interface PgPoolLike {
 export interface PgConnectionPoolOptions {
   readonly connectionString: string;
   readonly connectionTimeoutMilliseconds: number;
+  readonly idleTimeoutMilliseconds: number;
   readonly statementTimeoutMilliseconds: number;
   readonly idleTransactionTimeoutMilliseconds: number;
   readonly shutdownTimeoutMilliseconds: number;
@@ -60,6 +61,7 @@ export class PgConnectionPoolAdapter implements PostgreSqlPoolPort {
       this.#pool = factory(Object.freeze({
         connectionString: options.connectionString,
         connectionTimeoutMillis: options.connectionTimeoutMilliseconds,
+        idleTimeoutMillis: options.idleTimeoutMilliseconds,
         statement_timeout: options.statementTimeoutMilliseconds,
         idle_in_transaction_session_timeout: options.idleTransactionTimeoutMilliseconds,
         max: options.maxConnections,
@@ -121,6 +123,7 @@ function validOptions(options: PgConnectionPoolOptions): boolean {
     && Number.isInteger(options.connectionTimeoutMilliseconds)
     && options.connectionTimeoutMilliseconds >= 1
     && options.connectionTimeoutMilliseconds <= 60_000
+    && boundedTimeout(options.idleTimeoutMilliseconds)
     && boundedTimeout(options.statementTimeoutMilliseconds)
     && boundedTimeout(options.idleTransactionTimeoutMilliseconds)
     && boundedTimeout(options.shutdownTimeoutMilliseconds)

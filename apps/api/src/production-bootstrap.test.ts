@@ -85,14 +85,14 @@ test("executes the exact canonical order and constructs Session only after gate 
     "parse", "validate-config", "validate-secret-refs", "pool-open", "identity-open", "identity-schema-ready",
     "human-identity", "service-identities", "resolve-secrets", "gate-pass", "session-create",
     "component-schemas", "root-014-create", "root-015-create", "root-018-create", "root-019-create",
-    "root-022-create", "root-014-activate", "root-015-activate", "root-018-activate",
-    "root-019-activate", "root-022-activate", "listeners-start", "workers-start",
+    "root-022-create", "listeners-start", "root-014-activate", "root-015-activate", "root-018-activate",
+    "root-019-activate", "root-022-activate", "workers-start",
   ]);
   assert.equal(runtime.readiness(), "READY");
   assert.equal(runtime.validationFingerprint, "sha256:validation-fingerprint");
   await runtime.close();
   assert.deepEqual(events.slice(-10), [
-    "workers-close", "listeners-close", "root-022-close", "root-019-close", "root-018-close",
+    "listeners-close", "workers-close", "root-022-close", "root-019-close", "root-018-close",
     "root-015-close", "root-014-close", "session-close", "identity-close", "pool-close",
   ]);
   await runtime.close();
@@ -120,6 +120,31 @@ test("post-gate partial failures clean up constructed resources in reverse order
   assert.deepEqual(events.slice(-8), [
     "root-022-close", "root-019-close", "root-018-close", "root-015-close",
     "root-014-close", "session-close", "identity-close", "pool-close",
+  ]);
+});
+
+test("a runtime activation failure after bind closes the listener before every child resource", async () => {
+  const { events, dependencies } = harness("root-019-activate");
+  await assert.rejects(() => executeProductionBootstrap({}, dependencies), ProductionBootstrapError);
+  assert.equal(events.includes("workers-start"), false);
+  assert.deepEqual(events.slice(-9), [
+    "listeners-close", "root-022-close", "root-019-close", "root-018-close", "root-015-close",
+    "root-014-close", "session-close", "identity-close", "pool-close",
+  ]);
+});
+
+test("shutdown reports listener failure after completing worker, child, Session, identity, and pool cleanup", async () => {
+  const { events, dependencies } = harness();
+  const runtime = await executeProductionBootstrap({}, {
+    ...dependencies,
+    startListeners: () => Object.freeze({
+      close: () => { events.push("listeners-close-failed"); throw new Error("C:\\private\\listener.sock"); },
+    }),
+  });
+  await assert.rejects(() => runtime.close(), ProductionBootstrapError);
+  assert.deepEqual(events.slice(-10), [
+    "listeners-close-failed", "workers-close", "root-022-close", "root-019-close", "root-018-close",
+    "root-015-close", "root-014-close", "session-close", "identity-close", "pool-close",
   ]);
 });
 

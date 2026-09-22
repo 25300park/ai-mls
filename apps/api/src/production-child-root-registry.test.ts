@@ -4,6 +4,9 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 
 import { createCanonicalProductionChildRootFactories } from "./production-child-root-registry.js";
+import { composeProductionPublicationApi014NodeHttpServer } from "./composition.js";
+import { composeProductionAdministrationApi015NodeHttpServer } from "./administration-production-composition.js";
+import { issueProductionBootstrapContext } from "../../../packages/security-contracts/src/production-bootstrap-proof.js";
 
 test("canonical Production registry is closed to the five approved actual roots", () => {
   const registry = createCanonicalProductionChildRootFactories({
@@ -13,10 +16,23 @@ test("canonical Production registry is closed to the five approved actual roots"
   assert.equal(Object.isFrozen(registry), true);
 });
 
+test("API-014 and API-015 cannot create an independent listener in Production", () => {
+  const bootstrapContext = issueProductionBootstrapContext({
+    validationFingerprint: "sha256:production-listener-test",
+    configurationReference: "config:production:v1",
+  });
+  assert.throws(() => composeProductionPublicationApi014NodeHttpServer({
+    runtimeEnvironment: "PRODUCTION", bootstrapContext, databasePath: "unused.sqlite",
+  }), /Independent Production listener is unavailable/u);
+  assert.throws(() => composeProductionAdministrationApi015NodeHttpServer({
+    runtimeEnvironment: "PRODUCTION", bootstrapContext, databasePath: "unused.sqlite",
+  } as never), /Independent Production listener is unavailable/u);
+});
+
 test("registry binds existing actual Production compositions and prepared-schema mode without adding roots", () => {
   const source = readFileSync(new URL("./production-child-root-registry.js", import.meta.url), "utf8");
   for (const factory of [
-    "composeProductionPublicationApi014NodeHttpServer", "composeProductionAdministrationApi015NodeHttpServer",
+    "composeProductionPublicationApi014HttpHandler", "composeProductionAdministrationApi015HttpHandler",
     "createProductionConnectorApi018Composition", "createProductionExternalIntegrationComposition", "createProductionAdvisoryRuntime",
   ]) assert.match(source, new RegExp(`${factory}\\(`, "u"));
   assert.equal((source.match(/schemaMode: "REQUIRE_EXISTING"/gu) ?? []).length, 5);
@@ -45,7 +61,8 @@ test("actual root registry defers process activation until all roots have been p
   assert.equal((source.match(/runtimeEnvironment: "PRODUCTION"/gu) ?? []).length, 5);
   assert.equal((source.match(/deferRuntimeActivation: true/gu) ?? []).length, 3);
   assert.equal((source.match(/activateRuntime:/gu) ?? []).length, 5);
-  assert.match(source, /listener: root\.server/u);
+  assert.equal((source.match(/httpHandler: root\.httpHandler/gu) ?? []).length, 2);
+  assert.doesNotMatch(source, /listener: root\.server/u);
 });
 
 test("internal bootstrap engine and context issuer have no alternate production importer", () => {
@@ -66,8 +83,8 @@ test("internal bootstrap engine and context issuer have no alternate production 
     definition,
     "apps/api/src/production-child-root-registry.ts",
   ].sort();
-  assert.deepEqual(grep("composeProductionPublicationApi014NodeHttpServer("), expectedRegistryAndDefinition("apps/api/src/composition.ts"));
-  assert.deepEqual(grep("composeProductionAdministrationApi015NodeHttpServer("), expectedRegistryAndDefinition("apps/api/src/administration-production-composition.ts"));
+  assert.deepEqual(grep("composeProductionPublicationApi014HttpHandler("), expectedRegistryAndDefinition("apps/api/src/composition.ts"));
+  assert.deepEqual(grep("composeProductionAdministrationApi015HttpHandler("), expectedRegistryAndDefinition("apps/api/src/administration-production-composition.ts"));
   assert.deepEqual(grep("createProductionConnectorApi018Composition("), expectedRegistryAndDefinition("apps/api/src/connector-production-composition.ts"));
   assert.deepEqual(grep("createProductionExternalIntegrationComposition("), expectedRegistryAndDefinition("apps/api/src/external-integration-production-composition.ts"));
   assert.deepEqual(grep("createProductionAdvisoryRuntime("), expectedRegistryAndDefinition("modules/ai/src/advisory-production-composition.ts"));

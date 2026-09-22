@@ -1,6 +1,6 @@
 import { createProductionAdvisoryRuntime, type ProductionAdvisoryRuntimeOptions } from "../../../modules/ai/src/advisory-production-composition.js";
-import { composeProductionAdministrationApi015NodeHttpServer, type ProductionAdministrationCompositionOptions } from "./administration-production-composition.js";
-import { composeProductionPublicationApi014NodeHttpServer, type ProductionPublicationApi014NodeHttpCompositionOptions } from "./composition.js";
+import { composeProductionAdministrationApi015HttpHandler, type ProductionAdministrationCompositionOptions } from "./administration-production-composition.js";
+import { composeProductionPublicationApi014HttpHandler, type ProductionPublicationApi014NodeHttpCompositionOptions } from "./composition.js";
 import { createProductionConnectorApi018Composition, type ProductionConnectorApi018CompositionOptions } from "./connector-production-composition.js";
 import { createProductionExternalIntegrationComposition, type ProductionExternalIntegrationOptions } from "./external-integration-production-composition.js";
 import {
@@ -39,13 +39,13 @@ export function createCanonicalProductionChildRootFactories(
   return Object.freeze({
     "API-014": (context, configuration, identities) => {
       assertRootIdentity("API-014", context, configuration, identities);
-      const root = composeProductionPublicationApi014NodeHttpServer({ ...options.api014, runtimeEnvironment: "PRODUCTION", bootstrapContext: context, schemaMode: "REQUIRE_EXISTING", deferRuntimeActivation: true });
-      return Object.freeze({ componentId: "API-014" as const, listener: root.server, activateRuntime: () => root.activateRuntime(), close: () => root.close() });
+      const root = composeProductionPublicationApi014HttpHandler({ ...options.api014, runtimeEnvironment: "PRODUCTION", bootstrapContext: context, schemaMode: "REQUIRE_EXISTING", deferRuntimeActivation: true });
+      return Object.freeze({ componentId: "API-014" as const, httpHandler: root.httpHandler, activateRuntime: () => root.activateRuntime(), close: () => root.close() });
     },
     "API-015": (context, configuration, identities) => {
       assertRootIdentity("API-015", context, configuration, identities);
-      const root = composeProductionAdministrationApi015NodeHttpServer({ ...options.api015, runtimeEnvironment: "PRODUCTION", bootstrapContext: context, schemaMode: "REQUIRE_EXISTING" });
-      return Object.freeze({ componentId: "API-015" as const, listener: root.server, activateRuntime: () => { /* no process-local host */ }, close: () => root.close() });
+      const root = composeProductionAdministrationApi015HttpHandler({ ...options.api015, runtimeEnvironment: "PRODUCTION", bootstrapContext: context, schemaMode: "REQUIRE_EXISTING" });
+      return Object.freeze({ componentId: "API-015" as const, httpHandler: root.httpHandler, activateRuntime: () => { /* no process-local host */ }, close: () => root.close() });
     },
     "API-018": (context, configuration, identities) => {
       assertRootIdentity("API-018", context, configuration, identities);

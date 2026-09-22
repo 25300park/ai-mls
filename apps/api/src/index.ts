@@ -25,3 +25,6 @@ export * from "./staging-admin-console-bootstrap.js";
 export * from "./api016-production-composition.js";
 export { createMaterializationReadyAuditIntentSources } from "./api016-enriched-intent-source-wiring.js";
 export * from "./verification-api.js";
+export * from "./production-main.js";
+export * from "./production-readiness-http.js";
+export * from "./production-runtime-configuration.js";
