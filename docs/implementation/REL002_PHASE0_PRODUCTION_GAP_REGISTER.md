@@ -193,3 +193,15 @@ Phase 2D-0D identifies the exact Supabase project/region/direct PostgreSQL endpo
 | REL002-GAP-006 | runtime target is identified but variable mapping implementation, schema, registrations and Production-bound authority evidence are not provisioned | `STAGING_ONLY`, `BLOCKING` |
 
 Phase 0 counts remain `24` blocking and `1` non-blocking. Migration execution, Production connection/writes, identity seed, deployment and infrastructure mutation remain `0`.
+
+## 16. Phase 2D-0E executable / secret / role design impact
+
+Phase 2D-0E approves the exact Railway Production executable/start lifecycle, safe `/livez` and `/readyz` operational projections, least-privilege runtime/migration PostgreSQL role split, Railway reference-only delivery plus runtime-only secret backend requirement, and initial bounded pool/TLS values. `DEC-183~187 = APPROVED`; no code, role, variable, connection, deployment or migration action occurred. Physical secret-value backend remains `OTHER_REQUIRED / BLOCKED` and `SECRET_BACKEND_EXECUTION = BLOCKED`.
+
+| Gap | Phase 2D-0E design evidence | Current status |
+|---|---|---|
+| REL002-GAP-004 | exact executable, start command and readiness lifecycle are designed; executable/route/platform configuration and deployment evidence remain absent | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-005 | Railway build-time variable exposure is identified; exact references are designed but runtime-only value backend, resolver/platform configuration and rotation evidence remain absent | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-006 | exact runtime/migration roles and pool/TLS bounds are designed; roles/schema/registrations and Production-bound authority evidence are not provisioned | `STAGING_ONLY`, `BLOCKING` |
+
+Phase 0 counts remain `24` blocking and `1` non-blocking. Migration execution, Production connection/writes, identity seed, role execution, deployment, credential use and infrastructure mutation remain `0`.
