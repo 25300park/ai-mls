@@ -181,3 +181,15 @@ Phase 2D-0C implements the approved `pg` pool, async Session UoW, read-only Regi
 | REL002-GAP-006 | PostgreSQL adapters, validator and migration artifacts are implemented; controlled migration, compatible Production schema and authoritative registrations remain absent | `STAGING_ONLY`, `BLOCKING` |
 
 Phase 0 counts remain `24` blocking and `1` non-blocking. `PHYSICAL_DB_BINDING = UNBOUND`; migration execution, Production DB writes, identity seed, deployment and provider/network actions remain `0`.
+
+## 15. Phase 2D-0D physical binding contract impact
+
+Phase 2D-0D identifies the exact Supabase project/region/direct PostgreSQL endpoint and Railway `ai-mls-api` service without connecting, deploying or mutating infrastructure. It binds one canonical `IDENTITY_DATABASE_CONNECTION_REF` and exact non-secret target assertions. The repository still lacks a physical secret backend/reference, approved exact pool values, Production executable/start command and Railway-reachable readiness endpoint.
+
+| Gap | Phase 2D-0D evidence | Current status |
+|---|---|---|
+| REL002-GAP-004 | exact physical DB target is identified; least-privilege runtime role, controlled migration/schema execution and Production executable/readiness path are absent | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-005 | single canonical reference and consumer boundary are defined; backend/reference/rotation evidence remains absent | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-006 | runtime target is identified but variable mapping implementation, schema, registrations and Production-bound authority evidence are not provisioned | `STAGING_ONLY`, `BLOCKING` |
+
+Phase 0 counts remain `24` blocking and `1` non-blocking. Migration execution, Production connection/writes, identity seed, deployment and infrastructure mutation remain `0`.

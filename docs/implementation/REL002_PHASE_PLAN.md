@@ -129,3 +129,9 @@ Phase 2D-0B defines the recommended engine-specific transition without changing 
 - Vercel database/secret/backend authority `0`, Supabase Auth adoption `0`.
 
 DEC-179~182 are `APPROVED`. The next implementation driver is limited to `pg` and `@types/pg` only if TypeScript compilation requires it; ORMs, Supabase client persistence authority and additional PostgreSQL drivers are prohibited. Separate implementation authorization, connection/pool/timeouts, physical Supabase/Railway binding, secret backend, operator and backup/restore evidence remain open. Therefore this closeout's dependency changes, implementation, migration, Production DB writes, deployment, credentials and network operations remain `0`; Gaps 004/005/006 remain `BLOCKING`.
+
+### Phase 2D-0D physical binding checkpoint
+
+Phase 2D-0D identifies Supabase project `ai-mls-production` in Singapore, direct PostgreSQL target `db.mfonujjeokvpsfucfxuq.supabase.co:5432/postgres`, and Railway service `ai-mls-api`. One `IDENTITY_DATABASE_CONNECTION_REF` remains the sole database secret authority; Vercel/browser visibility is `0`.
+
+Repository root `.` and build command `pnpm install --frozen-lockfile && pnpm run build` are evidence-backed. A Production executable invoking `startProductionRuntime()` and a safe Railway-reachable healthcheck endpoint do not exist, so Start Command and Healthcheck Path remain `REQUIRES_IMPLEMENTATION`. Proposed Railway variable names are not yet mapped by an implemented parser/validator, and supplied DB user `postgres` has no least-privilege runtime grant evidence. Secret backend/reference/rotation and exact pool bounds also remain unbound. This checkpoint performs no Production connection, migration, DB write, deployment or infrastructure mutation, and Gaps 004/005/006 remain `BLOCKING`.
