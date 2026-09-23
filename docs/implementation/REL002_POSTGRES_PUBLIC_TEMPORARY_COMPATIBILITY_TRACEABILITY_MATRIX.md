@@ -13,6 +13,9 @@
 | PUBLIC-inherited TEMPORARY accepted as platform baseline | [Compatibility Contract](REL002_POSTGRES_PUBLIC_TEMPORARY_COMPATIBILITY_CONTRACT.md) | APPROVED — DEC-192 |
 | Direct TEMPORARY prohibited for both roles | `004_production_role_privilege_verification.sql` direct ACL inspection | IMPLEMENTED, NOT EXECUTED |
 | Effective TEMPORARY does not fail verification by itself | `effective_temporary_observed` separated from `matches_expected` | IMPLEMENTED, NOT EXECUTED |
+| Pre-migration schema-free verification | `003a_pre_migration_role_privilege_verification.sql` | IMPLEMENTED, NOT EXECUTED |
+| Schema/table checks deferred before migration | [Phase 2D-0K Runbook](REL002_PHASE2D0K_CONTROLLED_EXECUTION_RUNBOOK.md) | DEFERRED_UNTIL_POST_MIGRATION |
+| Post-migration schema/table verification preserved | `004_production_role_privilege_verification.sql` | PRESERVED, NOT EXECUTED |
 | Migration direct DB privileges exact | `003_migration_operator_role_grants.sql`; focused tests | CONNECT + CREATE only |
 | Runtime direct DB privileges exact | `002_runtime_role_grants.sql`; focused tests | CONNECT only |
 | Protected role attributes remain prohibited | `000_production_role_creation.sql`; `004` role checks | PRESERVED |

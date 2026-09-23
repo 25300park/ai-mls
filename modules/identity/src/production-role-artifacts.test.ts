@@ -6,6 +6,7 @@ import test from "node:test";
 const runtimeSql = readFileSync(resolve("modules/identity/migrations/postgresql/production/002_runtime_role_grants.sql"), "utf8");
 const migrationSql = readFileSync(resolve("modules/identity/migrations/postgresql/production/003_migration_operator_role_grants.sql"), "utf8");
 const roleCreationPath = resolve("modules/identity/migrations/postgresql/production/000_production_role_creation.sql");
+const preMigrationRoleVerificationPath = resolve("modules/identity/migrations/postgresql/production/003a_pre_migration_role_privilege_verification.sql");
 const roleVerificationPath = resolve("modules/identity/migrations/postgresql/production/004_production_role_privilege_verification.sql");
 const executionRunbookPath = resolve("docs/implementation/REL002_PHASE2D0K_CONTROLLED_EXECUTION_RUNBOOK.md");
 
@@ -75,11 +76,26 @@ test("migration operator attributes remain owned by 000 and 003 is Supabase-comp
   assert.doesNotMatch(migrationSql, /PASSWORD|SECRET|CREDENTIAL/iu);
 });
 
+test("pre-migration verification is schema-free and validates direct database ACL state", () => {
+  assert.equal(existsSync(preMigrationRoleVerificationPath), true);
+  const sql = readFileSync(preMigrationRoleVerificationPath, "utf8");
+  assert.match(sql, /ai_mls_production_runtime/u);
+  assert.match(sql, /ai_mls_production_migration_operator/u);
+  assert.match(sql, /database_acl\s+AS\s*\(/iu);
+  assert.match(sql, /effective_temporary_observed/iu);
+  assert.match(sql, /direct_temporary_observed/iu);
+  assert.match(sql, /pg_auth_members/iu);
+  assert.doesNotMatch(sql, /app_identity|has_schema_privilege|has_table_privilege/iu);
+  assert.doesNotMatch(sql, /^\s*(?:CREATE|ALTER|GRANT|REVOKE|INSERT|UPDATE|DELETE|DROP|TRUNCATE)\b/imu);
+  assert.doesNotMatch(sql, /PASSWORD|SECRET|CREDENTIAL/iu);
+});
+
 test("controlled execution keeps role creation before grant, migration, runtime grant, and verification", () => {
   const runbook = readFileSync(executionRunbookPath, "utf8");
   const orderedArtifacts = [
     "000_production_role_creation.sql",
     "003_migration_operator_role_grants.sql",
+    "003a_pre_migration_role_privilege_verification.sql",
     "001_identity_persistence_v1.up.sql",
     "001_identity_persistence_v1.verify.sql",
     "002_runtime_role_grants.sql",

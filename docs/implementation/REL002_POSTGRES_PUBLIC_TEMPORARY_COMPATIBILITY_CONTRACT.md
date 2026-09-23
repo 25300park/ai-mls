@@ -27,13 +27,19 @@ Migration operator의 direct database allowlist는 `CONNECT`, `CREATE`다. Runti
 
 ## Verification semantics
 
-`004_production_role_privilege_verification.sql`은 `pg_database.datacl`을 `aclexplode`하여 target role에 직접 부여된 ACL을 검사한다.
+`003a_pre_migration_role_privilege_verification.sql`과 `004_production_role_privilege_verification.sql`은 `pg_database.datacl`을 `aclexplode`하여 target role에 직접 부여된 ACL을 검사한다.
 
 - `effective_temporary_observed`: `has_database_privilege` 기반 관찰값이며 PASS/FAIL 자체가 아니다.
 - `direct_temporary_observed`: target role direct ACL의 `TEMPORARY` 존재 여부다. `true`이면 FAIL이다.
 - direct CONNECT/CREATE allowlist, direct grant option 부재, prohibited role attribute 부재와 unexpected target-role membership 부재는 계속 필수다.
 
 Role creator인 managed `postgres`가 migration role의 admin member인 방향은 migration role이 `postgres` authority를 상속한다는 뜻이 아니다. 반대 방향 또는 target role이 다른 authority role의 member인 상태는 별도 검증 대상으로 유지한다.
+
+## Execution phase
+
+- `003a`: `000`과 `003` 뒤, `001` migration 전에 실행하는 schema-free role/database gate다. Runtime direct database privilege는 아직 `0`, migration operator direct privilege는 `CONNECT/CREATE`여야 한다.
+- `004`: `001` migration/schema verification과 `002` runtime grants가 완료된 뒤 실행하는 post-migration verifier다. `app_identity` schema/table/ownership 검증은 이 단계에서만 authoritative하다.
+- Migration 전 schema-dependent checks는 `DEFERRED_UNTIL_POST_MIGRATION`이며 missing schema를 privilege failure로 해석하지 않는다.
 
 ## Runtime review
 

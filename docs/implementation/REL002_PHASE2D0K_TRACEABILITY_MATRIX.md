@@ -15,8 +15,9 @@
 | No embedded authentication material | creation artifact + focused test | PASS |
 | Separate secure binding | [binding procedure](REL002_PHASE2D0K_ROLE_CREATION_PASSWORD_BINDING_PROCEDURE.md) | PREPARED, NOT EXECUTED |
 | Existing grant contracts unchanged | `002_runtime_role_grants.sql`, `003_migration_operator_role_grants.sql` | PRESERVED |
+| Pre-migration role/database checks | `003a_pre_migration_role_privilege_verification.sql` | IMPLEMENTED, NOT EXECUTED |
 | Positive/negative privilege checks | `004_production_role_privilege_verification.sql` | IMPLEMENTED, NOT EXECUTED |
-| Controlled order and abort rules | [runbook](REL002_PHASE2D0K_CONTROLLED_EXECUTION_RUNBOOK.md) | DEFINED |
+| Controlled order and abort rules | [runbook](REL002_PHASE2D0K_CONTROLLED_EXECUTION_RUNBOOK.md) | PRE: 003a; POST: 004 |
 | Verification checklist | [checklist](REL002_PHASE2D0K_PRIVILEGE_VERIFICATION_CHECKLIST.md) | DEFINED |
 
 Execution counters remain: role creation `0`, password binding `0`, migration `0`, Production connection/write `0`, Railway/Supabase/Vercel mutation `0`.

@@ -1,4 +1,5 @@
--- REL-002 Phase 2D-0K read-only verification artifact.
+-- REL-002 Phase 2D-0K read-only post-migration verification artifact.
+-- Requires the 001 migration and 002 runtime grants to have completed successfully.
 -- Every returned `matches_expected` value must be true before the execution gate can pass.
 
 WITH expected(role_name) AS (VALUES
