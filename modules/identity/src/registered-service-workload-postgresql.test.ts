@@ -196,6 +196,44 @@ test("migration artifacts are executor-owned PostgreSQL DDL and executable struc
   assert.equal(POSTGRESQL_REGISTERED_SERVICE_WORKLOAD_MIGRATION_ID, "REL002-P2D0B-IDENTITY-PG-V1");
 });
 
+test("accepts PostgreSQL canonical deparse for only the three approved version bounds", async () => {
+  const verify = await readFile(resolve("modules/identity/migrations/postgresql/production/001_identity_persistence_v1.verify.sql"), "utf8");
+  assert.match(verify, /identity_sessions_version_check','SESSION_VERSION>=1ANDSESSION_VERSION<=''9007199254740991'''/u);
+  assert.match(verify, /identity_session_revocations_version_check','SESSION_VERSION>=1ANDSESSION_VERSION<=''9007199254740991'''/u);
+  assert.match(verify, /identity_registered_service_workloads_version_check','REGISTRATION_VERSION>=1ANDREGISTRATION_VERSION<=''9007199254740991'''/u);
+  assert.doesNotMatch(verify, /(?:SESSION|REGISTRATION)_VERSIONBETWEEN1AND9007199254740991/u);
+  assert.match(verify, /expected FULL JOIN actual USING \(table_name, name\)/u);
+  assert.match(verify, /expected\.name IS NULL OR actual\.name IS NULL OR expected\.expression <> actual\.expression/u);
+});
+
+test("ledger repair is fail-closed and inserts only the canonical approved evidence row", async () => {
+  const repair = await readFile(resolve("modules/identity/migrations/postgresql/production/005_record_existing_identity_migration_v1.sql"), "utf8");
+  assert.match(repair, /nsp\.nspname = 'app_identity'/u);
+  assert.match(repair, /mismatch_count <> 5/u);
+  assert.match(repair, /identity\.session[^]*fec5fa2740d514615bf2050ae72591b1a917054cebd8631454dc00d28f4496f7/u);
+  assert.match(repair, /identity\.registered-service-workload[^]*33456be7c009748461ba123dc02de46adcbbfe8b64edeac94588c8c820d01c82/u);
+  assert.match(repair, /mismatch_count <> 15/u);
+  assert.match(repair, /expected FULL JOIN actual USING \(table_name, name\)/u);
+  for (const setting of ["ai_mls.operator_evidence_ref", "ai_mls.backup_evidence_ref", "ai_mls.migration_applied_at"]) {
+    assert.match(repair, new RegExp(`current_setting\\('${setting.replaceAll(".", "\\.")}', true\\)`, "u"));
+  }
+  assert.match(repair, /operator evidence reference is required/u);
+  assert.match(repair, /backup evidence reference is required/u);
+  assert.match(repair, /migration applied_at is required/u);
+  assert.match(repair, /migration applied_at is invalid/u);
+  assert.match(repair, /length\(operator_evidence_ref_value\) > 512/u);
+  assert.match(repair, /length\(backup_evidence_ref_value\) > 512/u);
+  assert.match(repair, /isfinite\(migration_applied_at_value\)/u);
+  assert.match(repair, /\[\[:cntrl:\]\]/u);
+  assert.match(repair, /migration ledger must be empty before repair/u);
+  assert.match(repair, /GET DIAGNOSTICS inserted_count = ROW_COUNT/u);
+  assert.match(repair, /inserted_count <> 1/u);
+  assert.doesNotMatch(repair, /ON CONFLICT|UPDATE app_identity\.identity_schema_migrations|DELETE FROM app_identity\.identity_schema_migrations/iu);
+  assert.match(repair, /REL002-P2D0B-IDENTITY-PG-V1/u);
+  assert.match(repair, /b3b1ec9e1cf3b43abecba19acda9c99a126b4a12f09c7547594973bf6607546e/u);
+  assert.match(repair, /INSERT INTO app_identity\.identity_schema_migrations/u);
+});
+
 function result(rows: readonly Record<string, unknown>[]): PostgreSqlQueryResult {
   return { rows, rowCount: rows.length };
 }

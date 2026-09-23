@@ -63,11 +63,11 @@ BEGIN
     ('identity_schema_contracts','identity_schema_contracts_version_check','SCHEMA_VERSION>=1'),('identity_schema_contracts','identity_schema_contracts_engine_check','DATABASE_ENGINE=''POSTGRESQL'''),
     ('identity_schema_migrations','identity_schema_migrations_version_check','SCHEMA_VERSION>=1'),('identity_schema_migrations','identity_schema_migrations_engine_check','DATABASE_ENGINE=''POSTGRESQL'''),
     ('identity_schema_migrations','identity_schema_migrations_environment_check','TARGET_ENVIRONMENT=''PRODUCTION'''),('identity_schema_migrations','identity_schema_migrations_result_check','RESULT=''APPLIED'''),
-    ('identity_sessions','identity_sessions_version_check','SESSION_VERSIONBETWEEN1AND9007199254740991'),('identity_sessions','identity_sessions_state_check','STATE=ANYARRAY[''ACTIVE'',''REVOKED'',''EXPIRED'']'),
-    ('identity_sessions','identity_sessions_chronology_check','UPDATED_AT>=CREATED_AT'),('identity_session_revocations','identity_session_revocations_version_check','SESSION_VERSIONBETWEEN1AND9007199254740991'),
+    ('identity_sessions','identity_sessions_version_check','SESSION_VERSION>=1ANDSESSION_VERSION<=''9007199254740991'''),('identity_sessions','identity_sessions_state_check','STATE=ANYARRAY[''ACTIVE'',''REVOKED'',''EXPIRED'']'),
+    ('identity_sessions','identity_sessions_chronology_check','UPDATED_AT>=CREATED_AT'),('identity_session_revocations','identity_session_revocations_version_check','SESSION_VERSION>=1ANDSESSION_VERSION<=''9007199254740991'''),
     ('identity_registered_service_workloads','identity_registered_service_workloads_principal_type_check','PRINCIPAL_TYPE=''SERVICE'''),('identity_registered_service_workloads','identity_registered_service_workloads_assurance_check','ASSURANCE=''WORKLOAD'''),
     ('identity_registered_service_workloads','identity_registered_service_workloads_environment_check','ENVIRONMENT=''PRODUCTION'''),('identity_registered_service_workloads','identity_registered_service_workloads_status_check','STATUS=ANYARRAY[''ACTIVE'',''SUSPENDED'',''REVOKED'']'),
-    ('identity_registered_service_workloads','identity_registered_service_workloads_version_check','REGISTRATION_VERSIONBETWEEN1AND9007199254740991')
+    ('identity_registered_service_workloads','identity_registered_service_workloads_version_check','REGISTRATION_VERSION>=1ANDREGISTRATION_VERSION<=''9007199254740991''')
   ), actual AS (
     SELECT rel.relname AS table_name, con.conname AS name, upper(regexp_replace(regexp_replace(pg_catalog.pg_get_expr(con.conbin, con.conrelid),'::(text|bigint|integer)','','g'),'[()[:space:]]','','g')) AS expression
     FROM pg_catalog.pg_constraint con JOIN pg_catalog.pg_class rel ON rel.oid = con.conrelid
@@ -90,7 +90,7 @@ BEGIN
     FROM pg_catalog.pg_index ind JOIN pg_catalog.pg_class idx ON idx.oid = ind.indexrelid
     JOIN pg_catalog.pg_class rel ON rel.oid = ind.indrelid JOIN pg_catalog.pg_namespace nsp ON nsp.oid = rel.relnamespace
     CROSS JOIN LATERAL pg_catalog.generate_series(1, ind.indnkeyatts) pos
-    WHERE nsp.nspname = 'app_identity' GROUP BY idx.relname, ind.indisunique, ind.indisprimary, ind.indisvalid, ind.indpred
+    WHERE nsp.nspname = 'app_identity' GROUP BY rel.relname, idx.relname, ind.indisunique, ind.indisprimary, ind.indisvalid, ind.indpred
   )
   SELECT count(*) INTO mismatch_count FROM expected FULL JOIN actual USING (table_name, name)
   WHERE expected.name IS NULL OR actual.name IS NULL OR expected.is_unique <> actual.is_unique OR expected.is_primary <> actual.is_primary
@@ -116,7 +116,7 @@ BEGIN
   WHERE nsp.nspname = 'app_identity' AND proc.proname = 'reject_session_revocation_mutation'
     AND lang.lanname = 'plpgsql' AND pg_catalog.format_type(proc.prorettype, NULL) = 'trigger'
     AND proc.pronargs = 0 AND proc.provolatile = 'v' AND NOT proc.prosecdef
-    AND upper(regexp_replace(proc.prosrc,'[[:space:]]+',' ','g')) = 'BEGIN RAISE EXCEPTION ''APPEND-ONLY REVOCATION''; END;';
+    AND upper(regexp_replace(btrim(proc.prosrc),'[[:space:]]+',' ','g')) = 'BEGIN RAISE EXCEPTION ''APPEND-ONLY REVOCATION''; END;';
   IF mismatch_count <> 1 THEN RAISE EXCEPTION 'identity trigger function verification failed'; END IF;
 
   SELECT count(*) INTO mismatch_count FROM app_identity.identity_schema_contracts

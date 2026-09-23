@@ -98,6 +98,7 @@ test("controlled execution keeps role creation before grant, migration, runtime 
     "003a_pre_migration_role_privilege_verification.sql",
     "001_identity_persistence_v1.up.sql",
     "001_identity_persistence_v1.verify.sql",
+    "005_record_existing_identity_migration_v1.sql",
     "002_runtime_role_grants.sql",
     "004_production_role_privilege_verification.sql",
   ];
