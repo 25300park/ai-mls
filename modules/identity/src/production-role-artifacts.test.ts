@@ -7,6 +7,15 @@ const runtimeSql = readFileSync(resolve("modules/identity/migrations/postgresql/
 const migrationSql = readFileSync(resolve("modules/identity/migrations/postgresql/production/003_migration_operator_role_grants.sql"), "utf8");
 const roleCreationPath = resolve("modules/identity/migrations/postgresql/production/000_production_role_creation.sql");
 const roleVerificationPath = resolve("modules/identity/migrations/postgresql/production/004_production_role_privilege_verification.sql");
+const executionRunbookPath = resolve("docs/implementation/REL002_PHASE2D0K_CONTROLLED_EXECUTION_RUNBOOK.md");
+
+function executableStatements(sql: string): string[] {
+  return sql
+    .replace(/^\s*--.*$/gmu, "")
+    .split(";")
+    .map((statement) => statement.replace(/\s+/gu, " ").trim())
+    .filter(Boolean);
+}
 
 test("role creation artifact creates the exact two passwordless least-privilege LOGIN roles", () => {
   assert.equal(existsSync(roleCreationPath), true);
@@ -31,6 +40,11 @@ test("role privilege verification artifact is read-only and checks positive and 
   assert.match(sql, /rolinherit/iu);
   assert.match(sql, /rolreplication/iu);
   assert.match(sql, /rolbypassrls/iu);
+  assert.match(sql, /database_acl\s+AS\s*\(/iu);
+  assert.match(sql, /aclexplode\s*\(/iu);
+  assert.match(sql, /privilege_type\s*=\s*'TEMPORARY'/iu);
+  assert.match(sql, /database_acl[^]*is_grantable/iu);
+  assert.doesNotMatch(sql, /NOT\s+pg_catalog\.has_database_privilege\([^)]*'TEMPORARY'\)/iu);
   assert.doesNotMatch(sql, /^\s*(?:CREATE|ALTER|GRANT|REVOKE|INSERT|UPDATE|DELETE|DROP|TRUNCATE)\b/imu);
   assert.doesNotMatch(sql, /PASSWORD|SECRET|CREDENTIAL/iu);
 });
@@ -45,12 +59,35 @@ test("runtime role grants only steady-state Identity and Session privileges", ()
   assert.match(runtimeSql, /REVOKE\s+ALL\s+PRIVILEGES\s+ON\s+ALL\s+(?:TABLES|FUNCTIONS|SEQUENCES)/iu);
 });
 
-test("migration operator is separate and the runtime role receives no migration authority", () => {
-  assert.match(migrationSql, /ai_mls_production_migration_operator/u);
-  assert.match(migrationSql, /ALTER\s+ROLE\s+ai_mls_production_migration_operator\s+NOSUPERUSER\s+NOCREATEDB\s+NOCREATEROLE\s+NOINHERIT\s+NOREPLICATION\s+NOBYPASSRLS/iu);
-  assert.match(migrationSql, /GRANT\s+CREATE\s+ON\s+DATABASE\s+postgres/iu);
+test("migration operator attributes remain owned by 000 and 003 is Supabase-compatible grant-only SQL", () => {
+  const roleCreationSql = readFileSync(roleCreationPath, "utf8");
+  assert.match(roleCreationSql, /CREATE\s+ROLE\s+ai_mls_production_migration_operator\s+LOGIN\s+NOSUPERUSER\s+NOCREATEDB\s+NOCREATEROLE\s+NOINHERIT\s+NOREPLICATION\s+NOBYPASSRLS/iu);
+  assert.doesNotMatch(migrationSql, /\bALTER\s+ROLE\b/iu);
+  assert.deepEqual(executableStatements(migrationSql), [
+    "REVOKE ALL ON DATABASE postgres FROM ai_mls_production_migration_operator",
+    "GRANT CONNECT ON DATABASE postgres TO ai_mls_production_migration_operator",
+    "GRANT CREATE ON DATABASE postgres TO ai_mls_production_migration_operator",
+  ]);
+  assert.doesNotMatch(migrationSql, /\b(?:SUPERUSER|CREATEDB|CREATEROLE|REPLICATION|BYPASSRLS)\b/iu);
   assert.doesNotMatch(migrationSql, /GRANT[^;]*TO\s+ai_mls_production_runtime/iu);
   assert.doesNotMatch(migrationSql, /GRANT[^;]*(?:SELECT|INSERT|UPDATE|DELETE|TRUNCATE)\b/iu);
   assert.doesNotMatch(migrationSql, /ON\s+(?:TABLE|ALL\s+TABLES|FUNCTION|ALL\s+FUNCTIONS|SEQUENCE|ALL\s+SEQUENCES|SCHEMA)\b/iu);
   assert.doesNotMatch(migrationSql, /PASSWORD|SECRET|CREDENTIAL/iu);
+});
+
+test("controlled execution keeps role creation before grant, migration, runtime grant, and verification", () => {
+  const runbook = readFileSync(executionRunbookPath, "utf8");
+  const orderedArtifacts = [
+    "000_production_role_creation.sql",
+    "003_migration_operator_role_grants.sql",
+    "001_identity_persistence_v1.up.sql",
+    "001_identity_persistence_v1.verify.sql",
+    "002_runtime_role_grants.sql",
+    "004_production_role_privilege_verification.sql",
+  ];
+  const positions = orderedArtifacts.map((artifact) => runbook.indexOf(artifact));
+  assert.equal(positions.every((position) => position >= 0), true);
+  for (let index = 1; index < positions.length; index += 1) {
+    assert.equal(positions[index - 1]! < positions[index]!, true);
+  }
 });

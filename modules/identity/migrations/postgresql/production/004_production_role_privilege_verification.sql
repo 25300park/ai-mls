@@ -20,13 +20,55 @@ ORDER BY expected.role_name;
 WITH expected(role_name, connect_expected, create_expected) AS (VALUES
   ('ai_mls_production_runtime', true, false),
   ('ai_mls_production_migration_operator', true, true)
+), database_acl AS (
+  SELECT grantee_roles.rolname::text AS role_name,
+    privileges.privilege_type,
+    privileges.is_grantable
+  FROM pg_catalog.pg_database databases
+  CROSS JOIN LATERAL pg_catalog.aclexplode(
+    COALESCE(databases.datacl, pg_catalog.acldefault('d', databases.datdba))
+  ) privileges
+  JOIN pg_catalog.pg_roles grantee_roles ON grantee_roles.oid = privileges.grantee
+  WHERE databases.datname = 'postgres'
 )
-SELECT role_name,
-  pg_catalog.has_database_privilege(role_name, 'postgres', 'CONNECT') = connect_expected
-    AND pg_catalog.has_database_privilege(role_name, 'postgres', 'CREATE') = create_expected
-    AND NOT pg_catalog.has_database_privilege(role_name, 'postgres', 'TEMPORARY') AS matches_expected
+SELECT expected.role_name,
+  pg_catalog.has_database_privilege(expected.role_name, 'postgres', 'TEMPORARY') AS effective_temporary_observed,
+  EXISTS (
+    SELECT 1 FROM database_acl
+    WHERE database_acl.role_name = expected.role_name
+      AND database_acl.privilege_type = 'TEMPORARY'
+  ) AS direct_temporary_observed,
+  pg_catalog.has_database_privilege(expected.role_name, 'postgres', 'CONNECT') = expected.connect_expected
+    AND pg_catalog.has_database_privilege(expected.role_name, 'postgres', 'CREATE') = expected.create_expected
+    AND EXISTS (
+      SELECT 1 FROM database_acl
+      WHERE database_acl.role_name = expected.role_name
+        AND database_acl.privilege_type = 'CONNECT'
+    )
+    AND (
+      EXISTS (
+        SELECT 1 FROM database_acl
+        WHERE database_acl.role_name = expected.role_name
+          AND database_acl.privilege_type = 'CREATE'
+      )
+    ) = expected.create_expected
+    AND NOT EXISTS (
+      SELECT 1 FROM database_acl
+      WHERE database_acl.role_name = expected.role_name
+        AND database_acl.privilege_type = 'TEMPORARY'
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM database_acl
+      WHERE database_acl.role_name = expected.role_name
+        AND database_acl.is_grantable
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM database_acl
+      WHERE database_acl.role_name = expected.role_name
+        AND database_acl.privilege_type NOT IN ('CONNECT', 'CREATE')
+    ) AS matches_expected
 FROM expected
-ORDER BY role_name;
+ORDER BY expected.role_name;
 
 SELECT 'ai_mls_production_runtime' AS role_name,
   pg_catalog.has_schema_privilege('ai_mls_production_runtime', 'app_identity', 'USAGE')
@@ -54,6 +96,16 @@ SELECT count(*) = 0 AS matches_expected
 FROM information_schema.table_privileges
 WHERE grantee IN ('ai_mls_production_runtime', 'ai_mls_production_migration_operator')
   AND is_grantable = 'YES';
+
+SELECT count(*) = 0 AS matches_expected
+FROM pg_catalog.pg_namespace namespaces
+CROSS JOIN LATERAL pg_catalog.aclexplode(
+  COALESCE(namespaces.nspacl, pg_catalog.acldefault('n', namespaces.nspowner))
+) privileges
+JOIN pg_catalog.pg_roles grantee_roles ON grantee_roles.oid = privileges.grantee
+WHERE namespaces.nspname = 'app_identity'
+  AND grantee_roles.rolname IN ('ai_mls_production_runtime', 'ai_mls_production_migration_operator')
+  AND privileges.is_grantable;
 
 SELECT count(*) = 0 AS matches_expected
 FROM pg_catalog.pg_auth_members memberships
