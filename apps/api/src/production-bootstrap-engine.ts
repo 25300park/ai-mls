@@ -38,7 +38,7 @@ export async function executeProductionBootstrap(rawConfiguration: unknown, depe
     cleanup.push(() => pool.close());
     const authority = await dependencies.openIdentityAuthorityReadOnly(pool);
     cleanup.push(() => authority.close());
-    await authority.assertSchemaReady();
+    const identitySchemaReadinessProvenance = await authority.assertSchemaReady();
     dependencies.validateHumanIdentityAuthority(configuration);
     const identities = Object.freeze([...(await dependencies.resolveRequiredServiceIdentities(authority, configuration))]);
     assertRequiredIdentities(configuration, identities);
@@ -66,6 +66,7 @@ export async function executeProductionBootstrap(rawConfiguration: unknown, depe
     let closed = false;
     return Object.freeze({
       validationFingerprint,
+      identitySchemaReadinessProvenance,
       readiness: () => state,
       close: async () => {
         if (closed) return;

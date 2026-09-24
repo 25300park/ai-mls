@@ -4,10 +4,13 @@ import type {
 } from "./registered-service-workload.js";
 import { RegisteredServiceWorkloadError } from "./registered-service-workload.js";
 import type { PostgreSqlClientPort, PostgreSqlPoolPort } from "./postgresql-pool.js";
-import { assertPostgreSqlRegisteredServiceWorkloadSchemaCompatible } from "./registered-service-workload-postgresql-schema.js";
+import {
+  inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence,
+  type PostgreSqlIdentitySchemaReadinessProvenance,
+} from "./registered-service-workload-postgresql-schema.js";
 
 export interface AsyncRegisteredServiceWorkloadAuthorityLease {
-  assertSchemaReady(): Promise<void>;
+  assertSchemaReady(): Promise<PostgreSqlIdentitySchemaReadinessProvenance>;
   findByRegistrationId(registrationId: string): Promise<Readonly<RegisteredServiceWorkloadRecord> | undefined>;
   close(): Promise<void>;
 }
@@ -24,9 +27,11 @@ export class PostgreSqlRegisteredServiceWorkloadStore implements AsyncRegistered
     }
   }
 
-  public async assertSchemaReady(): Promise<void> {
+  public async assertSchemaReady(): Promise<PostgreSqlIdentitySchemaReadinessProvenance> {
     this.assertOpen();
-    await assertPostgreSqlRegisteredServiceWorkloadSchemaCompatible(this.pool);
+    const evidence = await inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence(this.pool);
+    if (evidence.readiness !== "READY" || evidence.provenance === null) throw unavailable();
+    return evidence.provenance;
   }
 
   public async findByRegistrationId(registrationId: string): Promise<Readonly<RegisteredServiceWorkloadRecord> | undefined> {

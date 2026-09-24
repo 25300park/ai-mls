@@ -30,7 +30,7 @@ function harness(failAt?: string): Readonly<{ events: string[]; dependencies: Pr
     return value;
   };
   const authority: AsyncRegisteredServiceWorkloadAuthorityLease = {
-    assertSchemaReady: () => { step("identity-schema-ready", undefined); return Promise.resolve(); },
+    assertSchemaReady: () => { step("identity-schema-ready", undefined); return Promise.resolve("HISTORICAL_MIGRATION_ATTESTATION_VERIFIED" as const); },
     findByRegistrationId: () => Promise.resolve(undefined),
     close: () => { events.push("identity-close"); return Promise.resolve(); },
   };
@@ -81,6 +81,7 @@ function harness(failAt?: string): Readonly<{ events: string[]; dependencies: Pr
 test("executes the exact canonical order and constructs Session only after gate PASS", async () => {
   const { events, dependencies } = harness();
   const runtime = await executeProductionBootstrap({}, dependencies);
+  assert.equal(runtime.identitySchemaReadinessProvenance, "HISTORICAL_MIGRATION_ATTESTATION_VERIFIED");
   assert.deepEqual(events, [
     "parse", "validate-config", "validate-secret-refs", "pool-open", "identity-open", "identity-schema-ready",
     "human-identity", "service-identities", "resolve-secrets", "gate-pass", "session-create",

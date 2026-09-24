@@ -51,6 +51,7 @@ test("invokes canonical start exactly once and marks readiness only after startu
   const events: string[] = [];
   const runtime: ProductionRuntimeHandle = Object.freeze({
     validationFingerprint: "sha256:test",
+    identitySchemaReadinessProvenance: "NATIVE_MIGRATION_LEDGER_VERIFIED",
     readiness: () => "READY" as const,
     close: () => { events.push("close"); return Promise.resolve(); },
   });
@@ -74,7 +75,7 @@ test("SIGINT and SIGTERM share one deterministic idempotent shutdown", async () 
   const running = await runProductionMain({}, {} as ProductionBootstrapDependencies, {
     readiness: createProductionReadinessState(),
     startRuntime: () => Promise.resolve(Object.freeze({
-      validationFingerprint: "sha256:test", readiness: () => "READY" as const,
+      validationFingerprint: "sha256:test", identitySchemaReadinessProvenance: "NATIVE_MIGRATION_LEDGER_VERIFIED" as const, readiness: () => "READY" as const,
       close: () => { events.push("close"); return Promise.resolve(); },
     })),
     installSignalHandler: (handler) => { signalHandler = handler; return () => events.push("uninstall"); },
@@ -96,7 +97,7 @@ test("a signal received during startup prevents READY and closes immediately aft
       events.push("start");
       signalHandler?.("SIGTERM");
       return Promise.resolve(Object.freeze({
-        validationFingerprint: "sha256:test", readiness: () => "READY" as const,
+        validationFingerprint: "sha256:test", identitySchemaReadinessProvenance: "NATIVE_MIGRATION_LEDGER_VERIFIED" as const, readiness: () => "READY" as const,
         close: () => { events.push("close"); return Promise.resolve(); },
       }));
     },
@@ -113,7 +114,7 @@ test("shutdown failure remains NOT_READY and reaches the terminal failure handle
   const running = await runProductionMain({}, {} as ProductionBootstrapDependencies, {
     readiness,
     startRuntime: () => Promise.resolve(Object.freeze({
-      validationFingerprint: "sha256:test", readiness: () => "READY" as const,
+      validationFingerprint: "sha256:test", identitySchemaReadinessProvenance: "NATIVE_MIGRATION_LEDGER_VERIFIED" as const, readiness: () => "READY" as const,
       close: () => Promise.reject(new Error("unsafe internal detail")),
     })),
     installSignalHandler: (handler) => { signalHandler = handler; return () => events.push("uninstall"); },
@@ -132,7 +133,7 @@ test("a bounded close timeout invokes the hard non-zero terminal action", async 
   const running = await runProductionMain({}, {} as ProductionBootstrapDependencies, {
     readiness: createProductionReadinessState(),
     startRuntime: () => Promise.resolve(Object.freeze({
-      validationFingerprint: "sha256:test", readiness: () => "READY" as const,
+      validationFingerprint: "sha256:test", identitySchemaReadinessProvenance: "NATIVE_MIGRATION_LEDGER_VERIFIED" as const, readiness: () => "READY" as const,
       close: () => new Promise<void>(() => undefined),
     })),
     installSignalHandler: (handler) => { signalHandler = handler; return () => events.push("uninstall"); },

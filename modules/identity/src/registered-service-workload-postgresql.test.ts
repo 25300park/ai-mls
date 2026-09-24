@@ -8,6 +8,7 @@ import type { PostgreSqlClientPort, PostgreSqlPoolPort, PostgreSqlQueryResult } 
 import { PostgreSqlRegisteredServiceWorkloadStore } from "./registered-service-workload-postgresql.js";
 import {
   inspectPostgreSqlRegisteredServiceWorkloadSchema,
+  inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence,
   POSTGRESQL_IDENTITY_MIGRATION_ARTIFACT_SHA256,
   POSTGRESQL_REGISTERED_SERVICE_WORKLOAD_MIGRATION_ID,
 } from "./registered-service-workload-postgresql-schema.js";
@@ -117,6 +118,7 @@ function readyResponse(text: string): PostgreSqlQueryResult {
     schema_usage: true, schema_create: false, session_select: true, session_insert: true, session_update: true, session_excess: false,
     workload_read: true, workload_write: false, revocation_insert: true, revocation_excess: false,
     contract_read: true, contract_write: false, ledger_read: true, ledger_write: false,
+    attestation_read: true, attestation_write: false,
   }]);
   throw new Error(`Unexpected catalog query: ${text}`);
 }
@@ -126,6 +128,43 @@ test("reports READY only for the complete five-table PostgreSQL schema, privileg
   const { pool, releases } = harness((text) => { queries.push(text); return readyResponse(text); });
   assert.equal(await inspectPostgreSqlRegisteredServiceWorkloadSchema(pool), "READY", queries.at(-2));
   assert.deepEqual(releases, [false]);
+});
+
+test("reports native and historical readiness provenance without collapsing them", async () => {
+  assert.deepEqual(
+    await inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence(harness(readyResponse).pool),
+    { readiness: "READY", provenance: "NATIVE_MIGRATION_LEDGER_VERIFIED" },
+  );
+  const historical = await inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence(harness((text) => {
+    if (text.includes("rel.relkind AS relation_kind")) {
+      return result([...Object.keys(tableColumns), "identity_historical_migration_attestations"].sort()
+        .map((relation_name) => ({ relation_name, relation_kind: "r" })));
+    }
+    if (text.includes("identity_schema_migrations ORDER")) return result([]);
+    if (text.includes("historical_attestation_schema_compatible")) return result([{ historical_attestation_schema_compatible: true }]);
+    if (text.includes("identity_historical_migration_attestations ORDER")) return result([{
+      migration_id: "REL002-P2D0B-IDENTITY-PG-V1",
+      artifact_checksum: "b3b1ec9e1cf3b43abecba19acda9c99a126b4a12f09c7547594973bf6607546e",
+      contract_id: "identity.registered-service-workload", schema_version: 1, database_engine: "POSTGRESQL",
+      contract_fingerprint: "33456be7c009748461ba123dc02de46adcbbfe8b64edeac94588c8c820d01c82",
+      target_environment: "PRODUCTION", historical_applied_at: null, historical_applied_at_known: false,
+      evidence_recorded_at: "2026-09-24T00:00:00.000Z", operator_evidence_ref: "evidence:operator",
+      backup_evidence_ref: "evidence:backup", schema_verification_evidence_ref: "evidence:schema",
+      reason: "HISTORICAL_APPLIED_AT_UNRECOVERABLE", result: "VERIFIED_EXISTING_SCHEMA",
+    }]);
+    return readyResponse(text);
+  }).pool);
+  assert.deepEqual(historical, { readiness: "READY", provenance: "HISTORICAL_MIGRATION_ATTESTATION_VERIFIED" });
+  const drifted = await inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence(harness((text) => {
+    if (text.includes("rel.relkind AS relation_kind")) {
+      return result([...Object.keys(tableColumns), "identity_historical_migration_attestations"].sort()
+        .map((relation_name) => ({ relation_name, relation_kind: "r" })));
+    }
+    if (text.includes("identity_schema_migrations ORDER")) return result([]);
+    if (text.includes("historical_attestation_schema_compatible")) return result([{ historical_attestation_schema_compatible: false }]);
+    return readyResponse(text);
+  }).pool);
+  assert.deepEqual(drifted, { readiness: "NOT_READY_INCOMPATIBLE_SCHEMA", provenance: null });
 });
 
 test("fails closed for missing, partial, incompatible, or over-privileged PostgreSQL schema", async () => {
@@ -232,6 +271,44 @@ test("ledger repair is fail-closed and inserts only the canonical approved evide
   assert.match(repair, /REL002-P2D0B-IDENTITY-PG-V1/u);
   assert.match(repair, /b3b1ec9e1cf3b43abecba19acda9c99a126b4a12f09c7547594973bf6607546e/u);
   assert.match(repair, /INSERT INTO app_identity\.identity_schema_migrations/u);
+});
+
+test("historical migration attestation artifacts preserve native ledger truth and exact-bound reconstruction", async () => {
+  const schema = await readFile(resolve("modules/identity/migrations/postgresql/production/006_historical_migration_attestation_schema_v1.sql"), "utf8");
+  const record = await readFile(resolve("modules/identity/migrations/postgresql/production/007_record_historical_identity_migration_attestation_v1.sql"), "utf8");
+  const verify = await readFile(resolve("modules/identity/migrations/postgresql/production/008_historical_identity_migration_attestation_v1.verify.sql"), "utf8");
+  const nativeLedger = await readFile(resolve("modules/identity/migrations/postgresql/production/005_record_existing_identity_migration_v1.sql"), "utf8");
+
+  assert.match(schema, /CREATE TABLE app_identity\.identity_historical_migration_attestations/u);
+  for (const column of ["migration_id", "artifact_checksum", "contract_id", "schema_version", "database_engine", "contract_fingerprint", "target_environment", "historical_applied_at", "historical_applied_at_known", "evidence_recorded_at", "operator_evidence_ref", "backup_evidence_ref", "schema_verification_evidence_ref", "reason", "result"]) {
+    assert.match(schema, new RegExp(`\\b${column}\\b`, "u"));
+  }
+  assert.match(schema, /historical_applied_at_known boolean NOT NULL/u);
+  assert.match(schema, /evidence_recorded_at timestamptz NOT NULL DEFAULT pg_catalog\.transaction_timestamp\(\)/u);
+  assert.match(schema, /historical_applied_at_known AND historical_applied_at IS NOT NULL/u);
+  assert.match(schema, /NOT historical_applied_at_known AND historical_applied_at IS NULL/u);
+  assert.match(schema, /HISTORICAL_APPLIED_AT_UNRECOVERABLE/u);
+  assert.match(schema, /VERIFIED_EXISTING_SCHEMA/u);
+  assert.match(schema, /reject_historical_migration_attestation_mutation/u);
+
+  for (const setting of ["ai_mls.operator_evidence_ref", "ai_mls.backup_evidence_ref", "ai_mls.schema_verification_evidence_ref"]) {
+    assert.match(record, new RegExp(`current_setting\\('${setting.replaceAll(".", "\\.")}', true\\)`, "u"));
+  }
+  for (const exact of [
+    "REL002-P2D0B-IDENTITY-PG-V1",
+    "b3b1ec9e1cf3b43abecba19acda9c99a126b4a12f09c7547594973bf6607546e",
+    "identity.registered-service-workload",
+    "33456be7c009748461ba123dc02de46adcbbfe8b64edeac94588c8c820d01c82",
+    "HISTORICAL_APPLIED_AT_UNRECOVERABLE",
+    "VERIFIED_EXISTING_SCHEMA",
+  ]) assert.match(record, new RegExp(exact.replaceAll(".", "\\."), "u"));
+  assert.match(record, /historical migration attestation requires absent native ledger evidence/u);
+  assert.match(record, /historical migration attestation ledger must be empty/u);
+  assert.doesNotMatch(record, /ON CONFLICT|UPDATE app_identity\.|DELETE FROM app_identity\./iu);
+  assert.match(verify, /NATIVE_MIGRATION_LEDGER_VERIFIED/u);
+  assert.match(verify, /HISTORICAL_MIGRATION_ATTESTATION_VERIFIED/u);
+  assert.match(verify, /historical attestation verification failed/u);
+  assert.doesNotMatch(nativeLedger, /identity_historical_migration_attestations/u);
 });
 
 function result(rows: readonly Record<string, unknown>[]): PostgreSqlQueryResult {

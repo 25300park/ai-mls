@@ -1,6 +1,7 @@
 import type {
   AsyncRegisteredServiceWorkloadAuthorityLease,
   PostgreSqlPoolPort,
+  PostgreSqlIdentitySchemaReadinessProvenance,
 } from "../../../modules/identity/src/index.js";
 import {
   type ProductionBootstrapContextView,
@@ -80,6 +81,7 @@ export interface ProductionBootstrapDependencies {
 
 export interface ProductionRuntimeHandle {
   readonly validationFingerprint: string;
+  readonly identitySchemaReadinessProvenance: PostgreSqlIdentitySchemaReadinessProvenance;
   readiness(): "READY" | "NOT_READY";
   close(): Promise<void>;
 }

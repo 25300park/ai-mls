@@ -77,8 +77,13 @@ export {
 export {
   assertPostgreSqlRegisteredServiceWorkloadSchemaCompatible,
   inspectPostgreSqlRegisteredServiceWorkloadSchema,
+  inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence,
   POSTGRESQL_REGISTERED_SERVICE_WORKLOAD_MIGRATION_ID,
   POSTGRESQL_REGISTERED_SERVICE_WORKLOAD_SCHEMA_VERSION,
   POSTGRESQL_REGISTERED_SERVICE_WORKLOAD_SCHEMA_FINGERPRINT,
   POSTGRESQL_IDENTITY_MIGRATION_ARTIFACT_SHA256,
+} from "./registered-service-workload-postgresql-schema.js";
+export type {
+  PostgreSqlIdentitySchemaEvidence,
+  PostgreSqlIdentitySchemaReadinessProvenance,
 } from "./registered-service-workload-postgresql-schema.js";

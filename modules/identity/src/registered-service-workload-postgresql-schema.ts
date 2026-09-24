@@ -8,6 +8,15 @@ export const POSTGRESQL_REGISTERED_SERVICE_WORKLOAD_SCHEMA_FINGERPRINT = "33456b
 export const POSTGRESQL_SESSION_SCHEMA_FINGERPRINT = "fec5fa2740d514615bf2050ae72591b1a917054cebd8631454dc00d28f4496f7";
 export const POSTGRESQL_IDENTITY_MIGRATION_ARTIFACT_SHA256 = "b3b1ec9e1cf3b43abecba19acda9c99a126b4a12f09c7547594973bf6607546e";
 
+export type PostgreSqlIdentitySchemaReadinessProvenance =
+  | "NATIVE_MIGRATION_LEDGER_VERIFIED"
+  | "HISTORICAL_MIGRATION_ATTESTATION_VERIFIED";
+
+export interface PostgreSqlIdentitySchemaEvidence {
+  readonly readiness: RegisteredServiceWorkloadSchemaReadiness;
+  readonly provenance: PostgreSqlIdentitySchemaReadinessProvenance | null;
+}
+
 const TABLE_COLUMNS = new Map<string, readonly string[]>([
   ["identity_schema_contracts", ["contract_id:text:NO", "schema_version:integer:NO", "database_engine:text:NO", "contract_fingerprint:text:NO", "recorded_at:timestamp with time zone:NO"]],
   ["identity_schema_migrations", ["migration_id:text:NO", "artifact_checksum:text:NO", "contract_id:text:NO", "schema_version:integer:NO", "database_engine:text:NO", "contract_fingerprint:text:NO", "target_environment:text:NO", "operator_evidence_ref:text:NO", "backup_evidence_ref:text:NO", "applied_at:timestamp with time zone:NO", "result:text:NO"]],
@@ -66,6 +75,10 @@ const REQUIRED_INDEXES = new Map<string, ExpectedIndex>([
 ]);
 
 export async function inspectPostgreSqlRegisteredServiceWorkloadSchema(pool: PostgreSqlPoolPort): Promise<RegisteredServiceWorkloadSchemaReadiness> {
+  return (await inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence(pool)).readiness;
+}
+
+export async function inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence(pool: PostgreSqlPoolPort): Promise<PostgreSqlIdentitySchemaEvidence> {
   let client: PostgreSqlClientPort | undefined;
   let transactionOpen = false;
   try {
@@ -86,11 +99,11 @@ export async function inspectPostgreSqlRegisteredServiceWorkloadSchema(pool: Pos
   }
 }
 
-async function inspectClient(client: PostgreSqlClientPort): Promise<RegisteredServiceWorkloadSchemaReadiness> {
+async function inspectClient(client: PostgreSqlClientPort): Promise<PostgreSqlIdentitySchemaEvidence> {
   const namespace = await client.query<{ present: boolean }>(
     "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = 'app_identity') AS present",
   );
-  if (namespace.rows[0]?.present !== true) return "NOT_READY_MISSING_SCHEMA";
+  if (namespace.rows[0]?.present !== true) return evidence("NOT_READY_MISSING_SCHEMA");
 
   const relations = await client.query<{ relation_name: string; relation_kind: string }>(
     `SELECT rel.relname AS relation_name, rel.relkind AS relation_kind FROM pg_catalog.pg_class rel
@@ -99,8 +112,11 @@ async function inspectClient(client: PostgreSqlClientPort): Promise<RegisteredSe
   );
   const expectedTables = [...TABLE_COLUMNS.keys()].sort();
   const actualTables = relations.rows.map((row) => row.relation_name).sort();
-  if (actualTables.length === 0) return "NOT_READY_MISSING_SCHEMA";
-  if (!same(actualTables, expectedTables) || relations.rows.some((row) => row.relation_kind !== "r")) return "NOT_READY_PARTIAL_MIGRATION";
+  const attestationTablePresent = actualTables.includes("identity_historical_migration_attestations");
+  const coreTables = actualTables.filter((name) => name !== "identity_historical_migration_attestations");
+  if (actualTables.length === 0) return evidence("NOT_READY_MISSING_SCHEMA");
+  if (!same(coreTables, expectedTables) || actualTables.length !== expectedTables.length + Number(attestationTablePresent)
+    || relations.rows.some((row) => row.relation_kind !== "r")) return evidence("NOT_READY_PARTIAL_MIGRATION");
 
   const columns = await client.query<{ table_name: string; column_name: string; data_type: string; is_nullable: string; generated: string; default_expression: string | null }>(
     `SELECT rel.relname AS table_name, attr.attname AS column_name,
@@ -110,14 +126,16 @@ async function inspectClient(client: PostgreSqlClientPort): Promise<RegisteredSe
      FROM pg_catalog.pg_attribute attr JOIN pg_catalog.pg_class rel ON rel.oid = attr.attrelid
      JOIN pg_catalog.pg_namespace nsp ON nsp.oid = rel.relnamespace
      LEFT JOIN pg_catalog.pg_attrdef def ON def.adrelid = attr.attrelid AND def.adnum = attr.attnum
-     WHERE nsp.nspname = 'app_identity' AND rel.relkind = 'r' AND attr.attnum > 0 AND NOT attr.attisdropped
+     WHERE nsp.nspname = 'app_identity' AND rel.relkind = 'r'
+       AND rel.relname <> 'identity_historical_migration_attestations'
+       AND attr.attnum > 0 AND NOT attr.attisdropped
      ORDER BY rel.relname, attr.attnum`,
   );
   for (const [table, expected] of TABLE_COLUMNS) {
     const actual = columns.rows.filter((row) => row.table_name === table)
       .map((row) => `${row.column_name}:${row.data_type}:${row.is_nullable}`);
     if (!same(actual, expected) || columns.rows.some((row) => row.table_name === table
-      && (row.generated !== "" || row.default_expression !== null))) return "NOT_READY_INCOMPATIBLE_SCHEMA";
+      && (row.generated !== "" || row.default_expression !== null))) return evidence("NOT_READY_INCOMPATIBLE_SCHEMA");
   }
 
   const constraints = await client.query<ConstraintRow>(
@@ -134,10 +152,11 @@ async function inspectClient(client: PostgreSqlClientPort): Promise<RegisteredSe
      FROM pg_catalog.pg_constraint con JOIN pg_catalog.pg_class rel ON rel.oid = con.conrelid
      JOIN pg_catalog.pg_namespace nsp ON nsp.oid = rel.relnamespace
      LEFT JOIN pg_catalog.pg_class ref ON ref.oid = con.confrelid
-     WHERE nsp.nspname = 'app_identity' ORDER BY con.conname`,
+     WHERE nsp.nspname = 'app_identity' AND rel.relname <> 'identity_historical_migration_attestations'
+     ORDER BY con.conname`,
   );
   if (!same(constraints.rows.map((row) => row.constraint_name).sort(), [...EXPECTED_CONSTRAINTS.keys()].sort())) {
-    return "NOT_READY_INCOMPATIBLE_SCHEMA";
+    return evidence("NOT_READY_INCOMPATIBLE_SCHEMA");
   }
   for (const [name, expected] of EXPECTED_CONSTRAINTS) {
     const row = constraints.rows.find((value) => value.constraint_name === name);
@@ -146,7 +165,7 @@ async function inspectClient(client: PostgreSqlClientPort): Promise<RegisteredSe
         || row.referenced_columns !== expected.referencedColumns || row.delete_action !== "a"
         || row.update_action !== "a" || row.match_type !== "s"))
       || (expected.kind === "c" && normalizeExpression(row.check_expression) !== expected.checkExpression)) {
-      return "NOT_READY_INCOMPATIBLE_SCHEMA";
+      return evidence("NOT_READY_INCOMPATIBLE_SCHEMA");
     }
   }
 
@@ -157,15 +176,16 @@ async function inspectClient(client: PostgreSqlClientPort): Promise<RegisteredSe
                   FROM pg_catalog.generate_series(1, i.indnkeyatts) AS position ORDER BY position) AS key_expressions
      FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class idx ON idx.oid = i.indexrelid
      JOIN pg_catalog.pg_class rel ON rel.oid = i.indrelid JOIN pg_catalog.pg_namespace nsp ON nsp.oid = rel.relnamespace
-     WHERE nsp.nspname = 'app_identity' ORDER BY idx.relname`,
+     WHERE nsp.nspname = 'app_identity' AND rel.relname <> 'identity_historical_migration_attestations'
+     ORDER BY idx.relname`,
   );
-  if (!same(indexes.rows.map((row) => row.index_name).sort(), [...REQUIRED_INDEXES.keys()].sort())) return "NOT_READY_INCOMPATIBLE_SCHEMA";
+  if (!same(indexes.rows.map((row) => row.index_name).sort(), [...REQUIRED_INDEXES.keys()].sort())) return evidence("NOT_READY_INCOMPATIBLE_SCHEMA");
   for (const [name, expected] of REQUIRED_INDEXES) {
     const index = indexes.rows.find((row) => row.index_name === name);
     const keys = index?.key_expressions.map(normalizeExpression);
     if (index?.table_name !== ownedTable(name) || index.is_valid !== true || index.is_partial || index.is_unique !== expected.unique
       || index.is_primary !== expected.primary || keys === undefined || !same(keys, expected.keys)) {
-      return "NOT_READY_INCOMPATIBLE_SCHEMA";
+      return evidence("NOT_READY_INCOMPATIBLE_SCHEMA");
     }
   }
 
@@ -174,10 +194,11 @@ async function inspectClient(client: PostgreSqlClientPort): Promise<RegisteredSe
             proc_nsp.nspname AS function_schema, proc.proname AS function_name FROM pg_catalog.pg_trigger trg
      JOIN pg_catalog.pg_class rel ON rel.oid = trg.tgrelid JOIN pg_catalog.pg_namespace nsp ON nsp.oid = rel.relnamespace
      JOIN pg_catalog.pg_proc proc ON proc.oid = trg.tgfoid JOIN pg_catalog.pg_namespace proc_nsp ON proc_nsp.oid = proc.pronamespace
-     WHERE nsp.nspname = 'app_identity' AND NOT trg.tgisinternal ORDER BY trg.tgname`,
+     WHERE nsp.nspname = 'app_identity' AND rel.relname <> 'identity_historical_migration_attestations'
+       AND NOT trg.tgisinternal ORDER BY trg.tgname`,
   );
   if (triggers.rowCount !== 2 || !trigger(triggers.rows, "identity_session_revocations_no_delete", 11)
-    || !trigger(triggers.rows, "identity_session_revocations_no_update", 19)) return "NOT_READY_INCOMPATIBLE_SCHEMA";
+    || !trigger(triggers.rows, "identity_session_revocations_no_update", 19)) return evidence("NOT_READY_INCOMPATIBLE_SCHEMA");
 
   const procedure = await client.query<{ source: string; language: string; result_type: string; argument_count: number; volatility: string; security_definer: boolean }>(
     `SELECT proc.prosrc AS source, lang.lanname AS language, pg_catalog.format_type(proc.prorettype, NULL) AS result_type,
@@ -190,18 +211,18 @@ async function inspectClient(client: PostgreSqlClientPort): Promise<RegisteredSe
   if (procedure.rowCount !== 1 || normalizeDefinition(functionRow?.source) !== "BEGIN RAISE EXCEPTION 'APPEND-ONLY REVOCATION'; END;"
     || functionRow?.language !== "plpgsql" || functionRow.result_type !== "trigger" || Number(functionRow.argument_count) !== 0
     || functionRow.volatility !== "v" || functionRow.security_definer !== false) {
-    return "NOT_READY_INCOMPATIBLE_SCHEMA";
+    return evidence("NOT_READY_INCOMPATIBLE_SCHEMA");
   }
 
   const metadata = await client.query<{ contract_id: string; schema_version: number; database_engine: string; contract_fingerprint: string }>(
     `SELECT contract_id, schema_version, database_engine, contract_fingerprint
      FROM app_identity.identity_schema_contracts ORDER BY contract_id`,
   );
-  if (metadata.rows.some((row) => Number(row.schema_version) !== 1)) return "NOT_READY_UNSUPPORTED_VERSION";
+  if (metadata.rows.some((row) => Number(row.schema_version) !== 1)) return evidence("NOT_READY_UNSUPPORTED_VERSION");
   if (metadata.rowCount !== 2
     || !contract(metadata.rows, "identity.session", POSTGRESQL_SESSION_SCHEMA_FINGERPRINT)
     || !contract(metadata.rows, "identity.registered-service-workload", POSTGRESQL_REGISTERED_SERVICE_WORKLOAD_SCHEMA_FINGERPRINT)) {
-    return "NOT_READY_INCOMPATIBLE_SCHEMA";
+    return evidence("NOT_READY_INCOMPATIBLE_SCHEMA");
   }
 
   const migrations = await client.query<MigrationRow>(
@@ -209,8 +230,51 @@ async function inspectClient(client: PostgreSqlClientPort): Promise<RegisteredSe
             contract_fingerprint, target_environment, result
      FROM app_identity.identity_schema_migrations ORDER BY migration_id`,
   );
-  if (migrations.rowCount === 0) return "NOT_READY_PARTIAL_MIGRATION";
-  if (migrations.rowCount !== 1 || !validMigration(migrations.rows[0])) return "NOT_READY_INCOMPATIBLE_SCHEMA";
+  let provenance: PostgreSqlIdentitySchemaReadinessProvenance;
+  if (migrations.rowCount === 1 && validMigration(migrations.rows[0])) {
+    if (attestationTablePresent) {
+      const attestations = await client.query<HistoricalAttestationRow>(
+        `SELECT migration_id, artifact_checksum, contract_id, schema_version, database_engine,
+                contract_fingerprint, target_environment, historical_applied_at,
+                historical_applied_at_known, evidence_recorded_at, operator_evidence_ref,
+                backup_evidence_ref, schema_verification_evidence_ref, reason, result
+         FROM app_identity.identity_historical_migration_attestations ORDER BY migration_id`,
+      );
+      if (attestations.rowCount !== 0) return evidence("NOT_READY_INCOMPATIBLE_SCHEMA");
+    }
+    provenance = "NATIVE_MIGRATION_LEDGER_VERIFIED";
+  } else if (migrations.rowCount === 0 && attestationTablePresent) {
+    const compatibility = await client.query<{ historical_attestation_schema_compatible: boolean }>(
+      `SELECT count(*) = 1
+          AND bool_and(lang.lanname = 'sql' AND proc.prorettype = 'boolean'::regtype
+            AND proc.pronargs = 0 AND proc.provolatile = 's' AND NOT proc.prosecdef
+            AND md5(upper(pg_catalog.regexp_replace(btrim(proc.prosrc), '\\s+', ' ', 'g')))
+              = '392f0ab48d4de10de66923de4372c2d3')
+          AND app_identity.identity_historical_attestation_schema_is_exact()
+          AS historical_attestation_schema_compatible
+       FROM pg_catalog.pg_proc proc
+       JOIN pg_catalog.pg_namespace nsp ON nsp.oid = proc.pronamespace
+       JOIN pg_catalog.pg_language lang ON lang.oid = proc.prolang
+       WHERE nsp.nspname = 'app_identity'
+         AND proc.proname = 'identity_historical_attestation_schema_is_exact'`,
+    );
+    if (compatibility.rowCount !== 1 || compatibility.rows[0]?.historical_attestation_schema_compatible !== true) {
+      return evidence("NOT_READY_INCOMPATIBLE_SCHEMA");
+    }
+    const attestations = await client.query<HistoricalAttestationRow>(
+      `SELECT migration_id, artifact_checksum, contract_id, schema_version, database_engine,
+              contract_fingerprint, target_environment, historical_applied_at,
+              historical_applied_at_known, evidence_recorded_at, operator_evidence_ref,
+              backup_evidence_ref, schema_verification_evidence_ref, reason, result
+       FROM app_identity.identity_historical_migration_attestations ORDER BY migration_id`,
+    );
+    if (attestations.rowCount !== 1 || !validHistoricalAttestation(attestations.rows[0])) {
+      return evidence("NOT_READY_INCOMPATIBLE_SCHEMA");
+    }
+    provenance = "HISTORICAL_MIGRATION_ATTESTATION_VERIFIED";
+  } else {
+    return evidence(migrations.rowCount === 0 ? "NOT_READY_PARTIAL_MIGRATION" : "NOT_READY_INCOMPATIBLE_SCHEMA");
+  }
 
   const privileges = await client.query<PrivilegeRow>(
     `SELECT pg_catalog.has_schema_privilege(current_user, 'app_identity', 'USAGE') AS schema_usage,
@@ -226,7 +290,11 @@ async function inspectClient(client: PostgreSqlClientPort): Promise<RegisteredSe
             pg_catalog.has_table_privilege(current_user, 'app_identity.identity_schema_contracts', 'SELECT') AS contract_read,
             pg_catalog.has_table_privilege(current_user, 'app_identity.identity_schema_contracts', 'INSERT,UPDATE,DELETE,TRUNCATE') AS contract_write,
             pg_catalog.has_table_privilege(current_user, 'app_identity.identity_schema_migrations', 'SELECT') AS ledger_read,
-            pg_catalog.has_table_privilege(current_user, 'app_identity.identity_schema_migrations', 'INSERT,UPDATE,DELETE,TRUNCATE') AS ledger_write`,
+            pg_catalog.has_table_privilege(current_user, 'app_identity.identity_schema_migrations', 'INSERT,UPDATE,DELETE,TRUNCATE') AS ledger_write,
+            CASE WHEN pg_catalog.to_regclass('app_identity.identity_historical_migration_attestations') IS NULL THEN TRUE
+                 ELSE pg_catalog.has_table_privilege(current_user, 'app_identity.identity_historical_migration_attestations', 'SELECT') END AS attestation_read,
+            CASE WHEN pg_catalog.to_regclass('app_identity.identity_historical_migration_attestations') IS NULL THEN FALSE
+                 ELSE pg_catalog.has_table_privilege(current_user, 'app_identity.identity_historical_migration_attestations', 'INSERT,UPDATE,DELETE,TRUNCATE') END AS attestation_write`,
   );
   const privilege = privileges.rows[0];
   return privileges.rowCount === 1 && privilege?.schema_usage === true && privilege.schema_create === false
@@ -235,12 +303,23 @@ async function inspectClient(client: PostgreSqlClientPort): Promise<RegisteredSe
     && privilege.workload_write === false && privilege.revocation_insert === true && privilege.revocation_excess === false
     && privilege.contract_read === true && privilege.contract_write === false
     && privilege.ledger_read === true && privilege.ledger_write === false
-    ? "READY" : "NOT_READY_INCOMPATIBLE_SCHEMA";
+    && privilege.attestation_read === true && privilege.attestation_write === false
+    ? evidence("READY", provenance) : evidence("NOT_READY_INCOMPATIBLE_SCHEMA");
 }
 
 interface MigrationRow extends Record<string, unknown> {
   migration_id: string; artifact_checksum: string; contract_id: string; schema_version: number;
   database_engine: string; contract_fingerprint: string; target_environment: string; result: string;
+}
+
+interface HistoricalAttestationRow extends MigrationRow {
+  historical_applied_at: unknown;
+  historical_applied_at_known: boolean;
+  evidence_recorded_at: unknown;
+  operator_evidence_ref: string;
+  backup_evidence_ref: string;
+  schema_verification_evidence_ref: string;
+  reason: string;
 }
 
 interface ConstraintRow extends Record<string, unknown> {
@@ -258,6 +337,7 @@ interface PrivilegeRow extends Record<string, unknown> {
   schema_usage: boolean; schema_create: boolean; session_select: boolean; session_insert: boolean; session_update: boolean; session_excess: boolean;
   workload_read: boolean; workload_write: boolean; revocation_insert: boolean; revocation_excess: boolean;
   contract_read: boolean; contract_write: boolean; ledger_read: boolean; ledger_write: boolean;
+  attestation_read: boolean; attestation_write: boolean;
 }
 
 function contract(rows: readonly { contract_id: string; database_engine: string; contract_fingerprint: string }[], id: string, fingerprint: string): boolean {
@@ -271,6 +351,35 @@ function validMigration(row: MigrationRow | undefined): boolean {
     && row.contract_id === "identity.registered-service-workload" && Number(row.schema_version) === 1
     && row.database_engine === "POSTGRESQL" && row.contract_fingerprint === POSTGRESQL_REGISTERED_SERVICE_WORKLOAD_SCHEMA_FINGERPRINT
     && row.target_environment === "PRODUCTION" && row.result === "APPLIED";
+}
+
+function validHistoricalAttestation(row: HistoricalAttestationRow | undefined): boolean {
+  return row?.migration_id === POSTGRESQL_REGISTERED_SERVICE_WORKLOAD_MIGRATION_ID
+    && row.artifact_checksum === POSTGRESQL_IDENTITY_MIGRATION_ARTIFACT_SHA256
+    && row.contract_id === "identity.registered-service-workload" && Number(row.schema_version) === 1
+    && row.database_engine === "POSTGRESQL" && row.contract_fingerprint === POSTGRESQL_REGISTERED_SERVICE_WORKLOAD_SCHEMA_FINGERPRINT
+    && row.target_environment === "PRODUCTION" && row.historical_applied_at === null
+    && row.historical_applied_at_known === false && validInstant(row.evidence_recorded_at)
+    && safeReference(row.operator_evidence_ref) && safeReference(row.backup_evidence_ref)
+    && safeReference(row.schema_verification_evidence_ref)
+    && row.reason === "HISTORICAL_APPLIED_AT_UNRECOVERABLE" && row.result === "VERIFIED_EXISTING_SCHEMA";
+}
+
+function evidence(
+  readiness: RegisteredServiceWorkloadSchemaReadiness,
+  provenance: PostgreSqlIdentitySchemaReadinessProvenance | null = null,
+): PostgreSqlIdentitySchemaEvidence {
+  return Object.freeze({ readiness, provenance });
+}
+
+function safeReference(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 512 && value.trim() === value
+    && !/[\u0000-\u001f\u007f]/u.test(value);
+}
+
+function validInstant(value: unknown): boolean {
+  return value instanceof Date ? Number.isFinite(value.getTime())
+    : safeReference(value) && Number.isFinite(Date.parse(value));
 }
 
 function same(left: readonly string[], right: readonly string[]): boolean {
@@ -310,7 +419,7 @@ function ownedTable(name: string): string {
 }
 
 export async function assertPostgreSqlRegisteredServiceWorkloadSchemaCompatible(pool: PostgreSqlPoolPort): Promise<void> {
-  if (await inspectPostgreSqlRegisteredServiceWorkloadSchema(pool) !== "READY") throw unavailable();
+  if ((await inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence(pool)).readiness !== "READY") throw unavailable();
 }
 
 function unavailable(): RegisteredServiceWorkloadError {
