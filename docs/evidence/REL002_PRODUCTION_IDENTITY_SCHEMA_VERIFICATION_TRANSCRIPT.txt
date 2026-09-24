@@ -1,0 +1,21 @@
+     evidence_started_at      | database_name |            database_user             | backend_pid 
+------------------------------+---------------+--------------------------------------+-------------
+ 2026-09-24 15:29:31.54206+00 | postgres      | ai_mls_production_migration_operator |      266163
+(1俺 青)
+
+ tls_enabled | tls_version |       tls_cipher       | tls_bits | tls_client_dn 
+-------------+-------------+------------------------+----------+---------------
+ t           | TLSv1.3     | TLS_AES_256_GCM_SHA384 |      256 | 
+(1俺 青)
+
+                                    verifier_artifact                                     
+------------------------------------------------------------------------------------------
+ modules/identity/migrations/postgresql/production/001_identity_persistence_v1.verify.sql
+(1俺 青)
+
+DO
+     evidence_completed_at     | database_name |            database_user             
+-------------------------------+---------------+--------------------------------------
+ 2026-09-24 15:29:47.294036+00 | postgres      | ai_mls_production_migration_operator
+(1俺 青)
+
