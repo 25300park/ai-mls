@@ -45,17 +45,30 @@ test("role privilege verification artifact is read-only and checks positive and 
   assert.match(sql, /aclexplode\s*\(/iu);
   assert.match(sql, /privilege_type\s*=\s*'TEMPORARY'/iu);
   assert.match(sql, /database_acl[^]*is_grantable/iu);
+  assert.match(sql, /identity_historical_migration_attestations/iu);
+  assert.match(sql, /identity_historical_attestation_schema_is_exact/iu);
+  assert.match(sql, /function_acl\s+AS\s*\(/iu);
+  assert.match(sql, /COALESCE\(grantee_roles\.rolname::text,\s*'PUBLIC'\)/iu);
+  assert.match(sql, /grantee_roles\.rolname\s+IN\s*\(\s*'ai_mls_production_runtime',\s*'ai_mls_production_migration_operator'\s*\)/iu);
+  assert.match(sql, /privileges\.grantee\s*<>\s*objects\.relowner/iu);
+  assert.match(sql, /member_role\.rolname\s+IN\s*\(\s*'ai_mls_production_runtime',\s*'ai_mls_production_migration_operator'\s*\)/iu);
+  assert.doesNotMatch(sql, /granted_role\.rolname\s+IN\s*\([^)]*\)\s+OR\s+member_role\.rolname/iu);
   assert.doesNotMatch(sql, /NOT\s+pg_catalog\.has_database_privilege\([^)]*'TEMPORARY'\)/iu);
   assert.doesNotMatch(sql, /^\s*(?:CREATE|ALTER|GRANT|REVOKE|INSERT|UPDATE|DELETE|DROP|TRUNCATE)\b/imu);
   assert.doesNotMatch(sql, /PASSWORD|SECRET|CREDENTIAL/iu);
 });
 
 test("runtime role grants only steady-state Identity and Session privileges", () => {
+  const roleCreationSql = readFileSync(roleCreationPath, "utf8");
   assert.match(runtimeSql, /ai_mls_production_runtime/u);
-  assert.match(runtimeSql, /ALTER\s+ROLE\s+ai_mls_production_runtime\s+NOSUPERUSER\s+NOCREATEDB\s+NOCREATEROLE\s+NOINHERIT\s+NOREPLICATION\s+NOBYPASSRLS/iu);
+  assert.match(roleCreationSql, /CREATE\s+ROLE\s+ai_mls_production_runtime\s+LOGIN\s+NOSUPERUSER\s+NOCREATEDB\s+NOCREATEROLE\s+NOINHERIT\s+NOREPLICATION\s+NOBYPASSRLS/iu);
+  assert.doesNotMatch(runtimeSql, /\bALTER\s+ROLE\b/iu);
   assert.match(runtimeSql, /GRANT\s+SELECT,\s*INSERT,\s*UPDATE\s+ON\s+TABLE\s+app_identity\.identity_sessions/iu);
   assert.match(runtimeSql, /GRANT\s+INSERT\s+ON\s+TABLE\s+app_identity\.identity_session_revocations/iu);
+  assert.match(runtimeSql, /GRANT\s+SELECT\s+ON\s+TABLE\s+app_identity\.identity_historical_migration_attestations\s+TO\s+ai_mls_production_runtime/iu);
+  assert.match(runtimeSql, /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+app_identity\.identity_historical_attestation_schema_is_exact\(\)\s+TO\s+ai_mls_production_runtime/iu);
   assert.doesNotMatch(runtimeSql, /GRANT[^;]*(?:CREATE|ALTER|DROP|TRUNCATE|DELETE|REFERENCES|TRIGGER|ROLE|WITH\s+GRANT\s+OPTION)/iu);
+  assert.doesNotMatch(runtimeSql, /\b(?:GRANT|REVOKE)[^;]*\bPUBLIC\b/iu);
   assert.doesNotMatch(runtimeSql, /ai_mls_production_migration_operator/u);
   assert.match(runtimeSql, /REVOKE\s+ALL\s+PRIVILEGES\s+ON\s+ALL\s+(?:TABLES|FUNCTIONS|SEQUENCES)/iu);
 });

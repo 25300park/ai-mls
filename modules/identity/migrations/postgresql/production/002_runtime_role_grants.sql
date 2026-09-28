@@ -1,6 +1,5 @@
 -- REL-002 Phase 2D-0F artifact only. Execute only through a separately approved operator gate.
-ALTER ROLE ai_mls_production_runtime
-  NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+-- Role attributes are owned by 000_production_role_creation.sql.
 
 REVOKE ALL ON DATABASE postgres FROM ai_mls_production_runtime;
 GRANT CONNECT ON DATABASE postgres TO ai_mls_production_runtime;
@@ -26,4 +25,10 @@ GRANT SELECT, INSERT, UPDATE ON TABLE app_identity.identity_sessions
 TO ai_mls_production_runtime;
 
 GRANT INSERT ON TABLE app_identity.identity_session_revocations
+TO ai_mls_production_runtime;
+
+GRANT SELECT ON TABLE app_identity.identity_historical_migration_attestations
+TO ai_mls_production_runtime;
+
+GRANT EXECUTE ON FUNCTION app_identity.identity_historical_attestation_schema_is_exact()
 TO ai_mls_production_runtime;

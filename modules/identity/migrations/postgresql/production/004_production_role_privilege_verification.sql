@@ -80,7 +80,8 @@ WITH expected(table_name, can_select, can_insert, can_update) AS (VALUES
   ('identity_schema_migrations', true, false, false),
   ('identity_registered_service_workloads', true, false, false),
   ('identity_sessions', true, true, true),
-  ('identity_session_revocations', false, true, false)
+  ('identity_session_revocations', false, true, false),
+  ('identity_historical_migration_attestations', true, false, false)
 )
 SELECT table_name,
   pg_catalog.has_table_privilege('ai_mls_production_runtime', 'app_identity.' || table_name, 'SELECT') = can_select
@@ -93,10 +94,96 @@ SELECT table_name,
 FROM expected
 ORDER BY table_name;
 
+WITH historical_table_acl AS (
+  SELECT COALESCE(grantee_roles.rolname::text, 'PUBLIC') AS role_name,
+    privileges.privilege_type,
+    privileges.is_grantable,
+    owners.rolname::text AS owner_name
+  FROM pg_catalog.pg_class objects
+  JOIN pg_catalog.pg_namespace namespaces ON namespaces.oid = objects.relnamespace
+  JOIN pg_catalog.pg_roles owners ON owners.oid = objects.relowner
+  CROSS JOIN LATERAL pg_catalog.aclexplode(
+    COALESCE(objects.relacl, pg_catalog.acldefault('r', objects.relowner))
+  ) privileges
+  LEFT JOIN pg_catalog.pg_roles grantee_roles ON grantee_roles.oid = privileges.grantee
+  WHERE namespaces.nspname = 'app_identity'
+    AND objects.relname = 'identity_historical_migration_attestations'
+)
+SELECT EXISTS (
+    SELECT 1 FROM historical_table_acl
+    WHERE role_name = 'ai_mls_production_runtime'
+      AND privilege_type = 'SELECT'
+      AND NOT is_grantable
+      AND owner_name = 'ai_mls_production_migration_operator'
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM historical_table_acl
+    WHERE role_name = 'ai_mls_production_runtime'
+      AND (privilege_type <> 'SELECT' OR is_grantable)
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM historical_table_acl
+    WHERE role_name = 'PUBLIC'
+  ) AS matches_expected;
+
+WITH historical_function AS (
+  SELECT procedures.oid,
+    procedures.proacl,
+    procedures.proowner,
+    owners.rolname::text AS owner_name
+  FROM pg_catalog.pg_proc procedures
+  JOIN pg_catalog.pg_namespace namespaces ON namespaces.oid = procedures.pronamespace
+  JOIN pg_catalog.pg_roles owners ON owners.oid = procedures.proowner
+  WHERE namespaces.nspname = 'app_identity'
+    AND procedures.proname = 'identity_historical_attestation_schema_is_exact'
+    AND procedures.pronargs = 0
+), function_acl AS (
+  SELECT historical_function.oid,
+    historical_function.owner_name,
+    COALESCE(grantee_roles.rolname::text, 'PUBLIC') AS role_name,
+    privileges.privilege_type,
+    privileges.is_grantable
+  FROM historical_function
+  CROSS JOIN LATERAL pg_catalog.aclexplode(
+    COALESCE(historical_function.proacl, pg_catalog.acldefault('f', historical_function.proowner))
+  ) privileges
+  LEFT JOIN pg_catalog.pg_roles grantee_roles ON grantee_roles.oid = privileges.grantee
+)
+SELECT (SELECT count(*) FROM historical_function) = 1
+  AND EXISTS (
+    SELECT 1 FROM function_acl
+    WHERE role_name = 'ai_mls_production_runtime'
+      AND privilege_type = 'EXECUTE'
+      AND NOT is_grantable
+      AND owner_name = 'ai_mls_production_migration_operator'
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM function_acl
+    WHERE role_name = 'ai_mls_production_runtime'
+      AND (privilege_type <> 'EXECUTE' OR is_grantable)
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM function_acl
+    WHERE role_name = 'PUBLIC'
+      AND privilege_type = 'EXECUTE'
+  )
+  AND pg_catalog.has_function_privilege(
+    'ai_mls_production_runtime',
+    (SELECT oid FROM historical_function),
+    'EXECUTE'
+  ) AS matches_expected;
+
 SELECT count(*) = 0 AS matches_expected
-FROM information_schema.table_privileges
-WHERE grantee IN ('ai_mls_production_runtime', 'ai_mls_production_migration_operator')
-  AND is_grantable = 'YES';
+FROM pg_catalog.pg_class objects
+JOIN pg_catalog.pg_namespace namespaces ON namespaces.oid = objects.relnamespace
+CROSS JOIN LATERAL pg_catalog.aclexplode(
+  COALESCE(objects.relacl, pg_catalog.acldefault('r', objects.relowner))
+) privileges
+JOIN pg_catalog.pg_roles grantee_roles ON grantee_roles.oid = privileges.grantee
+WHERE namespaces.nspname = 'app_identity'
+  AND grantee_roles.rolname IN ('ai_mls_production_runtime', 'ai_mls_production_migration_operator')
+  AND privileges.grantee <> objects.relowner
+  AND privileges.is_grantable;
 
 SELECT count(*) = 0 AS matches_expected
 FROM pg_catalog.pg_namespace namespaces
