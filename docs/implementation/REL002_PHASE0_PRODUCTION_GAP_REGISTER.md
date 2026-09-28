@@ -249,3 +249,15 @@ Phase 0 counts remain `24` blocking and `1` non-blocking. `SECRET_BACKEND_EXECUT
 | REL002-GAP-006 | Positive/negative privilege verification is executable and read-only; Production schema, registration and execution evidence remain absent. | `STAGING_ONLY`, `BLOCKING` |
 
 Phase 0 counts remain `24` blocking and `1` non-blocking. Role creation, password binding, Production connection/write, migration, secret writes and infrastructure mutation remain `0`.
+
+### Phase 2D historical attestation Production execution closeout checkpoint
+
+Historical attestation schema와 exact historical attestation row가 controlled Production transaction에서 commit되었고 post-commit `008`이 `HISTORICAL_MIGRATION_ATTESTATION_VERIFIED`를 반환했다. Historical `applied_at`은 `UNKNOWN`, native ledger는 absent by design이다. 이 증거는 Production Identity schema provenance의 historical exception만 닫는다.
+
+| Gap | Production execution closeout impact | Current state |
+|---|---|---|
+| REL002-GAP-004 | Controlled historical-attestation transaction과 post-commit verification은 PASS. Railway deployment, live Production service configuration/startup evidence는 여전히 없다. | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-005 | Canonical evidence references는 transaction에 binding되었으나 human-bound steady-state Railway runtime secret/rotation evidence는 여전히 없다. | `PARTIAL`, `BLOCKING` |
+| REL002-GAP-006 | Historical schema provenance는 verified. Live RegisteredServiceWorkload registration과 Production bootstrap/startup evidence는 여전히 없다. | `STAGING_ONLY`, `BLOCKING` |
+
+이 bounded closeout은 Phase 0 inventory 전체를 재산정하지 않는다. 역사적 `24` blocking / `1` non-blocking count와 기존 BLOCK checkpoint는 그대로 보존한다.

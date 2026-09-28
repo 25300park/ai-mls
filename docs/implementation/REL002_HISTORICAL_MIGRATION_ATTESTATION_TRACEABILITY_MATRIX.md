@@ -28,6 +28,17 @@
 | Provenance separation | schema inspector + `ProductionBootstrap.identitySchemaReadinessProvenance` | PASS |
 | Future migration unchanged | native ledger still requires true `applied_at NOT NULL` | PASS |
 | Disposable PostgreSQL | `historical-migration-attestation.integration.test.ts` | PASS |
-| Production safety | SQL execution, schema amendment, insertion, roles, deployment | 0 |
+| Repository implementation safety (historical) | implementation task 중 SQL execution, schema amendment, insertion, roles, deployment | 0 |
+| Production preflight | database/operator identity, DB/schema/language privileges, required ownership, runtime role, absent historical/native evidence | PASS |
+| Controlled transaction | `006` → exact three GUCs → `007` → `008` → `COMMIT` | PASS |
+| Historical attestation persisted | exact canonical row; `evidence_recorded_at = 2026-09-28 03:13:38.525583+00` | PASS |
+| Historical time truth | `historical_applied_at NULL`, `historical_applied_at_known FALSE` | PASS |
+| Exact evidence binding | operator / backup / schema verification canonical references | PASS |
+| Native ledger remains absent | native migration ledger absence verified post-commit | PASS / BY DESIGN |
+| Readiness provenance | pre-commit and post-commit `008`; `HISTORICAL_MIGRATION_ATTESTATION_VERIFIED` | PASS |
+| Rerun safety | `006` rerun PROHIBITED; `007` rerun PROHIBITED; historical `005` NOT USED | PASS |
+| Closeout task safety | additional Production SQL, roles, runtime grants, deployment | 0 |
 
 Finalized record: [REL-002 Production Backup / Restore Rehearsal Evidence](../evidence/REL002_PRODUCTION_BACKUP_RESTORE_REHEARSAL_EVIDENCE.md).
+
+Production execution evidence: [REL-002 Production Historical Attestation Execution Evidence](../evidence/REL002_PRODUCTION_HISTORICAL_ATTESTATION_EXECUTION_EVIDENCE.md).

@@ -72,3 +72,9 @@ Repository implementation만 완료했다. Production schema amendment, historic
 ## Completion statement
 
 DEC-193 repository implementation은 bounded scope로 준비되며, Production mutation 없이 exact historical exception과 native precedence를 보존한다.
+
+## Production execution closeout addendum (2026-09-28)
+
+위 본문은 2026-09-24 repository implementation completion 시점의 역사적 상태를 보존한다. 후속하여 별도 승인된 Production controlled transaction에서 `006`, `007`, `008`이 실행·commit되었고 exact historical attestation row와 `HISTORICAL_MIGRATION_ATTESTATION_VERIFIED` provenance가 post-commit에 재검증되었다. Native ledger는 absent by design를 유지하고 historical `applied_at`은 `UNKNOWN`이다.
+
+현재 closeout은 [Production Execution Evidence](../evidence/REL002_PRODUCTION_HISTORICAL_ATTESTATION_EXECUTION_EVIDENCE.md)와 [Production Execution Closeout Completion](REL002_HISTORICAL_ATTESTATION_PRODUCTION_EXECUTION_CLOSEOUT_COMPLETION.md)에서 관리한다. 이 addendum는 기존 pre-execution status를 재작성하지 않는다.

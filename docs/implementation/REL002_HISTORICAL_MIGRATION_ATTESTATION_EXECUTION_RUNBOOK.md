@@ -41,6 +41,22 @@ native ledger row 존재, non-empty attestation relation, exact schema/contract/
 
 DEC-194 path에서는 execution-operator approval 또는 independent reviewer approval가 없거나 Link B를 `PROVEN`으로 과장하거나 native identifier를 추정한 record도 중단 조건이다.
 
-## 현재 실행 상태
+## 역사적 pre-execution 상태
 
-Production schema amendment `0`, attestation insert `0`, `005` execution `0`, role/runtime grant execution `0`, deployment `0`이다.
+아래는 controlled execution 전에 기록된 역사적 baseline이다. Production schema amendment `0`, attestation insert `0`, `005` execution `0`, role/runtime grant execution `0`, deployment `0`이었다.
+
+## Production execution closeout
+
+2026-09-28에 `ai_mls_production_migration_operator`로 preflight를 완료하고 한 controlled transaction에서 `006` → evidence GUC binding → `007` → `008` 순서를 실행했다. `008`은 commit 전·후 모두 `DO / PASS`였고 readiness provenance는 `HISTORICAL_MIGRATION_ATTESTATION_VERIFIED`였다. Transaction `COMMIT`과 post-commit read-only verification은 PASS였다.
+
+실행에 사용한 evidence reference는 다음과 같다.
+
+- `REL002-EVIDENCE-OPERATOR-001`
+- `REL002-EVIDENCE-BACKUP-RESTORE-001`
+- `REL002-EVIDENCE-SCHEMA-VERIFY-001`
+
+Exact attestation row는 migration ID, historical `001` checksum, contract, schema version, engine, target environment, 세 evidence reference, reason/result를 canonical 값과 일치시켰다. `historical_applied_at` is `NULL`, `historical_applied_at_known` is `FALSE`, `evidence_recorded_at` is `2026-09-28 03:13:38.525583+00`이다. Native ledger는 설계대로 absent이다.
+
+Post-commit read-only verification 중 `BEGIN READ ONLY`가 두 번 입력되어 `WARNING: there is already a transaction in progress`가 발생했으나 transaction state와 verifier 결과에는 영향이 없었다. 별도 remediation은 필요하지 않다.
+
+이제 `006` 및 `007` rerun은 금지다. `005`는 이 historical case에 사용하지 않았다. 세부 실행 증거는 [Production Historical Attestation Execution Evidence](../evidence/REL002_PRODUCTION_HISTORICAL_ATTESTATION_EXECUTION_EVIDENCE.md)를 따른다.

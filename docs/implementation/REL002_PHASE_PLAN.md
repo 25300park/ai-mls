@@ -165,3 +165,9 @@ Repository-side Dockerfile isolation, exact two-reference Railway sealed-variabl
 ### Phase 2D-0K PostgreSQL role execution preparation checkpoint
 
 Exact two-role passwordless creation, secure interactive password binding, controlled execution ordering and read-only positive/negative privilege verification are repository-defined. Existing 001/002/003 migration and grant semantics remain unchanged. Physical binding, named operator, exact-target backup and restore evidence remain mandatory; role creation, password binding, migration, Production DB write and platform mutation remain `0`.
+
+### Phase 2D historical attestation Production execution closeout checkpoint
+
+Approved Production operator `ai_mls_production_migration_operator`가 사전 identity/privilege/ownership/native-evidence absence preflight를 PASS한 후, 한 controlled transaction에서 `006` → exact three evidence GUCs → `007` → `008` → `COMMIT`을 완료했다. Post-commit exact row와 `HISTORICAL_MIGRATION_ATTESTATION_VERIFIED` provenance가 PASS했고, native migration ledger는 absent by design이며 historical `applied_at`은 `UNKNOWN`을 유지한다. `006`/`007` rerun은 금지되고 `005`는 이 historical case에 사용하지 않았다.
+
+이 checkpoint는 historical schema provenance sub-gate를 닫지만 Railway deployment, human-bound runtime secret, live Production registration/startup 증거를 대체하지 않는다. 따라서 기존 Phase 0 gap의 전체 `BLOCKING` classification과 historical checkpoint는 그대로 보존한다.
