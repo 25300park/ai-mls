@@ -6,7 +6,7 @@
 | 문서 버전 | v0.1 |
 | 상태 | DRAFT |
 | 소유 역할 | Development / Security Owner |
-| Decision | DEC-193 |
+| Decision | DEC-193, DEC-194 |
 
 | Requirement | Implementation / evidence | State |
 |---|---|---|
@@ -16,6 +16,11 @@
 | Unknown time represented truthfully | `historical_applied_at NULL`, `historical_applied_at_known FALSE` | PASS |
 | Database attestation time | `evidence_recorded_at DEFAULT transaction_timestamp()` | PASS |
 | Required evidence refs | `007` session-local inputs, bounded shape checks | PASS |
+| Exact platform-limited evidence class | [DEC-194 Evidence Contract](REL002_PLATFORM_LIMITED_BACKUP_RESTORE_EVIDENCE_CONTRACT.md) | PASS |
+| R2 linkage truth | A/C/D/E `PROVEN`; B `PARTIAL_PLATFORM_LIMITATION` | PASS |
+| Distinct backup/restore provenance | `BACKUP_RESTORE_PLATFORM_LIMITED_ATTESTATION_VERIFIED` | PASS |
+| Dual approval gate | execution-operator `REL002-OPERATOR-HUMAN-001` APPROVED; independent reviewer APPROVED | PASS |
+| Canonical R2 integrity | `SHA256SUMS.txt` 10/10 PASS; source bytes immutable | PASS |
 | Exact schema required | existing schema/contracts/constraint inventory preconditions | PASS |
 | Duplicate/conflict fail closed | empty relation and absent native-ledger preconditions; no upsert | PASS |
 | Mutation denial | UPDATE/DELETE/TRUNCATE statement triggers | PASS |
@@ -24,3 +29,5 @@
 | Future migration unchanged | native ledger still requires true `applied_at NOT NULL` | PASS |
 | Disposable PostgreSQL | `historical-migration-attestation.integration.test.ts` | PASS |
 | Production safety | SQL execution, schema amendment, insertion, roles, deployment | 0 |
+
+Finalized record: [REL-002 Production Backup / Restore Rehearsal Evidence](../evidence/REL002_PRODUCTION_BACKUP_RESTORE_REHEARSAL_EVIDENCE.md).

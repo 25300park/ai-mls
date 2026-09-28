@@ -1,0 +1,25 @@
+     validation_started_at     | database_name | database_user |      server_address       | server_port 
+-------------------------------+---------------+---------------+---------------------------+-------------
+ 2026-09-25 08:59:07.967727+00 | postgres      | postgres      | 2406:da18:1691:a200::cacb |        5432
+(1俺 青)
+
+       restored_project_name        | restored_project_ref |      restored_project_endpoint      
+------------------------------------+----------------------+-------------------------------------
+ ai-mls-rel002-restore-rehearsal-r2 | nkpwmizqavoxfxqgjlfr | db.nkpwmizqavoxfxqgjlfr.supabase.co
+(1俺 青)
+
+ identity_schema 
+-----------------
+ app_identity
+(1俺 青)
+
+            contracts_table             |            migrations_table             |         sessions_table         |             revocations_table             |                  workloads_table                   
+----------------------------------------+-----------------------------------------+--------------------------------+-------------------------------------------+----------------------------------------------------
+ app_identity.identity_schema_contracts | app_identity.identity_schema_migrations | app_identity.identity_sessions | app_identity.identity_session_revocations | app_identity.identity_registered_service_workloads
+(1俺 青)
+
+    validation_completed_at    
+-------------------------------
+ 2026-09-25 08:59:26.016938+00
+(1俺 青)
+

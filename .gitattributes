@@ -8,3 +8,6 @@
 *.webp binary
 *.pdf binary
 docs/evidence/REL002_PRODUCTION_IDENTITY_SCHEMA_VERIFICATION_TRANSCRIPT.txt binary
+docs/evidence/source/rel002-backup-restore-r2-canonical/08_R2_RESTORED_DB_VALIDATION.txt binary
+docs/evidence/source/rel002-backup-restore-r2-canonical/08_R2_RESTORED_DB_VALIDATION.txt.sha256 binary
+docs/evidence/source/rel002-backup-restore-r2-canonical/SHA256SUMS.txt binary
