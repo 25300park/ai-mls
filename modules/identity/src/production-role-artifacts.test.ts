@@ -10,6 +10,7 @@ const roleCreationPath = resolve("modules/identity/migrations/postgresql/product
 const preMigrationRoleVerificationPath = resolve("modules/identity/migrations/postgresql/production/003a_pre_migration_role_privilege_verification.sql");
 const roleVerificationPath = resolve("modules/identity/migrations/postgresql/production/004_production_role_privilege_verification.sql");
 const recoveryPath = resolve("modules/identity/migrations/postgresql/production/009_complete_production_runtime_role_boundary_after_partial_002.sql");
+const grantorAwareRecoveryPath = resolve("modules/identity/migrations/postgresql/production/010_complete_production_runtime_role_boundary_with_bounded_set_authority.sql");
 const executionRunbookPath = resolve("docs/implementation/REL002_PHASE2D0K_CONTROLLED_EXECUTION_RUNBOOK.md");
 
 function executableStatements(sql: string): string[] {
@@ -90,6 +91,45 @@ test("partial 002 recovery is a new atomic owner-split artifact and preserves hi
   assert.doesNotMatch(recoverySql, /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+app_identity\.reject_historical_migration_attestation_mutation\(\)\s+TO\s+ai_mls_production_runtime/iu);
   assert.match(recoverySql, /FAILURE_INJECTION_POINT/iu);
   assert.match(recoverySql, /COMMIT;\s*$/u);
+});
+
+test("grantor-aware recovery preserves the Supabase membership and removes only temporary postgres authority", () => {
+  assert.equal(existsSync(grantorAwareRecoveryPath), true);
+  const sql = readFileSync(grantorAwareRecoveryPath, "utf8");
+  assert.match(sql, /^BEGIN;/mu);
+  assert.match(sql, /grantor_role\.rolname\s*=\s*'supabase_admin'/iu);
+  assert.match(sql, /memberships\.admin_option/iu);
+  assert.match(sql, /NOT\s+memberships\.inherit_option/iu);
+  assert.match(sql, /NOT\s+memberships\.set_option/iu);
+  assert.match(sql, /member_role\.rolname\s*<>\s*'postgres'/iu);
+  assert.match(sql, /GRANT\s+ai_mls_production_migration_operator\s+TO\s+postgres\s+WITH\s+SET\s+TRUE/iu);
+  assert.match(sql, /SET\s+LOCAL\s+ROLE\s+ai_mls_production_migration_operator/iu);
+  assert.match(sql, /RESET\s+ROLE/iu);
+  assert.match(sql, /REVOKE\s+ai_mls_production_migration_operator\s+FROM\s+postgres\s+GRANTED\s+BY\s+postgres/iu);
+  assert.doesNotMatch(sql, /GRANT\s+ai_mls_production_migration_operator\s+TO\s+postgres\s+WITH\s+SET\s+FALSE/iu);
+  for (const marker of [
+    "BEFORE_TEMPORARY_GRANT",
+    "AFTER_TEMPORARY_GRANT",
+    "AFTER_SET_ROLE",
+    "DURING_ACL_MUTATION",
+    "AFTER_RESET_ROLE",
+    "BEFORE_TEMPORARY_GRANT_CLEANUP",
+    "AFTER_TEMPORARY_GRANT_CLEANUP",
+  ]) {
+    assert.match(sql, new RegExp(`FAILURE_INJECTION_${marker}`, "u"));
+  }
+  assert.match(sql, /COMMIT;\s*$/u);
+});
+
+test("final role verification requires exact Supabase grant provenance and no temporary recovery membership", () => {
+  const sql = readFileSync(roleVerificationPath, "utf8");
+  assert.match(sql, /grantor_role\.rolname/iu);
+  assert.match(sql, /supabase_admin/iu);
+  assert.match(sql, /memberships\.admin_option/iu);
+  assert.match(sql, /memberships\.inherit_option/iu);
+  assert.match(sql, /memberships\.set_option/iu);
+  assert.match(sql, /postgres/iu);
+  assert.match(sql, /\(SELECT\s+count\(\*\)\s+FROM\s+actual\)\s*=\s*2/iu);
 });
 
 test("migration operator attributes remain owned by 000 and 003 is Supabase-compatible grant-only SQL", () => {

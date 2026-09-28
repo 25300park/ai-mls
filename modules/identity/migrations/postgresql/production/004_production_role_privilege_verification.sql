@@ -1,6 +1,6 @@
 -- REL-002 Phase 2D-0K read-only post-migration verification artifact.
 -- Requires the 001 migration and either complete 002 runtime grants or the
--- approved 009 partial-002 recovery to have completed successfully.
+-- approved grantor-aware 010 partial-002 recovery to have completed successfully.
 -- Every returned `matches_expected` value must be true before the execution gate can pass.
 
 WITH expected(role_name) AS (VALUES
@@ -42,6 +42,7 @@ SELECT expected.role_name,
   ) AS direct_temporary_observed,
   pg_catalog.has_database_privilege(expected.role_name, 'postgres', 'CONNECT') = expected.connect_expected
     AND pg_catalog.has_database_privilege(expected.role_name, 'postgres', 'CREATE') = expected.create_expected
+    AND pg_catalog.has_database_privilege(expected.role_name, 'postgres', 'TEMPORARY')
     AND EXISTS (
       SELECT 1 FROM database_acl
       WHERE database_acl.role_name = expected.role_name
@@ -73,8 +74,16 @@ FROM expected
 ORDER BY expected.role_name;
 
 SELECT 'ai_mls_production_runtime' AS role_name,
-  pg_catalog.has_schema_privilege('ai_mls_production_runtime', 'app_identity', 'USAGE')
-    AND NOT pg_catalog.has_schema_privilege('ai_mls_production_runtime', 'app_identity', 'CREATE') AS matches_expected;
+  pg_catalog.has_schema_privilege(
+    'ai_mls_production_runtime',
+    (SELECT oid FROM pg_catalog.pg_namespace WHERE nspname = 'app_identity'),
+    'USAGE'
+  )
+    AND NOT pg_catalog.has_schema_privilege(
+      'ai_mls_production_runtime',
+      (SELECT oid FROM pg_catalog.pg_namespace WHERE nspname = 'app_identity'),
+      'CREATE'
+    ) AS matches_expected;
 
 WITH expected(table_name, can_select, can_insert, can_update) AS (VALUES
   ('identity_schema_contracts', true, false, false),
@@ -83,16 +92,25 @@ WITH expected(table_name, can_select, can_insert, can_update) AS (VALUES
   ('identity_sessions', true, true, true),
   ('identity_session_revocations', false, true, false),
   ('identity_historical_migration_attestations', true, false, false)
+), resolved AS (
+  SELECT expected.*,
+    objects.oid AS object_oid
+  FROM expected
+  LEFT JOIN pg_catalog.pg_namespace namespaces ON namespaces.nspname = 'app_identity'
+  LEFT JOIN pg_catalog.pg_class objects
+    ON objects.relnamespace = namespaces.oid
+    AND objects.relname = expected.table_name
 )
 SELECT table_name,
-  pg_catalog.has_table_privilege('ai_mls_production_runtime', 'app_identity.' || table_name, 'SELECT') = can_select
-    AND pg_catalog.has_table_privilege('ai_mls_production_runtime', 'app_identity.' || table_name, 'INSERT') = can_insert
-    AND pg_catalog.has_table_privilege('ai_mls_production_runtime', 'app_identity.' || table_name, 'UPDATE') = can_update
-    AND NOT pg_catalog.has_table_privilege('ai_mls_production_runtime', 'app_identity.' || table_name, 'DELETE')
-    AND NOT pg_catalog.has_table_privilege('ai_mls_production_runtime', 'app_identity.' || table_name, 'TRUNCATE')
-    AND NOT pg_catalog.has_table_privilege('ai_mls_production_runtime', 'app_identity.' || table_name, 'REFERENCES')
-    AND NOT pg_catalog.has_table_privilege('ai_mls_production_runtime', 'app_identity.' || table_name, 'TRIGGER') AS matches_expected
-FROM expected
+  object_oid IS NOT NULL
+    AND pg_catalog.has_table_privilege('ai_mls_production_runtime', object_oid, 'SELECT') = can_select
+    AND pg_catalog.has_table_privilege('ai_mls_production_runtime', object_oid, 'INSERT') = can_insert
+    AND pg_catalog.has_table_privilege('ai_mls_production_runtime', object_oid, 'UPDATE') = can_update
+    AND NOT pg_catalog.has_table_privilege('ai_mls_production_runtime', object_oid, 'DELETE')
+    AND NOT pg_catalog.has_table_privilege('ai_mls_production_runtime', object_oid, 'TRUNCATE')
+    AND NOT pg_catalog.has_table_privilege('ai_mls_production_runtime', object_oid, 'REFERENCES')
+    AND NOT pg_catalog.has_table_privilege('ai_mls_production_runtime', object_oid, 'TRIGGER') AS matches_expected
+FROM resolved
 ORDER BY table_name;
 
 WITH historical_table_acl AS (
@@ -231,10 +249,71 @@ WHERE namespaces.nspname = 'app_identity'
   AND grantee_roles.rolname IN ('ai_mls_production_runtime', 'ai_mls_production_migration_operator')
   AND privileges.is_grantable;
 
-SELECT count(*) = 0 AS matches_expected
-FROM pg_catalog.pg_auth_members memberships
-JOIN pg_catalog.pg_roles member_role ON member_role.oid = memberships.member
-WHERE member_role.rolname IN ('ai_mls_production_runtime', 'ai_mls_production_migration_operator');
+WITH actual AS (
+  SELECT granted_role.rolname::text AS granted_role,
+    member_role.rolname::text AS member_role,
+    grantor_role.rolname::text AS grantor_role,
+    memberships.admin_option,
+    memberships.inherit_option,
+    memberships.set_option
+  FROM pg_catalog.pg_auth_members memberships
+  JOIN pg_catalog.pg_roles granted_role ON granted_role.oid = memberships.roleid
+  JOIN pg_catalog.pg_roles member_role ON member_role.oid = memberships.member
+  JOIN pg_catalog.pg_roles grantor_role ON grantor_role.oid = memberships.grantor
+  WHERE granted_role.rolname IN (
+      'ai_mls_production_runtime',
+      'ai_mls_production_migration_operator'
+    )
+  UNION ALL
+  SELECT granted_role.rolname::text AS granted_role,
+    member_role.rolname::text AS member_role,
+    grantor_role.rolname::text AS grantor_role,
+    memberships.admin_option,
+    memberships.inherit_option,
+    memberships.set_option
+  FROM pg_catalog.pg_auth_members memberships
+  JOIN pg_catalog.pg_roles granted_role ON granted_role.oid = memberships.roleid
+  JOIN pg_catalog.pg_roles member_role ON member_role.oid = memberships.member
+  JOIN pg_catalog.pg_roles grantor_role ON grantor_role.oid = memberships.grantor
+  WHERE granted_role.rolname NOT IN (
+      'ai_mls_production_runtime',
+      'ai_mls_production_migration_operator'
+    )
+    AND member_role.rolname IN (
+      'ai_mls_production_runtime',
+      'ai_mls_production_migration_operator'
+    )
+), expected(
+  granted_role,
+  member_role,
+  grantor_role,
+  admin_option,
+  inherit_option,
+  set_option
+) AS (VALUES
+  (
+    'ai_mls_production_migration_operator',
+    'postgres',
+    'supabase_admin',
+    true,
+    false,
+    false
+  ),
+  (
+    'ai_mls_production_runtime',
+    'postgres',
+    'supabase_admin',
+    true,
+    false,
+    false
+  )
+)
+SELECT (SELECT count(*) FROM actual) = 2
+  AND NOT EXISTS (
+    (SELECT * FROM actual EXCEPT SELECT * FROM expected)
+    UNION ALL
+    (SELECT * FROM expected EXCEPT SELECT * FROM actual)
+  ) AS matches_expected;
 
 SELECT count(*) = 0 AS matches_expected
 FROM pg_catalog.pg_class objects
