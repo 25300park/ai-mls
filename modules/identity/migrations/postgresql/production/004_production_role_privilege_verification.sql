@@ -1,5 +1,6 @@
 -- REL-002 Phase 2D-0K read-only post-migration verification artifact.
--- Requires the 001 migration and 002 runtime grants to have completed successfully.
+-- Requires the 001 migration and either complete 002 runtime grants or the
+-- approved 009 partial-002 recovery to have completed successfully.
 -- Every returned `matches_expected` value must be true before the execution gate can pass.
 
 WITH expected(role_name) AS (VALUES
@@ -171,6 +172,41 @@ SELECT (SELECT count(*) FROM historical_function) = 1
     'ai_mls_production_runtime',
     (SELECT oid FROM historical_function),
     'EXECUTE'
+  ) AS matches_expected;
+
+WITH mutation_function AS (
+  SELECT procedures.oid,
+    procedures.proacl,
+    procedures.proowner,
+    owners.rolname::text AS owner_name
+  FROM pg_catalog.pg_proc procedures
+  JOIN pg_catalog.pg_namespace namespaces ON namespaces.oid = procedures.pronamespace
+  JOIN pg_catalog.pg_roles owners ON owners.oid = procedures.proowner
+  WHERE namespaces.nspname = 'app_identity'
+    AND procedures.proname = 'reject_historical_migration_attestation_mutation'
+    AND procedures.pronargs = 0
+), mutation_function_acl AS (
+  SELECT mutation_function.owner_name,
+    COALESCE(grantee_roles.rolname::text, 'PUBLIC') AS role_name,
+    privileges.privilege_type,
+    privileges.is_grantable
+  FROM mutation_function
+  CROSS JOIN LATERAL pg_catalog.aclexplode(
+    COALESCE(mutation_function.proacl, pg_catalog.acldefault('f', mutation_function.proowner))
+  ) privileges
+  LEFT JOIN pg_catalog.pg_roles grantee_roles ON grantee_roles.oid = privileges.grantee
+)
+SELECT (SELECT count(*) FROM mutation_function) = 1
+  AND (SELECT owner_name FROM mutation_function) = 'ai_mls_production_migration_operator'
+  AND NOT pg_catalog.has_function_privilege(
+    'ai_mls_production_runtime',
+    (SELECT oid FROM mutation_function),
+    'EXECUTE'
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM mutation_function_acl
+    WHERE role_name IN ('ai_mls_production_runtime', 'PUBLIC')
+      AND (privilege_type = 'EXECUTE' OR is_grantable)
   ) AS matches_expected;
 
 SELECT count(*) = 0 AS matches_expected

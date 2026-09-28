@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -8,6 +9,7 @@ const migrationSql = readFileSync(resolve("modules/identity/migrations/postgresq
 const roleCreationPath = resolve("modules/identity/migrations/postgresql/production/000_production_role_creation.sql");
 const preMigrationRoleVerificationPath = resolve("modules/identity/migrations/postgresql/production/003a_pre_migration_role_privilege_verification.sql");
 const roleVerificationPath = resolve("modules/identity/migrations/postgresql/production/004_production_role_privilege_verification.sql");
+const recoveryPath = resolve("modules/identity/migrations/postgresql/production/009_complete_production_runtime_role_boundary_after_partial_002.sql");
 const executionRunbookPath = resolve("docs/implementation/REL002_PHASE2D0K_CONTROLLED_EXECUTION_RUNBOOK.md");
 
 function executableStatements(sql: string): string[] {
@@ -71,6 +73,23 @@ test("runtime role grants only steady-state Identity and Session privileges", ()
   assert.doesNotMatch(runtimeSql, /\b(?:GRANT|REVOKE)[^;]*\bPUBLIC\b/iu);
   assert.doesNotMatch(runtimeSql, /ai_mls_production_migration_operator/u);
   assert.match(runtimeSql, /REVOKE\s+ALL\s+PRIVILEGES\s+ON\s+ALL\s+(?:TABLES|FUNCTIONS|SEQUENCES)/iu);
+});
+
+test("partial 002 recovery is a new atomic owner-split artifact and preserves historical 002 bytes", () => {
+  assert.equal(
+    createHash("sha256").update(runtimeSql).digest("hex"),
+    "76275ea39fd4881633e1d3097e5227e37a611b9fac36e0a0ad960795fbb985fb",
+  );
+  assert.equal(existsSync(recoveryPath), true);
+  const recoverySql = readFileSync(recoveryPath, "utf8");
+  assert.match(recoverySql, /^BEGIN;/mu);
+  assert.match(recoverySql, /SET\s+LOCAL\s+ROLE\s+ai_mls_production_migration_operator/iu);
+  assert.match(recoverySql, /RESET\s+ROLE/iu);
+  assert.match(recoverySql, /REVOKE\s+EXECUTE\s+ON\s+FUNCTION\s+app_identity\.reject_historical_migration_attestation_mutation\(\)\s+FROM\s+PUBLIC/iu);
+  assert.match(recoverySql, /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+app_identity\.identity_historical_attestation_schema_is_exact\(\)\s+TO\s+ai_mls_production_runtime/iu);
+  assert.doesNotMatch(recoverySql, /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+app_identity\.reject_historical_migration_attestation_mutation\(\)\s+TO\s+ai_mls_production_runtime/iu);
+  assert.match(recoverySql, /FAILURE_INJECTION_POINT/iu);
+  assert.match(recoverySql, /COMMIT;\s*$/u);
 });
 
 test("migration operator attributes remain owned by 000 and 003 is Supabase-compatible grant-only SQL", () => {
