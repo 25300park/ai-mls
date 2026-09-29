@@ -1,10 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { ProductionBootstrapDependencies, ProductionRuntimeHandle } from "./production-bootstrap.js";
+import type {
+  ProductionBootstrapDependencies,
+  ProductionChildRoot,
+  ProductionRuntimeHandle,
+} from "./production-bootstrap.js";
+import { ProductionBootstrapError, startProductionRuntime } from "./production-bootstrap.js";
 import { createProductionReadinessState } from "./production-readiness-http.js";
-import { createRailwayProductionDependencies, runProductionMain, type ProductionSignal } from "./production-main.js";
+import type { ProductionRuntimeHttpListenerFactory } from "./production-readiness-http.js";
+import {
+  RAILWAY_PRODUCTION_DEPENDENCY_CLASSIFICATION,
+  createRailwayProductionDependencies,
+  runProductionMain,
+  type ProductionSignal,
+} from "./production-main.js";
 import { ProductionSecretBindingError } from "./production-secret-reference-resolver.js";
+import { PostgreSqlSessionUnitOfWork, type PostgreSqlPoolPort } from "../../../modules/identity/src/index.js";
 
 function productionEnvironment(): Readonly<Record<string, string>> {
   return Object.freeze({
@@ -38,12 +50,99 @@ function productionEnvironment(): Readonly<Record<string, string>> {
   });
 }
 
+function r3aDependencies(environment: Readonly<Record<string, string>>): ProductionBootstrapDependencies {
+  return createRailwayProductionDependencies(environment, createProductionReadinessState());
+}
+
+function productionHttpRoots(): readonly ProductionChildRoot[] {
+  const handler = Object.freeze({ handle: () => Promise.reject(new Error("unused")) });
+  return Object.freeze([
+    Object.freeze({ componentId: "API-014" as const, httpHandler: handler, activateRuntime: () => undefined, close: () => undefined }),
+    Object.freeze({ componentId: "API-015" as const, httpHandler: handler, activateRuntime: () => undefined, close: () => undefined }),
+    Object.freeze({ componentId: "API-018" as const, activateRuntime: () => undefined, close: () => undefined }),
+    Object.freeze({ componentId: "API-019" as const, activateRuntime: () => undefined, close: () => undefined }),
+    Object.freeze({ componentId: "FEAT-022" as const, activateRuntime: () => undefined, close: () => undefined }),
+  ]);
+}
+
 test("the executable composition fails closed before PostgreSQL when sealed runtime values are unbound", async () => {
   const environment = productionEnvironment();
   const dependencies = createRailwayProductionDependencies(environment);
   const configuration = dependencies.parseConfiguration(environment);
 
   await assert.rejects(() => dependencies.openPostgreSqlPool(configuration), ProductionSecretBindingError);
+});
+
+test("the Railway factory classifies every R3-A dependency without selecting test or development composition", () => {
+  assert.deepEqual(RAILWAY_PRODUCTION_DEPENDENCY_CLASSIFICATION, {
+    openIdentityAuthorityReadOnly: "EXISTING_BUT_NOT_PRODUCTION_COMPOSABLE",
+    validateHumanIdentityAuthority: "NEW_IMPLEMENTATION_REQUIRED",
+    resolveRequiredServiceIdentities: "EXISTING_BUT_NOT_PRODUCTION_COMPOSABLE",
+    resolveRequiredSecrets: "EXTERNAL_PREREQUISITE",
+    validateStartupGate: "NEW_IMPLEMENTATION_REQUIRED",
+    createSessionUnitOfWork: "EXISTING_APPROVED_ADAPTER",
+    assertComponentSchemasReady: "REQUIRES_R3_B_CHILD_ROOT_POSTGRES",
+    childRootOptions: "REQUIRES_R3_B_CHILD_ROOT_POSTGRES",
+    startListeners: "EXISTING_APPROVED_ADAPTER",
+    startWorkers: "NEW_IMPLEMENTATION_REQUIRED",
+  });
+});
+
+test("the Railway factory wires the PostgreSQL Session UoW and leaves later boundaries fail closed", async () => {
+  const dependencies = r3aDependencies(productionEnvironment());
+  const pool: PostgreSqlPoolPort = Object.freeze({
+    connect: () => Promise.reject(new Error("unused")),
+    close: () => Promise.resolve(),
+  });
+
+  const session = await dependencies.createSessionUnitOfWork(pool);
+  assert.equal(session instanceof PostgreSqlSessionUnitOfWork, true);
+  await session.close();
+  await assert.rejects(() => dependencies.openIdentityAuthorityReadOnly(pool), ProductionBootstrapError);
+  assert.equal(dependencies.childRootOptions, null);
+  await assert.rejects(() => startProductionRuntime(productionEnvironment(), dependencies), ProductionBootstrapError);
+  assert.throws(() => dependencies.startWorkers({} as never, []), ProductionBootstrapError);
+});
+
+test("the Railway factory composes exactly one injectable listener and no duplicate worker engine", async () => {
+  let created = 0;
+  let started = 0;
+  let closed = 0;
+  const listenerFactory: ProductionRuntimeHttpListenerFactory = () => {
+    created += 1;
+    return Object.freeze({
+      port: 8080,
+      start: () => { started += 1; return Promise.resolve(); },
+      close: () => { closed += 1; return Promise.resolve(); },
+    });
+  };
+  const factory = createRailwayProductionDependencies as unknown as (
+    environment: Readonly<Record<string, string>>,
+    readiness: ReturnType<typeof createProductionReadinessState>,
+    listenerFactory: ProductionRuntimeHttpListenerFactory,
+  ) => ProductionBootstrapDependencies;
+  const dependencies = factory(productionEnvironment(), createProductionReadinessState(), listenerFactory);
+  const listener = await dependencies.startListeners({} as never, productionHttpRoots());
+
+  assert.equal(created, 1);
+  assert.equal(started, 1);
+  assert.throws(() => dependencies.startWorkers({} as never, productionHttpRoots()), ProductionBootstrapError);
+  await listener.close();
+  assert.equal(closed, 1);
+});
+
+test("the Railway factory rejects migration, SQLite, localhost, and raw DATABASE_URL runtime authorities", () => {
+  const rejected = [
+    { IDENTITY_DATABASE_USER: "ai_mls_production_migration_operator" },
+    { IDENTITY_PERSISTENCE_ENGINE: "SQLITE" },
+    { IDENTITY_DATABASE_HOST: "localhost" },
+    { DATABASE_URL: "postgresql://runtime:secret@localhost/postgres" },
+  ];
+  for (const override of rejected) {
+    const environment = { ...productionEnvironment(), ...override };
+    const dependencies = r3aDependencies(environment);
+    assert.throws(() => dependencies.parseConfiguration(environment));
+  }
 });
 
 test("invokes canonical start exactly once and marks readiness only after startup returns", async () => {

@@ -68,7 +68,7 @@ export interface ProductionBootstrapDependencies {
   ) => string;
   readonly createSessionUnitOfWork: (pool: PostgreSqlPoolPort) => Promise<ProductionAsyncClosableResource>;
   readonly assertComponentSchemasReady: (configuration: ProductionRuntimeConfiguration) => Promise<void>;
-  readonly childRootOptions: CanonicalProductionChildRootOptions;
+  readonly childRootOptions: CanonicalProductionChildRootOptions | null;
   readonly startListeners: (
     context: ProductionBootstrapContextView,
     roots: readonly ProductionChildRoot[],
@@ -96,6 +96,7 @@ export class ProductionBootstrapError extends Error {
 }
 
 export async function startProductionRuntime(rawConfiguration: unknown, dependencies: ProductionBootstrapDependencies): Promise<ProductionRuntimeHandle> {
+  if (dependencies.childRootOptions === null) throw new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE");
   assertCanonicalProductionChildRootsPostgreSqlReady(dependencies.childRootOptions);
   return await executeProductionBootstrap(rawConfiguration, {
     ...dependencies,

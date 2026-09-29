@@ -1,15 +1,26 @@
 import { pathToFileURL } from "node:url";
 
-import type { AsyncRegisteredServiceWorkloadAuthorityLease, PostgreSqlPoolPort } from "../../../modules/identity/src/index.js";
+import {
+  PostgreSqlSessionUnitOfWork,
+  type AsyncRegisteredServiceWorkloadAuthorityLease,
+  type PostgreSqlPoolPort,
+} from "../../../modules/identity/src/index.js";
 import {
   ProductionBootstrapError,
   startProductionRuntime,
   type ProductionAsyncClosableResource,
   type ProductionBootstrapDependencies,
+  type ProductionBootstrapContextView,
+  type ProductionChildRoot,
   type ProductionRuntimeConfiguration,
   type ProductionRuntimeHandle,
 } from "./production-bootstrap.js";
-import { createProductionReadinessState, type ProductionReadinessState } from "./production-readiness-http.js";
+import {
+  createProductionReadinessState,
+  createProductionRuntimeListenerStarter,
+  type ProductionReadinessState,
+  type ProductionRuntimeHttpListenerFactory,
+} from "./production-readiness-http.js";
 import {
   parseRailwayProductionRuntimeConfiguration,
   type RailwayProductionRuntimeConfiguration,
@@ -18,6 +29,26 @@ import { createRailwaySealedProductionPostgreSqlPool } from "./production-secret
 import type { ProductionServiceIdentityBinding } from "./production-service-identity-resolver.js";
 
 export type ProductionSignal = "SIGINT" | "SIGTERM";
+
+export type RailwayProductionDependencyClassification =
+  | "EXISTING_APPROVED_ADAPTER"
+  | "EXISTING_BUT_NOT_PRODUCTION_COMPOSABLE"
+  | "REQUIRES_R3_B_CHILD_ROOT_POSTGRES"
+  | "EXTERNAL_PREREQUISITE"
+  | "NEW_IMPLEMENTATION_REQUIRED";
+
+export const RAILWAY_PRODUCTION_DEPENDENCY_CLASSIFICATION = Object.freeze({
+  openIdentityAuthorityReadOnly: "EXISTING_BUT_NOT_PRODUCTION_COMPOSABLE",
+  validateHumanIdentityAuthority: "NEW_IMPLEMENTATION_REQUIRED",
+  resolveRequiredServiceIdentities: "EXISTING_BUT_NOT_PRODUCTION_COMPOSABLE",
+  resolveRequiredSecrets: "EXTERNAL_PREREQUISITE",
+  validateStartupGate: "NEW_IMPLEMENTATION_REQUIRED",
+  createSessionUnitOfWork: "EXISTING_APPROVED_ADAPTER",
+  assertComponentSchemasReady: "REQUIRES_R3_B_CHILD_ROOT_POSTGRES",
+  childRootOptions: "REQUIRES_R3_B_CHILD_ROOT_POSTGRES",
+  startListeners: "EXISTING_APPROVED_ADAPTER",
+  startWorkers: "NEW_IMPLEMENTATION_REQUIRED",
+} satisfies Readonly<Record<string, RailwayProductionDependencyClassification>>);
 
 export interface RunningProductionMain {
   readonly shutdownComplete: Promise<void>;
@@ -140,6 +171,8 @@ function hardTerminateProcess(exitCode: 1): void {
  */
 export function createRailwayProductionDependencies(
   environment: Readonly<Record<string, string | undefined>>,
+  readiness: ProductionReadinessState = createProductionReadinessState(),
+  listenerFactory?: ProductionRuntimeHttpListenerFactory,
 ): ProductionBootstrapDependencies {
   const unreachable = (): never => { throw new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE"); };
   const unavailablePromise = <Value>(): Promise<Value> => Promise.reject(new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE"));
@@ -159,10 +192,15 @@ export function createRailwayProductionDependencies(
     resolveRequiredServiceIdentities: (): Promise<readonly ProductionServiceIdentityBinding[]> => unavailablePromise(),
     resolveRequiredSecrets: (): Promise<void> => unavailablePromise(),
     validateStartupGate: unreachable,
-    createSessionUnitOfWork: (): Promise<ProductionAsyncClosableResource> => unavailablePromise(),
+    createSessionUnitOfWork: (pool: PostgreSqlPoolPort): Promise<ProductionAsyncClosableResource> =>
+      Promise.resolve(new PostgreSqlSessionUnitOfWork(pool)),
     assertComponentSchemasReady: (): Promise<void> => unavailablePromise(),
-    childRootOptions: Object.freeze({ api014: {}, api015: {}, api018: {}, api019: {}, feat022: {} }) as ProductionBootstrapDependencies["childRootOptions"],
-    startListeners: unreachable,
+    childRootOptions: null,
+    startListeners: (context: ProductionBootstrapContextView, roots: readonly ProductionChildRoot[]) => createProductionRuntimeListenerStarter(
+      parseRailwayProductionRuntimeConfiguration(environment),
+      readiness,
+      listenerFactory,
+    )(context, roots),
     startWorkers: unreachable,
   });
 }
@@ -173,8 +211,9 @@ function isDirectExecution(): boolean {
 }
 
 if (isDirectExecution()) {
-  void runProductionMain(process.env, createRailwayProductionDependencies(process.env), {
-    readiness: createProductionReadinessState(),
+  const readiness = createProductionReadinessState();
+  void runProductionMain(process.env, createRailwayProductionDependencies(process.env, readiness), {
+    readiness,
   }).then(
     (running) => running.shutdownComplete,
     () => { process.exitCode = 1; },
