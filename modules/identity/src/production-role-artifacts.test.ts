@@ -11,6 +11,7 @@ const preMigrationRoleVerificationPath = resolve("modules/identity/migrations/po
 const roleVerificationPath = resolve("modules/identity/migrations/postgresql/production/004_production_role_privilege_verification.sql");
 const recoveryPath = resolve("modules/identity/migrations/postgresql/production/009_complete_production_runtime_role_boundary_after_partial_002.sql");
 const grantorAwareRecoveryPath = resolve("modules/identity/migrations/postgresql/production/010_complete_production_runtime_role_boundary_with_bounded_set_authority.sql");
+const explicitSetAuthorityRecoveryPath = resolve("modules/identity/migrations/postgresql/production/011_complete_production_runtime_role_boundary_with_explicit_set_authority.sql");
 const executionRunbookPath = resolve("docs/implementation/REL002_PHASE2D0K_CONTROLLED_EXECUTION_RUNBOOK.md");
 
 function executableStatements(sql: string): string[] {
@@ -51,6 +52,8 @@ test("role privilege verification artifact is read-only and checks positive and 
   assert.match(sql, /identity_historical_migration_attestations/iu);
   assert.match(sql, /identity_historical_attestation_schema_is_exact/iu);
   assert.match(sql, /function_acl\s+AS\s*\(/iu);
+  assert.match(sql, /objects\.relkind\s*=\s*'S'/iu);
+  assert.match(sql, /privileges\.grantee\s*=\s*0/iu);
   assert.match(sql, /COALESCE\(grantee_roles\.rolname::text,\s*'PUBLIC'\)/iu);
   assert.match(sql, /grantee_roles\.rolname\s+IN\s*\(\s*'ai_mls_production_runtime',\s*'ai_mls_production_migration_operator'\s*\)/iu);
   assert.match(sql, /privileges\.grantee\s*<>\s*objects\.relowner/iu);
@@ -115,6 +118,35 @@ test("grantor-aware recovery preserves the Supabase membership and removes only 
     "AFTER_RESET_ROLE",
     "BEFORE_TEMPORARY_GRANT_CLEANUP",
     "AFTER_TEMPORARY_GRANT_CLEANUP",
+  ]) {
+    assert.match(sql, new RegExp(`FAILURE_INJECTION_${marker}`, "u"));
+  }
+  assert.match(sql, /COMMIT;\s*$/u);
+});
+
+test("explicit SET-authority recovery is independent of the postgres INHERIT default", () => {
+  assert.equal(
+    createHash("sha256").update(readFileSync(grantorAwareRecoveryPath)).digest("hex"),
+    "ab6222b7f9607cfe8ae625575b94068de61abf507eda456785903f4fd1da8657",
+  );
+  assert.equal(existsSync(explicitSetAuthorityRecoveryPath), true);
+  const sql = readFileSync(explicitSetAuthorityRecoveryPath, "utf8");
+  assert.match(sql, /^BEGIN;/mu);
+  assert.match(sql, /SELECT\s+rolinherit\s+AS\s+postgres_rolinherit[^;]*FROM\s+pg_catalog\.pg_roles[^;]*rolname\s*=\s*'postgres'/isu);
+  assert.match(sql, /GRANT\s+ai_mls_production_migration_operator\s+TO\s+postgres\s+WITH\s+ADMIN\s+FALSE,\s*INHERIT\s+FALSE,\s*SET\s+TRUE\s+GRANTED\s+BY\s+postgres/iu);
+  assert.match(sql, /SET\s+LOCAL\s+ROLE\s+ai_mls_production_migration_operator/iu);
+  assert.match(sql, /RESET\s+ROLE/iu);
+  assert.match(sql, /REVOKE\s+ai_mls_production_migration_operator\s+FROM\s+postgres\s+GRANTED\s+BY\s+postgres/iu);
+  for (const marker of [
+    "BEFORE_TEMPORARY_GRANT",
+    "AFTER_TEMPORARY_GRANT",
+    "AFTER_TEMPORARY_TOPOLOGY_VERIFICATION",
+    "AFTER_SET_ROLE",
+    "DURING_ACL_REPAIR",
+    "AFTER_RESET_ROLE",
+    "BEFORE_TEMPORARY_GRANT_CLEANUP",
+    "AFTER_TEMPORARY_GRANT_CLEANUP",
+    "BEFORE_FINAL_VERIFIER",
   ]) {
     assert.match(sql, new RegExp(`FAILURE_INJECTION_${marker}`, "u"));
   }

@@ -227,6 +227,41 @@ SELECT (SELECT count(*) FROM mutation_function) = 1
       AND (privilege_type = 'EXECUTE' OR is_grantable)
   ) AS matches_expected;
 
+WITH actual AS (
+  SELECT procedures.proname::text AS function_name,
+    procedures.pronargs,
+    COALESCE(grantee_roles.rolname::text, 'PUBLIC') AS role_name,
+    privileges.privilege_type,
+    privileges.is_grantable
+  FROM pg_catalog.pg_proc procedures
+  JOIN pg_catalog.pg_namespace namespaces ON namespaces.oid = procedures.pronamespace
+  CROSS JOIN LATERAL pg_catalog.aclexplode(
+    COALESCE(procedures.proacl, pg_catalog.acldefault('f', procedures.proowner))
+  ) privileges
+  LEFT JOIN pg_catalog.pg_roles grantee_roles ON grantee_roles.oid = privileges.grantee
+  WHERE namespaces.nspname = 'app_identity'
+    AND (grantee_roles.rolname = 'ai_mls_production_runtime' OR privileges.grantee = 0)
+), expected(function_name, pronargs, role_name, privilege_type, is_grantable) AS (VALUES
+  ('identity_historical_attestation_schema_is_exact', 0::smallint, 'ai_mls_production_runtime', 'EXECUTE', false),
+  ('reject_session_revocation_mutation', 0::smallint, 'PUBLIC', 'EXECUTE', false)
+)
+SELECT NOT EXISTS (
+  (SELECT * FROM actual EXCEPT SELECT * FROM expected)
+  UNION ALL
+  (SELECT * FROM expected EXCEPT SELECT * FROM actual)
+) AS matches_expected;
+
+SELECT count(*) = 0 AS matches_expected
+FROM pg_catalog.pg_class objects
+JOIN pg_catalog.pg_namespace namespaces ON namespaces.oid = objects.relnamespace
+CROSS JOIN LATERAL pg_catalog.aclexplode(
+  COALESCE(objects.relacl, pg_catalog.acldefault('S', objects.relowner))
+) privileges
+LEFT JOIN pg_catalog.pg_roles grantee_roles ON grantee_roles.oid = privileges.grantee
+WHERE namespaces.nspname = 'app_identity'
+  AND objects.relkind = 'S'
+  AND (grantee_roles.rolname = 'ai_mls_production_runtime' OR privileges.grantee = 0);
+
 SELECT count(*) = 0 AS matches_expected
 FROM pg_catalog.pg_class objects
 JOIN pg_catalog.pg_namespace namespaces ON namespaces.oid = objects.relnamespace

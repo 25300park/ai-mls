@@ -32,12 +32,22 @@ type MembershipRow = Readonly<{
   set_option: boolean;
 }>;
 
+function isInsufficientPrivilege(error: unknown): boolean {
+  return typeof error === "object" && error !== null
+    && "code" in error && (error as { code?: string }).code === "42501";
+}
+
+function isDivisionByZero(error: unknown): boolean {
+  return typeof error === "object" && error !== null
+    && "code" in error && (error as { code?: string }).code === "22012";
+}
+
 function verificationPassed(results: QueryResult<VerificationRow>[]): boolean {
   const rows = results.flatMap((result) => result.rows).filter((row) => row.matches_expected !== undefined);
   return rows.length > 0 && rows.every((row) => row.matches_expected === true);
 }
 
-test("010 restores the exact runtime boundary and removes only postgres-granted SET authority", { skip: !enabled }, async () => {
+test("011 restores the exact runtime boundary for postgres NOINHERIT and INHERIT", { skip: !enabled }, async () => {
   const admin = new Client({ host: "127.0.0.1", port, user: adminUser, database: "postgres" });
   const execution = new Client({ host: "127.0.0.1", port, user: "postgres", database: "postgres" });
   const roleCreation = await artifact("000_production_role_creation.sql");
@@ -47,7 +57,7 @@ test("010 restores the exact runtime boundary and removes only postgres-granted 
   const attestationSchema = await artifact("006_historical_migration_attestation_schema_v1.sql");
   const attestationRecord = await artifact("007_record_historical_identity_migration_attestation_v1.sql");
   const attestationVerify = await artifact("008_historical_identity_migration_attestation_v1.verify.sql");
-  const recovery = await artifact("010_complete_production_runtime_role_boundary_with_bounded_set_authority.sql");
+  const recovery = await artifact("011_complete_production_runtime_role_boundary_with_explicit_set_authority.sql");
   const roleVerify = await artifact("004_production_role_privilege_verification.sql");
   await admin.connect();
 
@@ -140,12 +150,7 @@ test("010 restores the exact runtime boundary and removes only postgres-granted 
     await admin.query("GRANT CONNECT ON DATABASE postgres TO ai_mls_production_runtime");
 
     await execution.connect();
-    await assert.rejects(
-      execution.query("SET ROLE ai_mls_production_migration_operator"),
-      /permission denied to set role/iu,
-    );
-    const partialState = await snapshot();
-    assert.deepEqual(await exactMemberships(), [
+    const expectedMemberships: readonly MembershipRow[] = [
       {
         granted_role: "ai_mls_production_migration_operator",
         member_role: "postgres",
@@ -162,85 +167,126 @@ test("010 restores the exact runtime boundary and removes only postgres-granted 
         inherit_option: false,
         set_option: false,
       },
-    ]);
+    ];
+    const initialPartialState = await snapshot();
+    assert.deepEqual(await exactMemberships(), expectedMemberships);
 
     await admin.query("SET ROLE ai_mls_production_migration_operator");
     await admin.query("GRANT SELECT ON TABLE app_identity.identity_historical_migration_attestations TO PUBLIC");
     await admin.query("RESET ROLE");
     const publicLeakState = await snapshot();
-    const publicLeakProbe = recovery.replace(
-      "-- FAILURE_INJECTION_BEFORE_TEMPORARY_GRANT",
-      "SELECT 1 / 0;\n-- FAILURE_INJECTION_BEFORE_TEMPORARY_GRANT",
-    );
-    await assert.rejects(
-      execution.query(publicLeakProbe),
-      /DIRECT_TABLE_PARTIAL_STATE_MISMATCH/iu,
-    );
+    await assert.rejects(execution.query(recovery), /DIRECT_TABLE_PARTIAL_STATE_MISMATCH/iu);
     await execution.query("ROLLBACK");
     assert.deepEqual(await snapshot(), publicLeakState);
     await admin.query("SET ROLE ai_mls_production_migration_operator");
     await admin.query("REVOKE SELECT ON TABLE app_identity.identity_historical_migration_attestations FROM PUBLIC");
     await admin.query("RESET ROLE");
-    assert.deepEqual(await snapshot(), partialState);
+    assert.deepEqual(await snapshot(), initialPartialState);
 
     await admin.query("REVOKE TEMPORARY ON DATABASE postgres FROM PUBLIC");
     const missingPublicTemporaryState = await snapshot();
-    const missingPublicTemporaryProbe = recovery.replace(
-      "-- FAILURE_INJECTION_BEFORE_TEMPORARY_GRANT",
-      "SELECT 1 / 0;\n-- FAILURE_INJECTION_BEFORE_TEMPORARY_GRANT",
-    );
-    await assert.rejects(
-      execution.query(missingPublicTemporaryProbe),
-      /DATABASE_BOUNDARY_MISMATCH/iu,
-    );
+    await assert.rejects(execution.query(recovery), /DATABASE_BOUNDARY_MISMATCH/iu);
     await execution.query("ROLLBACK");
     assert.deepEqual(await snapshot(), missingPublicTemporaryState);
     await admin.query("GRANT TEMPORARY ON DATABASE postgres TO PUBLIC");
-    assert.deepEqual(await snapshot(), partialState);
+    assert.deepEqual(await snapshot(), initialPartialState);
 
+    const preflightFailureProbe = recovery.replace(
+      "-- FAILURE_INJECTION_BEFORE_TEMPORARY_GRANT",
+      "SELECT 1 / 0;\n-- FAILURE_INJECTION_BEFORE_TEMPORARY_GRANT",
+    );
+    await admin.query("SET ROLE ai_mls_production_migration_operator");
+    await admin.query("CREATE SEQUENCE app_identity.rel002_unexpected_recovery_sequence");
+    await admin.query("GRANT USAGE ON SEQUENCE app_identity.rel002_unexpected_recovery_sequence TO ai_mls_production_runtime");
+    await admin.query("RESET ROLE");
+    await assert.rejects(execution.query(preflightFailureProbe), /DIRECT_SEQUENCE_PARTIAL_STATE_MISMATCH/iu);
+    await execution.query("ROLLBACK");
+    await admin.query("SET ROLE ai_mls_production_migration_operator");
+    await admin.query("DROP SEQUENCE app_identity.rel002_unexpected_recovery_sequence");
+    await admin.query("GRANT EXECUTE ON FUNCTION app_identity.reject_session_revocation_mutation() TO ai_mls_production_runtime");
+    await admin.query("RESET ROLE");
+    await assert.rejects(execution.query(preflightFailureProbe), /DIRECT_FUNCTION_PARTIAL_STATE_MISMATCH/iu);
+    await execution.query("ROLLBACK");
+    await admin.query("SET ROLE ai_mls_production_migration_operator");
+    await admin.query("REVOKE EXECUTE ON FUNCTION app_identity.reject_session_revocation_mutation() FROM ai_mls_production_runtime");
+    await admin.query("RESET ROLE");
+    assert.deepEqual(await snapshot(), initialPartialState);
+
+    const restorePartialAclState = async (): Promise<void> => {
+      await admin.query("SET ROLE ai_mls_production_migration_operator");
+      await admin.query("REVOKE ALL ON SCHEMA app_identity FROM ai_mls_production_runtime");
+      await admin.query("REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA app_identity FROM ai_mls_production_runtime");
+      await admin.query("REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA app_identity FROM ai_mls_production_runtime");
+      await admin.query("REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA app_identity FROM ai_mls_production_runtime");
+      await admin.query("GRANT SELECT ON TABLE app_identity.identity_historical_migration_attestations TO ai_mls_production_runtime");
+      await admin.query("GRANT EXECUTE ON FUNCTION app_identity.identity_historical_attestation_schema_is_exact() TO ai_mls_production_runtime");
+      await admin.query("GRANT EXECUTE ON FUNCTION app_identity.reject_historical_migration_attestation_mutation() TO PUBLIC");
+      await admin.query("RESET ROLE");
+    };
     const failureMarkers = [
       "FAILURE_INJECTION_BEFORE_TEMPORARY_GRANT",
       "FAILURE_INJECTION_AFTER_TEMPORARY_GRANT",
+      "FAILURE_INJECTION_AFTER_TEMPORARY_TOPOLOGY_VERIFICATION",
       "FAILURE_INJECTION_AFTER_SET_ROLE",
-      "FAILURE_INJECTION_DURING_ACL_MUTATION",
+      "FAILURE_INJECTION_DURING_ACL_REPAIR",
       "FAILURE_INJECTION_AFTER_RESET_ROLE",
       "FAILURE_INJECTION_BEFORE_TEMPORARY_GRANT_CLEANUP",
       "FAILURE_INJECTION_AFTER_TEMPORARY_GRANT_CLEANUP",
+      "FAILURE_INJECTION_BEFORE_FINAL_VERIFIER",
     ];
-    for (const marker of failureMarkers) {
-      const injected = recovery.replace(`-- ${marker}`, `SELECT 1 / 0;\n-- ${marker}`);
-      await assert.rejects(execution.query(injected), /division by zero/iu, marker);
-      await execution.query("ROLLBACK");
-      assert.deepEqual(await snapshot(), partialState, marker);
+
+    for (const postgresInherits of [false, true]) {
+      await admin.query(`ALTER ROLE postgres ${postgresInherits ? "INHERIT" : "NOINHERIT"}`);
+      const observed = await admin.query<{ rolinherit: boolean }>(
+        "SELECT rolinherit FROM pg_catalog.pg_roles WHERE rolname = 'postgres'",
+      );
+      assert.equal(observed.rows[0]?.rolinherit, postgresInherits);
+      await assert.rejects(
+        execution.query("SET ROLE ai_mls_production_migration_operator"),
+        isInsufficientPrivilege,
+      );
+      const partialState = await snapshot();
+      assert.deepEqual(await exactMemberships(), expectedMemberships);
+
+      for (const marker of failureMarkers) {
+        const injected = recovery.replace(`-- ${marker}`, `SELECT 1 / 0;\n-- ${marker}`);
+        await assert.rejects(execution.query(injected), isDivisionByZero, `${postgresInherits}:${marker}`);
+        await execution.query("ROLLBACK");
+        assert.deepEqual(await snapshot(), partialState, `${postgresInherits}:${marker}`);
+      }
+
+      await execution.query(recovery);
+      assert.equal(
+        verificationPassed(await execution.query(roleVerify) as unknown as QueryResult<VerificationRow>[]),
+        true,
+      );
+      assert.deepEqual(await exactMemberships(), expectedMemberships);
+      await assert.rejects(
+        execution.query("SET ROLE ai_mls_production_migration_operator"),
+        isInsufficientPrivilege,
+      );
+
+      if (!postgresInherits) {
+        await restorePartialAclState();
+      }
     }
 
-    await execution.query(recovery);
-    assert.equal(
-      verificationPassed(await execution.query(roleVerify) as unknown as QueryResult<VerificationRow>[]),
-      true,
-    );
-    assert.deepEqual(await exactMemberships(), [
-      {
-        granted_role: "ai_mls_production_migration_operator",
-        member_role: "postgres",
-        grantor_role: adminUser,
-        admin_option: true,
-        inherit_option: false,
-        set_option: false,
-      },
-      {
-        granted_role: "ai_mls_production_runtime",
-        member_role: "postgres",
-        grantor_role: adminUser,
-        admin_option: true,
-        inherit_option: false,
-        set_option: false,
-      },
-    ]);
     const finalState = await snapshot();
     await assert.rejects(execution.query(recovery), /EXPECTED_MISSING_SCHEMA_USAGE/iu);
     await execution.query("ROLLBACK");
     assert.deepEqual(await snapshot(), finalState);
+
+    await admin.query("SET ROLE ai_mls_production_migration_operator");
+    await admin.query("CREATE SEQUENCE app_identity.rel002_unexpected_recovery_sequence");
+    await admin.query("GRANT USAGE ON SEQUENCE app_identity.rel002_unexpected_recovery_sequence TO PUBLIC");
+    await admin.query("RESET ROLE");
+    assert.equal(
+      verificationPassed(await execution.query(roleVerify) as unknown as QueryResult<VerificationRow>[]),
+      false,
+    );
+    await admin.query("SET ROLE ai_mls_production_migration_operator");
+    await admin.query("DROP SEQUENCE app_identity.rel002_unexpected_recovery_sequence");
+    await admin.query("RESET ROLE");
 
     await admin.query("SET ROLE ai_mls_production_migration_operator");
     await admin.query("DROP TABLE app_identity.identity_registered_service_workloads");
