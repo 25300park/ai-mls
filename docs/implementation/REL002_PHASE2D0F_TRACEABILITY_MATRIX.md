@@ -56,3 +56,18 @@
 - [Phase 2D-0E Executable Design](REL002_PHASE2D0E_PRODUCTION_EXECUTABLE_DESIGN.md)
 - [Phase 2D-0F Completion Report](../reviews/REL002_PHASE2D0F_COMPLETION_REPORT.md)
 - [Phase 2D-0H Completion Report](../reviews/REL002_PHASE2D0H_COMPLETION_REPORT.md)
+
+## 6. Production role-boundary execution addendum — 2026-09-29
+
+Section 2의 SQL role execution `0`과 Section 3의 미실행 상태는 이 matrix 작성 당시의 역사 기록이다. Main `5b9421dd9b76e9ca728600a460dcd484df141e02`에서 canonical `011` transaction이 `COMMIT PASS`했고 final `004` verification이 모든 expected invariant에 PASS했다.
+
+| Trace | Artifact/evidence | Current status |
+|---|---|---|
+| Explicit SET-authority recovery | `011_complete_production_runtime_role_boundary_with_explicit_set_authority.sql` | `PRODUCTION_EXECUTION_PASS` |
+| Final Production role verification | `004_production_role_privilege_verification.sql` | `PRODUCTION_FINAL_VERIFICATION_PASS` |
+| Membership cleanup | no residual `postgres`-granted temporary membership | PASS |
+| Runtime DB/schema/table/function boundary | final `004` exact checks | PASS |
+| DEC-192 TEMPORARY contract | effective `TRUE`, direct `FALSE` | PRESERVED |
+| Canonical evidence | [Production Role Boundary Execution Evidence](../evidence/REL002_PRODUCTION_ROLE_BOUNDARY_EXECUTION_EVIDENCE.md) | FINALIZED |
+
+Bounded disposition: `PRODUCTION_ROLE_BOUNDARY = CLOSED`. 다른 Production readiness 또는 deployment gate는 이 addendum로 자동 변경하지 않는다.
