@@ -2,7 +2,7 @@
 
 | 항목 | 값 |
 |---|---|
-| Document ID | DOC-DEV-367 |
+| Document ID | DOC-REVIEW-252 |
 | 문서 버전 | v0.1 |
 | 상태 | DRAFT |
 | 소유 역할 | Development Owner |
@@ -67,7 +67,7 @@ Railway Production 실행 경로를 재설계하지 않고, `createRailwayProduc
 | Full regression | `pnpm run test` | 1612 PASS / 1 existing historical fingerprint failure / 5 SKIP |
 | Historical failure | immutable Blocker 2C exact-candidate fingerprint | `EXPECTED_STALE_HISTORICAL_CANDIDATE_FINGERPRINT` |
 | Build/Lint/Typecheck | repository scripts | PASS / PASS / PASS |
-| Markdown links / IDs | target 존재 및 `DOC-DEV-367` uniqueness 검사 | PASS |
+| Markdown links / IDs | target 존재 및 corrected `DOC-REVIEW-252` uniqueness 검사 | PASS |
 | Scope restriction | Git diff 및 dependency/lockfile 검사 | PASS — source 2, test 1, docs 1; dependency/lockfile 0 |
 | Secret scan | 변경 4개 파일 `gitleaks dir --redact` | PASS — 0 findings |
 | `git diff --check` | current bounded diff | PASS |
