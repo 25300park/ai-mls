@@ -72,7 +72,7 @@ export class PublicationHostCompositionFacade {
     return this.#graph.application.execute(request);
   }
 
-  public executeCanonicalApi(request: unknown): unknown {
+  public executeCanonicalApi(request: unknown): Promise<unknown> {
     if (this.#graph.runtime.context.status !== "READY") {
       throw new PublicationCompositionError(
         "COMPOSITION_RUNTIME_UNAVAILABLE",

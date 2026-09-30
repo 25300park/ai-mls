@@ -20,8 +20,8 @@ export interface IdempotencyRecordResult {
 }
 
 export interface PublicationIdempotencyStore {
-  record(input: IdempotencyRecord): IdempotencyRecordResult;
-  find(identity: IdempotencyIdentity): IdempotencyRecord | undefined;
+  record(input: IdempotencyRecord): Promise<IdempotencyRecordResult>;
+  find(identity: IdempotencyIdentity): Promise<IdempotencyRecord | undefined>;
 }
 
 export class InMemoryIdempotencyStore implements PublicationIdempotencyStore {
@@ -31,7 +31,8 @@ export class InMemoryIdempotencyStore implements PublicationIdempotencyStore {
     private readonly assertUsable: () => void = () => undefined,
   ) {}
 
-  public record(input: IdempotencyRecord): IdempotencyRecordResult {
+  public async record(input: IdempotencyRecord): Promise<IdempotencyRecordResult> {
+    await Promise.resolve();
     this.assertUsable();
     this.assertScope(input);
     const key = this.key(input);
@@ -46,7 +47,8 @@ export class InMemoryIdempotencyStore implements PublicationIdempotencyStore {
     return immutableDomain({ status: "STORED" as const, record });
   }
 
-  public find(identity: IdempotencyIdentity): IdempotencyRecord | undefined {
+  public async find(identity: IdempotencyIdentity): Promise<IdempotencyRecord | undefined> {
+    await Promise.resolve();
     this.assertUsable();
     this.assertScope(identity);
     const record = this.state.idempotency.get(this.key(identity));

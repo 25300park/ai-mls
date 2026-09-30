@@ -15,7 +15,7 @@ const certificateReference = "railway-sealed-env:AI_MLS_PRODUCTION_IDENTITY_DATA
 const connectionVariable = "AI_MLS_PRODUCTION_IDENTITY_DATABASE_CONNECTION_V1";
 const certificateVariable = "AI_MLS_PRODUCTION_IDENTITY_DATABASE_CA_CERT_V1";
 
-export type ProductionDatabaseSecretConsumer = "PG_IDENTITY_POOL";
+export type ProductionDatabaseSecretConsumer = "PG_PRODUCTION_POOL" | "PG_IDENTITY_POOL";
 
 export class ProductionSecretBindingError extends Error {
   public constructor() {
@@ -31,7 +31,7 @@ export function createRailwaySealedProductionPostgreSqlPool(
   factory?: PgPoolFactory,
 ): PostgreSqlPoolPort {
   try {
-    if (!validRailwayRuntimeEnvironment(environment) || consumer !== "PG_IDENTITY_POOL"
+    if (!validRailwayRuntimeEnvironment(environment) || (consumer !== "PG_PRODUCTION_POOL" && consumer !== "PG_IDENTITY_POOL")
       || configuration.identityDatabase.connectionReference !== connectionReference
       || configuration.identityDatabase.caCertificateReference !== certificateReference
       || environment["DATABASE_URL"] !== undefined) throw unavailable();

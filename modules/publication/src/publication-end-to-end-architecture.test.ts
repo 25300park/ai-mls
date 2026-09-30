@@ -175,7 +175,7 @@ test("PHASE13-15 verifies dependency direction, cycle freedom, forbidden scope a
     for (const specifier of specifiers.filter((value) => !value.startsWith("./") && !value.startsWith("node:"))) {
       assert.equal(forbiddenDependencies.test(specifier), false, `${file} imports forbidden ${specifier}`);
     }
-    const scopedForbiddenSource = file === "publication-durable-persistence.ts"
+    const scopedForbiddenSource = file === "publication-durable-persistence.ts" || file === "publication-postgresql-persistence.ts"
       ? [forbiddenSource[0]!, /\b(orm|migration|redis|queue|event bus|kafka|rabbitmq|nats)\b/i, forbiddenSource[2]!]
       : forbiddenSource;
     assert.equal(scopedForbiddenSource.some((pattern) => pattern.test(source)), false, `${file} contains forbidden scope`);
@@ -379,6 +379,7 @@ function layerOf(file: string): ArchitectureLayer {
   if (file.startsWith("in-memory-")
     || file.startsWith("publication-persistence-")
     || file === "publication-durable-persistence.ts"
+    || file === "publication-postgresql-persistence.ts"
     || file === "publication-execution-journal.ts"
     || file === "publication-audit-store.ts"
     || file === "publication-idempotency-store.ts"

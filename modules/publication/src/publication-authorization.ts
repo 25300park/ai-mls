@@ -175,6 +175,10 @@ export interface PublicationAuthorizationRequest {
   readonly resolveResource?: (actor: SessionContext) => PublicationAuthorizationResource;
 }
 
+export interface AsyncPublicationAuthorizationRequest extends Omit<PublicationAuthorizationRequest, "resolveResource"> {
+  readonly resolveResource?: (actor: SessionContext) => PublicationAuthorizationResource | Promise<PublicationAuthorizationResource>;
+}
+
 export interface PublicationAuthorizationResource {
   readonly binding: PublicationBinding;
   readonly currentAggregateVersion: number;
@@ -217,6 +221,22 @@ export class PublicationAuthorizationGuard {
 
   public authorize(request: PublicationAuthorizationRequest): PublicationAuthorizationSuccess {
     const checkedAt = this.dependencies.clock.now();
+    const session = this.authorizeActor(request, checkedAt);
+    const resource = this.resolveResource(request, session, checkedAt);
+    return this.authorizeResource(request, session, resource, checkedAt);
+  }
+
+  public async authorizeAsync(request: AsyncPublicationAuthorizationRequest): Promise<PublicationAuthorizationSuccess> {
+    const checkedAt = this.dependencies.clock.now();
+    const synchronousRequest = request as unknown as PublicationAuthorizationRequest;
+    const session = this.authorizeActor(synchronousRequest, checkedAt);
+    const resource = request.resolveResource === undefined
+      ? this.resolveResource(synchronousRequest, session, checkedAt)
+      : await request.resolveResource(session);
+    return this.authorizeResource(synchronousRequest, session, resource, checkedAt);
+  }
+
+  private authorizeActor(request: PublicationAuthorizationRequest, checkedAt: string): SessionContext {
     const session = this.resolveSession(request, checkedAt);
     if (!isAuthenticationAssuranceConsistent(session)) {
       this.deny(request, session, undefined, "AUTHENTICATION_REQUIRED", checkedAt);
@@ -246,14 +266,16 @@ export class PublicationAuthorizationGuard {
     if (authorization.effect !== "ALLOW") {
       this.deny(request, session, undefined, mapAuthorizationReason(authorization.reasonCode), checkedAt);
     }
+    return session;
+  }
 
-    const resource = this.resolveResource(request, session, checkedAt);
+  private authorizeResource(request: PublicationAuthorizationRequest, session: SessionContext, resource: PublicationAuthorizationResource, checkedAt: string): PublicationAuthorizationSuccess {
     const resolvedRequest: ResolvedPublicationAuthorizationRequest = { ...request, ...resource };
     let live: PublicationLiveAuthorizationContext | undefined;
     try {
       live = this.dependencies.liveContextResolver?.resolve(resource.binding, {
         tenantId: request.tenantId,
-        teamId: session.teamId,
+        ...(session.teamId === undefined ? {} : { teamId: session.teamId }),
       });
     } catch {
       live = undefined;

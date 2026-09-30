@@ -10,8 +10,8 @@ import {
 import { PublicationApiError } from "./publication-api-error-mapper.js";
 
 export interface PublicationApiExecutionBoundary {
-  executeCommand(request: PublicationCommandRequest): PublicationCommandResponse;
-  executeQuery(request: PublicationQueryRequest): PublicationQueryResponse;
+  executeCommand(request: PublicationCommandRequest): Promise<PublicationCommandResponse>;
+  executeQuery(request: PublicationQueryRequest): Promise<PublicationQueryResponse>;
 }
 
 export type PublicationApiRuntimeRequest =
@@ -30,7 +30,7 @@ export class PublicationApiRuntimeAdapter implements PublicationCanonicalApiExec
     Object.freeze(this);
   }
 
-  public execute(input: unknown): PublicationCommandResponse | PublicationQueryResponse {
+  public async execute(input: unknown): Promise<PublicationCommandResponse | PublicationQueryResponse> {
     if (!isRecord(input) || !hasExactKeys(input, ["kind", "request"]) || !isRecord(input["request"])) {
       throw new PublicationApiError("VALIDATION_ERROR");
     }
@@ -39,12 +39,12 @@ export class PublicationApiRuntimeAdapter implements PublicationCanonicalApiExec
     if (input["kind"] === "COMMAND"
       && typeof operation === "string"
       && PUBLICATION_API_COMMAND_OPERATIONS.includes(operation as never)) {
-      return this.api.executeCommand(request as unknown as PublicationCommandRequest);
+      return await this.api.executeCommand(request as unknown as PublicationCommandRequest);
     }
     if (input["kind"] === "QUERY"
       && typeof operation === "string"
       && PUBLICATION_API_QUERY_OPERATIONS.includes(operation as never)) {
-      return this.api.executeQuery(request as unknown as PublicationQueryRequest);
+      return await this.api.executeQuery(request as unknown as PublicationQueryRequest);
     }
     throw new PublicationApiError("VALIDATION_ERROR");
   }

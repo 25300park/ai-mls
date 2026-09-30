@@ -66,21 +66,22 @@ function assertPersistenceError(code: string): (error: unknown) => boolean {
   return (error: unknown) => error instanceof PublicationPersistenceError && error.code === code;
 }
 
-function exerciseRepositoryContract(repository: PublicationRepository): void {
+async function exerciseRepositoryContract(repository: PublicationRepository): Promise<void> {
   const initial = readySnapshot();
-  repository.save(initial);
-  assert.equal(repository.exists(identity), true);
-  assert.equal(repository.checkVersion(identity, 1), true);
-  assert.deepEqual(repository.find(identity), initial);
-  assert.equal(repository.find({ ...identity, tenantScopeId: "team-b" }), undefined);
+  await repository.save(initial);
+  assert.equal(await repository.exists(identity), true);
+  assert.equal(await repository.checkVersion(identity, 1), true);
+  assert.deepEqual(await repository.find(identity), initial);
+  assert.equal(await repository.find({ ...identity, tenantScopeId: "team-b" }), undefined);
 
   const updated = suspendedSnapshot(initial);
-  repository.update(initial.aggregateVersion, updated);
-  assert.equal(repository.checkVersion(identity, 2), true);
-  assert.deepEqual(repository.readHistory(identity).map((entry) => entry.aggregateVersion), [1, 2]);
+  await repository.update(initial.aggregateVersion, updated);
+  assert.equal(await repository.checkVersion(identity, 2), true);
+  assert.deepEqual((await repository.readHistory(identity)).map((entry) => entry.aggregateVersion), [1, 2]);
 }
 
-test("F15-TASK-003 mapper preserves logical equality and deterministic persistence output", () => {
+test("F15-TASK-003 mapper preserves logical equality and deterministic persistence output", async () => {
+  await Promise.resolve();
   const domain = suspendedSnapshot(readySnapshot());
   const first = mapPublicationToPersistence(domain);
   const second = mapPublicationToPersistence(domain);
@@ -93,31 +94,28 @@ test("F15-TASK-003 mapper preserves logical equality and deterministic persisten
   assert.equal(Object.isFrozen(mapPersistenceToPublication(first)), true);
 });
 
-test("F15-TASK-003 in-memory adapter satisfies the tenant-scoped repository contract", () => {
-  exerciseRepositoryContract(new InMemoryPublicationRepository());
+test("F15-TASK-003 in-memory adapter satisfies the tenant-scoped repository contract", async () => {
+  await exerciseRepositoryContract(new InMemoryPublicationRepository());
 });
 
-test("F15-TASK-003 repository fails closed for duplicate create and optimistic version conflicts", () => {
+test("F15-TASK-003 repository fails closed for duplicate create and optimistic version conflicts", async () => {
   const repository = new InMemoryPublicationRepository();
   const initial = readySnapshot();
-  repository.save(initial);
-  assert.throws(() => repository.save(initial), assertPersistenceError("PUBLICATION_ALREADY_EXISTS"));
+  await repository.save(initial);
+  await assert.rejects(repository.save(initial), assertPersistenceError("PUBLICATION_ALREADY_EXISTS"));
 
   const updated = suspendedSnapshot(initial);
-  assert.throws(() => repository.update(99, updated), assertPersistenceError("PUBLICATION_VERSION_CONFLICT"));
-  assert.throws(
-    () => repository.update(initial.aggregateVersion, { ...updated, aggregateVersion: 3 }),
-    assertPersistenceError("PUBLICATION_REVISION_INVALID"),
-  );
-  assert.deepEqual(repository.find(identity), initial);
-  assert.deepEqual(repository.readHistory(identity).map((entry) => entry.aggregateVersion), [1]);
+  await assert.rejects(repository.update(99, updated), assertPersistenceError("PUBLICATION_VERSION_CONFLICT"));
+  await assert.rejects(repository.update(initial.aggregateVersion, { ...updated, aggregateVersion: 3 }), assertPersistenceError("PUBLICATION_REVISION_INVALID"));
+  assert.deepEqual(await repository.find(identity), initial);
+  assert.deepEqual((await repository.readHistory(identity)).map((entry) => entry.aggregateVersion), [1]);
 });
 
-test("F15-TASK-003 repository snapshots and append-only history reject external mutation", () => {
+test("F15-TASK-003 repository snapshots and append-only history reject external mutation", async () => {
   const repository = new InMemoryPublicationRepository();
-  repository.save(readySnapshot());
-  const found = repository.find(identity);
-  const history = repository.readHistory(identity);
+  await repository.save(readySnapshot());
+  const found = await repository.find(identity);
+  const history = await repository.readHistory(identity);
 
   assert.notEqual(found, undefined);
   assert.equal(Object.isFrozen(found), true);
@@ -126,124 +124,119 @@ test("F15-TASK-003 repository snapshots and append-only history reject external 
   assert.throws(() => { (history as PublicationSnapshot[]).push(readySnapshot("other")); }, TypeError);
 });
 
-test("F15-TASK-003 composite keys cannot alias across tenant or aggregate identity boundaries", () => {
+test("F15-TASK-003 composite keys cannot alias across tenant or aggregate identity boundaries", async () => {
   const repository = new InMemoryPublicationRepository();
   const victim = readySnapshot("tail", "tenant-a\u0000publication-x");
-  repository.save(victim);
+  await repository.save(victim);
   const alias = { tenantScopeId: "tenant-a", publicationId: "publication-x\u0000tail" } as const;
 
-  assert.equal(repository.find(alias), undefined);
+  assert.equal(await repository.find(alias), undefined);
 
   const idempotency = new InMemoryIdempotencyStore();
-  idempotency.record({ tenantScopeId: victim.tenantScopeId, aggregateId: victim.publicationId, commandKey: "command", fingerprint: "sha256:victim", resultReference: "victim", recordedAt: occurredAt });
-  assert.equal(idempotency.find({ tenantScopeId: alias.tenantScopeId, aggregateId: alias.publicationId, commandKey: "command" }), undefined);
+  await idempotency.record({ tenantScopeId: victim.tenantScopeId, aggregateId: victim.publicationId, commandKey: "command", fingerprint: "sha256:victim", resultReference: "victim", recordedAt: occurredAt });
+  assert.equal(await idempotency.find({ tenantScopeId: alias.tenantScopeId, aggregateId: alias.publicationId, commandKey: "command" }), undefined);
 });
 
-test("F15-TASK-003 idempotency store replays identical intent and rejects conflicting intent", () => {
+test("F15-TASK-003 idempotency store replays identical intent and rejects conflicting intent", async () => {
   const store = new InMemoryIdempotencyStore();
   const input = { tenantScopeId: "team-a", aggregateId: "publication-persistence-1", commandKey: "command-1", fingerprint: "sha256:intent-1", resultReference: "result-1", recordedAt: occurredAt } as const;
-  const stored = store.record(input);
-  const replayed = store.record({ ...input });
+  const stored = await store.record(input);
+  const replayed = await store.record({ ...input });
 
   assert.equal(stored.status, "STORED");
   assert.equal(replayed.status, "REPLAYED");
   assert.deepEqual(replayed.record, stored.record);
-  assert.throws(() => store.record({ ...input, fingerprint: "sha256:different" }), assertPersistenceError("IDEMPOTENCY_CONFLICT"));
-  assert.equal(Object.isFrozen(store.find({ tenantScopeId: input.tenantScopeId, aggregateId: input.aggregateId, commandKey: input.commandKey })), true);
+  await assert.rejects(store.record({ ...input, fingerprint: "sha256:different" }), assertPersistenceError("IDEMPOTENCY_CONFLICT"));
+  assert.equal(Object.isFrozen(await store.find({ tenantScopeId: input.tenantScopeId, aggregateId: input.aggregateId, commandKey: input.commandKey })), true);
 });
 
-test("F15-TASK-003 audit store appends immutable success and failure evidence", () => {
+test("F15-TASK-003 audit store appends immutable success and failure evidence", async () => {
   const store = new InMemoryPublicationAuditStore();
-  const completed = store.append({ id: "audit-1", tenantScopeId: "team-a", aggregateId: "publication-persistence-1", command: "CREATE", actorId: "actor-1", timestamp: occurredAt, version: 1, result: "COMPLETED" });
-  const failed = store.append({ id: "audit-2", tenantScopeId: "team-a", aggregateId: "publication-persistence-1", command: "UPDATE", actorId: "actor-2", timestamp: "2026-07-27T10:02:00.000Z", version: 1, result: "FAILED", failureReason: "PUBLICATION_VERSION_CONFLICT" });
+  const completed = await store.append({ id: "audit-1", tenantScopeId: "team-a", aggregateId: "publication-persistence-1", command: "CREATE", actorId: "actor-1", timestamp: occurredAt, version: 1, result: "COMPLETED" });
+  const failed = await store.append({ id: "audit-2", tenantScopeId: "team-a", aggregateId: "publication-persistence-1", command: "UPDATE", actorId: "actor-2", timestamp: "2026-07-27T10:02:00.000Z", version: 1, result: "FAILED", failureReason: "PUBLICATION_VERSION_CONFLICT" });
 
   assert.equal(Object.isFrozen(completed), true);
   assert.equal(failed.failureReason, "PUBLICATION_VERSION_CONFLICT");
-  assert.deepEqual(store.list(identity).map((entry) => entry.id), ["audit-1", "audit-2"]);
-  assert.throws(() => store.append({ ...completed }), assertPersistenceError("AUDIT_RECORD_DUPLICATE"));
-  assert.throws(
-    () => store.append({ ...completed, id: "audit-invalid", result: "FAILED" }),
-    assertPersistenceError("AUDIT_RECORD_INVALID"),
-  );
-  assert.throws(() => { (store.list(identity) as unknown[]).pop(); }, TypeError);
+  assert.deepEqual((await store.list(identity)).map((entry) => entry.id), ["audit-1", "audit-2"]);
+  await assert.rejects(store.append({ ...completed }), assertPersistenceError("AUDIT_RECORD_DUPLICATE"));
+  await assert.rejects(store.append({ ...completed, id: "audit-invalid", result: "FAILED" }), assertPersistenceError("AUDIT_RECORD_INVALID"));
+  const immutableAudit = await store.list(identity);
+  assert.throws(() => { (immutableAudit as unknown[]).pop(); }, TypeError);
 });
 
-test("F15-TASK-003 logical unit of work atomically commits repository, idempotency and audit", () => {
+test("F15-TASK-003 logical unit of work atomically commits repository, idempotency and audit", async () => {
   const unitOfWork = new InMemoryPublicationUnitOfWork();
-  const transaction = unitOfWork.begin(identity);
+  const transaction = await unitOfWork.begin(identity);
   const snapshot = readySnapshot();
-  transaction.repository.save(snapshot);
-  transaction.idempotency.record({ tenantScopeId: "team-a", aggregateId: identity.publicationId, commandKey: "command-uow-1", fingerprint: "sha256:uow-1", resultReference: "result-uow-1", recordedAt: occurredAt });
-  transaction.audit.append({ id: "audit-uow-1", tenantScopeId: "team-a", aggregateId: identity.publicationId, command: "CREATE", actorId: "actor-uow", timestamp: occurredAt, version: 1, result: "COMPLETED" });
-  assert.throws(
-    () => transaction.repository.save(readySnapshot("publication-outside-transaction")),
-    assertPersistenceError("PERSISTENCE_SCOPE_VIOLATION"),
-  );
+  await transaction.repository.save(snapshot);
+  await transaction.idempotency.record({ tenantScopeId: "team-a", aggregateId: identity.publicationId, commandKey: "command-uow-1", fingerprint: "sha256:uow-1", resultReference: "result-uow-1", recordedAt: occurredAt });
+  await transaction.audit.append({ id: "audit-uow-1", tenantScopeId: "team-a", aggregateId: identity.publicationId, command: "CREATE", actorId: "actor-uow", timestamp: occurredAt, version: 1, result: "COMPLETED" });
+  await assert.rejects(transaction.repository.save(readySnapshot("publication-outside-transaction")), assertPersistenceError("PERSISTENCE_SCOPE_VIOLATION"));
 
-  assert.equal(unitOfWork.repository.find(identity), undefined);
-  transaction.commit();
-  assert.deepEqual(unitOfWork.repository.find(identity), snapshot);
-  assert.notEqual(unitOfWork.idempotency.find({ tenantScopeId: "team-a", aggregateId: identity.publicationId, commandKey: "command-uow-1" }), undefined);
-  assert.deepEqual(unitOfWork.audit.list(identity).map((entry) => entry.id), ["audit-uow-1"]);
+  assert.equal(await unitOfWork.repository.find(identity), undefined);
+  await transaction.commit();
+  assert.deepEqual(await unitOfWork.repository.find(identity), snapshot);
+  assert.notEqual(await unitOfWork.idempotency.find({ tenantScopeId: "team-a", aggregateId: identity.publicationId, commandKey: "command-uow-1" }), undefined);
+  assert.deepEqual((await unitOfWork.audit.list(identity)).map((entry) => entry.id), ["audit-uow-1"]);
 });
 
-test("F15-TASK-003 logical unit of work rollback discards every staged persistence component", () => {
+test("F15-TASK-003 logical unit of work rollback discards every staged persistence component", async () => {
   const unitOfWork = new InMemoryPublicationUnitOfWork();
-  const transaction = unitOfWork.begin(identity);
-  transaction.repository.save(readySnapshot());
-  transaction.idempotency.record({ tenantScopeId: "team-a", aggregateId: identity.publicationId, commandKey: "command-rollback", fingerprint: "sha256:rollback", resultReference: "result-rollback", recordedAt: occurredAt });
-  transaction.audit.append({ id: "audit-rollback", tenantScopeId: "team-a", aggregateId: identity.publicationId, command: "CREATE", actorId: "actor-uow", timestamp: occurredAt, version: 1, result: "COMPLETED" });
-  transaction.rollback();
+  const transaction = await unitOfWork.begin(identity);
+  await transaction.repository.save(readySnapshot());
+  await transaction.idempotency.record({ tenantScopeId: "team-a", aggregateId: identity.publicationId, commandKey: "command-rollback", fingerprint: "sha256:rollback", resultReference: "result-rollback", recordedAt: occurredAt });
+  await transaction.audit.append({ id: "audit-rollback", tenantScopeId: "team-a", aggregateId: identity.publicationId, command: "CREATE", actorId: "actor-uow", timestamp: occurredAt, version: 1, result: "COMPLETED" });
+  await transaction.rollback();
 
-  assert.equal(unitOfWork.repository.find(identity), undefined);
-  assert.equal(unitOfWork.idempotency.find({ tenantScopeId: "team-a", aggregateId: identity.publicationId, commandKey: "command-rollback" }), undefined);
-  assert.deepEqual(unitOfWork.audit.list(identity), []);
+  assert.equal(await unitOfWork.repository.find(identity), undefined);
+  assert.equal(await unitOfWork.idempotency.find({ tenantScopeId: "team-a", aggregateId: identity.publicationId, commandKey: "command-rollback" }), undefined);
+  assert.deepEqual(await unitOfWork.audit.list(identity), []);
 });
 
-test("F15-TASK-003 logical unit of work commit preserves state outside its aggregate scope", () => {
+test("F15-TASK-003 logical unit of work commit preserves state outside its aggregate scope", async () => {
   const unitOfWork = new InMemoryPublicationUnitOfWork();
-  const transaction = unitOfWork.begin(identity);
-  transaction.repository.save(readySnapshot());
+  const transaction = await unitOfWork.begin(identity);
+  await transaction.repository.save(readySnapshot());
   const otherIdentity = { publicationId: "publication-other", tenantScopeId: "team-b" } as const;
-  unitOfWork.audit.append({ id: "audit-other", tenantScopeId: otherIdentity.tenantScopeId, aggregateId: otherIdentity.publicationId, command: "CREATE", actorId: "actor-other", timestamp: occurredAt, version: 1, result: "COMPLETED" });
+  await unitOfWork.audit.append({ id: "audit-other", tenantScopeId: otherIdentity.tenantScopeId, aggregateId: otherIdentity.publicationId, command: "CREATE", actorId: "actor-other", timestamp: occurredAt, version: 1, result: "COMPLETED" });
 
-  transaction.commit();
+  await transaction.commit();
 
-  assert.deepEqual(unitOfWork.audit.list(otherIdentity).map((entry) => entry.id), ["audit-other"]);
-  assert.notEqual(unitOfWork.repository.find(identity), undefined);
+  assert.deepEqual((await unitOfWork.audit.list(otherIdentity)).map((entry) => entry.id), ["audit-other"]);
+  assert.notEqual(await unitOfWork.repository.find(identity), undefined);
 });
 
-test("F15-TASK-003 logical unit of work rejects a concurrent change to its aggregate scope", () => {
+test("F15-TASK-003 logical unit of work rejects a concurrent change to its aggregate scope", async () => {
   const unitOfWork = new InMemoryPublicationUnitOfWork();
-  const transaction = unitOfWork.begin(identity);
-  transaction.repository.save(readySnapshot());
-  unitOfWork.audit.append({ id: "audit-concurrent", tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, command: "CREATE", actorId: "actor-concurrent", timestamp: occurredAt, version: 1, result: "COMPLETED" });
+  const transaction = await unitOfWork.begin(identity);
+  await transaction.repository.save(readySnapshot());
+  await unitOfWork.audit.append({ id: "audit-concurrent", tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, command: "CREATE", actorId: "actor-concurrent", timestamp: occurredAt, version: 1, result: "COMPLETED" });
 
-  assert.throws(() => transaction.commit(), assertPersistenceError("PUBLICATION_VERSION_CONFLICT"));
-  assert.deepEqual(unitOfWork.audit.list(identity).map((entry) => entry.id), ["audit-concurrent"]);
-  assert.equal(unitOfWork.repository.find(identity), undefined);
+  await assert.rejects(transaction.commit(), assertPersistenceError("PUBLICATION_VERSION_CONFLICT"));
+  assert.deepEqual((await unitOfWork.audit.list(identity)).map((entry) => entry.id), ["audit-concurrent"]);
+  assert.equal(await unitOfWork.repository.find(identity), undefined);
 });
 
-test("F15-TASK-003 logical unit of work never overwrites another aggregate audit identity", () => {
+test("F15-TASK-003 logical unit of work never overwrites another aggregate audit identity", async () => {
   const unitOfWork = new InMemoryPublicationUnitOfWork();
-  const transaction = unitOfWork.begin(identity);
+  const transaction = await unitOfWork.begin(identity);
   const sharedAuditId = "audit-shared-identity";
-  transaction.audit.append({ id: sharedAuditId, tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, command: "CREATE", actorId: "actor-transaction", timestamp: occurredAt, version: 1, result: "COMPLETED" });
+  await transaction.audit.append({ id: sharedAuditId, tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, command: "CREATE", actorId: "actor-transaction", timestamp: occurredAt, version: 1, result: "COMPLETED" });
   const otherIdentity = { publicationId: "publication-other", tenantScopeId: "team-b" } as const;
-  unitOfWork.audit.append({ id: sharedAuditId, tenantScopeId: otherIdentity.tenantScopeId, aggregateId: otherIdentity.publicationId, command: "CREATE", actorId: "actor-other", timestamp: occurredAt, version: 1, result: "COMPLETED" });
+  await unitOfWork.audit.append({ id: sharedAuditId, tenantScopeId: otherIdentity.tenantScopeId, aggregateId: otherIdentity.publicationId, command: "CREATE", actorId: "actor-other", timestamp: occurredAt, version: 1, result: "COMPLETED" });
 
-  assert.throws(() => transaction.commit(), assertPersistenceError("AUDIT_RECORD_DUPLICATE"));
-  assert.deepEqual(unitOfWork.audit.list(otherIdentity).map((entry) => entry.id), [sharedAuditId]);
-  assert.deepEqual(unitOfWork.audit.list(identity), []);
+  await assert.rejects(transaction.commit(), assertPersistenceError("AUDIT_RECORD_DUPLICATE"));
+  assert.deepEqual((await unitOfWork.audit.list(otherIdentity)).map((entry) => entry.id), [sharedAuditId]);
+  assert.deepEqual(await unitOfWork.audit.list(identity), []);
 });
 
-test("F15-TASK-003 logical unit of work rejects overlapping and repeated transaction completion", () => {
+test("F15-TASK-003 logical unit of work rejects overlapping and repeated transaction completion", async () => {
   const unitOfWork = new InMemoryPublicationUnitOfWork();
-  const transaction = unitOfWork.begin(identity);
-  assert.throws(() => unitOfWork.begin(identity), assertPersistenceError("TRANSACTION_ALREADY_ACTIVE"));
-  transaction.rollback();
-  assert.throws(() => transaction.commit(), assertPersistenceError("TRANSACTION_ALREADY_COMPLETED"));
-  assert.throws(() => transaction.repository.find(identity), assertPersistenceError("TRANSACTION_ALREADY_COMPLETED"));
-  assert.throws(() => transaction.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: "after-rollback" }), assertPersistenceError("TRANSACTION_ALREADY_COMPLETED"));
-  assert.throws(() => transaction.audit.list(identity), assertPersistenceError("TRANSACTION_ALREADY_COMPLETED"));
+  const transaction = await unitOfWork.begin(identity);
+  await assert.rejects(unitOfWork.begin(identity), assertPersistenceError("TRANSACTION_ALREADY_ACTIVE"));
+  await transaction.rollback();
+  await assert.rejects(transaction.commit(), assertPersistenceError("TRANSACTION_ALREADY_COMPLETED"));
+  await assert.rejects(transaction.repository.find(identity), assertPersistenceError("TRANSACTION_ALREADY_COMPLETED"));
+  await assert.rejects(transaction.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: "after-rollback" }), assertPersistenceError("TRANSACTION_ALREADY_COMPLETED"));
+  await assert.rejects(transaction.audit.list(identity), assertPersistenceError("TRANSACTION_ALREADY_COMPLETED"));
 });

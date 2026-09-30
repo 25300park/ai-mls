@@ -77,7 +77,7 @@ export class PublicationInProcessExecutable {
     }
   }
 
-  public execute(input: PublicationExecutableRequest): PublicationExecutableResult {
+  public async execute(input: PublicationExecutableRequest): Promise<PublicationExecutableResult> {
     const inspected = inspectExecutableRequest(input);
     if (inspected === null) {
       return this.failureResult(
@@ -95,7 +95,7 @@ export class PublicationInProcessExecutable {
     }
     this.lifecycle.transition("EXECUTING");
     try {
-      const outcome = this.invocation.invoke(request);
+      const outcome = await this.invocation.invoke(request);
       this.executionCount += 1;
       this.lastExecutionStatus = outcome.success ? "SUCCESS" : "FAILURE";
       this.lifecycle.transition("READY");

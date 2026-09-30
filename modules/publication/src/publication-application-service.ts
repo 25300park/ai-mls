@@ -15,13 +15,13 @@ export class PublicationApplicationService implements PublicationCommandHandler 
     private readonly modifyHandler: ModifyPublicationHandler,
   ) {}
 
-  public execute(command: PublicationApplicationCommand, context: PublicationExecutionContext): PublicationApplicationResult {
+  public execute(command: PublicationApplicationCommand, context: PublicationExecutionContext): Promise<PublicationApplicationResult> {
     return command.kind === "CREATE_PUBLICATION"
       ? this.createHandler.execute(command, context)
       : this.modifyHandler.execute(command, context);
   }
 
-  public executeAuthorized(command: PublicationApplicationCommand, context: PublicationExecutionContext, preflight: PublicationAuthorizedPreflight, auditDetails?: PublicationApplicationAuditDetails, stage?: PublicationTransactionalStage): PublicationApplicationResult {
+  public executeAuthorized(command: PublicationApplicationCommand, context: PublicationExecutionContext, preflight: PublicationAuthorizedPreflight, auditDetails?: PublicationApplicationAuditDetails, stage?: PublicationTransactionalStage): Promise<PublicationApplicationResult> {
     return command.kind === "CREATE_PUBLICATION"
       ? this.createHandler.executeAuthorized(command, context, preflight)
       : this.modifyHandler.executeAuthorized(command, context, preflight, auditDetails, stage);

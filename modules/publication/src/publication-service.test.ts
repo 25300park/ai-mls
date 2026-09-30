@@ -24,7 +24,7 @@ import { DurablePublicationUnitOfWork } from "./publication-durable-persistence.
 
 const timestamp = "2026-08-03T12:00:00.000Z";
 
-test("F17-F coordinated new attempt after provider rejection requires approved retry policy", () => {
+test("F17-F coordinated new attempt after provider rejection requires approved retry policy", async () => {
   let calls = 0;
   const infrastructure = createPublicationInfrastructure({
     ...createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)),
@@ -32,17 +32,17 @@ test("F17-F coordinated new attempt after provider rejection requires approved r
     connectorDispatcher: { dispatch: () => { calls++; return { outcome: "REJECTED", evidenceRefs: ["provider:rejected"] }; } },
   });
   const initial = request(context("f17-f-first"));
-  assert.equal(coordinate(infrastructure, initial).ok, false);
-  const before = infrastructure.repository.find(identity)!;
+  assert.equal((await coordinate(infrastructure, initial)).ok, false);
+  const before = (await infrastructure.repository.find(identity))!;
   const retry = request(context("f17-f-second"));
-  const result = infrastructure.coordination.publish({ identity, context: retry.context, command: retry.create.input.command, attempt: { ...retry.attempt, id: "attempt-retry-new", commandId: "command-retry-new" }, expectedAggregateVersion: before.aggregateVersion });
+  const result = await infrastructure.coordination.publish({ identity, context: retry.context, command: retry.create.input.command, attempt: { ...retry.attempt, id: "attempt-retry-new", commandId: "command-retry-new" }, expectedAggregateVersion: before.aggregateVersion });
   assert.equal(result.ok, false);
   assert.equal(calls, 1, "no approved retry policy means zero second dispatch");
-  assert.deepEqual(infrastructure.repository.find(identity), before);
+  assert.deepEqual(await infrastructure.repository.find(identity), before);
 });
 const identity = { publicationId: "publication-coordination-1", tenantScopeId: "team-a" } as const;
 
-test("F17-F approved new attempt preserves prior receipt and same attempt replay never redelivers", () => {
+test("F17-F approved new attempt preserves prior receipt and same attempt replay never redelivers", async () => {
   let calls = 0;
   const infrastructure = createPublicationInfrastructure({
     ...createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)),
@@ -51,22 +51,22 @@ test("F17-F approved new attempt preserves prior receipt and same attempt replay
     connectorDispatcher: { dispatch: () => { calls++; return calls === 1 ? { outcome: "REJECTED", evidenceRefs: ["provider:rejected"] } : { outcome: "CONFIRMED", evidenceRefs: ["provider:confirmed"], externalObjectReference: "external-confirmed" }; } },
   });
   const initial = request(context("f17-f-initial"));
-  assert.equal(coordinate(infrastructure, initial).ok, false);
-  const prior = infrastructure.unitOfWork.execution.findReceipt(identity, initial.attempt.commandId);
+  assert.equal((await coordinate(infrastructure, initial)).ok, false);
+  const prior = await infrastructure.unitOfWork.execution.findReceipt(identity, initial.attempt.commandId);
   const retry = request(context("f17-f-authorized-retry"));
-  const input = { identity, context: retry.context, command: retry.create.input.command, attempt: { ...retry.attempt, id: "attempt-approved-retry", commandId: "command-approved-retry" }, expectedAggregateVersion: infrastructure.repository.find(identity)!.aggregateVersion };
-  const result = infrastructure.coordination.publish(input);
+  const input = { identity, context: retry.context, command: retry.create.input.command, attempt: { ...retry.attempt, id: "attempt-approved-retry", commandId: "command-approved-retry" }, expectedAggregateVersion: (await infrastructure.repository.find(identity))!.aggregateVersion };
+  const result = await infrastructure.coordination.publish(input);
   assert.equal(result.ok, true);
   assert.equal(calls, 2);
-  assert.equal(infrastructure.coordination.publish(input).ok, true);
+  assert.equal((await infrastructure.coordination.publish(input)).ok, true);
   assert.equal(calls, 2);
-  assert.equal(infrastructure.repository.find(identity)?.attempts.length, 2);
-  assert.deepEqual(infrastructure.unitOfWork.execution.findReceipt(identity, initial.attempt.commandId), prior);
-  assert.equal(infrastructure.coordination.publish({ ...input, attempt: { ...input.attempt, id: "conflicting-id" } }).ok, false);
+  assert.equal((await infrastructure.repository.find(identity))?.attempts.length, 2);
+  assert.deepEqual(await infrastructure.unitOfWork.execution.findReceipt(identity, initial.attempt.commandId), prior);
+  assert.equal((await infrastructure.coordination.publish({ ...input, attempt: { ...input.attempt, id: "conflicting-id" } })).ok, false);
   assert.equal(calls, 2);
 });
 
-test("F17-F live authority changing after retry admission blocks the dispatch boundary", () => {
+test("F17-F live authority changing after retry admission blocks the dispatch boundary", async () => {
   let calls = 0;
   let approvalChecks = 0;
   let authorityCurrent = true;
@@ -78,9 +78,9 @@ test("F17-F live authority changing after retry admission blocks the dispatch bo
     approvedRetryPolicy: { resolve: () => ({ tenantScopeId: "team-a", targetId: "target-1", targetVersion: 5, channelId: "channel-1", channelPolicyVersion: "channel-policy-v3", reference: "test-approved-policy", maximumAttempts: 2, allowedOutcomes: ["NO_EFFECT"] }) },
     connectorDispatcher: { dispatch: () => { calls++; return { outcome: "REJECTED", evidenceRefs: ["provider:rejected"] }; } },
   });
-  assert.equal(coordinate(infrastructure, request(context("f17-f-stale-first"))).ok, false);
+  assert.equal((await coordinate(infrastructure, request(context("f17-f-stale-first")))).ok, false);
   const retry = request(context("f17-f-stale-second"));
-  const result = infrastructure.coordination.publish({ identity, context: retry.context, command: retry.create.input.command, attempt: { ...retry.attempt, id: "stale-retry-attempt", commandId: "stale-retry-command" }, expectedAggregateVersion: infrastructure.repository.find(identity)!.aggregateVersion });
+  const result = await infrastructure.coordination.publish({ identity, context: retry.context, command: retry.create.input.command, attempt: { ...retry.attempt, id: "stale-retry-attempt", commandId: "stale-retry-command" }, expectedAggregateVersion: (await infrastructure.repository.find(identity))!.aggregateVersion });
   assert.equal(result.ok, false);
   assert.equal(calls, 1, "fresh authority must be checked at dispatch, not only earlier admission");
 });
@@ -153,11 +153,11 @@ function request(execution: PublicationExecutionContext) {
   };
 }
 
-function coordinate(
+async function coordinate(
   infrastructure: Pick<ReturnType<typeof createPublicationInfrastructure>, "coordination">,
   coordinated: ReturnType<typeof request>,
 ) {
-  const created = infrastructure.coordination.create({ context: coordinated.context, command: coordinated.create });
+  const created = await infrastructure.coordination.create({ context: coordinated.context, command: coordinated.create });
   if (!created.ok) return created;
   return infrastructure.coordination.publish({
     context: coordinated.context,
@@ -168,7 +168,7 @@ function coordinate(
   });
 }
 
-test("F15-TASK-006 coordinates create, live Approval, connector confirmation and ACTIVE persistence", () => {
+test("F15-TASK-006 coordinates create, live Approval, connector confirmation and ACTIVE persistence", async () => {
   const approvalChecks: string[] = [];
   const connectorDispatches: string[] = [];
   const infrastructure = createPublicationInfrastructure({
@@ -192,13 +192,13 @@ test("F15-TASK-006 coordinates create, live Approval, connector confirmation and
   });
 
   const coordinated = request(context("success"));
-  const created = infrastructure.coordination.create({ context: coordinated.context, command: coordinated.create });
+  const created = await infrastructure.coordination.create({ context: coordinated.context, command: coordinated.create });
 
   assert.equal(created.ok, true);
-  assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "READY");
+  assert.equal((await infrastructure.repository.find(identity))?.lifecycleState, "READY");
   assert.deepEqual(connectorDispatches, []);
 
-  const result = created.ok ? infrastructure.coordination.publish({
+  const result = created.ok ? await infrastructure.coordination.publish({
     context: coordinated.context,
     identity,
     command: coordinated.create.input.command,
@@ -217,11 +217,11 @@ test("F15-TASK-006 coordinates create, live Approval, connector confirmation and
   assert.equal(approvalChecks.length, 2);
   assert.equal(approvalChecks.every((value) => value.endsWith(":executor-independent")), true);
   assert.deepEqual(connectorDispatches, ["command-initial-1"]);
-  const persisted = infrastructure.repository.find(identity);
+  const persisted = await infrastructure.repository.find(identity);
   assert.equal(persisted?.lifecycleState, "ACTIVE");
   assert.equal(persisted?.externalObjectReference, "external-listing-1");
   assert.deepEqual(persisted?.transitionHistory.map(({ transitionId }) => transitionId), ["PUB-TR-001", "PUB-TR-002", "PUB-TR-003"]);
-  assert.deepEqual(infrastructure.audit.list(identity).map(({ result, version, actorId }) => ({ result, version, actorId })), [
+  assert.deepEqual((await infrastructure.audit.list(identity)).map(({ result, version, actorId }) => ({ result, version, actorId })), [
     { result: "COMPLETED", version: 1, actorId: "executor-independent" },
     { result: "COMPLETED", version: 2, actorId: "executor-independent" },
     { result: "COMPLETED", version: 3, actorId: "executor-independent" },
@@ -229,10 +229,10 @@ test("F15-TASK-006 coordinates create, live Approval, connector confirmation and
   ]);
 });
 
-test("F17-C receipt persistence failure preserves the safe Event code and fails ambiguous without redispatch", () => {
+test("F17-C receipt persistence failure preserves the safe Event code and fails ambiguous without redispatch", async () => {
   const { infrastructure, dispatchCount } = coordinationInfrastructure();
   const coordinated = request(context("event-append-retry"));
-  const created = infrastructure.coordination.create({ context: coordinated.context, command: coordinated.create });
+  const created = await infrastructure.coordination.create({ context: coordinated.context, command: coordinated.create });
   assert.equal(created.ok, true);
   const dependencies = (infrastructure.coordination as unknown as {
     dependencies: { eventCoordinator: { appendAcceptedTransition(...input: readonly unknown[]): readonly unknown[] } };
@@ -258,15 +258,15 @@ test("F17-C receipt persistence failure preserves the safe Event code and fails 
     expectedAggregateVersion: created.ok ? created.aggregateVersion : 1,
   };
 
-  const failed = infrastructure.coordination.publish(publishRequest);
+  const failed = await infrastructure.coordination.publish(publishRequest);
 
   assert.equal(failed.ok, false);
   assert.equal(!failed.ok && failed.error.code, "EVENT_APPEND_FAILED");
   assert.equal(dispatchCount(), 1);
-  assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "EXECUTION_PENDING");
-  assert.equal(infrastructure.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).length, 0);
-  assert.equal(infrastructure.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: `${coordinated.context.idempotencyKey}:activation` }), undefined);
-  const failureAudit = infrastructure.audit.list(identity).find((record) => record.failureReason === "EVENT_APPEND_FAILED");
+  assert.equal((await infrastructure.repository.find(identity))?.lifecycleState, "EXECUTION_PENDING");
+  assert.equal((await infrastructure.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId)).length, 0);
+  assert.equal(await infrastructure.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: `${coordinated.context.idempotencyKey}:activation` }), undefined);
+  const failureAudit = (await infrastructure.audit.list(identity)).find((record) => record.failureReason === "EVENT_APPEND_FAILED");
   assert.deepEqual(failureAudit === undefined ? undefined : {
     eventId: failureAudit.eventId,
     eventType: failureAudit.eventType,
@@ -274,7 +274,7 @@ test("F17-C receipt persistence failure preserves the safe Event code and fails 
     safeReasonCode: failureAudit.safeReasonCode,
   }, { eventId: "evt_safe_failure", eventType: "EVT-003", eventSequence: 1, safeReasonCode: "EVENT_APPEND_FAILED" });
 
-  const attemptConflict = infrastructure.coordination.publish({
+  const attemptConflict = await infrastructure.coordination.publish({
     ...publishRequest,
     attempt: { ...publishRequest.attempt, id: `${publishRequest.attempt.id}-conflict` },
   });
@@ -295,7 +295,7 @@ test("F17-C receipt persistence failure preserves the safe Event code and fails 
     effectiveApproval: changedEffectiveApproval,
     executionEligibility: new PublicationExecutionEligibilityGate({ effectiveApproval: changedEffectiveApproval }),
   });
-  const fingerprintConflict = infrastructure.coordination.publish(publishRequest);
+  const fingerprintConflict = await infrastructure.coordination.publish(publishRequest);
   assert.deepEqual(fingerprintConflict, {
     ok: false,
     error: {
@@ -307,24 +307,24 @@ test("F17-C receipt persistence failure preserves the safe Event code and fails 
   assert.equal(dispatchCount(), 1);
 
   Object.assign(dependencies, { eventCoordinator: workingCoordinator, effectiveApproval, executionEligibility });
-  const recovered = infrastructure.coordination.publish(publishRequest);
+  const recovered = await infrastructure.coordination.publish(publishRequest);
   assert.equal(recovered.ok, false);
   assert.equal(!recovered.ok && recovered.error.code, "CONNECTOR_OUTCOME_UNKNOWN");
   assert.equal(dispatchCount(), 1);
-  assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "RECONCILIATION_REQUIRED");
-  assert.equal(infrastructure.unitOfWork.execution.recoveryDisposition(identity, coordinated.attempt.commandId).providerInvocationPermitted, false);
-  assert.deepEqual(infrastructure.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).map((item) => item.eventType), []);
-  assert.notEqual(infrastructure.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: `${coordinated.context.idempotencyKey}:activation` }), undefined);
+  assert.equal((await infrastructure.repository.find(identity))?.lifecycleState, "RECONCILIATION_REQUIRED");
+  assert.equal((await infrastructure.unitOfWork.execution.recoveryDisposition(identity, coordinated.attempt.commandId)).providerInvocationPermitted, false);
+  assert.deepEqual((await infrastructure.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId)).map((item) => item.eventType), []);
+  assert.notEqual(await infrastructure.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: `${coordinated.context.idempotencyKey}:activation` }), undefined);
 });
 
-test("F15-TASK-010R unknown connector-outcome persistence failure remains sanitized", () => {
+test("F15-TASK-010R unknown connector-outcome persistence failure remains sanitized", async () => {
   const { infrastructure } = coordinationInfrastructure();
   const coordinated = request(context("unknown-event-failure"));
-  const created = infrastructure.coordination.create({ context: coordinated.context, command: coordinated.create });
+  const created = await infrastructure.coordination.create({ context: coordinated.context, command: coordinated.create });
   assert.equal(created.ok, true);
   const dependencies = (infrastructure.coordination as unknown as { dependencies: { eventCoordinator: unknown } }).dependencies;
   Object.assign(dependencies, { eventCoordinator: { appendAcceptedTransition(): never { throw new Error("sensitive journal internals"); } } });
-  const result = infrastructure.coordination.publish({ context: coordinated.context, identity, command: coordinated.create.input.command, attempt: coordinated.attempt, expectedAggregateVersion: created.ok ? created.aggregateVersion : 1 });
+  const result = await infrastructure.coordination.publish({ context: coordinated.context, identity, command: coordinated.create.input.command, attempt: coordinated.attempt, expectedAggregateVersion: created.ok ? created.aggregateVersion : 1 });
 
   assert.deepEqual(result, { ok: false, error: { code: "CONNECTOR_OUTCOME_PERSISTENCE_FAILED", category: "INFRASTRUCTURE", message: "Publication connector outcome could not be recorded." } });
   assert.equal(JSON.stringify(result).includes("sensitive journal internals"), false);
@@ -340,7 +340,7 @@ function coordinationInfrastructure(
     readonly approvalEffective?: boolean;
     readonly omitAuthentication?: boolean;
     readonly liveTransform?: (live: PublicationLiveAuthorizationContext) => PublicationLiveAuthorizationContext;
-    readonly onDispatch?: () => void;
+    readonly onDispatch?: () => void | Promise<void>;
   } = {},
 ) {
   const base = createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp));
@@ -364,9 +364,9 @@ function coordinationInfrastructure(
         : approvalDecision("approval-decision-default")),
     },
     connectorDispatcher: {
-      dispatch() {
+      async dispatch() {
         dispatchCount += 1;
-        options.onDispatch?.();
+        await options.onDispatch?.();
         return typeof outcome === "function" ? outcome() : outcome;
       },
     },
@@ -374,28 +374,28 @@ function coordinationInfrastructure(
   return { infrastructure, dispatchCount: () => dispatchCount };
 }
 
-test("F15-TASK-006 requires current API-013 effective Approval before mutation", () => {
+test("F15-TASK-006 requires current API-013 effective Approval before mutation", async () => {
   const { infrastructure, dispatchCount } = coordinationInfrastructure(undefined, { approvalEffective: false });
 
-  const result = coordinate(infrastructure, request(context("stale-approval")));
+  const result = await coordinate(infrastructure, request(context("stale-approval")));
 
   assert.deepEqual(result, {
     ok: false,
     error: { code: "APPROVAL_NOT_EFFECTIVE", category: "DOMAIN_REJECTION", message: "Publication Approval is not effective." },
   });
-  assert.equal(infrastructure.repository.find(identity), undefined);
+  assert.equal(await infrastructure.repository.find(identity), undefined);
   assert.equal(dispatchCount(), 0);
-  assert.deepEqual(infrastructure.audit.list(identity).map(({ result, failureReason }) => ({ result, failureReason })), [
+  assert.deepEqual((await infrastructure.audit.list(identity)).map(({ result, failureReason }) => ({ result, failureReason })), [
     { result: "FAILED", failureReason: "APPROVAL_NOT_EFFECTIVE" },
   ]);
 });
 
-test("F17-B coordination consumes the explicit BLOCKED eligibility result before provider dispatch or state mutation", () => {
+test("F17-B coordination consumes the explicit BLOCKED eligibility result before provider dispatch or state mutation", async () => {
   const { infrastructure, dispatchCount } = coordinationInfrastructure();
   const coordinated = request(context("eligibility-blocked"));
-  const created = infrastructure.coordination.create({ context: coordinated.context, command: coordinated.create });
+  const created = await infrastructure.coordination.create({ context: coordinated.context, command: coordinated.create });
   assert.equal(created.ok, true);
-  const before = infrastructure.repository.find(identity);
+  const before = await infrastructure.repository.find(identity);
   assert.equal(before?.lifecycleState, "READY");
 
   const dependencies = (infrastructure.coordination as unknown as {
@@ -408,7 +408,7 @@ test("F17-B coordination consumes the explicit BLOCKED eligibility result before
     }),
   });
 
-  const result = infrastructure.coordination.publish({
+  const result = await infrastructure.coordination.publish({
     context: coordinated.context,
     identity,
     command: coordinated.create.input.command,
@@ -420,11 +420,11 @@ test("F17-B coordination consumes the explicit BLOCKED eligibility result before
     ok: false,
     error: { code: "APPROVAL_NOT_EFFECTIVE", category: "DOMAIN_REJECTION", message: "Publication Approval is not effective." },
   });
-  assert.deepEqual(infrastructure.repository.find(identity), before);
+  assert.deepEqual(await infrastructure.repository.find(identity), before);
   assert.equal(dispatchCount(), 0);
 });
 
-test("F15-TASK-006 API-013 adapter supplies the canonical effective Approval contract", () => {
+test("F15-TASK-006 API-013 adapter supplies the canonical effective Approval contract", async () => {
   const canonicalRequests: Record<string, unknown>[] = [];
   const adapter = new Api013EffectiveApprovalAdapter(
     {
@@ -463,7 +463,7 @@ test("F15-TASK-006 API-013 adapter supplies the canonical effective Approval con
     connectorDispatcher: { dispatch: () => Object.freeze({ outcome: "CONFIRMED" as const, evidenceRefs: Object.freeze(["api-013-adapter-evidence"]), externalObjectReference: "external-api-013" }) },
   });
 
-  const result = coordinate(infrastructure, request(context("api-013-adapter")));
+  const result = await coordinate(infrastructure, request(context("api-013-adapter")));
 
   assert.equal(result.ok, true);
   assert.equal(canonicalRequests.length, 2);
@@ -510,7 +510,7 @@ test("F15-TASK-006 API-013 adapter supplies the canonical effective Approval con
 });
 
 for (const prerequisite of ["verification", "permission"] as const) {
-  test(`F15-TASK-006 requires current ${prerequisite} before create or connector dispatch`, () => {
+  test(`F15-TASK-006 requires current ${prerequisite} before create or connector dispatch`, async () => {
     const { infrastructure, dispatchCount } = coordinationInfrastructure(undefined, {
       liveTransform(live) {
         return prerequisite === "verification"
@@ -519,29 +519,29 @@ for (const prerequisite of ["verification", "permission"] as const) {
       },
     });
 
-    const result = coordinate(infrastructure, request(context(`stale-${prerequisite}`)));
+    const result = await coordinate(infrastructure, request(context(`stale-${prerequisite}`)));
 
     assert.equal(result.ok, false);
     assert.equal(!result.ok && result.error.code, prerequisite === "verification" ? "VERIFICATION_NOT_EFFECTIVE" : "PERMISSION_NOT_EFFECTIVE");
-    assert.equal(infrastructure.repository.find(identity), undefined);
+    assert.equal(await infrastructure.repository.find(identity), undefined);
     assert.equal(dispatchCount(), 0);
   });
 }
 
-test("F15-TASK-006 authorization failure stops before Approval, connector and persistence", () => {
+test("F15-TASK-006 authorization failure stops before Approval, connector and persistence", async () => {
   const { infrastructure, dispatchCount } = coordinationInfrastructure(undefined, { omitAuthentication: true });
 
-  const result = coordinate(infrastructure, request(context("authentication-failure")));
+  const result = await coordinate(infrastructure, request(context("authentication-failure")));
 
   assert.equal(result.ok, false);
   assert.equal(!result.ok && result.error.code, "AUTHENTICATION_REQUIRED");
-  assert.equal(infrastructure.repository.find(identity), undefined);
+  assert.equal(await infrastructure.repository.find(identity), undefined);
   assert.equal(dispatchCount(), 0);
-  assert.deepEqual(infrastructure.audit.list(identity), []);
+  assert.deepEqual(await infrastructure.audit.list(identity), []);
 });
 
 for (const prerequisite of ["verification", "permission"] as const) {
-  test(`F15-TASK-006 revalidates ${prerequisite} after create and before publish dispatch`, () => {
+  test(`F15-TASK-006 revalidates ${prerequisite} after create and before publish dispatch`, async () => {
     const base = createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp));
     let liveChecks = 0;
     let dispatchCount = 0;
@@ -561,69 +561,69 @@ for (const prerequisite of ["verification", "permission"] as const) {
       connectorDispatcher: { dispatch: () => { dispatchCount += 1; return Object.freeze({ outcome: "CONFIRMED" as const, evidenceRefs: Object.freeze(["unexpected"]), externalObjectReference: "unexpected" }); } },
     });
     const coordinated = request(context(`publish-stale-${prerequisite}`));
-    const created = infrastructure.coordination.create({ context: coordinated.context, command: coordinated.create });
+    const created = await infrastructure.coordination.create({ context: coordinated.context, command: coordinated.create });
     assert.equal(created.ok, true);
     if (!created.ok) return;
 
-    const result = infrastructure.coordination.publish({ context: coordinated.context, identity, command: coordinated.create.input.command, attempt: coordinated.attempt, expectedAggregateVersion: created.aggregateVersion });
+    const result = await infrastructure.coordination.publish({ context: coordinated.context, identity, command: coordinated.create.input.command, attempt: coordinated.attempt, expectedAggregateVersion: created.aggregateVersion });
 
     assert.equal(result.ok, false);
     assert.equal(!result.ok && result.error.code, prerequisite === "verification" ? "VERIFICATION_NOT_EFFECTIVE" : "PERMISSION_NOT_EFFECTIVE");
     assert.equal(dispatchCount, 0);
-    assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "READY");
+    assert.equal((await infrastructure.repository.find(identity))?.lifecycleState, "READY");
   });
 }
 
-test("F15-TASK-006 rejects a stale publish version before connector dispatch", () => {
+test("F15-TASK-006 rejects a stale publish version before connector dispatch", async () => {
   const { infrastructure, dispatchCount } = coordinationInfrastructure();
   const coordinated = request(context("stale-publish-version"));
-  const created = infrastructure.coordination.create({ context: coordinated.context, command: coordinated.create });
+  const created = await infrastructure.coordination.create({ context: coordinated.context, command: coordinated.create });
   assert.equal(created.ok, true);
   if (!created.ok) return;
 
-  const result = infrastructure.coordination.publish({ context: coordinated.context, identity, command: coordinated.create.input.command, attempt: coordinated.attempt, expectedAggregateVersion: created.aggregateVersion + 1 });
+  const result = await infrastructure.coordination.publish({ context: coordinated.context, identity, command: coordinated.create.input.command, attempt: coordinated.attempt, expectedAggregateVersion: created.aggregateVersion + 1 });
 
   assert.equal(result.ok, false);
   assert.equal(!result.ok && result.error.code, "PUBLICATION_VERSION_CONFLICT");
   assert.equal(dispatchCount(), 0);
-  assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "READY");
+  assert.equal((await infrastructure.repository.find(identity))?.lifecycleState, "READY");
 });
 
-test("F15-TASK-006 connector rejection returns READY with immutable no-effect evidence", () => {
+test("F15-TASK-006 connector rejection returns READY with immutable no-effect evidence", async () => {
   const { infrastructure } = coordinationInfrastructure(Object.freeze({
     outcome: "REJECTED",
     evidenceRefs: Object.freeze(["connector-rejection-1"]),
   }));
 
-  const result = coordinate(infrastructure, request(context("connector-rejected")));
+  const result = await coordinate(infrastructure, request(context("connector-rejected")));
 
   assert.equal(result.ok, false);
   assert.equal(!result.ok && result.error.code, "CONNECTOR_REJECTED");
-  const persisted = infrastructure.repository.find(identity);
+  const persisted = await infrastructure.repository.find(identity);
   assert.equal(persisted?.lifecycleState, "READY");
   assert.equal(persisted?.attempts[0]?.outcome, "NO_EFFECT");
   assert.deepEqual(persisted?.attempts[0]?.evidenceRefs, ["connector-rejection-1"]);
-  assert.deepEqual(infrastructure.audit.list(identity).map(({ result }) => result), ["COMPLETED", "COMPLETED", "COMPLETED"]);
+  assert.deepEqual((await infrastructure.audit.list(identity)).map(({ result }) => result), ["COMPLETED", "COMPLETED", "COMPLETED"]);
 });
 
-test("F15-TASK-006 unknown connector outcome fails closed in RECONCILIATION_REQUIRED", () => {
+test("F15-TASK-006 unknown connector outcome fails closed in RECONCILIATION_REQUIRED", async () => {
   const { infrastructure } = coordinationInfrastructure(Object.freeze({
     outcome: "UNKNOWN",
     evidenceRefs: Object.freeze(["connector-observation-unknown-1"]),
   }));
 
-  const result = coordinate(infrastructure, request(context("connector-unknown")));
+  const result = await coordinate(infrastructure, request(context("connector-unknown")));
 
   assert.equal(result.ok, false);
   assert.equal(!result.ok && result.error.code, "CONNECTOR_OUTCOME_UNKNOWN");
-  const persisted = infrastructure.repository.find(identity);
+  const persisted = await infrastructure.repository.find(identity);
   assert.equal(persisted?.lifecycleState, "RECONCILIATION_REQUIRED");
   assert.equal(persisted?.attempts[0]?.outcome, "UNKNOWN");
   assert.equal(persisted?.reconciliationCases[0]?.status, "OPEN");
   assert.equal(persisted?.externalObjectReference, undefined);
 });
 
-test("F15-TASK-006 contains connector exceptions as unknown without claiming ACTIVE", () => {
+test("F15-TASK-006 contains connector exceptions as unknown without claiming ACTIVE", async () => {
   const base = createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp));
   const infrastructure = createPublicationInfrastructure({
     ...base,
@@ -631,36 +631,36 @@ test("F15-TASK-006 contains connector exceptions as unknown without claiming ACT
     connectorDispatcher: { dispatch(): never { throw new Error("restricted provider failure detail"); } },
   });
 
-  const result = coordinate(infrastructure, request(context("connector-exception")));
+  const result = await coordinate(infrastructure, request(context("connector-exception")));
 
   assert.equal(result.ok, false);
   assert.equal(!result.ok && result.error.code, "CONNECTOR_OUTCOME_UNKNOWN");
-  assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "RECONCILIATION_REQUIRED");
+  assert.equal((await infrastructure.repository.find(identity))?.lifecycleState, "RECONCILIATION_REQUIRED");
   assert.equal(JSON.stringify(result).includes("restricted provider failure detail"), false);
   assert.equal(infrastructure.operationsMetrics.snapshot().connectorFailures, 1);
   assert.equal(infrastructure.operationsEvidence.list({ component: "CONNECTOR_ATTEMPT" }).filter(({ result }) => result === "FAILED").length, 1);
 });
 
-test("F15-TASK-006 identical replay does not duplicate connector dispatch or persistence", () => {
+test("F15-TASK-006 identical replay does not duplicate connector dispatch or persistence", async () => {
   const { infrastructure, dispatchCount } = coordinationInfrastructure();
   const coordinated = request(context("idempotent-replay"));
 
-  const first = coordinate(infrastructure, coordinated);
-  const second = coordinate(infrastructure, coordinated);
+  const first = await coordinate(infrastructure, coordinated);
+  const second = await coordinate(infrastructure, coordinated);
 
   assert.equal(first.ok, true);
   assert.deepEqual(second, { ...first, replayed: true });
   assert.equal(dispatchCount(), 1);
-  assert.equal(infrastructure.repository.readHistory(identity).length, 3);
-  assert.equal(infrastructure.audit.list(identity).length, 4);
+  assert.equal((await infrastructure.repository.readHistory(identity)).length, 3);
+  assert.equal((await infrastructure.audit.list(identity)).length, 4);
 });
 
-test("F15-TASK-006 conflicting idempotency fingerprint is rejected without redispatch", () => {
+test("F15-TASK-006 conflicting idempotency fingerprint is rejected without redispatch", async () => {
   const { infrastructure, dispatchCount } = coordinationInfrastructure();
   const first = request(context("idempotency-conflict"));
-  assert.equal(coordinate(infrastructure, first).ok, true);
+  assert.equal((await coordinate(infrastructure, first)).ok, true);
 
-  const result = coordinate(infrastructure, {
+  const result = await coordinate(infrastructure, {
     ...first,
     context: { ...first.context, intentFingerprint: "sha256:conflicting-intent" },
   });
@@ -668,15 +668,15 @@ test("F15-TASK-006 conflicting idempotency fingerprint is rejected without redis
   assert.equal(result.ok, false);
   assert.equal(!result.ok && result.error.code, "IDEMPOTENCY_CONFLICT");
   assert.equal(dispatchCount(), 1);
-  assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "ACTIVE");
+  assert.equal((await infrastructure.repository.find(identity))?.lifecycleState, "ACTIVE");
 });
 
-test("F15-TASK-006 records confirmed external effect after a concurrent aggregate version change", () => {
+test("F15-TASK-006 records confirmed external effect after a concurrent aggregate version change", async () => {
   const holder: { current?: ReturnType<typeof createPublicationInfrastructure> } = {};
   const configured = coordinationInfrastructure(undefined, {
-    onDispatch() {
+    async onDispatch() {
       const infrastructure = holder.current!;
-      const current = infrastructure.repository.find(identity)!;
+      const current = (await infrastructure.repository.find(identity))!;
       const changed = PublicationAggregate.rehydrate(current).setSuspension({
         type: "SET_SUSPENSION",
         expectedAggregateVersion: current.aggregateVersion,
@@ -689,21 +689,21 @@ test("F15-TASK-006 records confirmed external effect after a concurrent aggregat
           occurredAt: timestamp,
         },
       }).snapshot;
-      infrastructure.repository.update(current.aggregateVersion, changed);
+      await infrastructure.repository.update(current.aggregateVersion, changed);
     },
   });
   const infrastructure = configured.infrastructure;
   holder.current = infrastructure;
 
-  const result = coordinate(infrastructure, request(context("version-conflict")));
+  const result = await coordinate(infrastructure, request(context("version-conflict")));
 
   assert.equal(result.ok, true);
   assert.equal(result.ok && result.aggregateVersion, 4);
-  assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "ACTIVE");
-  assert.equal(infrastructure.repository.find(identity)?.suspensionStatus, "SUSPENDED_SECURITY");
+  assert.equal((await infrastructure.repository.find(identity))?.lifecycleState, "ACTIVE");
+  assert.equal((await infrastructure.repository.find(identity))?.suspensionStatus, "SUSPENDED_SECURITY");
 });
 
-test("F15-TASK-006 dispatches only the persisted exact binding and approval decision evidence", () => {
+test("F15-TASK-006 dispatches only the persisted exact binding and approval decision evidence", async () => {
   const dispatches: unknown[] = [];
   const infrastructure = createPublicationInfrastructure({
     ...createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)),
@@ -716,11 +716,11 @@ test("F15-TASK-006 dispatches only the persisted exact binding and approval deci
     },
   });
   const coordinated = request(context("exact-binding"));
-  const created = infrastructure.coordination.create({ context: coordinated.context, command: coordinated.create });
+  const created = await infrastructure.coordination.create({ context: coordinated.context, command: coordinated.create });
   assert.equal(created.ok, true);
   if (!created.ok) return;
 
-  const result = infrastructure.coordination.publish({
+  const result = await infrastructure.coordination.publish({
     context: coordinated.context,
     identity,
     command: coordinated.create.input.command,
@@ -747,23 +747,23 @@ test("F15-TASK-006 dispatches only the persisted exact binding and approval deci
   }]);
 });
 
-test("F15-TASK-006 converts an inconsistent connector result to UNKNOWN reconciliation", () => {
+test("F15-TASK-006 converts an inconsistent connector result to UNKNOWN reconciliation", async () => {
   const { infrastructure } = coordinationInfrastructure(Object.freeze({
     outcome: "REJECTED",
     evidenceRefs: Object.freeze(["contradictory-result"]),
     externalObjectReference: "unexpected-external-effect",
   }));
 
-  const result = coordinate(infrastructure, request(context("invalid-connector-result")));
+  const result = await coordinate(infrastructure, request(context("invalid-connector-result")));
 
   assert.equal(result.ok, false);
   assert.equal(!result.ok && result.error.code, "CONNECTOR_OUTCOME_UNKNOWN");
-  const persisted = infrastructure.repository.find(identity);
+  const persisted = await infrastructure.repository.find(identity);
   assert.equal(persisted?.lifecycleState, "RECONCILIATION_REQUIRED");
   assert.deepEqual(persisted?.attempts[0]?.evidenceRefs, ["connector-observation:attempt-initial-1:invalid-result"]);
 });
 
-test("F17-E reconstructs only approved provider result fields without evaluating raw extra fields", () => {
+test("F17-E reconstructs only approved provider result fields without evaluating raw extra fields", async () => {
   const providerResult = {
     outcome: "CONFIRMED" as const,
     evidenceRefs: ["provider-safe-evidence"],
@@ -774,7 +774,7 @@ test("F17-E reconstructs only approved provider result fields without evaluating
     toJSON(): never { throw new Error("NON_SECRET_RAW_SERIALIZER_FIXTURE"); },
   };
   const { infrastructure } = coordinationInfrastructure(() => providerResult);
-  const result = coordinate(infrastructure, request(context("safe-provider-normalization")));
+  const result = await coordinate(infrastructure, request(context("safe-provider-normalization")));
   assert.equal(result.ok, true);
   const evidence = infrastructure.dispatchEvidence.find(identity, "command-initial-1");
   assert.deepEqual(evidence?.result, {
@@ -783,14 +783,14 @@ test("F17-E reconstructs only approved provider result fields without evaluating
   assert.equal(Object.isFrozen(evidence?.result), true);
   assert.equal(Object.isFrozen(evidence?.result.evidenceRefs), true);
   providerResult.evidenceRefs[0] = "changed-after-dispatch";
-  const receipt = infrastructure.unitOfWork.execution.findReceipt(identity, "command-initial-1");
+  const receipt = await infrastructure.unitOfWork.execution.findReceipt(identity, "command-initial-1");
   assert.deepEqual(receipt?.evidenceRefs, ["provider-safe-evidence"]);
   assert.equal(receipt?.outcome, "CONFIRMED");
-  assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "ACTIVE");
-  assert.equal(JSON.stringify([result, evidence, receipt, infrastructure.audit.list(identity), infrastructure.repository.find(identity)]).includes("NON_SECRET"), false);
+  assert.equal((await infrastructure.repository.find(identity))?.lifecycleState, "ACTIVE");
+  assert.equal(JSON.stringify([result, evidence, receipt, await infrastructure.audit.list(identity), await infrastructure.repository.find(identity)]).includes("NON_SECRET"), false);
 });
 
-test("F17-E unsafe provider references fail closed and never enter receipt audit or result", () => {
+test("F17-E unsafe provider references fail closed and never enter receipt audit or result", async () => {
   const unsafeReferences = [
     "Authorization: Bearer NON_SECRET_TEST_VALUE", "token:NON_SECRET_TEST_VALUE",
     "https://invalid.example/private?password=NON_SECRET_TEST_VALUE", "C:\\private\\provider.log",
@@ -803,21 +803,21 @@ test("F17-E unsafe provider references fail closed and never enter receipt audit
         ...(field === "evidenceRefs" ? { evidenceRefs: [unsafe] } : { externalObjectReference: unsafe }),
       };
       const { infrastructure } = coordinationInfrastructure(candidate);
-      const result = coordinate(infrastructure, request(context(`unsafe-provider-${index}-${field}`)));
+      const result = await coordinate(infrastructure, request(context(`unsafe-provider-${index}-${field}`)));
       assert.equal(result.ok, false, `${index}:${field}`);
       assert.equal(!result.ok && result.error.code, "CONNECTOR_OUTCOME_UNKNOWN");
-      assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "RECONCILIATION_REQUIRED");
-      const receipt = infrastructure.unitOfWork.execution.findReceipt(identity, "command-initial-1");
+      assert.equal((await infrastructure.repository.find(identity))?.lifecycleState, "RECONCILIATION_REQUIRED");
+      const receipt = await infrastructure.unitOfWork.execution.findReceipt(identity, "command-initial-1");
       assert.equal(receipt?.outcome, "UNKNOWN");
       assert.equal(receipt?.externalObjectReference, undefined);
-      const serialized = JSON.stringify([result, receipt, infrastructure.dispatchEvidence.find(identity, "command-initial-1"), infrastructure.audit.list(identity), infrastructure.repository.find(identity)]);
+      const serialized = JSON.stringify([result, receipt, infrastructure.dispatchEvidence.find(identity, "command-initial-1"), await infrastructure.audit.list(identity), await infrastructure.repository.find(identity)]);
       assert.equal(serialized.includes(unsafe), false);
       assert.equal(serialized.includes("NON_SECRET"), false);
     }
   }
 });
 
-test("F17-E malformed sparse or oversized provider evidence cannot become confirmed", () => {
+test("F17-E malformed sparse or oversized provider evidence cannot become confirmed", async () => {
   const sparse: string[] = [];
   sparse.length = 1;
   for (const candidate of [null, undefined, {}, { outcome: "SUCCESS", evidenceRefs: ["safe"] },
@@ -825,55 +825,55 @@ test("F17-E malformed sparse or oversized provider evidence cannot become confir
     { outcome: "CONFIRMED", evidenceRefs: Array.from({ length: 65 }, () => "safe"), externalObjectReference: "safe" },
   ]) {
     const { infrastructure } = coordinationInfrastructure(() => candidate as PublicationConnectorDispatchResult);
-    const result = coordinate(infrastructure, request(context("malformed-provider")));
+    const result = await coordinate(infrastructure, request(context("malformed-provider")));
     assert.equal(result.ok, false);
     assert.equal(!result.ok && result.error.code, "CONNECTOR_OUTCOME_UNKNOWN");
-    assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "RECONCILIATION_REQUIRED");
-    assert.equal(infrastructure.unitOfWork.execution.findReceipt(identity, "command-initial-1")?.outcome, "UNKNOWN");
+    assert.equal((await infrastructure.repository.find(identity))?.lifecycleState, "RECONCILIATION_REQUIRED");
+    assert.equal((await infrastructure.unitOfWork.execution.findReceipt(identity, "command-initial-1"))?.outcome, "UNKNOWN");
   }
 });
 
-test("F17-E provider-controlled iterators cannot replace or expand bounded evidence", () => {
+test("F17-E provider-controlled iterators cannot replace or expand bounded evidence", async () => {
   for (const yielded of [[], Array.from({ length: 65 }, () => "forged-evidence")]) {
     let iteratorCalls = 0;
     const evidenceRefs = ["safe-indexed-evidence"];
     Object.defineProperty(evidenceRefs, Symbol.iterator, { value: function* () { iteratorCalls += 1; yield* yielded; } });
     const { infrastructure } = coordinationInfrastructure({ outcome: "CONFIRMED", evidenceRefs, externalObjectReference: "safe-external" });
-    const result = coordinate(infrastructure, request(context("hostile-provider-iterator")));
+    const result = await coordinate(infrastructure, request(context("hostile-provider-iterator")));
     assert.equal(result.ok, true);
     assert.equal(iteratorCalls, 0);
-    assert.deepEqual(infrastructure.unitOfWork.execution.findReceipt(identity, "command-initial-1")?.evidenceRefs, ["safe-indexed-evidence"]);
+    assert.deepEqual((await infrastructure.unitOfWork.execution.findReceipt(identity, "command-initial-1"))?.evidenceRefs, ["safe-indexed-evidence"]);
   }
 });
 
-test("F17-E provider evidence accessors fail closed without evaluating provider code", () => {
+test("F17-E provider evidence accessors fail closed without evaluating provider code", async () => {
   let accessorCalls = 0;
   const evidenceRefs = ["safe"];
   Object.defineProperty(evidenceRefs, "0", { get() { accessorCalls += 1; return "untrusted-getter-evidence"; } });
   const { infrastructure } = coordinationInfrastructure({ outcome: "CONFIRMED", evidenceRefs, externalObjectReference: "safe-external" });
-  const result = coordinate(infrastructure, request(context("hostile-provider-accessor")));
+  const result = await coordinate(infrastructure, request(context("hostile-provider-accessor")));
   assert.equal(result.ok, false);
   assert.equal(!result.ok && result.error.code, "CONNECTOR_OUTCOME_UNKNOWN");
   assert.equal(accessorCalls, 0);
-  assert.equal(infrastructure.unitOfWork.execution.findReceipt(identity, "command-initial-1")?.outcome, "UNKNOWN");
+  assert.equal((await infrastructure.unitOfWork.execution.findReceipt(identity, "command-initial-1"))?.outcome, "UNKNOWN");
 });
 
-test("F17-E timeout and connection errors preserve safe UNKNOWN categories without raw exception leakage", () => {
+test("F17-E timeout and connection errors preserve safe UNKNOWN categories without raw exception leakage", async () => {
   for (const [code, category] of [["ETIMEDOUT", "timeout"], ["ECONNRESET", "connection-failure"], ["ECONNREFUSED", "connection-failure"], ["UNRECOGNIZED", "unavailable"]] as const) {
     const { infrastructure, dispatchCount } = coordinationInfrastructure(() => {
       throw Object.assign(new Error("Authorization: NON_SECRET_PROVIDER_EXCEPTION_FIXTURE"), { code });
     });
     const coordinated = request(context(`provider-error-${code}`));
-    const first = coordinate(infrastructure, coordinated);
-    const repeated = coordinate(infrastructure, coordinated);
+    const first = await coordinate(infrastructure, coordinated);
+    const repeated = await coordinate(infrastructure, coordinated);
     assert.equal(first.ok, false);
     assert.deepEqual(repeated, first);
     assert.equal(dispatchCount(), 1);
-    const receipt = infrastructure.unitOfWork.execution.findReceipt(identity, "command-initial-1");
+    const receipt = await infrastructure.unitOfWork.execution.findReceipt(identity, "command-initial-1");
     assert.equal(receipt?.outcome, "UNKNOWN");
     assert.deepEqual(receipt?.evidenceRefs, [`connector-observation:attempt-initial-1:${category}`]);
-    assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "RECONCILIATION_REQUIRED");
-    assert.equal(JSON.stringify([first, receipt, infrastructure.audit.list(identity), infrastructure.operationsEvidence.list({ component: "CONNECTOR_ATTEMPT" })]).includes("NON_SECRET"), false);
+    assert.equal((await infrastructure.repository.find(identity))?.lifecycleState, "RECONCILIATION_REQUIRED");
+    assert.equal(JSON.stringify([first, receipt, await infrastructure.audit.list(identity), infrastructure.operationsEvidence.list({ component: "CONNECTOR_ATTEMPT" })]).includes("NON_SECRET"), false);
   }
 });
 
@@ -895,7 +895,7 @@ function durableProviderTestGraph(databasePath: string, connector: PublicationCo
   return { ...infrastructure, coordination };
 }
 
-test("F17-H actual process exit inside provider invocation leaves durable ambiguity and prevents restart resend", () => {
+test("F17-H actual process exit inside provider invocation leaves durable ambiguity and prevents restart resend", async () => {
   const directory = mkdtempSync(join(tmpdir(), "f17-h-crash-"));
   const databasePath = join(directory, "publication.sqlite");
   const coordinated = request(context("actual-process-crash"));
@@ -913,17 +913,17 @@ test("F17-H actual process exit inside provider invocation leaves durable ambigu
     const service = new PublicationCoordinationService({
       application: new PublicationApplicationService(new CreatePublicationHandler(graph), new ModifyPublicationHandler(graph)), repository: graph.repository, effectiveApproval,
       executionEligibility: graph.executionEligibility, executionJournal: graph.unitOfWork.execution,
-      connector: { dispatch: () => {
-        if (graph.unitOfWork.execution.recoveryDisposition(input.create.input.identity, input.attempt.commandId).condition !== "RECONCILIATION_REQUIRED") process.exit(82);
+      connector: { dispatch: async () => {
+        if ((await graph.unitOfWork.execution.recoveryDisposition(input.create.input.identity, input.attempt.commandId)).condition !== "RECONCILIATION_REQUIRED") process.exit(82);
         process.stdout.write("TEST_PROVIDER_INVOKED");
         process.exit(81);
       } },
       unitOfWork: graph.unitOfWork, audit: graph.audit, clock: graph.clock,
       eventCoordinator: graph.eventCoordinator, dispatchEvidence: graph.dispatchEvidence,
     });
-    const created = service.create({ context: input.context, command: input.create });
+    const created = await service.create({ context: input.context, command: input.create });
     if (!created.ok) throw new Error("Child creation failed");
-    service.publish({ context: input.context, identity: input.create.input.identity, command: input.create.input.command, attempt: input.attempt, expectedAggregateVersion: created.aggregateVersion });
+    await service.publish({ context: input.context, identity: input.create.input.identity, command: input.create.input.command, attempt: input.attempt, expectedAggregateVersion: created.aggregateVersion });
     throw new Error("Expected process exit within provider");
   `;
   let graph: ReturnType<typeof durableProviderTestGraph> | undefined;
@@ -934,23 +934,23 @@ test("F17-H actual process exit inside provider invocation leaves durable ambigu
     assert.equal(child.stdout, "TEST_PROVIDER_INVOKED");
     let calls = 0;
     graph = durableProviderTestGraph(databasePath, { dispatch: () => { calls++; return { outcome: "CONFIRMED", evidenceRefs: ["test:should-not-dispatch"], externalObjectReference: "test-object" }; } });
-    assert.equal(graph.repository.find(identity)?.lifecycleState, "EXECUTION_PENDING");
-    assert.equal(graph.unitOfWork.execution.findReceipt(identity, coordinated.attempt.commandId), undefined);
-    assert.equal(graph.unitOfWork.execution.recoveryDisposition(identity, coordinated.attempt.commandId).condition, "RECONCILIATION_REQUIRED");
-    const intent = graph.unitOfWork.execution.findIntent(identity, coordinated.attempt.commandId);
-    const priorAudit = graph.audit.list(identity);
-    const result = graph.coordination.publish({ identity, context: coordinated.context, command: coordinated.create.input.command, attempt: coordinated.attempt, expectedAggregateVersion: 1 });
+    assert.equal((await graph.repository.find(identity))?.lifecycleState, "EXECUTION_PENDING");
+    assert.equal(await graph.unitOfWork.execution.findReceipt(identity, coordinated.attempt.commandId), undefined);
+    assert.equal((await graph.unitOfWork.execution.recoveryDisposition(identity, coordinated.attempt.commandId)).condition, "RECONCILIATION_REQUIRED");
+    const intent = await graph.unitOfWork.execution.findIntent(identity, coordinated.attempt.commandId);
+    const priorAudit = await graph.audit.list(identity);
+    const result = await graph.coordination.publish({ identity, context: coordinated.context, command: coordinated.create.input.command, attempt: coordinated.attempt, expectedAggregateVersion: 1 });
     assert.equal(result.ok, false);
     assert.equal(!result.ok && result.error.code, "CONNECTOR_OUTCOME_UNKNOWN");
     assert.equal(calls, 0);
-    assert.equal(graph.repository.find(identity)?.lifecycleState, "RECONCILIATION_REQUIRED");
-    assert.deepEqual(graph.unitOfWork.execution.findIntent(identity, coordinated.attempt.commandId), intent);
-    assert.deepEqual(graph.audit.list(identity).slice(0, priorAudit.length), priorAudit);
-    assert.equal(graph.unitOfWork.execution.findReceipt(identity, coordinated.attempt.commandId)?.outcome, "UNKNOWN");
-  } finally { graph?.unitOfWork.close(); rmSync(directory, { recursive: true, force: true }); }
+    assert.equal((await graph.repository.find(identity))?.lifecycleState, "RECONCILIATION_REQUIRED");
+    assert.deepEqual(await graph.unitOfWork.execution.findIntent(identity, coordinated.attempt.commandId), intent);
+    assert.deepEqual((await graph.audit.list(identity)).slice(0, priorAudit.length), priorAudit);
+    assert.equal((await graph.unitOfWork.execution.findReceipt(identity, coordinated.attempt.commandId))?.outcome, "UNKNOWN");
+  } finally { await graph?.unitOfWork.close(); rmSync(directory, { recursive: true, force: true }); }
 });
 
-test("F17-F durable coordinated retry preserves both receipts and replays after restart without delivery", () => {
+test("F17-F durable coordinated retry preserves both receipts and replays after restart without delivery", async () => {
   const directory = mkdtempSync(join(tmpdir(), "f17-f-delivery-"));
   const databasePath = join(directory, "publication.sqlite");
   const policy: PublicationApprovedRetryPolicyResolver = { resolve: () => ({ tenantScopeId: "team-a", targetId: "target-1", targetVersion: 5, channelId: "channel-1", channelPolicyVersion: "channel-policy-v3", reference: "test-approved-policy", maximumAttempts: 2, allowedOutcomes: ["NO_EFFECT"] }) };
@@ -959,32 +959,32 @@ test("F17-F durable coordinated retry preserves both receipts and replays after 
   let graph = durableProviderTestGraph(databasePath, connector, policy);
   try {
     const initial = request(context("durable-retry-initial"));
-    assert.equal(coordinate(graph, initial).ok, false);
-    const originalReceipt = graph.unitOfWork.execution.findReceipt(identity, initial.attempt.commandId);
-    graph.unitOfWork.close();
+    assert.equal((await coordinate(graph, initial)).ok, false);
+    const originalReceipt = await graph.unitOfWork.execution.findReceipt(identity, initial.attempt.commandId);
+    await graph.unitOfWork.close();
     graph = durableProviderTestGraph(databasePath, connector, policy);
     const retry = request(context("durable-retry-next"));
-    const input = { identity, context: retry.context, command: retry.create.input.command, attempt: { ...retry.attempt, id: "durable-attempt-next", commandId: "durable-command-next" }, expectedAggregateVersion: graph.repository.find(identity)!.aggregateVersion };
-    assert.equal(graph.coordination.publish(input).ok, true);
+    const input = { identity, context: retry.context, command: retry.create.input.command, attempt: { ...retry.attempt, id: "durable-attempt-next", commandId: "durable-command-next" }, expectedAggregateVersion: (await graph.repository.find(identity))!.aggregateVersion };
+    assert.equal((await graph.coordination.publish(input)).ok, true);
     assert.equal(calls, 2);
-    const completed = graph.repository.find(identity);
-    const receipt = graph.unitOfWork.execution.findReceipt(identity, input.attempt.commandId);
-    const evidence = graph.audit.list(identity);
+    const completed = await graph.repository.find(identity);
+    const receipt = await graph.unitOfWork.execution.findReceipt(identity, input.attempt.commandId);
+    const evidence = await graph.audit.list(identity);
     assert.equal(receipt?.outcome, "CONFIRMED");
     assert.equal(completed?.attempts.length, 2);
     assert.equal(evidence.filter(record => record.command === "RETRY_DECISION").length, 2);
-    graph.unitOfWork.close();
+    await graph.unitOfWork.close();
     graph = durableProviderTestGraph(databasePath, connector, policy);
-    assert.equal(graph.coordination.publish(input).ok, true);
+    assert.equal((await graph.coordination.publish(input)).ok, true);
     assert.equal(calls, 2);
-    assert.deepEqual(graph.repository.find(identity), completed);
-    assert.deepEqual(graph.audit.list(identity), evidence);
-    assert.deepEqual(graph.unitOfWork.execution.findReceipt(identity, input.attempt.commandId), receipt);
-    assert.deepEqual(graph.unitOfWork.execution.findReceipt(identity, initial.attempt.commandId), originalReceipt);
-  } finally { graph.unitOfWork.close(); rmSync(directory, { recursive: true, force: true }); }
+    assert.deepEqual(await graph.repository.find(identity), completed);
+    assert.deepEqual(await graph.audit.list(identity), evidence);
+    assert.deepEqual(await graph.unitOfWork.execution.findReceipt(identity, input.attempt.commandId), receipt);
+    assert.deepEqual(await graph.unitOfWork.execution.findReceipt(identity, initial.attempt.commandId), originalReceipt);
+  } finally { await graph.unitOfWork.close(); rmSync(directory, { recursive: true, force: true }); }
 });
 
-test("F17-F concurrent durable dispatch claim never invokes provider after another claim started", () => {
+test("F17-F concurrent durable dispatch claim never invokes provider after another claim started", async () => {
   const directory = mkdtempSync(join(tmpdir(), "f17-f-claim-"));
   let calls = 0;
   const graph = durableProviderTestGraph(join(directory, "publication.sqlite"), { dispatch: () => { calls++; return { outcome: "REJECTED", evidenceRefs: ["provider:rejected"] }; } });
@@ -992,58 +992,58 @@ test("F17-F concurrent durable dispatch claim never invokes provider after anoth
     const journal = graph.unitOfWork.execution;
     const read = journal.recoveryDisposition.bind(journal);
     let claimed = false;
-    Object.defineProperty(journal, "recoveryDisposition", { value: (...args: Parameters<typeof read>) => {
-      const prior = read(...args);
+    Object.defineProperty(journal, "recoveryDisposition", { value: async (...args: Parameters<typeof read>) => {
+      const prior = await read(...args);
       if (!claimed && prior.condition === "PRE_DISPATCH") {
         claimed = true;
-        const other = graph.unitOfWork.begin(identity);
-        other.execution.markDispatchStarted(identity, args[1], timestamp);
-        other.commit();
+        const other = await graph.unitOfWork.begin(identity);
+        await other.execution.markDispatchStarted(identity, args[1], timestamp);
+        await other.commit();
       }
       return prior;
     } });
-    const result = coordinate(graph, request(context("concurrent-claim")));
+    const result = await coordinate(graph, request(context("concurrent-claim")));
     assert.equal(result.ok, false);
     assert.equal(claimed, true);
     assert.equal(calls, 0);
-    assert.equal(graph.repository.find(identity)?.lifecycleState, "RECONCILIATION_REQUIRED");
-    assert.equal(journal.findReceipt(identity, "command-initial-1")?.outcome, "UNKNOWN");
-  } finally { graph.unitOfWork.close(); rmSync(directory, { recursive: true, force: true }); }
+    assert.equal((await graph.repository.find(identity))?.lifecycleState, "RECONCILIATION_REQUIRED");
+    assert.equal((await journal.findReceipt(identity, "command-initial-1"))?.outcome, "UNKNOWN");
+  } finally { await graph.unitOfWork.close(); rmSync(directory, { recursive: true, force: true }); }
 });
 
-test("F17-F concurrent suspension after retry eligibility prevents dispatch claim", () => {
+test("F17-F concurrent suspension after retry eligibility prevents dispatch claim", async () => {
   const directory = mkdtempSync(join(tmpdir(), "f17-f-suspension-race-"));
   const databasePath = join(directory, "publication.sqlite");
   let calls = 0;
   const graph = durableProviderTestGraph(databasePath, { dispatch: () => { calls++; return { outcome: "REJECTED", evidenceRefs: ["provider:rejected"] }; } }, { resolve: () => ({ tenantScopeId: "team-a", targetId: "target-1", targetVersion: 5, channelId: "channel-1", channelPolicyVersion: "channel-policy-v3", reference: "approved-test-policy", maximumAttempts: 2, allowedOutcomes: ["NO_EFFECT"] }) });
   const other = new DurablePublicationUnitOfWork({ databasePath });
   try {
-    assert.equal(coordinate(graph, request(context("race-initial"))).ok, false);
+    assert.equal((await coordinate(graph, request(context("race-initial")))).ok, false);
     const begin = graph.unitOfWork.begin.bind(graph.unitOfWork);
     let suspended = false;
-    Object.defineProperty(graph.unitOfWork, "begin", { value: (...args: Parameters<typeof begin>) => {
-      if (!suspended && graph.audit.list(identity).filter(record => record.command === "RETRY_DECISION").length === 2) {
+    Object.defineProperty(graph.unitOfWork, "begin", { value: async (...args: Parameters<typeof begin>) => {
+      if (!suspended && (await graph.audit.list(identity)).filter(record => record.command === "RETRY_DECISION").length === 2) {
         suspended = true;
-        const tx = other.begin(identity);
-        const current = tx.repository.find(identity)!;
+        const tx = await other.begin(identity);
+        const current = (await tx.repository.find(identity))!;
         const updated = PublicationAggregate.rehydrate(current).setSuspension({ type: "SET_SUSPENSION", expectedAggregateVersion: current.aggregateVersion, suspensionStatus: "SUSPENDED_SECURITY", command: request(context("race-suspend")).create.input.command }).snapshot;
-        tx.repository.update(current.aggregateVersion, updated);
-        tx.commit();
+        await tx.repository.update(current.aggregateVersion, updated);
+        await tx.commit();
       }
       return begin(...args);
     } });
     const retry = request(context("race-retry"));
-    const input = { identity, context: retry.context, command: retry.create.input.command, attempt: { ...retry.attempt, id: "race-next-attempt", commandId: "race-next-command" }, expectedAggregateVersion: graph.repository.find(identity)!.aggregateVersion };
-    assert.equal(graph.coordination.publish(input).ok, false);
+    const input = { identity, context: retry.context, command: retry.create.input.command, attempt: { ...retry.attempt, id: "race-next-attempt", commandId: "race-next-command" }, expectedAggregateVersion: (await graph.repository.find(identity))!.aggregateVersion };
+    assert.equal((await graph.coordination.publish(input)).ok, false);
     assert.equal(suspended, true);
     assert.equal(calls, 1);
-    assert.equal(graph.unitOfWork.execution.recoveryDisposition(identity, input.attempt.commandId).condition, "PRE_DISPATCH");
-    assert.equal(graph.unitOfWork.execution.findReceipt(identity, input.attempt.commandId), undefined);
-    assert.equal(graph.repository.find(identity)?.suspensionStatus, "SUSPENDED_SECURITY");
-  } finally { other.close(); graph.unitOfWork.close(); rmSync(directory, { recursive: true, force: true }); }
+    assert.equal((await graph.unitOfWork.execution.recoveryDisposition(identity, input.attempt.commandId)).condition, "PRE_DISPATCH");
+    assert.equal(await graph.unitOfWork.execution.findReceipt(identity, input.attempt.commandId), undefined);
+    assert.equal((await graph.repository.find(identity))?.suspensionStatus, "SUSPENDED_SECURITY");
+  } finally { await other.close(); await graph.unitOfWork.close(); rmSync(directory, { recursive: true, force: true }); }
 });
 
-test("F17-E normalized provider outcomes and atomic evidence survive durable reopen without redispatch", () => {
+test("F17-E normalized provider outcomes and atomic evidence survive durable reopen without redispatch", async () => {
   for (const outcome of ["CONFIRMED", "REJECTED", "UNKNOWN"] as const) {
     const directory = mkdtempSync(join(tmpdir(), "ai-mls-f17-e-reopen-"));
     const databasePath = join(directory, "publication.sqlite");
@@ -1053,33 +1053,33 @@ test("F17-E normalized provider outcomes and atomic evidence survive durable reo
     let graph = durableProviderTestGraph(databasePath, connector);
     try {
       const coordinated = request(context(`durable-provider-${outcome}`));
-      const first = coordinate(graph, coordinated);
+      const first = await coordinate(graph, coordinated);
       assert.equal(first.ok, outcome === "CONFIRMED");
-      const priorReceipt = graph.unitOfWork.execution.findReceipt(identity, coordinated.attempt.commandId);
-      const priorAudit = graph.audit.list(identity);
-      const priorVersion = graph.repository.find(identity)?.aggregateVersion;
+      const priorReceipt = await graph.unitOfWork.execution.findReceipt(identity, coordinated.attempt.commandId);
+      const priorAudit = await graph.audit.list(identity);
+      const priorVersion = (await graph.repository.find(identity))?.aggregateVersion;
       assert.equal(priorReceipt?.outcome, outcome === "REJECTED" ? "NO_EFFECT" : outcome);
       assert.equal(priorAudit.length, outcome === "CONFIRMED" ? 4 : 3);
-      assert.notEqual(graph.idempotency.find({ ...identity, aggregateId: identity.publicationId, commandKey: `${coordinated.context.idempotencyKey}:activation` }), undefined);
-      graph.unitOfWork.close();
+      assert.notEqual(await graph.idempotency.find({ ...identity, aggregateId: identity.publicationId, commandKey: `${coordinated.context.idempotencyKey}:activation` }), undefined);
+      await graph.unitOfWork.close();
       graph = durableProviderTestGraph(databasePath, connector);
-      assert.deepEqual(graph.unitOfWork.execution.findReceipt(identity, coordinated.attempt.commandId), priorReceipt);
-      assert.deepEqual(graph.audit.list(identity), priorAudit);
-      assert.equal(graph.repository.find(identity)?.aggregateVersion, priorVersion);
-      assert.equal(graph.repository.find(identity)?.lifecycleState, outcome === "CONFIRMED" ? "ACTIVE" : outcome === "REJECTED" ? "READY" : "RECONCILIATION_REQUIRED");
-      const replay = coordinate(graph, coordinated);
+      assert.deepEqual(await graph.unitOfWork.execution.findReceipt(identity, coordinated.attempt.commandId), priorReceipt);
+      assert.deepEqual(await graph.audit.list(identity), priorAudit);
+      assert.equal((await graph.repository.find(identity))?.aggregateVersion, priorVersion);
+      assert.equal((await graph.repository.find(identity))?.lifecycleState, outcome === "CONFIRMED" ? "ACTIVE" : outcome === "REJECTED" ? "READY" : "RECONCILIATION_REQUIRED");
+      const replay = await coordinate(graph, coordinated);
       assert.equal(replay.ok, first.ok);
       assert.equal(calls, 1);
-      assert.deepEqual(graph.unitOfWork.execution.findReceipt(identity, coordinated.attempt.commandId), priorReceipt);
-      assert.deepEqual(graph.audit.list(identity), priorAudit);
+      assert.deepEqual(await graph.unitOfWork.execution.findReceipt(identity, coordinated.attempt.commandId), priorReceipt);
+      assert.deepEqual(await graph.audit.list(identity), priorAudit);
     } finally {
-      graph.unitOfWork.close();
+      await graph.unitOfWork.close();
       rmSync(directory, { recursive: true, force: true });
     }
   }
 });
 
-test("F17-E receipt commit failure after confirmed provider effect reopens ambiguous with zero resend", () => {
+test("F17-E receipt commit failure after confirmed provider effect reopens ambiguous with zero resend", async () => {
   const directory = mkdtempSync(join(tmpdir(), "ai-mls-f17-e-receipt-failure-"));
   const databasePath = join(directory, "publication.sqlite");
   const adapter = new DeterministicPublicationConnectorTestAdapter("CONFIRMED");
@@ -1088,7 +1088,7 @@ test("F17-E receipt commit failure after confirmed provider effect reopens ambig
   let graph = durableProviderTestGraph(databasePath, connector);
   try {
     const coordinated = request(context("durable-receipt-failure"));
-    assert.equal(graph.coordination.create({ context: coordinated.context, command: coordinated.create }).ok, true);
+    assert.equal((await graph.coordination.create({ context: coordinated.context, command: coordinated.create })).ok, true);
     const original = graph.eventCoordinator.appendAcceptedTransition.bind(graph.eventCoordinator);
     Object.defineProperty(graph.eventCoordinator, "appendAcceptedTransition", {
       value: (...args: Parameters<typeof original>) => {
@@ -1097,62 +1097,62 @@ test("F17-E receipt commit failure after confirmed provider effect reopens ambig
       },
     });
     const publish = { context: coordinated.context, identity, command: coordinated.create.input.command, attempt: coordinated.attempt, expectedAggregateVersion: 1 };
-    const failed = graph.coordination.publish(publish);
+    const failed = await graph.coordination.publish(publish);
     assert.equal(failed.ok, false);
     assert.equal(!failed.ok && failed.error.code, "CONNECTOR_OUTCOME_PERSISTENCE_FAILED");
     assert.equal(calls, 1);
-    assert.equal(graph.unitOfWork.execution.findReceipt(identity, coordinated.attempt.commandId), undefined);
-    assert.equal(graph.repository.find(identity)?.lifecycleState, "EXECUTION_PENDING");
-    assert.equal(graph.idempotency.find({ ...identity, aggregateId: identity.publicationId, commandKey: `${coordinated.context.idempotencyKey}:activation` }), undefined);
-    graph.unitOfWork.close();
+    assert.equal(await graph.unitOfWork.execution.findReceipt(identity, coordinated.attempt.commandId), undefined);
+    assert.equal((await graph.repository.find(identity))?.lifecycleState, "EXECUTION_PENDING");
+    assert.equal(await graph.idempotency.find({ ...identity, aggregateId: identity.publicationId, commandKey: `${coordinated.context.idempotencyKey}:activation` }), undefined);
+    await graph.unitOfWork.close();
     graph = durableProviderTestGraph(databasePath, connector);
-    assert.equal(graph.unitOfWork.execution.recoveryDisposition(identity, coordinated.attempt.commandId).condition, "RECONCILIATION_REQUIRED");
-    const recovered = graph.coordination.publish(publish);
+    assert.equal((await graph.unitOfWork.execution.recoveryDisposition(identity, coordinated.attempt.commandId)).condition, "RECONCILIATION_REQUIRED");
+    const recovered = await graph.coordination.publish(publish);
     assert.equal(recovered.ok, false);
     assert.equal(!recovered.ok && recovered.error.code, "CONNECTOR_OUTCOME_UNKNOWN");
     assert.equal(calls, 1);
-    assert.equal(graph.repository.find(identity)?.lifecycleState, "RECONCILIATION_REQUIRED");
-    assert.deepEqual(graph.unitOfWork.execution.findReceipt(identity, coordinated.attempt.commandId)?.evidenceRefs, ["durable-execution:attempt-initial-1:outcome-unproven"]);
-    assert.equal(JSON.stringify(graph.audit.list(identity)).includes("NON_SECRET"), false);
+    assert.equal((await graph.repository.find(identity))?.lifecycleState, "RECONCILIATION_REQUIRED");
+    assert.deepEqual((await graph.unitOfWork.execution.findReceipt(identity, coordinated.attempt.commandId))?.evidenceRefs, ["durable-execution:attempt-initial-1:outcome-unproven"]);
+    assert.equal(JSON.stringify(await graph.audit.list(identity)).includes("NON_SECRET"), false);
   } finally {
-    graph.unitOfWork.close();
+    await graph.unitOfWork.close();
     rmSync(directory, { recursive: true, force: true });
   }
 });
 
-test("F15-TASK-006 preserves failure audit when connector outcome persistence fails", () => {
+test("F15-TASK-006 preserves failure audit when connector outcome persistence fails", async () => {
   const { infrastructure } = coordinationInfrastructure();
   const originalBegin = infrastructure.unitOfWork.begin.bind(infrastructure.unitOfWork);
   let beginCount = 0;
   Object.defineProperty(infrastructure.unitOfWork, "begin", {
     configurable: true,
-    value: (scope: typeof identity) => {
+    value: async (scope: typeof identity) => {
       beginCount += 1;
-      const transaction = originalBegin(scope);
+      const transaction = await originalBegin(scope);
       if (beginCount !== 4) return transaction;
       return {
         ...transaction,
-        commit(): never {
-          transaction.rollback();
+        async commit(): Promise<never> {
+          await transaction.rollback();
           throw new Error("simulated outcome commit failure");
         },
       };
     },
   });
 
-  const result = coordinate(infrastructure, request(context("outcome-persistence-failure")));
+  const result = await coordinate(infrastructure, request(context("outcome-persistence-failure")));
 
   assert.equal(result.ok, false);
   assert.equal(!result.ok && result.error.code, "CONNECTOR_OUTCOME_PERSISTENCE_FAILED");
-  assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "EXECUTION_PENDING");
-  assert.deepEqual(infrastructure.audit.list(identity).map(({ result: auditResult, failureReason }) => ({ auditResult, failureReason })), [
+  assert.equal((await infrastructure.repository.find(identity))?.lifecycleState, "EXECUTION_PENDING");
+  assert.deepEqual((await infrastructure.audit.list(identity)).map(({ result: auditResult, failureReason }) => ({ auditResult, failureReason })), [
     { auditResult: "COMPLETED", failureReason: undefined },
     { auditResult: "COMPLETED", failureReason: undefined },
     { auditResult: "FAILED", failureReason: "CONNECTOR_OUTCOME_PERSISTENCE_FAILED:CONFIRMED" },
   ]);
 });
 
-test("F15-TASK-006 registers coordination and connector ports through Runtime and Composition", () => {
+test("F15-TASK-006 registers coordination and connector ports through Runtime and Composition", async () => {
   const graph = composePublicationApplication({
     runtimeOptions: {
       infrastructureConfiguration: {
@@ -1168,15 +1168,15 @@ test("F15-TASK-006 registers coordination and connector ports through Runtime an
   assert.equal(typeof graph.runtime.services.coordination.publish, "function");
   assert.equal(typeof graph.runtime.services.connectorDispatcher.dispatch, "function");
   const coordinated = request(context("composed"));
-  const created = graph.runtime.execute({
+  const created = await graph.runtime.execute({
     operation: "COORDINATE_CREATE_PUBLICATION",
     context: coordinated.context,
     command: coordinated.create,
   });
   assert.equal(created.operationResult, "SUCCEEDED");
   if (created.operationResult !== "SUCCEEDED") return;
-  assert.equal(graph.runtime.services.repository.find(identity)?.lifecycleState, "READY");
-  const published = graph.runtime.execute({
+  assert.equal((await graph.runtime.services.repository.find(identity))?.lifecycleState, "READY");
+  const published = await graph.runtime.execute({
     operation: "COORDINATE_PUBLISH_PUBLICATION",
     context: coordinated.context,
     identity,
@@ -1185,10 +1185,10 @@ test("F15-TASK-006 registers coordination and connector ports through Runtime an
     expectedAggregateVersion: created.version,
   });
   assert.equal(published.operationResult, "SUCCEEDED");
-  assert.equal(graph.runtime.services.repository.find(identity)?.lifecycleState, "ACTIVE");
+  assert.equal((await graph.runtime.services.repository.find(identity))?.lifecycleState, "ACTIVE");
 });
 
-test("F15-TASK-006 Runtime rejects malformed coordination input before service mutation", () => {
+test("F15-TASK-006 Runtime rejects malformed coordination input before service mutation", async () => {
   const graph = composePublicationApplication({
     runtimeOptions: {
       infrastructureConfiguration: {
@@ -1211,8 +1211,8 @@ test("F15-TASK-006 Runtime rejects malformed coordination input before service m
     },
   };
 
-  const result = graph.runtime.execute(malformed as never);
+  const result = await graph.runtime.execute(malformed as never);
 
   assert.deepEqual(result, { operationResult: "FAILED", failureCode: "INTERFACE_REQUEST_INVALID" });
-  assert.equal(graph.runtime.services.repository.find(identity), undefined);
+  assert.equal(await graph.runtime.services.repository.find(identity), undefined);
 });

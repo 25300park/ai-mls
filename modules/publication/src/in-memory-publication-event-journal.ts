@@ -11,18 +11,20 @@ export class InMemoryPublicationEventJournal implements PublicationEventJournal 
     private readonly assertUsable: () => void = () => undefined,
   ) {}
 
-  public append(event: PublicationEventEnvelope): PublicationEventAppendResult {
-    return this.appendAll([event])[0]!;
+  public async append(event: PublicationEventEnvelope): Promise<PublicationEventAppendResult> {
+    return (await this.appendAll([event]))[0]!;
   }
 
-  public prepareAppend(event: PublicationEventEnvelope): Readonly<{ event: PublicationEventEnvelope; commit(): PublicationEventAppendResult }> {
+  public async prepareAppend(event: PublicationEventEnvelope): Promise<Readonly<{ event: PublicationEventEnvelope; commit(): Promise<PublicationEventAppendResult> }>> {
+    await Promise.resolve();
     this.assertUsable();
     const staged = structuredClone(this.state.events);
     const result = this.appendTo(staged, event);
     let committed = false;
     return Object.freeze({
       event: immutableDomain(result.event),
-      commit: () => {
+      commit: async () => {
+        await Promise.resolve();
         if (!committed) {
           this.state.events = staged;
           if (result.status === "APPENDED") this.state.markScopeChanged(result.event.tenantId, result.event.aggregateId);
@@ -33,7 +35,8 @@ export class InMemoryPublicationEventJournal implements PublicationEventJournal 
     });
   }
 
-  public appendAll(events: readonly PublicationEventEnvelope[]): readonly PublicationEventAppendResult[] {
+  public async appendAll(events: readonly PublicationEventEnvelope[]): Promise<readonly PublicationEventAppendResult[]> {
+    await Promise.resolve();
     this.assertUsable();
     const staged = structuredClone(this.state.events);
     const results: PublicationEventAppendResult[] = [];
@@ -43,14 +46,16 @@ export class InMemoryPublicationEventJournal implements PublicationEventJournal 
     return immutableDomain(results);
   }
 
-  public findByEventId(tenantId: string, eventId: string): PublicationEventEnvelope | undefined {
+  public async findByEventId(tenantId: string, eventId: string): Promise<PublicationEventEnvelope | undefined> {
+    await Promise.resolve();
     this.assertUsable();
     const event = this.state.events.get(eventKey(tenantId, eventId));
     if (event !== undefined) this.assertScope(event.tenantId, event.aggregateId);
     return event === undefined ? undefined : immutableDomain(event);
   }
 
-  public listByAggregate(tenantId: string, aggregateId: string): readonly PublicationEventEnvelope[] {
+  public async listByAggregate(tenantId: string, aggregateId: string): Promise<readonly PublicationEventEnvelope[]> {
+    await Promise.resolve();
     this.assertUsable();
     this.assertScope(tenantId, aggregateId);
     return immutableDomain([...this.state.events.values()]
@@ -58,8 +63,8 @@ export class InMemoryPublicationEventJournal implements PublicationEventJournal 
       .sort((left, right) => left.eventSequence - right.eventSequence));
   }
 
-  public getLastSequence(tenantId: string, aggregateId: string): number {
-    return this.listByAggregate(tenantId, aggregateId).at(-1)?.eventSequence ?? 0;
+  public async getLastSequence(tenantId: string, aggregateId: string): Promise<number> {
+    return (await this.listByAggregate(tenantId, aggregateId)).at(-1)?.eventSequence ?? 0;
   }
 
   private appendTo(target: Map<string, PublicationEventEnvelope>, event: PublicationEventEnvelope): PublicationEventAppendResult {

@@ -74,7 +74,7 @@ export interface PublicationConnectorDispatchResult {
 }
 
 export interface PublicationConnectorDispatcher {
-  dispatch(input: PublicationConnectorDispatchInput): PublicationConnectorDispatchResult;
+  dispatch(input: PublicationConnectorDispatchInput): PublicationConnectorDispatchResult | Promise<PublicationConnectorDispatchResult>;
 }
 
 export interface PublicationCoordinationDependencies {
@@ -96,7 +96,8 @@ export interface PublicationCoordinationDependencies {
 export class PublicationCoordinationService {
   public constructor(private readonly dependencies: PublicationCoordinationDependencies) {}
 
-  public create(request: CreatePublicationCoordinationRequest): PublicationApplicationResult {
+  public async create(request: CreatePublicationCoordinationRequest): Promise<PublicationApplicationResult> {
+    await Promise.resolve();
     const identity = request.command.input.identity;
     const command = immutableDomain({
       ...request.command,
@@ -112,28 +113,28 @@ export class PublicationCoordinationService {
     );
   }
 
-  public publish(request: PublishPublicationCoordinationRequest): PublicationCoordinationResult {
+  public publish(request: PublishPublicationCoordinationRequest): Promise<PublicationCoordinationResult> {
     return this.coordinateExecution(request, false);
   }
 
-  public recover(request: PublishPublicationCoordinationRequest): PublicationCoordinationResult {
+  public recover(request: PublishPublicationCoordinationRequest): Promise<PublicationCoordinationResult> {
     return this.coordinateExecution(request, true);
   }
 
-  private coordinateExecution(request: PublishPublicationCoordinationRequest, recoveryAuthorized: boolean): PublicationCoordinationResult {
+  private async coordinateExecution(request: PublishPublicationCoordinationRequest, recoveryAuthorized: boolean): Promise<PublicationCoordinationResult> {
     const { identity } = request;
-    const before = this.dependencies.repository.find(identity);
+    const before = await this.dependencies.repository.find(identity);
     const repeatedAttempt = before?.attempts.some((attempt) => attempt.commandId === request.attempt.commandId) === true;
     const newRetry = !recoveryAuthorized && before !== undefined && before.attempts.length > 0 && !repeatedAttempt;
     const retryExecution = newRetry || (before !== undefined && before.attempts.length > 1 && repeatedAttempt
-      && this.dependencies.executionJournal.findIntent(identity, request.attempt.commandId) !== undefined
-      && this.dependencies.executionJournal.recoveryDisposition(identity, request.attempt.commandId).condition === "PRE_DISPATCH");
+      && await this.dependencies.executionJournal.findIntent(identity, request.attempt.commandId) !== undefined
+      && (await this.dependencies.executionJournal.recoveryDisposition(identity, request.attempt.commandId)).condition === "PRE_DISPATCH");
     let authorizedActorId = "";
     let approvalDecisionReference = "";
     let preparedIntent: PublicationExecutionIntent | undefined;
     let preparedDispatchInput: PublicationConnectorDispatchInput | undefined;
 
-    const beginResult = this.dependencies.application.executeAuthorized({
+    const beginResult = await this.dependencies.application.executeAuthorized({
       kind: "MODIFY_PUBLICATION",
       identity,
       input: {
@@ -142,13 +143,13 @@ export class PublicationCoordinationService {
         attempt: request.attempt,
         command: request.command,
       },
-    }, stageContext(request.context, "publish"), (authorization) => {
+    }, stageContext(request.context, "publish"), async (authorization) => {
       if (before?.attempts.some((attempt) => (attempt.id === request.attempt.id || attempt.commandId === request.attempt.commandId)
         && (attempt.id !== request.attempt.id || attempt.commandId !== request.attempt.commandId))) {
         const conflict = dispatchEvidenceConflict().error;
         throw new PublicationApplicationError(conflict.code, conflict.category, conflict.message);
       }
-      if (retryExecution && this.dependencies.retryEligibility?.evaluate({ ...request, expectedAggregateVersion: before.aggregateVersion }).retryEligible !== true) {
+      if (retryExecution && (await this.dependencies.retryEligibility?.evaluate({ ...request, expectedAggregateVersion: before.aggregateVersion }))?.retryEligible !== true) {
         throw new PublicationApplicationError("PUBLICATION_STATE_INVALID", "DOMAIN_REJECTION", "Publication retry is not allowed.");
       }
       const eligibility = this.dependencies.executionEligibility.evaluate({
@@ -177,11 +178,11 @@ export class PublicationCoordinationService {
       });
     }, undefined, (transaction) => {
       if (preparedIntent === undefined) throw new PublicationApplicationError("EXECUTION_INTENT_INVALID", "INFRASTRUCTURE", "Publication execution intent is unavailable.");
-      transaction.execution.prepare(preparedIntent);
+      return transaction.execution.prepare(preparedIntent).then(() => undefined);
     });
     if (!beginResult.ok) return beginResult;
 
-    const current = this.dependencies.repository.find(identity);
+    const current = await this.dependencies.repository.find(identity);
     if (current === undefined) {
       return Object.freeze({
         ok: false as const,
@@ -204,8 +205,8 @@ export class PublicationCoordinationService {
 
     const dispatchInput = preparedDispatchInput ?? createDispatchInput(identity, request, current.binding, approvalDecisionReference, providerExecutionKey(identity, request));
     const dispatchFingerprintValue = dispatchFingerprint(dispatchInput);
-    const disposition = this.dependencies.executionJournal.recoveryDisposition(identity, request.attempt.commandId);
-    const durableReceipt = this.dependencies.executionJournal.findReceipt(identity, request.attempt.commandId);
+    const disposition = await this.dependencies.executionJournal.recoveryDisposition(identity, request.attempt.commandId);
+    const durableReceipt = await this.dependencies.executionJournal.findReceipt(identity, request.attempt.commandId);
     const priorDispatch = this.dependencies.dispatchEvidence.find(identity, request.attempt.commandId);
     if (priorDispatch !== undefined && (priorDispatch.attemptId !== request.attempt.id || priorDispatch.dispatchFingerprint !== dispatchFingerprintValue)) {
       return dispatchEvidenceConflict();
@@ -217,37 +218,37 @@ export class PublicationCoordinationService {
     if (dispatch === undefined) {
       if (retryExecution) {
         try {
-          if (this.dependencies.retryEligibility?.evaluate({ ...request, expectedAggregateVersion: current.aggregateVersion }).retryEligible !== true) {
+          if ((await this.dependencies.retryEligibility?.evaluate({ ...request, expectedAggregateVersion: current.aggregateVersion }))?.retryEligible !== true) {
             return mapPublicationApplicationError(new PublicationApplicationError("PUBLICATION_STATE_INVALID", "DOMAIN_REJECTION", "Publication retry is not allowed."));
           }
         } catch (error) { return mapPublicationApplicationError(error); }
       }
-      const claim = this.dependencies.unitOfWork.begin(identity);
+      const claim = await this.dependencies.unitOfWork.begin(identity);
       try {
-        const claimedSnapshot = claim.repository.find(identity);
+        const claimedSnapshot = await claim.repository.find(identity);
         if (claimedSnapshot?.aggregateVersion !== current.aggregateVersion
           || claimedSnapshot.lifecycleState !== "EXECUTION_PENDING"
           || claimedSnapshot.suspensionStatus !== "NOT_SUSPENDED"
           || claimedSnapshot.pendingOperation?.attemptId !== request.attempt.id
           || !claimedSnapshot.attempts.some(attempt => attempt.id === request.attempt.id && attempt.commandId === request.attempt.commandId)) {
-          claim.rollback();
+          await claim.rollback();
           return mapPublicationApplicationError(new PublicationApplicationError("PUBLICATION_VERSION_CONFLICT", "CONFLICT", "Publication changed before dispatch."));
         }
-        const claimed = claim.execution.markDispatchStarted(identity, request.attempt.commandId, this.dependencies.clock.now());
-        claim.commit();
+        const claimed = await claim.execution.markDispatchStarted(identity, request.attempt.commandId, this.dependencies.clock.now());
+        await claim.commit();
         if (claimed === "ALREADY_STARTED") {
-          const authoritative = this.dependencies.executionJournal.findReceipt(identity, request.attempt.commandId);
+          const authoritative = await this.dependencies.executionJournal.findReceipt(identity, request.attempt.commandId);
           dispatch = authoritative === undefined
             ? immutableDomain({ outcome: "UNKNOWN" as const, evidenceRefs: [`durable-execution:${request.attempt.id}:outcome-unproven`] })
             : receiptToDispatch(authoritative);
         }
       } catch {
-        try { claim.rollback(); } catch { /* preserve original safe failure */ }
+        try { await claim.rollback(); } catch { /* preserve original safe failure */ }
         return connectorFailure("CONNECTOR_OUTCOME_UNKNOWN");
       }
       if (dispatch === undefined) {
         try {
-          dispatch = normalizeConnectorResult(this.dependencies.connector.dispatch(dispatchInput), request.attempt.id);
+          dispatch = normalizeConnectorResult(await this.dependencies.connector.dispatch(dispatchInput), request.attempt.id);
         } catch (error) {
           dispatch = immutableDomain({
             outcome: "UNKNOWN" as const,
@@ -259,7 +260,7 @@ export class PublicationCoordinationService {
     }
     safelyObserve(this.dependencies.operations, { component: "CONNECTOR_ATTEMPT", result: dispatch.outcome === "CONFIRMED" ? "COMPLETED" : "FAILED", ...(dispatch.outcome === "CONFIRMED" ? {} : { failureCode: dispatch.outcome === "REJECTED" ? "CONNECTOR_REJECTED" : "CONNECTOR_OUTCOME_UNKNOWN" }), sourceReference: request.attempt.id, correlationId: request.command.correlationId, actorOrServiceReference: authorizedActorId });
 
-    const resolveResult = this.recordConnectorOutcome(identity, request, dispatch, authorizedActorId);
+    const resolveResult = await this.recordConnectorOutcome(identity, request, dispatch, authorizedActorId);
     if (!resolveResult.ok) return resolveResult;
     if (dispatch.outcome !== "CONFIRMED") {
       return connectorFailure(dispatch.outcome === "REJECTED" ? "CONNECTOR_REJECTED" : "CONNECTOR_OUTCOME_UNKNOWN");
@@ -274,16 +275,16 @@ export class PublicationCoordinationService {
     });
   }
 
-  private recordConnectorOutcome(
+  private async recordConnectorOutcome(
     identity: PublicationIdentity,
     request: PublishPublicationCoordinationRequest,
     dispatch: PublicationConnectorDispatchResult,
     actorId: string,
-  ): PublicationApplicationResult {
+  ): Promise<PublicationApplicationResult> {
     let transaction;
     try {
-      transaction = this.dependencies.unitOfWork.begin(identity);
-      const snapshot = transaction.repository.find(identity);
+      transaction = await this.dependencies.unitOfWork.begin(identity);
+      const snapshot = await transaction.repository.find(identity);
       if (snapshot === undefined) throw new PublicationApplicationError("PUBLICATION_NOT_FOUND", "NOT_FOUND", "Publication was not found.");
       const domainCommand = {
         type: "RESOLVE_EXECUTION",
@@ -295,8 +296,8 @@ export class PublicationCoordinationService {
         command: { ...request.command, actorId },
       } as const;
       const updated = PublicationAggregate.rehydrate(snapshot).resolveExecution(domainCommand).snapshot;
-      transaction.repository.update(snapshot.aggregateVersion, updated);
-      transaction.execution.appendReceipt({
+      await transaction.repository.update(snapshot.aggregateVersion, updated);
+      await transaction.execution.appendReceipt({
         ...identity,
         receiptId: `${identity.publicationId}:receipt:${request.attempt.id}`,
         commandId: request.attempt.commandId,
@@ -306,13 +307,13 @@ export class PublicationCoordinationService {
         recordedAt: request.command.occurredAt,
         ...(dispatch.externalObjectReference === undefined ? {} : { externalObjectReference: dispatch.externalObjectReference }),
       });
-      const events = this.dependencies.eventCoordinator.appendAcceptedTransition(transaction, snapshot, updated, {
+      const events = await this.dependencies.eventCoordinator.appendAcceptedTransition(transaction, snapshot, updated, {
         kind: "MODIFY_PUBLICATION",
         identity,
         input: domainCommand,
       });
       const activationContext = stageContext(request.context, "activation");
-      transaction.audit.append({
+      await transaction.audit.append({
         id: JSON.stringify([identity.tenantScopeId, identity.publicationId, activationContext.idempotencyKey, activationContext.intentFingerprint, "RESOLVE_EXECUTION", updated.aggregateVersion]),
         tenantScopeId: identity.tenantScopeId,
         aggregateId: identity.publicationId,
@@ -323,7 +324,7 @@ export class PublicationCoordinationService {
         result: "COMPLETED",
       });
       const resultReference = `${identity.publicationId}@${String(updated.aggregateVersion)}`;
-      transaction.idempotency.record({
+      await transaction.idempotency.record({
         tenantScopeId: identity.tenantScopeId,
         aggregateId: identity.publicationId,
         commandKey: activationContext.idempotencyKey,
@@ -331,16 +332,16 @@ export class PublicationCoordinationService {
         resultReference,
         recordedAt: this.dependencies.clock.now(),
       });
-      transaction.commit();
+      await transaction.commit();
       this.dependencies.eventCoordinator.observeCommitted(events, actorId);
       return immutableDomain({ ok: true as const, publicationId: identity.publicationId, aggregateVersion: updated.aggregateVersion, resultReference, replayed: false });
     } catch (error) {
-      try { transaction?.rollback(); } catch { /* The transaction may already be closed by a commit conflict. */ }
+      try { await transaction?.rollback(); } catch { /* The transaction may already be closed by a commit conflict. */ }
       try {
-        const currentVersion = this.dependencies.repository.find(identity)?.aggregateVersion ?? request.expectedAggregateVersion;
+        const currentVersion = (await this.dependencies.repository.find(identity))?.aggregateVersion ?? request.expectedAggregateVersion;
         const eventFailure = error instanceof PublicationEventError ? error : undefined;
         const safeReason = eventFailure === undefined ? `CONNECTOR_OUTCOME_PERSISTENCE_FAILED:${dispatch.outcome}` : safePublicationEventErrorCode(eventFailure);
-        this.dependencies.audit.append({
+        await this.dependencies.audit.append({
           id: JSON.stringify([identity.tenantScopeId, identity.publicationId, request.attempt.id, request.attempt.commandId, safeReason, dispatch.outcome]),
           tenantScopeId: identity.tenantScopeId,
           aggregateId: identity.publicationId,

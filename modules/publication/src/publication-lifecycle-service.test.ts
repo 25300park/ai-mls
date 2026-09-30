@@ -92,9 +92,9 @@ function lifecycleInfrastructure(options: {
   });
 }
 
-function createReady(infrastructure: ReturnType<typeof lifecycleInfrastructure>, suffix: string, publicationIdentity = identity) {
+async function createReady(infrastructure: ReturnType<typeof lifecycleInfrastructure>, suffix: string, publicationIdentity = identity) {
   const execution = context(`create-${suffix}`);
-  const result = infrastructure.coordination.create({
+  const result = await infrastructure.coordination.create({
     context: execution,
     command: { kind: "CREATE_PUBLICATION", input: {
       identity: publicationIdentity, binding,
@@ -108,7 +108,7 @@ function createReady(infrastructure: ReturnType<typeof lifecycleInfrastructure>,
   return result.aggregateVersion;
 }
 
-function seedReady(infrastructure: ReturnType<typeof lifecycleInfrastructure>, suffix: string, publicationIdentity = identity) {
+async function seedReady(infrastructure: ReturnType<typeof lifecycleInfrastructure>, suffix: string, publicationIdentity = identity) {
   const snapshot = PublicationAggregate.create({
     identity: publicationIdentity,
     binding,
@@ -116,23 +116,23 @@ function seedReady(infrastructure: ReturnType<typeof lifecycleInfrastructure>, s
     classification: "CONFIDENTIAL_BUSINESS",
     command: { ...command(), correlationId: `correlation-seed-${suffix}` },
   }).snapshot;
-  infrastructure.repository.save(snapshot);
+  await infrastructure.repository.save(snapshot);
   return snapshot.aggregateVersion;
 }
 
-function createActive(infrastructure: ReturnType<typeof lifecycleInfrastructure>, suffix: string, publicationIdentity = identity) {
-  const version = createReady(infrastructure, suffix, publicationIdentity);
+async function createActive(infrastructure: ReturnType<typeof lifecycleInfrastructure>, suffix: string, publicationIdentity = identity) {
+  const version = await createReady(infrastructure, suffix, publicationIdentity);
   const execution = context(`publish-${suffix}`);
-  const result = infrastructure.coordination.publish({
+  const result = await infrastructure.coordination.publish({
     context: execution, identity: publicationIdentity, expectedAggregateVersion: version,
     command: { ...command(), correlationId: execution.correlationId },
     attempt: { id: `attempt-publish-${suffix}`, commandId: `command-publish-${suffix}`, operation: "INITIAL_PUBLISH", occurredAt, evidenceRefs: [] },
   });
   assert.equal(result.ok, true);
-  return infrastructure.repository.find(publicationIdentity)!;
+  return (await infrastructure.repository.find(publicationIdentity))!;
 }
 
-function seedActive(infrastructure: ReturnType<typeof lifecycleInfrastructure>, suffix: string) {
+async function seedActive(infrastructure: ReturnType<typeof lifecycleInfrastructure>, suffix: string) {
   const ready = PublicationAggregate.create({
     identity,
     binding,
@@ -154,7 +154,7 @@ function seedActive(infrastructure: ReturnType<typeof lifecycleInfrastructure>, 
     externalObjectReference: `external-seed-${suffix}`,
     command: { ...command(), correlationId: `correlation-seed-confirmed-${suffix}` },
   }).snapshot;
-  infrastructure.repository.save(active);
+  await infrastructure.repository.save(active);
   return active;
 }
 
@@ -163,9 +163,9 @@ function operationContext(key: string) {
   return { execution, domain: { ...command(), correlationId: execution.correlationId } };
 }
 
-test("F15-TASK-007 coordinates non-material correction with authorization, persistence, audit and idempotent replay", () => {
+test("F15-TASK-007 coordinates non-material correction with authorization, persistence, audit and idempotent replay", async () => {
   const infrastructure = lifecycleInfrastructure({ eventSourceVersion: 3 });
-  const active = seedActive(infrastructure, "correction");
+  const active = await seedActive(infrastructure, "correction");
   const { execution, domain } = operationContext("correction");
   const request = {
     context: execution, identity,
@@ -174,52 +174,52 @@ test("F15-TASK-007 coordinates non-material correction with authorization, persi
       attempt: { id: "attempt-correction-1", commandId: "command-correction-1", operation: "CORRECTION" as const, occurredAt, evidenceRefs: [] }, command: domain },
   };
 
-  const first = infrastructure.lifecycle.correctPublication(request);
-  const replay = infrastructure.lifecycle.correctPublication(request);
+  const first = await infrastructure.lifecycle.correctPublication(request);
+  const replay = await infrastructure.lifecycle.correctPublication(request);
 
   assert.equal(first.ok, true, JSON.stringify(first));
   assert.deepEqual(replay, first.ok ? { ...first, replayed: true } : first);
-  assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "EXECUTION_PENDING");
-  assert.equal(infrastructure.repository.find(identity)?.pendingOperation?.operation, "CORRECTION");
-  assert.equal(infrastructure.audit.list(identity).at(-1)?.command, "BEGIN_ACTIVE_OPERATION");
-  assert.equal(infrastructure.audit.list(identity).at(-1)?.actorId, "executor-independent");
+  assert.equal((await infrastructure.repository.find(identity))?.lifecycleState, "EXECUTION_PENDING");
+  assert.equal((await infrastructure.repository.find(identity))?.pendingOperation?.operation, "CORRECTION");
+  assert.equal((await infrastructure.audit.list(identity)).at(-1)?.command, "BEGIN_ACTIVE_OPERATION");
+  assert.equal((await infrastructure.audit.list(identity)).at(-1)?.actorId, "executor-independent");
 });
 
-test("F15-TASK-007 coordinates withdrawal request and confirmed resolution with append-only persistence", () => {
+test("F15-TASK-007 coordinates withdrawal request and confirmed resolution with append-only persistence", async () => {
   const infrastructure = lifecycleInfrastructure();
-  const active = createActive(infrastructure, "withdrawal");
+  const active = await createActive(infrastructure, "withdrawal");
   const requestContext = operationContext("withdraw-request");
-  const requested = infrastructure.lifecycle.requestWithdrawal({
+  const requested = await infrastructure.lifecycle.requestWithdrawal({
     context: requestContext.execution, identity,
     input: { type: "REQUEST_WITHDRAWAL", expectedAggregateVersion: active.aggregateVersion,
       attempt: { id: "attempt-withdrawal-1", commandId: "command-withdrawal-1", operation: "WITHDRAWAL", occurredAt, evidenceRefs: [] },
       command: requestContext.domain },
   });
   assert.equal(requested.ok, true);
-  const pending = infrastructure.repository.find(identity)!;
+  const pending = (await infrastructure.repository.find(identity))!;
   const resolveContext = operationContext("withdraw-resolve");
-  const resolved = infrastructure.lifecycle.resolveWithdrawal({
+  const resolved = await infrastructure.lifecycle.resolveWithdrawal({
     context: resolveContext.execution, identity,
     input: { type: "RESOLVE_WITHDRAWAL", expectedAggregateVersion: pending.aggregateVersion, outcome: "CONFIRMED",
       evidenceRefs: ["withdrawal-confirmation-1"], command: resolveContext.domain },
   });
 
   assert.equal(resolved.ok, true);
-  assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "WITHDRAWN");
-  assert.deepEqual(infrastructure.repository.readHistory(identity).map(({ lifecycleState }) => lifecycleState).slice(-2), ["WITHDRAWAL_PENDING", "WITHDRAWN"]);
-  assert.deepEqual(infrastructure.audit.list(identity).slice(-3).map(({ command, result }) => ({ command, result })), [
+  assert.equal((await infrastructure.repository.find(identity))?.lifecycleState, "WITHDRAWN");
+  assert.deepEqual((await infrastructure.repository.readHistory(identity)).map(({ lifecycleState }) => lifecycleState).slice(-2), ["WITHDRAWAL_PENDING", "WITHDRAWN"]);
+  assert.deepEqual((await infrastructure.audit.list(identity)).slice(-3).map(({ command, result }) => ({ command, result })), [
     { command: "REQUEST_WITHDRAWAL", result: "COMPLETED" },
     { command: "APPEND_CANONICAL_EVENT", result: "COMPLETED" },
     { command: "RESOLVE_WITHDRAWAL", result: "COMPLETED" },
   ]);
 });
 
-test("F15-TASK-007 preserves the material correction successor boundary without lifecycle mutation", () => {
+test("F15-TASK-007 preserves the material correction successor boundary without lifecycle mutation", async () => {
   const infrastructure = lifecycleInfrastructure();
-  const active = createActive(infrastructure, "material-correction");
+  const active = await createActive(infrastructure, "material-correction");
   const action = operationContext("material-correction");
 
-  const result = infrastructure.lifecycle.correctPublication({ context: action.execution, identity, input: {
+  const result = await infrastructure.lifecycle.correctPublication({ context: action.execution, identity, input: {
     type: "BEGIN_ACTIVE_OPERATION", expectedAggregateVersion: active.aggregateVersion, operation: "CORRECTION",
     materiality: "MATERIAL", nextBinding: correctionBinding,
     attempt: { id: "attempt-material-correction", commandId: "command-material-correction", operation: "CORRECTION", occurredAt, evidenceRefs: [] },
@@ -228,74 +228,74 @@ test("F15-TASK-007 preserves the material correction successor boundary without 
 
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.error.code, "PUBLICATION_MATERIAL_CHANGE_REQUIRES_SUCCESSOR");
-  assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "ACTIVE");
-  assert.equal(infrastructure.repository.find(identity)?.aggregateVersion, active.aggregateVersion);
-  assert.equal(infrastructure.audit.list(identity).at(-1)?.result, "FAILED");
+  assert.equal((await infrastructure.repository.find(identity))?.lifecycleState, "ACTIVE");
+  assert.equal((await infrastructure.repository.find(identity))?.aggregateVersion, active.aggregateVersion);
+  assert.equal((await infrastructure.audit.list(identity)).at(-1)?.result, "FAILED");
 });
 
-test("F15-TASK-007 coordinates withdrawn republish using a fresh command and attempt", () => {
+test("F15-TASK-007 coordinates withdrawn republish using a fresh command and attempt", async () => {
   const infrastructure = lifecycleInfrastructure();
-  const active = createActive(infrastructure, "republish");
+  const active = await createActive(infrastructure, "republish");
   const withdraw = operationContext("republish-withdraw");
-  assert.equal(infrastructure.lifecycle.requestWithdrawal({ context: withdraw.execution, identity, input: {
+  assert.equal((await infrastructure.lifecycle.requestWithdrawal({ context: withdraw.execution, identity, input: {
     type: "REQUEST_WITHDRAWAL", expectedAggregateVersion: active.aggregateVersion,
     attempt: { id: "attempt-withdrawal-republish", commandId: "command-withdrawal-republish", operation: "WITHDRAWAL", occurredAt, evidenceRefs: [] }, command: withdraw.domain,
-  } }).ok, true);
-  const pending = infrastructure.repository.find(identity)!;
+  } })).ok, true);
+  const pending = (await infrastructure.repository.find(identity))!;
   const resolution = operationContext("republish-resolve");
-  assert.equal(infrastructure.lifecycle.resolveWithdrawal({ context: resolution.execution, identity, input: {
+  assert.equal((await infrastructure.lifecycle.resolveWithdrawal({ context: resolution.execution, identity, input: {
     type: "RESOLVE_WITHDRAWAL", expectedAggregateVersion: pending.aggregateVersion, outcome: "CONFIRMED", evidenceRefs: ["withdrawn"], command: resolution.domain,
-  } }).ok, true);
-  const withdrawn = infrastructure.repository.find(identity)!;
+  } })).ok, true);
+  const withdrawn = (await infrastructure.repository.find(identity))!;
   const republish = operationContext("republish-start");
-  const result = infrastructure.lifecycle.republishPublication({ context: republish.execution, identity, input: {
+  const result = await infrastructure.lifecycle.republishPublication({ context: republish.execution, identity, input: {
     type: "BEGIN_WITHDRAWN_REPUBLISH", expectedAggregateVersion: withdrawn.aggregateVersion, nextBinding: republishBinding,
     attempt: { id: "attempt-republish-1", commandId: "command-republish-1", operation: "REPUBLISH", occurredAt, evidenceRefs: [] }, command: republish.domain,
   } });
 
   assert.equal(result.ok, true, JSON.stringify(result));
-  const current = infrastructure.repository.find(identity)!;
+  const current = (await infrastructure.repository.find(identity))!;
   assert.equal(current.lifecycleState, "EXECUTION_PENDING");
   assert.equal(current.republishStatus, "EXECUTION_PENDING");
   assert.equal(current.attempts.at(-1)?.commandId, "command-republish-1");
   assert.equal(current.binding.targetId, binding.targetId);
   assert.equal(current.binding.channelId, binding.channelId);
   assert.equal(current.binding.approvalId, "approval-republish-1");
-  assert.equal(infrastructure.audit.list(identity).at(-1)?.command, "BEGIN_WITHDRAWN_REPUBLISH");
-  assert.equal(infrastructure.audit.list(identity).at(-1)?.result, "COMPLETED");
+  assert.equal((await infrastructure.audit.list(identity)).at(-1)?.command, "BEGIN_WITHDRAWN_REPUBLISH");
+  assert.equal((await infrastructure.audit.list(identity)).at(-1)?.result, "COMPLETED");
 });
 
-test("F15-TASK-007 coordinates suspension, resume, supersession and termination", () => {
+test("F15-TASK-007 coordinates suspension, resume, supersession and termination", async () => {
   const infrastructure = lifecycleInfrastructure();
-  let current = createActive(infrastructure, "state-actions");
+  let current = await createActive(infrastructure, "state-actions");
   let action = operationContext("suspend");
-  assert.equal(infrastructure.lifecycle.suspendPublication({ context: action.execution, identity, input: {
+  assert.equal((await infrastructure.lifecycle.suspendPublication({ context: action.execution, identity, input: {
     type: "SET_SUSPENSION", expectedAggregateVersion: current.aggregateVersion, suspensionStatus: "SUSPENDED_SECURITY", command: action.domain,
-  } }).ok, true);
-  current = infrastructure.repository.find(identity)!;
+  } })).ok, true);
+  current = (await infrastructure.repository.find(identity))!;
   assert.equal(current.suspensionStatus, "SUSPENDED_SECURITY");
   action = operationContext("resume");
-  assert.equal(infrastructure.lifecycle.resumePublication({ context: action.execution, identity, input: {
+  assert.equal((await infrastructure.lifecycle.resumePublication({ context: action.execution, identity, input: {
     type: "SET_SUSPENSION", expectedAggregateVersion: current.aggregateVersion, suspensionStatus: "NOT_SUSPENDED", command: action.domain,
-  } }).ok, true);
-  current = infrastructure.repository.find(identity)!;
+  } })).ok, true);
+  current = (await infrastructure.repository.find(identity))!;
   assert.equal(current.suspensionStatus, "NOT_SUSPENDED");
   action = operationContext("supersede");
-  assert.equal(infrastructure.lifecycle.supersedePublication({ context: action.execution, identity, input: {
+  assert.equal((await infrastructure.lifecycle.supersedePublication({ context: action.execution, identity, input: {
     type: "SUPERSEDE", expectedAggregateVersion: current.aggregateVersion, successorPublicationId: "publication-successor-1", evidenceRefs: ["successor-evidence"], command: action.domain,
-  } }).ok, true);
-  assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "SUPERSEDED");
+  } })).ok, true);
+  assert.equal((await infrastructure.repository.find(identity))?.lifecycleState, "SUPERSEDED");
 
   const readyIdentity = { publicationId: "publication-terminate-1", tenantScopeId: "team-a" } as const;
-  const readyVersion = createReady(infrastructure, "terminate", readyIdentity);
+  const readyVersion = await createReady(infrastructure, "terminate", readyIdentity);
   action = operationContext("terminate");
-  assert.equal(infrastructure.lifecycle.terminatePublication({ context: action.execution, identity: readyIdentity, input: {
+  assert.equal((await infrastructure.lifecycle.terminatePublication({ context: action.execution, identity: readyIdentity, input: {
     type: "TERMINATE", expectedAggregateVersion: readyVersion, command: action.domain,
-  } }).ok, true);
-  assert.equal(infrastructure.repository.find(readyIdentity)?.lifecycleState, "TERMINATED");
+  } })).ok, true);
+  assert.equal((await infrastructure.repository.find(readyIdentity))?.lifecycleState, "TERMINATED");
 });
 
-test("F15-TASK-007 fails closed for authorization, live prerequisite, version, idempotency and transition rejection", () => {
+test("F15-TASK-007 fails closed for authorization, live prerequisite, version, idempotency and transition rejection", async () => {
   const cases = [
     { name: "authentication", infrastructure: lifecycleInfrastructure({ omitAuthentication: true }), expected: "AUTHENTICATION_REQUIRED" },
     { name: "approval", infrastructure: lifecycleInfrastructure({ approvalEffective: false }), expected: "APPROVAL_NOT_EFFECTIVE" },
@@ -307,21 +307,21 @@ test("F15-TASK-007 fails closed for authorization, live prerequisite, version, i
     { name: "reason", infrastructure: lifecycleInfrastructure({ authorizationReason: "REASON_REQUIRED" }), expected: "REASON_REQUIRED" },
   ] as const;
   for (const item of cases) {
-    const version = seedReady(item.infrastructure, item.name);
+    const version = await seedReady(item.infrastructure, item.name);
     const action = operationContext(`reject-${item.name}`);
-    const result = item.infrastructure.lifecycle.terminatePublication({ context: action.execution, identity, input: {
+    const result = await item.infrastructure.lifecycle.terminatePublication({ context: action.execution, identity, input: {
       type: "TERMINATE", expectedAggregateVersion: version, command: action.domain,
     } });
     assert.equal(result.ok, false, item.name);
     if (!result.ok) assert.equal(result.error.code, item.expected, item.name);
-    assert.equal(item.infrastructure.repository.find(identity)?.lifecycleState, "READY", item.name);
-    assert.equal(item.infrastructure.audit.list(identity).some(({ result: auditResult }) => auditResult === "COMPLETED"), false, item.name);
+    assert.equal((await item.infrastructure.repository.find(identity))?.lifecycleState, "READY", item.name);
+    assert.equal((await item.infrastructure.audit.list(identity)).some(({ result: auditResult }) => auditResult === "COMPLETED"), false, item.name);
   }
 
   const infrastructure = lifecycleInfrastructure();
-  const active = createActive(infrastructure, "conflicts");
+  const active = await createActive(infrastructure, "conflicts");
   let action = operationContext("version-conflict");
-  const versionConflict = infrastructure.lifecycle.requestWithdrawal({ context: action.execution, identity, input: {
+  const versionConflict = await infrastructure.lifecycle.requestWithdrawal({ context: action.execution, identity, input: {
     type: "REQUEST_WITHDRAWAL", expectedAggregateVersion: active.aggregateVersion - 1,
     attempt: { id: "attempt-stale", commandId: "command-stale", operation: "WITHDRAWAL", occurredAt, evidenceRefs: [] }, command: action.domain,
   } });
@@ -329,27 +329,27 @@ test("F15-TASK-007 fails closed for authorization, live prerequisite, version, i
   if (!versionConflict.ok) assert.equal(versionConflict.error.code, "PUBLICATION_VERSION_CONFLICT");
 
   action = operationContext("invalid-transition");
-  const invalid = infrastructure.lifecycle.terminatePublication({ context: action.execution, identity, input: {
+  const invalid = await infrastructure.lifecycle.terminatePublication({ context: action.execution, identity, input: {
     type: "TERMINATE", expectedAggregateVersion: active.aggregateVersion, command: action.domain,
   } });
   assert.equal(invalid.ok, false);
   if (!invalid.ok) assert.equal(invalid.error.code, "PUBLICATION_TRANSITION_INVALID");
 
   action = operationContext("idempotency-conflict");
-  const first = infrastructure.lifecycle.suspendPublication({ context: action.execution, identity, input: {
+  const first = await infrastructure.lifecycle.suspendPublication({ context: action.execution, identity, input: {
     type: "SET_SUSPENSION", expectedAggregateVersion: active.aggregateVersion, suspensionStatus: "SUSPENDED_SECURITY", command: action.domain,
   } });
   assert.equal(first.ok, true);
   const conflictingContext = { ...action.execution, intentFingerprint: "sha256:different-intent" };
-  const suspendedVersion = infrastructure.repository.find(identity)!.aggregateVersion;
-  const conflict = infrastructure.lifecycle.suspendPublication({ context: conflictingContext, identity, input: {
+  const suspendedVersion = (await infrastructure.repository.find(identity))!.aggregateVersion;
+  const conflict = await infrastructure.lifecycle.suspendPublication({ context: conflictingContext, identity, input: {
     type: "SET_SUSPENSION", expectedAggregateVersion: suspendedVersion, suspensionStatus: "SUSPENDED_COMPLIANCE", command: action.domain,
   } });
   assert.equal(conflict.ok, false);
   if (!conflict.ok) assert.equal(conflict.error.code, "IDEMPOTENCY_CONFLICT");
 });
 
-test("F15-TASK-007 lifecycle operation traverses Composition Root and Runtime without a parallel path", () => {
+test("F15-TASK-007 lifecycle operation traverses Composition Root and Runtime without a parallel path", async () => {
   const infrastructureOptions = {
     ...createTestPublicationAuthorizationConfiguration(new FixedClock(occurredAt)),
     effectiveApprovalPort: { check: (input: typeof binding & { actorId: string }) => Object.freeze({
@@ -361,7 +361,7 @@ test("F15-TASK-007 lifecycle operation traverses Composition Root and Runtime wi
   const composed = composePublicationApplication({ runtimeOptions: { infrastructureConfiguration: infrastructureOptions } });
   assert.equal(typeof composed.runtime.services.lifecycle.execute, "function");
   const execution = context("composed-create");
-  const created = composed.runtime.execute({ operation: "COORDINATE_CREATE_PUBLICATION",
+  const created = await composed.runtime.execute({ operation: "COORDINATE_CREATE_PUBLICATION",
     context: execution, command: { kind: "CREATE_PUBLICATION", input: { identity, binding,
         prerequisites: { immutableSnapshot: true, exactTargetChannel: true, provenancePresent: true }, classification: "CONFIDENTIAL_BUSINESS",
         command: { ...command(), correlationId: execution.correlationId },
@@ -369,7 +369,7 @@ test("F15-TASK-007 lifecycle operation traverses Composition Root and Runtime wi
   });
   assert.equal(created.operationResult, "SUCCEEDED");
   const action = operationContext("composed-terminate");
-  const result = composed.runtime.execute({ operation: "COORDINATE_PUBLICATION_LIFECYCLE",
+  const result = await composed.runtime.execute({ operation: "COORDINATE_PUBLICATION_LIFECYCLE",
     action: "TERMINATE", context: action.execution, identity,
     input: { type: "TERMINATE", expectedAggregateVersion: 1, command: action.domain },
   });

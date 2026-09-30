@@ -93,12 +93,20 @@ GROUP BY expected.schema_name, n.oid
 ORDER BY expected.schema_name`;
 
 export async function assertR3B1ChildRootSchemasReady(pool: PostgreSqlPoolPort): Promise<void> {
+  await assertContractsReady(pool, R3B1_CHILD_ROOT_SCHEMA_CONTRACTS);
+}
+
+export async function assertR3B1PublicationSchemaReady(pool: PostgreSqlPoolPort): Promise<void> {
+  await assertContractsReady(pool, R3B1_CHILD_ROOT_SCHEMA_CONTRACTS.filter((contract) => contract.schemaName === "app_publication"));
+}
+
+async function assertContractsReady(pool: PostgreSqlPoolPort, contracts: readonly R3B1ChildRootSchemaContract[]): Promise<void> {
   const client = await pool.connect();
   try {
     const result = await client.query<ReadinessRow>(READINESS_QUERY);
-    if (result.rowCount !== R3B1_CHILD_ROOT_SCHEMA_CONTRACTS.length) throw notReady();
+    if (result.rowCount < contracts.length) throw notReady();
     const bySchema = new Map(result.rows.map((row) => [row.schema_name, row]));
-    for (const contract of R3B1_CHILD_ROOT_SCHEMA_CONTRACTS) {
+    for (const contract of contracts) {
       const row = bySchema.get(contract.schemaName);
       if (row?.artifact_sha256 !== contract.artifactSha256 || row.table_count !== contract.tableCount || row.schema_comment !== contract.schemaComment
         || row.runtime_usage !== true || row.runtime_create !== false || row.public_acl_count !== 0

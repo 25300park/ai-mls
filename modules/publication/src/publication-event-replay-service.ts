@@ -14,7 +14,7 @@ export interface PublicationEventReplayAuthority {
 }
 
 export interface PublicationEventReplayConsumer {
-  accept(event: PublicationEventEnvelope): void;
+  accept(event: PublicationEventEnvelope): void | Promise<void>;
 }
 
 export interface PublicationEventReplayRequest extends PublicationIdentity {
@@ -44,14 +44,14 @@ export class PublicationEventReplayService {
     readonly operations?: PublicationOperationsObserver;
   }) {}
 
-  public replay(request: PublicationEventReplayRequest, consumer: PublicationEventReplayConsumer): PublicationEventReplayResult {
+  public async replay(request: PublicationEventReplayRequest, consumer: PublicationEventReplayConsumer): Promise<PublicationEventReplayResult> {
     const identity = { publicationId: request.publicationId, tenantScopeId: request.tenantScopeId };
     let version = 0;
     try {
-      const snapshot = this.dependencies.repository.find(identity);
+      const snapshot = await this.dependencies.repository.find(identity);
       if (snapshot === undefined) throw eventError("EVENT_REPLAY_UNAUTHORIZED", "Canonical Event replay source is unavailable.");
       version = snapshot.aggregateVersion;
-      const events = this.dependencies.journal.listByAggregate(request.tenantScopeId, request.publicationId);
+      const events = await this.dependencies.journal.listByAggregate(request.tenantScopeId, request.publicationId);
       if (events.length === 0) throw eventError("EVENT_REPLAY_UNAUTHORIZED", "Canonical Event replay has no validated source stream.");
       let priorSequence = 0;
       for (const event of events) {
@@ -62,7 +62,7 @@ export class PublicationEventReplayService {
       }
       const governance = resolvePublicationEventSourceContext(this.dependencies.sourceContextResolver, snapshot, "RECOVERY_VALIDATION");
       if (!this.dependencies.authority.authorize({ identity, actorId: request.actorId, purpose: request.purpose, correlationId: request.correlationId })) throw eventError("EVENT_REPLAY_UNAUTHORIZED", "Canonical Event replay is not authorized.");
-      appendReplayStart(this.dependencies.audit, request, version);
+      await appendReplayStart(this.dependencies.audit, request, version);
       const priorCompletion = events.find((event) => event.eventType === "EVT-012" && event.payload["replayVersion"] === request.replayVersion);
       if (priorCompletion !== undefined) {
         if (priorCompletion.commandId !== request.commandId || priorCompletion.correlationId !== request.correlationId || priorCompletion.actorReference !== request.actorId) throw eventError("EVENT_IDENTITY_CONFLICT", "Replay version is already bound to a different canonical occurrence.");
@@ -70,9 +70,9 @@ export class PublicationEventReplayService {
         return immutableDomain({ validatedEventCount: Number(priorCompletion.payload["validatedEventCount"]), completionEvent: priorCompletion, replayed: true });
       }
       for (const event of events) {
-        consumer.accept(immutableDomain(event));
+        await consumer.accept(immutableDomain(event));
       }
-      const transaction = this.dependencies.unitOfWork.begin(identity);
+      const transaction = await this.dependencies.unitOfWork.begin(identity);
       try {
       const completion = createPublicationEventEnvelope({
         source: {
@@ -105,17 +105,17 @@ export class PublicationEventReplayService {
         purpose: governance.purpose,
         payload: { publicationId: snapshot.publicationId, replayVersion: request.replayVersion, replayedFromSequence: 1, replayedToSequence: priorSequence, validatedEventCount: events.length },
       });
-      transaction.eventJournal.append(completion);
-      transaction.audit.append(replayAudit(completion, request.actorId));
-      transaction.commit();
+      await transaction.eventJournal.append(completion);
+      await transaction.audit.append(replayAudit(completion, request.actorId));
+      await transaction.commit();
       safelyObserve(this.dependencies.operations, request, "COMPLETED");
       return immutableDomain({ validatedEventCount: events.length, completionEvent: completion, replayed: false });
       } catch (error) {
-        try { transaction.rollback(); } catch { /* Transaction may already be closed. */ }
+        try { await transaction.rollback(); } catch { /* Transaction may already be closed. */ }
         throw error;
       }
     } catch (error) {
-      appendReplayFailure(this.dependencies.audit, request, version, error);
+      await appendReplayFailure(this.dependencies.audit, request, version, error);
       safelyObserve(this.dependencies.operations, request, "FAILED", error instanceof PublicationEventError ? error.code : "INTERNAL_EVENT_JOURNAL_ERROR");
       throw error;
     }
@@ -166,18 +166,18 @@ function replayAudit(event: PublicationEventEnvelope, actorId: string): Publicat
   };
 }
 
-function appendReplayStart(audit: PublicationAuditStore, request: PublicationEventReplayRequest, version: number): void {
+async function appendReplayStart(audit: PublicationAuditStore, request: PublicationEventReplayRequest, version: number): Promise<void> {
   const id = JSON.stringify([request.tenantScopeId, request.publicationId, "replay-start", request.commandId, request.replayVersion]);
-  if (audit.list(request).some((record) => record.id === id)) return;
-  audit.append({ id, tenantScopeId: request.tenantScopeId, aggregateId: request.publicationId, command: "REPLAY_CANONICAL_EVENTS_STARTED", actorId: request.actorId, timestamp: request.occurredAt, version, result: "COMPLETED", correlationId: request.correlationId });
+  if ((await audit.list(request)).some((record) => record.id === id)) return;
+  await audit.append({ id, tenantScopeId: request.tenantScopeId, aggregateId: request.publicationId, command: "REPLAY_CANONICAL_EVENTS_STARTED", actorId: request.actorId, timestamp: request.occurredAt, version, result: "COMPLETED", correlationId: request.correlationId });
 }
 
-function appendReplayFailure(audit: PublicationAuditStore, request: PublicationEventReplayRequest, version: number, error: unknown): void {
+async function appendReplayFailure(audit: PublicationAuditStore, request: PublicationEventReplayRequest, version: number, error: unknown): Promise<void> {
   const reason = error instanceof PublicationEventError ? error.code : "INTERNAL_EVENT_JOURNAL_ERROR";
   const id = JSON.stringify([request.tenantScopeId, request.publicationId, "replay-failure", request.commandId, request.replayVersion, reason]);
   try {
-    if (audit.list(request).some((record) => record.id === id)) return;
-    audit.append({ id, tenantScopeId: request.tenantScopeId, aggregateId: request.publicationId, command: "REPLAY_CANONICAL_EVENTS_FAILED", actorId: request.actorId, timestamp: request.occurredAt, version, result: "FAILED", failureReason: reason, correlationId: request.correlationId });
+    if ((await audit.list(request)).some((record) => record.id === id)) return;
+    await audit.append({ id, tenantScopeId: request.tenantScopeId, aggregateId: request.publicationId, command: "REPLAY_CANONICAL_EVENTS_FAILED", actorId: request.actorId, timestamp: request.occurredAt, version, result: "FAILED", failureReason: reason, correlationId: request.correlationId });
   } catch { /* Replay failure remains authoritative if audit evidence cannot be appended. */ }
 }
 

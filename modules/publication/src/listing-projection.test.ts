@@ -26,13 +26,13 @@ const binding = Object.freeze({
   targetId: "target-1", targetVersion: 5, channelId: "channel-1", channelPolicyVersion: "policy-1",
 });
 
-test("F15-TASK-011 EVT-003 creates an immutable exact PRJ-002 record without mutating source truth", () => {
+test("F15-TASK-011 EVT-003 creates an immutable exact PRJ-002 record without mutating source truth", async () => {
   const setup = projectionSetup();
   const aggregateBefore = structuredClone(sourceSnapshot(2, 1));
   const activated = canonicalEvent("EVT-003", 1, 2, 1);
-  setup.journal.append(activated);
+  await setup.journal.append(activated);
 
-  const result = setup.consumer.consume(tenantId, activated.eventId);
+  const result = await setup.consumer.consume(tenantId, activated.eventId);
 
   assert.equal(result.status, "APPLIED");
   assert.deepEqual(setup.read.getServing({ tenantId, publicationId }), {
@@ -73,12 +73,12 @@ test("F15-TASK-011 EVT-003 creates an immutable exact PRJ-002 record without mut
   assert.equal("payload" in (setup.audit.list({ tenantId, publicationId }).at(-1) ?? {}), false);
 });
 
-test("F15-TASK-011 exact duplicates are no-ops and conflicting duplicate identity fails closed", () => {
+test("F15-TASK-011 exact duplicates are no-ops and conflicting duplicate identity fails closed", async () => {
   const setup = projectionSetup();
   const activated = canonicalEvent("EVT-003", 1, 2, 1);
-  setup.journal.append(activated);
-  const first = setup.consumer.consume(tenantId, activated.eventId);
-  const duplicate = setup.consumer.consume(tenantId, activated.eventId);
+  await setup.journal.append(activated);
+  const first = await setup.consumer.consume(tenantId, activated.eventId);
+  const duplicate = await setup.consumer.consume(tenantId, activated.eventId);
   assert.equal(duplicate.status, "DUPLICATE_IGNORED");
   assert.equal(duplicate.record.projectionRecordVersion, first.record.projectionRecordVersion);
   assert.equal(setup.audit.list({ tenantId, publicationId }).at(-1)?.operation, "DUPLICATE_IGNORED");
@@ -87,10 +87,10 @@ test("F15-TASK-011 exact duplicates are no-ops and conflicting duplicate identit
   const conflictConsumer = new ListingProjectionConsumer({
     journal: journalReturning(conflicting), store: setup.store, audit: setup.audit, clock,
   });
-  assert.throws(() => conflictConsumer.consume(tenantId, conflicting.eventId), projectionError("PROJECTION_EVENT_DUPLICATE_CONFLICT"));
+  await assert.rejects(conflictConsumer.consume(tenantId, conflicting.eventId), projectionError("PROJECTION_EVENT_DUPLICATE_CONFLICT"));
 });
 
-test("F15-TASK-011 Event apply and required audit evidence commit atomically", () => {
+test("F15-TASK-011 Event apply and required audit evidence commit atomically", async () => {
   const journal = new InMemoryPublicationEventJournal();
   const store = new InMemoryListingProjectionStore();
   const audit = new InMemoryListingProjectionAuditStore();
@@ -102,23 +102,23 @@ test("F15-TASK-011 Event apply and required audit evidence commit atomically", (
     list: (identity) => audit.list(identity),
   };
   const activated = canonicalEvent("EVT-003", 1, 2, 1);
-  journal.append(activated);
+  await journal.append(activated);
   const consumer = new ListingProjectionConsumer({ journal, store, audit: failingAudit, clock });
 
-  assert.throws(() => consumer.consume(tenantId, activated.eventId), projectionError("INTERNAL_PROJECTION_ERROR"));
+  await assert.rejects(consumer.consume(tenantId, activated.eventId), projectionError("INTERNAL_PROJECTION_ERROR"));
   assert.equal(store.getServing({ tenantId, publicationId }), undefined);
   assert.equal(store.getServingGeneration({ tenantId, publicationId }), undefined);
   const generationId = `PRJ-002:SERVING:${tenantId}:${publicationId}`;
   assert.equal(store.getGeneration({ tenantId, publicationId }, generationId), undefined);
   assert.equal(audit.list({ tenantId, publicationId }).some(({ operation }) => operation === "EVENT_APPLIED"), false);
 
-  const retry = new ListingProjectionConsumer({ journal, store, audit, clock }).consume(tenantId, activated.eventId);
+  const retry = await new ListingProjectionConsumer({ journal, store, audit, clock }).consume(tenantId, activated.eventId);
   assert.equal(retry.status, "APPLIED");
   assert.equal(store.getServing({ tenantId, publicationId })?.projectionRecordVersion, 1);
 });
 
-test("F15-TASK-011 drift audit failures preserve the canonical error and do not partially mark stale", () => {
-  const setup = initializedProjection();
+test("F15-TASK-011 drift audit failures preserve the canonical error and do not partially mark stale", async () => {
+  const setup = await initializedProjection();
   const gap = canonicalEvent("EVT-004", 3, 4, 1, { suspensionStatus: "SUSPENDED_PROVIDER_POLICY", reasonCode: "POLICY_HOLD" });
   const failingAudit: ListingProjectionAuditStore = {
     append(record) {
@@ -129,41 +129,41 @@ test("F15-TASK-011 drift audit failures preserve the canonical error and do not 
   };
   const consumer = new ListingProjectionConsumer({ journal: journalReturning(gap), store: setup.store, audit: failingAudit, clock });
 
-  assert.throws(() => consumer.consume(tenantId, gap.eventId), projectionError("PROJECTION_SEQUENCE_GAP"));
+  await assert.rejects(consumer.consume(tenantId, gap.eventId), projectionError("PROJECTION_SEQUENCE_GAP"));
   assert.equal(setup.store.getServing({ tenantId, publicationId })?.stale, false);
 });
 
-test("F15-TASK-011 gaps and out-of-order/version regressions fail closed and expose stale state", () => {
-  const setup = initializedProjection();
+test("F15-TASK-011 gaps and out-of-order/version regressions fail closed and expose stale state", async () => {
+  const setup = await initializedProjection();
   const gap = canonicalEvent("EVT-004", 3, 4, 1, { suspensionStatus: "SUSPENDED_PROVIDER_POLICY", reasonCode: "POLICY_HOLD" });
-  setup.journal.append(canonicalEvent("EVT-004", 2, 3, 1, { suspensionStatus: "SUSPENDED_PROVIDER_POLICY", reasonCode: "POLICY_HOLD" }));
-  setup.journal.append(gap);
-  assert.throws(() => setup.consumer.consume(tenantId, gap.eventId), projectionError("PROJECTION_SEQUENCE_GAP"));
+  await setup.journal.append(canonicalEvent("EVT-004", 2, 3, 1, { suspensionStatus: "SUSPENDED_PROVIDER_POLICY", reasonCode: "POLICY_HOLD" }));
+  await setup.journal.append(gap);
+  await assert.rejects(setup.consumer.consume(tenantId, gap.eventId), projectionError("PROJECTION_SEQUENCE_GAP"));
   const stale = setup.read.getServing({ tenantId, publicationId });
   assert.equal(stale?.stale, true);
   assert.equal(stale?.staleReason, "EVENT_SEQUENCE_GAP");
 
-  const lowerSetup = initializedProjection();
+  const lowerSetup = await initializedProjection();
   const lower = canonicalEvent("EVT-004", 1, 1, 1, { suspensionStatus: "SUSPENDED_PROVIDER_POLICY", reasonCode: "POLICY_HOLD" });
-  assert.throws(() => new ListingProjectionConsumer({ journal: journalReturning(lower), store: lowerSetup.store, audit: lowerSetup.audit, clock }).consume(tenantId, lower.eventId), projectionError("PROJECTION_EVENT_OUT_OF_ORDER"));
-  const regressionSetup = initializedProjection();
+  await assert.rejects(new ListingProjectionConsumer({ journal: journalReturning(lower), store: lowerSetup.store, audit: lowerSetup.audit, clock }).consume(tenantId, lower.eventId), projectionError("PROJECTION_EVENT_OUT_OF_ORDER"));
+  const regressionSetup = await initializedProjection();
   const regressed = canonicalEvent("EVT-004", 2, 1, 1, { suspensionStatus: "SUSPENDED_PROVIDER_POLICY", reasonCode: "POLICY_HOLD" });
-  assert.throws(() => new ListingProjectionConsumer({ journal: journalReturning(regressed), store: regressionSetup.store, audit: regressionSetup.audit, clock }).consume(tenantId, regressed.eventId), projectionError("PROJECTION_SOURCE_VERSION_DRIFT"));
-  const publicationRegressionSetup = initializedProjection();
+  await assert.rejects(new ListingProjectionConsumer({ journal: journalReturning(regressed), store: regressionSetup.store, audit: regressionSetup.audit, clock }).consume(tenantId, regressed.eventId), projectionError("PROJECTION_SOURCE_VERSION_DRIFT"));
+  const publicationRegressionSetup = await initializedProjection();
   const publicationRegressed = canonicalEvent("EVT-007", 2, 3, 0);
-  assert.throws(() => new ListingProjectionConsumer({ journal: journalReturning(publicationRegressed), store: publicationRegressionSetup.store, audit: publicationRegressionSetup.audit, clock }).consume(tenantId, publicationRegressed.eventId), projectionError("PROJECTION_PUBLICATION_VERSION_DRIFT"));
+  await assert.rejects(new ListingProjectionConsumer({ journal: journalReturning(publicationRegressed), store: publicationRegressionSetup.store, audit: publicationRegressionSetup.audit, clock }).consume(tenantId, publicationRegressed.eventId), projectionError("PROJECTION_PUBLICATION_VERSION_DRIFT"));
   const unrelated = canonicalEvent("EVT-005", 4, 5, 1, { revalidationReference: "revalidation-1", outcome: "EFFECTIVE", evidenceReferences: ["evidence-1"] });
-  assert.throws(() => new ListingProjectionConsumer({ journal: journalReturning(unrelated), store: setup.store, audit: setup.audit, clock }).consume(tenantId, unrelated.eventId), projectionError("PROJECTION_STALE"));
+  await assert.rejects(new ListingProjectionConsumer({ journal: journalReturning(unrelated), store: setup.store, audit: setup.audit, clock }).consume(tenantId, unrelated.eventId), projectionError("PROJECTION_STALE"));
   assert.equal(setup.read.getServing({ tenantId, publicationId })?.stale, true);
 });
 
-test("F15-TASK-011 lifecycle Events preserve suspension, reconciliation, withdrawal and republish provenance", () => {
+test("F15-TASK-011 lifecycle Events preserve suspension, reconciliation, withdrawal and republish provenance", async () => {
   const setup = projectionSetup();
-  appendAndConsume(setup, canonicalEvent("EVT-003", 1, 2, 1));
-  appendAndConsume(setup, canonicalEvent("EVT-004", 2, 3, 1, { suspensionStatus: "SUSPENDED_PROVIDER_POLICY", reasonCode: "POLICY_HOLD" }));
-  appendAndConsume(setup, canonicalEvent("EVT-006", 3, 4, 1, { caseId: "case-1", attemptId: "attempt-1", resolutionCategory: "WITHDRAWAL_CONFIRMED", evidenceReferences: ["evidence-1"] }));
-  appendAndConsume(setup, canonicalEvent("EVT-007", 4, 5, 2));
-  appendAndConsume(setup, canonicalEvent("EVT-008", 5, 6, 3));
+  await appendAndConsume(setup, canonicalEvent("EVT-003", 1, 2, 1));
+  await appendAndConsume(setup, canonicalEvent("EVT-004", 2, 3, 1, { suspensionStatus: "SUSPENDED_PROVIDER_POLICY", reasonCode: "POLICY_HOLD" }));
+  await appendAndConsume(setup, canonicalEvent("EVT-006", 3, 4, 1, { caseId: "case-1", attemptId: "attempt-1", resolutionCategory: "WITHDRAWAL_CONFIRMED", evidenceReferences: ["evidence-1"] }));
+  await appendAndConsume(setup, canonicalEvent("EVT-007", 4, 5, 2));
+  await appendAndConsume(setup, canonicalEvent("EVT-008", 5, 6, 3));
   const record = setup.store.getServing({ tenantId, publicationId });
   assert.equal(record?.lifecycle, "ACTIVE");
   assert.equal(record?.suspensionStatus, "SUSPENDED_PROVIDER_POLICY");
@@ -174,52 +174,52 @@ test("F15-TASK-011 lifecycle Events preserve suspension, reconciliation, withdra
   assert.equal(record?.projectionRecordVersion, 5);
 });
 
-test("F15-TASK-011 recovery control Event advances progress without expanding Projection purpose", () => {
-  const setup = initializedProjection();
+test("F15-TASK-011 recovery control Event advances progress without expanding Projection purpose", async () => {
+  const setup = await initializedProjection();
   const replayCompleted = canonicalEvent(
     "EVT-012", 2, 2, 1,
     { replayVersion: "v1", replayedFromSequence: 1, replayedToSequence: 1, validatedEventCount: 1 },
     tenantId,
     { ...defaultEventSecurity, purpose: "RECOVERY_VALIDATION" },
   );
-  appendAndConsume(setup, replayCompleted);
+  await appendAndConsume(setup, replayCompleted);
   const record = setup.store.getServing({ tenantId, publicationId });
   assert.equal(record?.lastEventType, "EVT-012");
   assert.equal(record?.lastEventSequence, 2);
   assert.equal(record?.purpose, "PUBLICATION_EXECUTION");
 });
 
-test("F15-TASK-011 provenance, schema, definition and security drift are rejected safely", () => {
+test("F15-TASK-011 provenance, schema, definition and security drift are rejected safely", async () => {
   const setup = projectionSetup();
-  appendAndConsume(setup, canonicalEvent("EVT-003", 1, 2, 1));
+  await appendAndConsume(setup, canonicalEvent("EVT-003", 1, 2, 1));
   const wrongTenant = canonicalEvent("EVT-004", 2, 3, 1, { suspensionStatus: "SUSPENDED_PROVIDER_POLICY", reasonCode: "POLICY_HOLD" }, "team-b");
-  assert.throws(() => new ListingProjectionConsumer({ journal: journalReturning(wrongTenant), store: setup.store, audit: setup.audit, clock }).consume(tenantId, wrongTenant.eventId), projectionError("PROJECTION_TENANT_MISMATCH"));
+  await assert.rejects(new ListingProjectionConsumer({ journal: journalReturning(wrongTenant), store: setup.store, audit: setup.audit, clock }).consume(tenantId, wrongTenant.eventId), projectionError("PROJECTION_TENANT_MISMATCH"));
 
   const corrupted = structuredClone(canonicalEvent("EVT-004", 2, 3, 1, { suspensionStatus: "SUSPENDED_PROVIDER_POLICY", reasonCode: "POLICY_HOLD" })) as unknown as Record<string, unknown>;
   corrupted["eventSchemaVersion"] = "v1";
-  assert.throws(() => new ListingProjectionConsumer({ journal: journalReturning(corrupted as unknown as PublicationEventEnvelope), store: setup.store, audit: setup.audit, clock }).consume(tenantId, String(corrupted["eventId"])), projectionError("PROJECTION_SCHEMA_VERSION_DRIFT"));
+  await assert.rejects(new ListingProjectionConsumer({ journal: journalReturning(corrupted as unknown as PublicationEventEnvelope), store: setup.store, audit: setup.audit, clock }).consume(tenantId, String(corrupted["eventId"])), projectionError("PROJECTION_SCHEMA_VERSION_DRIFT"));
 
-  const definitionSetup = initializedProjection();
+  const definitionSetup = await initializedProjection();
   const record = definitionSetup.store.getServing({ tenantId, publicationId })!;
   definitionSetup.store.save({ ...record, projectionDefinitionVersion: "v0.0", projectionRecordVersion: record.projectionRecordVersion + 1 }, record.projectionRecordVersion);
   const next = canonicalEvent("EVT-004", 2, 3, 1, { suspensionStatus: "SUSPENDED_PROVIDER_POLICY", reasonCode: "POLICY_HOLD" });
-  assert.throws(() => new ListingProjectionConsumer({ journal: journalReturning(next), store: definitionSetup.store, audit: definitionSetup.audit, clock }).consume(tenantId, next.eventId), projectionError("PROJECTION_DEFINITION_VERSION_DRIFT"));
+  await assert.rejects(new ListingProjectionConsumer({ journal: journalReturning(next), store: definitionSetup.store, audit: definitionSetup.audit, clock }).consume(tenantId, next.eventId), projectionError("PROJECTION_DEFINITION_VERSION_DRIFT"));
 
-  const classificationSetup = initializedProjection();
+  const classificationSetup = await initializedProjection();
   const classificationDrift = canonicalEvent("EVT-004", 2, 3, 1, {}, tenantId, { ...defaultEventSecurity, classification: "RESTRICTED_SECURITY" });
-  assert.throws(() => new ListingProjectionConsumer({ journal: journalReturning(classificationDrift), store: classificationSetup.store, audit: classificationSetup.audit, clock }).consume(tenantId, classificationDrift.eventId), projectionError("PROJECTION_CLASSIFICATION_VIOLATION"));
+  await assert.rejects(new ListingProjectionConsumer({ journal: journalReturning(classificationDrift), store: classificationSetup.store, audit: classificationSetup.audit, clock }).consume(tenantId, classificationDrift.eventId), projectionError("PROJECTION_CLASSIFICATION_VIOLATION"));
 
-  const purposeSetup = initializedProjection();
+  const purposeSetup = await initializedProjection();
   const purposeDrift = canonicalEvent("EVT-004", 2, 3, 1, {}, tenantId, { ...defaultEventSecurity, purpose: "RECOVERY_VALIDATION" });
-  assert.throws(() => new ListingProjectionConsumer({ journal: journalReturning(purposeDrift), store: purposeSetup.store, audit: purposeSetup.audit, clock }).consume(tenantId, purposeDrift.eventId), projectionError("PROJECTION_PURPOSE_VIOLATION"));
+  await assert.rejects(new ListingProjectionConsumer({ journal: journalReturning(purposeDrift), store: purposeSetup.store, audit: purposeSetup.audit, clock }).consume(tenantId, purposeDrift.eventId), projectionError("PROJECTION_PURPOSE_VIOLATION"));
 
-  const integritySetup = initializedProjection();
+  const integritySetup = await initializedProjection();
   const integrityDrift = structuredClone(canonicalEvent("EVT-004", 2, 3, 1)) as unknown as Record<string, unknown>;
   integrityDrift["correlationId"] = "tampered-correlation";
-  assert.throws(() => new ListingProjectionConsumer({ journal: journalReturning(integrityDrift as unknown as PublicationEventEnvelope), store: integritySetup.store, audit: integritySetup.audit, clock }).consume(tenantId, String(integrityDrift["eventId"])), projectionError("PROJECTION_PROVENANCE_INCOMPLETE"));
+  await assert.rejects(new ListingProjectionConsumer({ journal: journalReturning(integrityDrift as unknown as PublicationEventEnvelope), store: integritySetup.store, audit: integritySetup.audit, clock }).consume(tenantId, String(integrityDrift["eventId"])), projectionError("PROJECTION_PROVENANCE_INCOMPLETE"));
 });
 
-test("F15-TASK-011 closed provenance and public-field boundaries fail closed", () => {
+test("F15-TASK-011 closed provenance and public-field boundaries fail closed", async () => {
   const snapshot = sourceSnapshot(2, 1);
   assert.throws(() => createPublicationEventEnvelope({
     source: eventSecuritySource(), eventType: "EVT-003", aggregateId: publicationId, aggregateVersion: 2,
@@ -244,15 +244,15 @@ test("F15-TASK-011 closed provenance and public-field boundaries fail closed", (
 
   assert.throws(() => canonicalEvent("EVT-003", 1, 2, 1, { restrictedContact: "must-never-project" }));
 
-  const targetSetup = initializedProjection();
+  const targetSetup = await initializedProjection();
   const changedTarget = canonicalEvent("EVT-007", 2, 3, 2, {}, tenantId, defaultEventSecurity, { ...binding, targetId: "target-other" });
-  assert.throws(() => new ListingProjectionConsumer({ journal: journalReturning(changedTarget), store: targetSetup.store, audit: targetSetup.audit, clock }).consume(tenantId, changedTarget.eventId), projectionError("PROJECTION_PROVENANCE_CONFLICT"));
-  const channelSetup = initializedProjection();
+  await assert.rejects(new ListingProjectionConsumer({ journal: journalReturning(changedTarget), store: targetSetup.store, audit: targetSetup.audit, clock }).consume(tenantId, changedTarget.eventId), projectionError("PROJECTION_PROVENANCE_CONFLICT"));
+  const channelSetup = await initializedProjection();
   const changedChannel = canonicalEvent("EVT-007", 2, 3, 2, {}, tenantId, defaultEventSecurity, { ...binding, channelId: "channel-other" });
-  assert.throws(() => new ListingProjectionConsumer({ journal: journalReturning(changedChannel), store: channelSetup.store, audit: channelSetup.audit, clock }).consume(tenantId, changedChannel.eventId), projectionError("PROJECTION_PROVENANCE_CONFLICT"));
+  await assert.rejects(new ListingProjectionConsumer({ journal: journalReturning(changedChannel), store: channelSetup.store, audit: channelSetup.audit, clock }).consume(tenantId, changedChannel.eventId), projectionError("PROJECTION_PROVENANCE_CONFLICT"));
 });
 
-test("F15-TASK-011 store preserves tenant/generation isolation, optimistic versions and atomic cutover", () => {
+test("F15-TASK-011 store preserves tenant/generation isolation, optimistic versions and atomic cutover", async () => {
   const store = new InMemoryListingProjectionStore();
   store.createGeneration(generation("gen-a", "ACTIVE"));
   store.createGeneration(generation("gen-b", "BUILDING"));
@@ -261,18 +261,18 @@ test("F15-TASK-011 store preserves tenant/generation isolation, optimistic versi
   assert.throws(() => store.compareAndSwapServingGeneration(identity, undefined, "gen-b"), projectionError("PROJECTION_GENERATION_INCOMPLETE"));
   assert.equal(store.getServingGeneration(identity), undefined);
   assert.throws(() => store.getByGeneration({ tenantId: "team-b", publicationId }, "gen-a"), projectionError("PROJECTION_TENANT_MISMATCH"));
-  const initialized = initializedProjection();
+  const initialized = await initializedProjection();
   const record = initialized.store.getServing({ tenantId, publicationId })!;
   assert.throws(() => initialized.store.save({ ...record, projectionRecordVersion: record.projectionRecordVersion + 1 }, record.projectionRecordVersion - 1), projectionError("PROJECTION_RECORD_VERSION_CONFLICT"));
 });
 
-test("F15-TASK-011 serving generation cutover is isolated per Publication within one tenant", () => {
+test("F15-TASK-011 serving generation cutover is isolated per Publication within one tenant", async () => {
   const store = new InMemoryListingProjectionStore();
   const first = { tenantId, publicationId };
   const second = { tenantId, publicationId: "publication-projection-2" };
-  seedGeneration(store, first, "first-a");
-  seedGeneration(store, second, "second-a");
-  seedGeneration(store, first, "first-b");
+  await seedGeneration(store, first, "first-a");
+  await seedGeneration(store, second, "second-a");
+  await seedGeneration(store, first, "first-b");
   store.compareAndSwapServingGeneration(first, undefined, "first-a");
   store.compareAndSwapServingGeneration(second, undefined, "second-a");
 
@@ -282,39 +282,39 @@ test("F15-TASK-011 serving generation cutover is isolated per Publication within
   assert.equal(store.getServingGeneration(second)?.generationId, "second-a");
 });
 
-test("F15-TASK-011 rebuild uses an isolated generation, deterministic Journal replay and atomic cutover", () => {
+test("F15-TASK-011 rebuild uses an isolated generation, deterministic Journal replay and atomic cutover", async () => {
   const setup = projectionSetup();
-  appendAndConsume(setup, canonicalEvent("EVT-003", 1, 2, 1));
+  await appendAndConsume(setup, canonicalEvent("EVT-003", 1, 2, 1));
   const beforeServing = setup.store.getServingGeneration({ tenantId, publicationId })?.generationId;
   const aggregateBefore = structuredClone(sourceSnapshot(2, 1));
-  const eventsBefore = setup.journal.listByAggregate(tenantId, publicationId);
+  const eventsBefore = await setup.journal.listByAggregate(tenantId, publicationId);
   const coordinator = new ListingProjectionRebuildCoordinator({
     journal: setup.journal, store: setup.store, audit: setup.audit, clock,
     authority: { authorize: (request) => request.purpose === "PROJECTION_REBUILD" },
     ...rebuildEventDependencies(),
   });
   const request = rebuildRequest("rebuild-key-1", "generation-b", beforeServing);
-  const result = coordinator.rebuild(request);
-  const replay = coordinator.rebuild(request);
+  const result = await coordinator.rebuild(request);
+  const replay = await coordinator.rebuild(request);
   assert.equal(result.generationId, "generation-b");
   assert.equal(replay.replayed, true);
   assert.equal(setup.store.getServingGeneration({ tenantId, publicationId })?.generationId, "generation-b");
   assert.equal(setup.store.getGeneration({ tenantId, publicationId }, beforeServing!)?.lifecycle, "ARCHIVED");
   assert.notEqual(beforeServing, "generation-b");
-  const rebuildEvents = setup.journal.listByAggregate(tenantId, publicationId).slice(eventsBefore.length);
+  const rebuildEvents = (await setup.journal.listByAggregate(tenantId, publicationId)).slice(eventsBefore.length);
   assert.deepEqual(rebuildEvents.map(({ eventType }) => eventType), ["EVT-010", "EVT-011"]);
   assert.deepEqual(rebuildEvents.map(({ purpose }) => purpose), ["RECOVERY_VALIDATION", "RECOVERY_VALIDATION"]);
   assert.deepEqual(rebuildEvents.map(({ classification }) => classification), ["CONFIDENTIAL_BUSINESS", "CONFIDENTIAL_BUSINESS"]);
   assert.equal(rebuildEvents[0]?.payload["rebuildGeneration"], request.generationId);
   assert.equal(rebuildEvents[1]?.payload["validationStatus"], "VALIDATED");
-  assert.equal(setup.journal.listByAggregate(tenantId, publicationId).filter(({ eventType }) => eventType === "EVT-010").length, 1);
-  assert.equal(setup.journal.listByAggregate(tenantId, publicationId).filter(({ eventType }) => eventType === "EVT-011").length, 1);
+  assert.equal((await setup.journal.listByAggregate(tenantId, publicationId)).filter(({ eventType }) => eventType === "EVT-010").length, 1);
+  assert.equal((await setup.journal.listByAggregate(tenantId, publicationId)).filter(({ eventType }) => eventType === "EVT-011").length, 1);
   assert.deepEqual(sourceSnapshot(2, 1), aggregateBefore);
   assert.equal(result.record.lifecycle, "ACTIVE");
   assert.equal(result.record.publicationVersion, 1);
   assert.equal(setup.audit.list({ tenantId, publicationId }).some(({ operation }) => operation === "GENERATION_CUTOVER"), true);
   assert.equal(setup.audit.list({ tenantId, publicationId }).some(({ operation }) => operation === "GENERATION_ARCHIVED"), true);
-  const second = coordinator.rebuild(rebuildRequest("rebuild-key-2", "generation-c", "generation-b"));
+  const second = await coordinator.rebuild(rebuildRequest("rebuild-key-2", "generation-c", "generation-b"));
   const volatileKeys = new Set(["generationId", "generatedAt", "updatedAt", "lastEventId", "lastEventType", "lastEventSequence", "lastEventIntegrity", "projectionRecordVersion", "appliedEvents"]);
   const firstSemantic = Object.fromEntries(Object.entries(result.record).filter(([key]) => !volatileKeys.has(key)));
   const secondSemantic = Object.fromEntries(Object.entries(second.record).filter(([key]) => !volatileKeys.has(key)));
@@ -328,38 +328,35 @@ test("F15-TASK-011 rebuild uses an isolated generation, deterministic Journal re
   assert.equal(typeof result.record.updatedAt, "string");
   assert.equal(typeof second.record.generatedAt, "string");
   assert.equal(typeof second.record.updatedAt, "string");
-  assert.throws(() => coordinator.rebuild({ ...request, generationId: "generation-c" }), projectionError("PROJECTION_REBUILD_FAILED"));
+  await assert.rejects(coordinator.rebuild({ ...request, generationId: "generation-c" }), projectionError("PROJECTION_REBUILD_FAILED"));
 });
 
-test("F15-TASK-011 failed or unauthorized rebuild never replaces the serving generation", () => {
+test("F15-TASK-011 failed or unauthorized rebuild never replaces the serving generation", async () => {
   const setup = projectionSetup();
-  appendAndConsume(setup, canonicalEvent("EVT-003", 1, 2, 1));
+  await appendAndConsume(setup, canonicalEvent("EVT-003", 1, 2, 1));
   const serving = setup.store.getServingGeneration({ tenantId, publicationId })?.generationId;
   const denied = new ListingProjectionRebuildCoordinator({ journal: setup.journal, store: setup.store, audit: setup.audit, clock, authority: { authorize: () => false }, ...rebuildEventDependencies() });
-  assert.throws(() => denied.rebuild(rebuildRequest("denied", "generation-denied", serving)), projectionError("PROJECTION_REBUILD_UNAUTHORIZED"));
+  await assert.rejects(denied.rebuild(rebuildRequest("denied", "generation-denied", serving)), projectionError("PROJECTION_REBUILD_UNAUTHORIZED"));
   assert.equal(setup.store.getServingGeneration({ tenantId, publicationId })?.generationId, serving);
 
   const empty = new ListingProjectionRebuildCoordinator({ journal: new InMemoryPublicationEventJournal(), store: setup.store, audit: setup.audit, clock, authority: { authorize: () => true }, ...rebuildEventDependencies() });
-  assert.throws(() => empty.rebuild(rebuildRequest("empty", "generation-failed", serving)), projectionError("PROJECTION_REBUILD_FAILED"));
+  await assert.rejects(empty.rebuild(rebuildRequest("empty", "generation-failed", serving)), projectionError("PROJECTION_REBUILD_FAILED"));
   assert.equal(setup.store.getServingGeneration({ tenantId, publicationId })?.generationId, serving);
   assert.equal(setup.store.getGeneration({ tenantId, publicationId }, "generation-failed"), undefined);
 
   const casConflict = new ListingProjectionRebuildCoordinator({ journal: setup.journal, store: setup.store, audit: setup.audit, clock, authority: { authorize: () => true }, ...rebuildEventDependencies() });
-  assert.throws(() => casConflict.rebuild(rebuildRequest("cas-conflict", "generation-cas-conflict", "not-serving")), projectionError("PROJECTION_GENERATION_CONFLICT"));
+  await assert.rejects(casConflict.rebuild(rebuildRequest("cas-conflict", "generation-cas-conflict", "not-serving")), projectionError("PROJECTION_GENERATION_CONFLICT"));
   assert.equal(setup.store.getServingGeneration({ tenantId, publicationId })?.generationId, serving);
-  assert.equal(setup.journal.listByAggregate(tenantId, publicationId).some(({ eventType, payload }) => eventType === "EVT-011" && payload["rebuildGeneration"] === "generation-cas-conflict"), false);
+  assert.equal((await setup.journal.listByAggregate(tenantId, publicationId)).some(({ eventType, payload }) => eventType === "EVT-011" && payload["rebuildGeneration"] === "generation-cas-conflict"), false);
 
   for (const forbiddenPurpose of ["PUBLISH", "APPROVE", "WITHDRAW", "REPUBLISH"] as const) {
-    assert.throws(
-      () => denied.rebuild({ ...rebuildRequest(`forbidden-${forbiddenPurpose}`, `generation-${forbiddenPurpose}`, serving), purpose: forbiddenPurpose } as never),
-      projectionError("PROJECTION_REBUILD_UNAUTHORIZED"),
-    );
+    await assert.rejects(denied.rebuild({ ...rebuildRequest(`forbidden-${forbiddenPurpose}`, `generation-${forbiddenPurpose}`, serving), purpose: forbiddenPurpose } as never), projectionError("PROJECTION_REBUILD_UNAUTHORIZED"));
   }
 });
 
-test("FCR-005 rebuild Event append failures cannot fabricate success or alter serving generation", () => {
+test("FCR-005 rebuild Event append failures cannot fabricate success or alter serving generation", async () => {
   for (const rejectedType of ["EVT-010", "EVT-011"] as const) {
-    const setup = initializedProjection();
+    const setup = await initializedProjection();
     const serving = setup.store.getServingGeneration({ tenantId, publicationId })?.generationId;
     const journal = journalRejecting(setup.journal, rejectedType);
     let obsoleteCompensationCalls = 0;
@@ -379,16 +376,16 @@ test("FCR-005 rebuild Event append failures cannot fabricate success or alter se
     });
     const generationId = `generation-reject-${rejectedType}`;
 
-    assert.throws(() => coordinator.rebuild(rebuildRequest(`reject-${rejectedType}`, generationId, serving)), projectionError("PROJECTION_REBUILD_FAILED"));
+    await assert.rejects(coordinator.rebuild(rebuildRequest(`reject-${rejectedType}`, generationId, serving)), projectionError("PROJECTION_REBUILD_FAILED"));
     assert.equal(setup.store.getServingGeneration({ tenantId, publicationId })?.generationId, serving);
-    assert.equal(setup.journal.listByAggregate(tenantId, publicationId).some(({ eventType, payload }) => eventType === "EVT-011" && payload["rebuildGeneration"] === generationId), false);
+    assert.equal((await setup.journal.listByAggregate(tenantId, publicationId)).some(({ eventType, payload }) => eventType === "EVT-011" && payload["rebuildGeneration"] === generationId), false);
     assert.notEqual(setup.store.getGeneration({ tenantId, publicationId }, generationId)?.lifecycle, "ACTIVE");
     assert.equal(obsoleteCompensationCalls, 0);
   }
 });
 
-test("F15-TASK-011 post-cutover evidence failure restores the prior serving generation", () => {
-  const setup = initializedProjection();
+test("F15-TASK-011 post-cutover evidence failure restores the prior serving generation", async () => {
+  const setup = await initializedProjection();
   const serving = setup.store.getServingGeneration({ tenantId, publicationId })?.generationId;
   const failingAudit: ListingProjectionAuditStore = {
     append(record) {
@@ -401,17 +398,17 @@ test("F15-TASK-011 post-cutover evidence failure restores the prior serving gene
     journal: setup.journal, store: setup.store, audit: failingAudit, clock, authority: { authorize: () => true },
     ...rebuildEventDependencies(),
   });
-  assert.throws(() => coordinator.rebuild(rebuildRequest("cutover-audit-failure", "generation-audit-failure", serving)), projectionError("PROJECTION_REBUILD_FAILED"));
+  await assert.rejects(coordinator.rebuild(rebuildRequest("cutover-audit-failure", "generation-audit-failure", serving)), projectionError("PROJECTION_REBUILD_FAILED"));
   assert.equal(setup.store.getServingGeneration({ tenantId, publicationId })?.generationId, serving);
   assert.equal(setup.store.getGeneration({ tenantId, publicationId }, "generation-audit-failure")?.lifecycle, "FAILED");
 });
 
-test("F15-TASK-011 first cutover failure clears a serving pointer that had no predecessor", () => {
+test("F15-TASK-011 first cutover failure clears a serving pointer that had no predecessor", async () => {
   const journal = new InMemoryPublicationEventJournal();
   const store = new InMemoryListingProjectionStore();
   const audit = new InMemoryListingProjectionAuditStore();
   const activated = canonicalEvent("EVT-003", 1, 2, 1);
-  journal.append(activated);
+  await journal.append(activated);
   const failingAudit: ListingProjectionAuditStore = {
     append(record) {
       if (record.operation === "GENERATION_CUTOVER") throw new Error("simulated first cutover audit failure");
@@ -420,12 +417,12 @@ test("F15-TASK-011 first cutover failure clears a serving pointer that had no pr
     list: (identity) => audit.list(identity),
   };
   const coordinator = new ListingProjectionRebuildCoordinator({ journal, store, audit: failingAudit, clock, authority: { authorize: () => true }, ...rebuildEventDependencies() });
-  assert.throws(() => coordinator.rebuild(rebuildRequest("first-cutover-failure", "generation-first-failure", undefined)), projectionError("PROJECTION_REBUILD_FAILED"));
+  await assert.rejects(coordinator.rebuild(rebuildRequest("first-cutover-failure", "generation-first-failure", undefined)), projectionError("PROJECTION_REBUILD_FAILED"));
   assert.equal(store.getServingGeneration({ tenantId, publicationId }), undefined);
   assert.equal(store.getGeneration({ tenantId, publicationId }, "generation-first-failure")?.lifecycle, "FAILED");
 });
 
-test("F15-TASK-011 rebuild audit failures are sanitized and cannot create an untracked generation", () => {
+test("F15-TASK-011 rebuild audit failures are sanitized and cannot create an untracked generation", async () => {
   const journal = new InMemoryPublicationEventJournal();
   const store = new InMemoryListingProjectionStore();
   const audit = new InMemoryListingProjectionAuditStore();
@@ -438,12 +435,13 @@ test("F15-TASK-011 rebuild audit failures are sanitized and cannot create an unt
   };
   const coordinator = new ListingProjectionRebuildCoordinator({ journal, store, audit: failingAudit, clock, authority: { authorize: () => true }, ...rebuildEventDependencies() });
 
-  assert.throws(() => coordinator.rebuild(rebuildRequest("request-audit-failure", "generation-request-audit-failure", undefined)), projectionError("PROJECTION_REBUILD_FAILED"));
+  await assert.rejects(coordinator.rebuild(rebuildRequest("request-audit-failure", "generation-request-audit-failure", undefined)), projectionError("PROJECTION_REBUILD_FAILED"));
   assert.equal(store.getGeneration({ tenantId, publicationId }, "generation-request-audit-failure"), undefined);
   assert.equal(store.getServingGeneration({ tenantId, publicationId }), undefined);
 });
 
-test("F15-TASK-011 Infrastructure and Runtime register one shared Journal and all PRJ-002 services", () => {
+test("F15-TASK-011 Infrastructure and Runtime register one shared Journal and all PRJ-002 services", async () => {
+  await Promise.resolve();
   const infrastructure = createPublicationInfrastructure();
   const runtime = createPublicationRuntimeServiceRegistry(infrastructure);
   assert.equal(infrastructure.listingProjectionConsumer.journalIdentity, infrastructure.eventJournal);
@@ -463,15 +461,15 @@ function projectionSetup() {
   return { journal, store, audit, consumer, read: new ListingProjectionReadService(store) };
 }
 
-function initializedProjection() {
+async function initializedProjection() {
   const setup = projectionSetup();
-  appendAndConsume(setup, canonicalEvent("EVT-003", 1, 2, 1));
+  await appendAndConsume(setup, canonicalEvent("EVT-003", 1, 2, 1));
   return setup;
 }
 
-function appendAndConsume(setup: ReturnType<typeof projectionSetup>, event: PublicationEventEnvelope): void {
-  setup.journal.append(event);
-  setup.consumer.consume(event.tenantId, event.eventId);
+async function appendAndConsume(setup: ReturnType<typeof projectionSetup>, event: PublicationEventEnvelope): Promise<void> {
+  await setup.journal.append(event);
+  await setup.consumer.consume(event.tenantId, event.eventId);
 }
 
 type EventSecurity = Readonly<{
@@ -538,27 +536,30 @@ function sourceSnapshot(aggregateVersion: number, publicationVersion: number, sn
 function domain(suffix: string) { return { actorId: "executor-1", authorityContext: "PUBLICATION_EXECUTION", reason: `Approved ${suffix}`, correlationId: `correlation-${suffix}`, occurredAt: "2026-08-10T00:00:00.000Z" } as const; }
 
 function journalReturning(event: PublicationEventEnvelope): PublicationEventJournal {
-  return { findByEventId: () => event, listByAggregate: () => [event], getLastSequence: () => event.eventSequence, append: () => ({ status: "APPENDED", event }), appendAll: () => [{ status: "APPENDED", event }] };
+  return { findByEventId: async () => { await Promise.resolve(); return event; }, listByAggregate: async () => { await Promise.resolve(); return [event]; }, getLastSequence: async () => { await Promise.resolve(); return event.eventSequence; }, append: async () => { await Promise.resolve(); return ({ status: "APPENDED", event }); }, appendAll: async () => { await Promise.resolve(); return [{ status: "APPENDED", event }]; } };
 }
 
 function journalRejecting(delegate: PublicationEventJournal, rejectedType: "EVT-010" | "EVT-011"): PublicationEventJournal {
   return {
-    prepareAppend(event) {
+    async prepareAppend(event) {
+      await Promise.resolve();
       if (event.eventType === rejectedType) throw new Error("simulated canonical Event Journal preparation failure");
       if (delegate.prepareAppend === undefined) throw new Error("delegate preparation unavailable");
       return delegate.prepareAppend.call(delegate, event);
     },
-    append(event) {
+    async append(event) {
+      await Promise.resolve();
       if (event.eventType === rejectedType) throw new Error("simulated canonical Event Journal failure");
       return delegate.append(event);
     },
-    appendAll(events) {
+    async appendAll(events) {
+      await Promise.resolve();
       if (events.some(({ eventType }) => eventType === rejectedType)) throw new Error("simulated canonical Event Journal failure");
       return delegate.appendAll(events);
     },
-    findByEventId: (eventTenant, eventId) => delegate.findByEventId(eventTenant, eventId),
-    listByAggregate: (eventTenant, aggregateId) => delegate.listByAggregate(eventTenant, aggregateId),
-    getLastSequence: (eventTenant, aggregateId) => delegate.getLastSequence(eventTenant, aggregateId),
+    findByEventId: async (eventTenant, eventId) => { await Promise.resolve(); return delegate.findByEventId(eventTenant, eventId); },
+    listByAggregate: async (eventTenant, aggregateId) => { await Promise.resolve(); return delegate.listByAggregate(eventTenant, aggregateId); },
+    getLastSequence: async (eventTenant, aggregateId) => { await Promise.resolve(); return delegate.getLastSequence(eventTenant, aggregateId); },
   };
 }
 
@@ -566,13 +567,13 @@ function generation(generationId: string, lifecycle: "BUILDING" | "ACTIVE", gene
   return { projectionType: "PRJ-002" as const, tenantId, publicationId: generationPublicationId, generationId, lifecycle, projectionDefinitionVersion: "v0.1" as const, projectionSchemaVersion: "v1" as const, createdAt: clock.now(), updatedAt: clock.now(), complete: lifecycle === "ACTIVE" };
 }
 
-function seedGeneration(
+async function seedGeneration(
   store: InMemoryListingProjectionStore,
   identity: Readonly<{ tenantId: string; publicationId: string }>,
   generationId: string,
-): void {
+): Promise<void> {
   store.createGeneration({ ...generation(generationId, "BUILDING", identity.publicationId), tenantId: identity.tenantId });
-  const template = initializedProjection().store.getServing({ tenantId, publicationId })!;
+  const template = (await initializedProjection()).store.getServing({ tenantId, publicationId })!;
   const record = store.save({
     ...template,
     tenantId: identity.tenantId,

@@ -54,10 +54,10 @@ function environment(overrides: Readonly<Record<string, string | undefined>> = {
   });
 }
 
-test("resolves the exact two sealed variables only for PG_IDENTITY_POOL", async () => {
+test("resolves the exact two sealed variables for canonical PG_PRODUCTION_POOL", async () => {
   let received: Readonly<Record<string, unknown>> | undefined;
   const fakePool: PgPoolLike = { connect: () => Promise.reject(new Error("unused")), end: () => Promise.resolve() };
-  const pool = createRailwaySealedProductionPostgreSqlPool(configuration(), environment(), "PG_IDENTITY_POOL", (options) => {
+  const pool = createRailwaySealedProductionPostgreSqlPool(configuration(), environment(), "PG_PRODUCTION_POOL", (options) => {
     received = options;
     return fakePool;
   });

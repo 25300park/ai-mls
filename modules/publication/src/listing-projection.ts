@@ -30,8 +30,8 @@ export class ListingProjectionConsumer {
     this.journalIdentity = dependencies.journal;
   }
 
-  public consume(tenantId: string, eventId: string, generationId?: string): ListingProjectionApplyResult {
-    const event = this.dependencies.journal.findByEventId(tenantId, eventId);
+  public async consume(tenantId: string, eventId: string, generationId?: string): Promise<ListingProjectionApplyResult> {
+    const event = await this.dependencies.journal.findByEventId(tenantId, eventId);
     if (event === undefined) throw projectionError("PROJECTION_EVENT_UNSUPPORTED", "Canonical Event is unavailable to the Projection consumer.");
     if (event.tenantId !== tenantId) throw projectionError("PROJECTION_TENANT_MISMATCH", "Projection Event tenant does not match the requested tenant.");
     const identity = { tenantId, publicationId: event.aggregateId };

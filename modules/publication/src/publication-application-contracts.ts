@@ -78,9 +78,9 @@ export interface PublicationCoordinationSuccessResult {
 export type PublicationCoordinationResult = PublicationCoordinationSuccessResult | PublicationApplicationErrorResult;
 
 export interface PublicationCoordinationPort {
-  create(request: CreatePublicationCoordinationRequest): PublicationApplicationResult;
-  publish(request: PublishPublicationCoordinationRequest): PublicationCoordinationResult;
-  recover(request: PublishPublicationCoordinationRequest): PublicationCoordinationResult;
+  create(request: CreatePublicationCoordinationRequest): Promise<PublicationApplicationResult>;
+  publish(request: PublishPublicationCoordinationRequest): Promise<PublicationCoordinationResult>;
+  recover(request: PublishPublicationCoordinationRequest): Promise<PublicationCoordinationResult>;
 }
 
 export interface PublicationLifecycleRequest<Input extends PublicationModificationCommand> {
@@ -112,15 +112,15 @@ export type PublicationLifecycleCoordinationRequest =
   | ({ readonly action: "TERMINATE" } & TerminatePublicationRequest);
 
 export interface PublicationLifecyclePort {
-  correctPublication(request: CorrectPublicationRequest): PublicationApplicationResult;
-  republishPublication(request: RepublishPublicationRequest): PublicationApplicationResult;
-  requestWithdrawal(request: RequestWithdrawalLifecycleRequest): PublicationApplicationResult;
-  resolveWithdrawal(request: ResolveWithdrawalLifecycleRequest): PublicationApplicationResult;
-  suspendPublication(request: SuspendPublicationRequest): PublicationApplicationResult;
-  resumePublication(request: ResumePublicationRequest): PublicationApplicationResult;
-  supersedePublication(request: SupersedePublicationRequest): PublicationApplicationResult;
-  terminatePublication(request: TerminatePublicationRequest): PublicationApplicationResult;
-  execute(request: PublicationLifecycleCoordinationRequest): PublicationApplicationResult;
+  correctPublication(request: CorrectPublicationRequest): Promise<PublicationApplicationResult>;
+  republishPublication(request: RepublishPublicationRequest): Promise<PublicationApplicationResult>;
+  requestWithdrawal(request: RequestWithdrawalLifecycleRequest): Promise<PublicationApplicationResult>;
+  resolveWithdrawal(request: ResolveWithdrawalLifecycleRequest): Promise<PublicationApplicationResult>;
+  suspendPublication(request: SuspendPublicationRequest): Promise<PublicationApplicationResult>;
+  resumePublication(request: ResumePublicationRequest): Promise<PublicationApplicationResult>;
+  supersedePublication(request: SupersedePublicationRequest): Promise<PublicationApplicationResult>;
+  terminatePublication(request: TerminatePublicationRequest): Promise<PublicationApplicationResult>;
+  execute(request: PublicationLifecycleCoordinationRequest): Promise<PublicationApplicationResult>;
 }
 
 export const PUBLICATION_RECOVERY_CATEGORIES = Object.freeze([
@@ -163,9 +163,9 @@ export interface PublicationReconciliationSuccessResult {
 export type PublicationReconciliationResult = PublicationReconciliationSuccessResult | PublicationApplicationErrorResult;
 
 export interface PublicationReconciliationPort {
-  reconcile(request: PublicationReconciliationRequest): PublicationReconciliationResult;
-  recover(request: PublicationReconciliationRequest): PublicationReconciliationResult;
-  execute(request: PublicationReconciliationRequest): PublicationReconciliationResult;
+  reconcile(request: PublicationReconciliationRequest): Promise<PublicationReconciliationResult>;
+  recover(request: PublicationReconciliationRequest): Promise<PublicationReconciliationResult>;
+  execute(request: PublicationReconciliationRequest): Promise<PublicationReconciliationResult>;
 }
 
 export interface ModifyPublicationApplicationCommand {
@@ -198,7 +198,7 @@ export interface PublicationApplicationSuccessResult {
 export type PublicationApplicationResult = PublicationApplicationSuccessResult | PublicationApplicationErrorResult;
 
 export interface PublicationCommandHandler<Command extends PublicationApplicationCommand = PublicationApplicationCommand> {
-  execute(command: Command, context: PublicationExecutionContext): PublicationApplicationResult;
+  execute(command: Command, context: PublicationExecutionContext): Promise<PublicationApplicationResult>;
 }
 
 export interface PublicationAuthorizedExecution {
@@ -207,8 +207,8 @@ export interface PublicationAuthorizedExecution {
   readonly currentAggregateVersion: number;
 }
 
-export type PublicationAuthorizedPreflight = (execution: PublicationAuthorizedExecution) => void;
-export type PublicationTransactionalStage = (transaction: PublicationTransaction, snapshot: PublicationSnapshot) => void;
+export type PublicationAuthorizedPreflight = (execution: PublicationAuthorizedExecution) => void | Promise<void>;
+export type PublicationTransactionalStage = (transaction: PublicationTransaction, snapshot: PublicationSnapshot) => void | Promise<void>;
 
 export interface PublicationApplicationAuditDetails {
   readonly decision: PublicationRecoveryDecision;

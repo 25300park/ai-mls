@@ -213,7 +213,8 @@ test("F16-PHASE-11 Node server uses trusted command context and refreshes UI-036
   const server = createAdminConsoleServer({
     host: "127.0.0.1", port: 0, sessionId: "trusted-console-session", tenantId: "tenant-a",
     readAdapter: { read: (input) => { pages.push(input.page); return { page: input.page, state: "READY", data: { selectorOptions: {} } }; } },
-    administrationCommandAdapter: { execute: (input) => {
+    administrationCommandAdapter: { execute: async (input) => {
+      await Promise.resolve();
       commands.push(input);
       return Promise.resolve(Object.freeze({
         state: "CONFIRMED" as const, operation: input.operation, proposalId: "proposal-server-phase11",
@@ -251,7 +252,8 @@ test("F16-PHASE-11 UI-036 fails unavailable before reads when trusted governed s
   const server = createAdminConsoleServer({
     host: "127.0.0.1", port: 0, sessionId: "trusted-console-session", tenantId: "tenant-a",
     readAdapter: { read: () => { readCalls += 1; return { page: "ADMINISTRATION", state: "READY", data: {} }; } },
-    administrationCommandAdapter: { execute: () => { throw new Error("must not execute"); } },
+    administrationCommandAdapter: { execute: async () => {
+      await Promise.resolve(); throw new Error("must not execute"); } },
   });
   await server.start();
   const response = await send(server.port, "GET", "/api/console/view?page=UI-036");
@@ -268,7 +270,8 @@ test("F16-PHASE-11 Node server rejects browser authority and unsupported command
   const server = createAdminConsoleServer({
     host: "127.0.0.1", port: 0, sessionId: "trusted-console-session", tenantId: "tenant-a",
     readAdapter: { read: (input) => ({ page: input.page, state: "READY", data: { selectorOptions: {} } }) },
-    administrationCommandAdapter: { execute: () => { calls += 1; throw new Error("must not execute"); } },
+    administrationCommandAdapter: { execute: async () => {
+      await Promise.resolve(); calls += 1; throw new Error("must not execute"); } },
   });
   await server.start();
   const spoofed = await send(server.port, "POST", "/api/console/administration/command", JSON.stringify({ operation: "PROPOSE_POLICY_CHANGE", payload: {}, actorId: "spoofed" }));
@@ -308,7 +311,7 @@ test("POST-F15-CONSOLE Node server has zero mutation routes and returns safe fai
 });
 
 test("POST-F15-CONSOLE composed loopback carries existing FEAT-015 data through API-014 without mutation", async () => {
-  const composed = composedReadAdapter();
+  const composed = await composedReadAdapter();
   const server = createAdminConsoleServer({
     host: "127.0.0.1",
     port: 0,
@@ -318,9 +321,9 @@ test("POST-F15-CONSOLE composed loopback carries existing FEAT-015 data through 
   });
   await server.start();
 
-  const before = composed.infrastructure.repository.find({ tenantScopeId: "team-a", publicationId: "publication-console-e2e" });
+  const before = await composed.infrastructure.repository.find({ tenantScopeId: "team-a", publicationId: "publication-console-e2e" });
   const response = await send(server.port, "GET", "/api/console/view?page=UI-031&publicationId=publication-console-e2e");
-  const after = composed.infrastructure.repository.find({ tenantScopeId: "team-a", publicationId: "publication-console-e2e" });
+  const after = await composed.infrastructure.repository.find({ tenantScopeId: "team-a", publicationId: "publication-console-e2e" });
   const payload = JSON.parse(response.body) as { readonly html?: string };
 
   assert.equal(response.statusCode, 200);
@@ -332,7 +335,7 @@ test("POST-F15-CONSOLE composed loopback carries existing FEAT-015 data through 
   await server.stop();
 });
 
-function composedReadAdapter() {
+async function composedReadAdapter() {
   const now = "2026-08-13T00:00:00.000Z";
   const clock = new FixedClock(now);
   const session = createDevelopmentConsoleSessionAdapter({ enabled: true, runtimeEnvironment: "TEST", sessionId: "console-e2e-session", principalId: "console-e2e-operator", tenantId: "team-a", now: () => new Date(now) });
@@ -343,7 +346,7 @@ function composedReadAdapter() {
   ]);
   const authorization = new AuthorizationService({ assignments, authoritySource: "STATIC_TEST_COMPATIBILITY", auditSink: audit, clock: () => new Date(now), policyVersion: "console-e2e-policy-v1" });
   const infrastructure = createPublicationInfrastructure({ clock, sessionResolver: session, authorizationEvaluator: authorization, publicationPolicyVersion: "publication-policy-v1" });
-  infrastructure.repository.save(PublicationAggregate.create({
+  await infrastructure.repository.save(PublicationAggregate.create({
     identity: { publicationId: "publication-console-e2e", tenantScopeId: "team-a" },
     binding: { subjectId: "listing-e2e", subjectRevision: 1, representationId: "representation-e2e", representationVersion: 1, representationChecksum: "sha256:representation-e2e", approvalId: "approval-e2e", approvalVersion: 1, targetId: "target-e2e", targetVersion: 1, channelId: "channel-e2e", channelPolicyVersion: "channel-e2e-v1" },
     prerequisites: { immutableSnapshot: true, effectiveApproval: true, exactTargetChannel: true, provenancePresent: true },
@@ -353,7 +356,7 @@ function composedReadAdapter() {
   const api = new PublicationApi(infrastructure);
   let commandCalls = 0;
   const queryPort = {
-    executeQuery: (input: unknown) => api.executeQuery(input),
+    executeQuery: async (input: unknown) => { await Promise.resolve(); return api.executeQuery(input); },
     executeCommand: (_input: unknown) => { commandCalls += 1; throw new Error("not allowed"); },
   };
   const adapter = new ConsoleReadAdapter({ queryPort, operationsRead: infrastructure.operationsRead, projectionRead: infrastructure.operationsProjectionRead, sessionResolver: session, authorizationEvaluator: authorization, clock });
@@ -365,6 +368,7 @@ function roleAssignment(role: "OPS" | "SEC", resourceTypes: readonly string[]): 
 }
 
 async function send(port: number, method: "GET" | "POST" | "PATCH" | "DELETE", path: string, body = ""): Promise<Readonly<{ statusCode: number; body: string }>> {
+  await Promise.resolve();
   return new Promise((resolve, reject) => {
     const request = nodeRequest({ host: "127.0.0.1", port, method, path, headers: body === "" ? {} : { "content-type": "application/json", "content-length": Buffer.byteLength(body) } }, (response) => {
       const chunks: Buffer[] = [];

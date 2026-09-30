@@ -24,8 +24,8 @@ export interface PublicationAuditRecord {
 }
 
 export interface PublicationAuditStore {
-  append(input: PublicationAuditRecord): PublicationAuditRecord;
-  list(identity: PublicationIdentity): readonly PublicationAuditRecord[];
+  append(input: PublicationAuditRecord): Promise<PublicationAuditRecord>;
+  list(identity: PublicationIdentity): Promise<readonly PublicationAuditRecord[]>;
 }
 
 export class InMemoryPublicationAuditStore implements PublicationAuditStore {
@@ -35,7 +35,8 @@ export class InMemoryPublicationAuditStore implements PublicationAuditStore {
     private readonly assertUsable: () => void = () => undefined,
   ) {}
 
-  public append(input: PublicationAuditRecord): PublicationAuditRecord {
+  public async append(input: PublicationAuditRecord): Promise<PublicationAuditRecord> {
+    await Promise.resolve();
     this.assertUsable();
     this.assertScope(input);
     if ((input.result === "FAILED") !== (input.failureReason !== undefined && input.failureReason.trim().length > 0)) {
@@ -69,7 +70,8 @@ export class InMemoryPublicationAuditStore implements PublicationAuditStore {
     return record;
   }
 
-  public list(identity: PublicationIdentity): readonly PublicationAuditRecord[] {
+  public async list(identity: PublicationIdentity): Promise<readonly PublicationAuditRecord[]> {
+    await Promise.resolve();
     this.assertUsable();
     this.assertScope(identity);
     const records = [...this.state.audits.values()].filter(

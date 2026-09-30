@@ -12,24 +12,21 @@ import type { ProductionServiceIdentityBinding } from "./production-service-iden
 
 export interface CanonicalProductionChildRootOptions {
   readonly api014: ProductionPublicationApi014NodeHttpCompositionOptions;
-  readonly api015: ProductionAdministrationCompositionOptions;
-  readonly api018: ProductionConnectorApi018CompositionOptions;
-  readonly api019: ProductionExternalIntegrationOptions;
-  readonly feat022: ProductionAdvisoryRuntimeOptions;
+  readonly api015: ProductionAdministrationCompositionOptions | null;
+  readonly api018: ProductionConnectorApi018CompositionOptions | null;
+  readonly api019: ProductionExternalIntegrationOptions | null;
+  readonly feat022: ProductionAdvisoryRuntimeOptions | null;
 }
 
-/**
- * Phase 2D-0C migrates the Identity boundary only. Existing child roots still
- * accept SQLite databasePath configuration and therefore cannot truthfully be
- * composed into the canonical Production PostgreSQL runtime yet.
- */
+/** R3-B2 permits only API-014 to receive the bootstrap-owned PostgreSQL pool. */
 export function assertCanonicalProductionChildRootsPostgreSqlReady(
   options: CanonicalProductionChildRootOptions,
 ): void {
-  for (const child of Object.values(options)) {
-    if (Object.prototype.hasOwnProperty.call(child, "databasePath")) {
-      throw new Error("Production child-root persistence is unavailable.");
-    }
+  if (options.api014.databasePath !== undefined || options.api014.postgreSqlPool !== undefined) {
+    throw new Error("Production child-root persistence is unavailable.");
+  }
+  for (const child of [options.api015, options.api018, options.api019, options.feat022]) {
+    if (child !== null && Object.prototype.hasOwnProperty.call(child, "databasePath")) throw new Error("Production child-root persistence is unavailable.");
   }
 }
 
@@ -37,28 +34,32 @@ export function createCanonicalProductionChildRootFactories(
   options: CanonicalProductionChildRootOptions,
 ): ProductionChildRootFactories {
   return Object.freeze({
-    "API-014": (context, configuration, identities) => {
+    "API-014": (context, configuration, identities, pool) => {
       assertRootIdentity("API-014", context, configuration, identities);
-      const root = composeProductionPublicationApi014HttpHandler({ ...options.api014, runtimeEnvironment: "PRODUCTION", bootstrapContext: context, schemaMode: "REQUIRE_EXISTING", deferRuntimeActivation: true });
+      const root = composeProductionPublicationApi014HttpHandler({ ...options.api014, postgreSqlPool: pool, runtimeEnvironment: "PRODUCTION", bootstrapContext: context, deferRuntimeActivation: true });
       return Object.freeze({ componentId: "API-014" as const, httpHandler: root.httpHandler, activateRuntime: () => root.activateRuntime(), close: () => root.close() });
     },
     "API-015": (context, configuration, identities) => {
       assertRootIdentity("API-015", context, configuration, identities);
+      if (options.api015 === null) throw new Error("Production child root is unavailable.");
       const root = composeProductionAdministrationApi015HttpHandler({ ...options.api015, runtimeEnvironment: "PRODUCTION", bootstrapContext: context, schemaMode: "REQUIRE_EXISTING" });
       return Object.freeze({ componentId: "API-015" as const, httpHandler: root.httpHandler, activateRuntime: () => { /* no process-local host */ }, close: () => root.close() });
     },
     "API-018": (context, configuration, identities) => {
       assertRootIdentity("API-018", context, configuration, identities);
+      if (options.api018 === null) throw new Error("Production child root is unavailable.");
       const root = createProductionConnectorApi018Composition({ ...options.api018, runtimeEnvironment: "PRODUCTION", bootstrapContext: context, schemaMode: "REQUIRE_EXISTING", deferRuntimeActivation: true });
       return Object.freeze({ componentId: "API-018" as const, activateRuntime: () => root.activateRuntime(), close: () => root.close() });
     },
     "API-019": (context, configuration, identities) => {
       assertRootIdentity("API-019", context, configuration, identities);
+      if (options.api019 === null) throw new Error("Production child root is unavailable.");
       const root = createProductionExternalIntegrationComposition({ ...options.api019, runtimeEnvironment: "PRODUCTION", bootstrapContext: context, schemaMode: "REQUIRE_EXISTING", deferRuntimeActivation: true });
       return Object.freeze({ componentId: "API-019" as const, activateRuntime: () => root.activateRuntime(), close: () => root.close() });
     },
     "FEAT-022": (context, configuration, identities) => {
       assertRootIdentity("FEAT-022", context, configuration, identities);
+      if (options.feat022 === null) throw new Error("Production child root is unavailable.");
       const root = createProductionAdvisoryRuntime({ ...options.feat022, runtimeEnvironment: "PRODUCTION", bootstrapContext: context, schemaMode: "REQUIRE_EXISTING" });
       return Object.freeze({ componentId: "FEAT-022" as const, activateRuntime: () => { /* provider remains held */ }, close: () => root.close() });
     },

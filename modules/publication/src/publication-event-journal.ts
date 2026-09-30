@@ -6,13 +6,13 @@ export interface PublicationEventAppendResult {
 }
 
 export interface PublicationEventJournal {
-  prepareAppend?(event: PublicationEventEnvelope): Readonly<{
+  prepareAppend?(event: PublicationEventEnvelope): Promise<Readonly<{
     event: PublicationEventEnvelope;
-    commit(): PublicationEventAppendResult;
-  }>;
-  append(event: PublicationEventEnvelope): PublicationEventAppendResult;
-  appendAll(events: readonly PublicationEventEnvelope[]): readonly PublicationEventAppendResult[];
-  findByEventId(tenantId: string, eventId: string): PublicationEventEnvelope | undefined;
-  listByAggregate(tenantId: string, aggregateId: string): readonly PublicationEventEnvelope[];
-  getLastSequence(tenantId: string, aggregateId: string): number;
+    commit(): Promise<PublicationEventAppendResult>;
+  }>>;
+  append(event: PublicationEventEnvelope): Promise<PublicationEventAppendResult>;
+  appendAll(events: readonly PublicationEventEnvelope[]): Promise<readonly PublicationEventAppendResult[]>;
+  findByEventId(tenantId: string, eventId: string): Promise<PublicationEventEnvelope | undefined>;
+  listByAggregate(tenantId: string, aggregateId: string): Promise<readonly PublicationEventEnvelope[]>;
+  getLastSequence(tenantId: string, aggregateId: string): Promise<number>;
 }

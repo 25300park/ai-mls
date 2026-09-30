@@ -238,50 +238,50 @@ function request(
   };
 }
 
-test("F15-TASK-008 resolves unknown execution to confirmed success with immutable recovery evidence", () => {
+test("F15-TASK-008 resolves unknown execution to confirmed success with immutable recovery evidence", async () => {
   const app = infrastructure();
   const snapshot = initialUnknown("case-confirmed");
-  app.repository.save(snapshot);
+  await app.repository.save(snapshot);
 
-  const result = app.reconciliation.reconcile(request(snapshot, "confirmed"));
+  const result = await app.reconciliation.reconcile(request(snapshot, "confirmed"));
 
   assert.equal(result.ok, true, JSON.stringify(result));
   if (result.ok) assert.equal(result.decision, "CONFIRMED");
-  const persisted = app.repository.find(identity)!;
+  const persisted = (await app.repository.find(identity))!;
   assert.equal(persisted.lifecycleState, "ACTIVE");
   assert.equal(persisted.reconciliationCases.at(-1)?.status, "RESOLVED");
-  assert.equal(app.audit.list(identity).at(-1)?.decision, "CONFIRMED");
-  assert.equal(app.audit.list(identity).at(-1)?.reason, "Independent evidence-backed reconciliation");
-  assert.equal(app.audit.list(identity).at(-1)?.actorId, "executor-independent");
-  assert.equal(app.audit.list(identity).at(-1)?.correlationId, "correlation-confirmed");
-  assert.equal(app.audit.list(identity).at(-1)?.checkedAt, occurredAt);
-  assert.deepEqual(app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).map((event) => event.eventType), ["EVT-006", "EVT-003"]);
+  assert.equal((await app.audit.list(identity)).at(-1)?.decision, "CONFIRMED");
+  assert.equal((await app.audit.list(identity)).at(-1)?.reason, "Independent evidence-backed reconciliation");
+  assert.equal((await app.audit.list(identity)).at(-1)?.actorId, "executor-independent");
+  assert.equal((await app.audit.list(identity)).at(-1)?.correlationId, "correlation-confirmed");
+  assert.equal((await app.audit.list(identity)).at(-1)?.checkedAt, occurredAt);
+  assert.deepEqual((await app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId)).map((event) => event.eventType), ["EVT-006", "EVT-003"]);
 });
 
-test("F15-TASK-008 resolves unknown correction to the prior active state without redispatch", () => {
+test("F15-TASK-008 resolves unknown correction to the prior active state without redispatch", async () => {
   let dispatchCount = 0;
   const app = infrastructure({ onDispatch: () => { dispatchCount += 1; }, eventSourceVersion: 3 });
   const snapshot = activeCorrectionUnknown("case-recovered");
-  app.repository.save(snapshot);
+  await app.repository.save(snapshot);
   const recovery = request(snapshot, "recovered", { input: {
     expectedAggregateVersion: snapshot.aggregateVersion, caseId: "case-recovered", category: "CONFIRMED_FAILURE",
     resolution: "ACTIVE_ORIGIN_NO_EFFECT", evidenceRefs: ["negative-evidence"], command: domain("recovered"),
   } });
 
-  const result = app.reconciliation.reconcile(recovery);
+  const result = await app.reconciliation.reconcile(recovery);
 
   assert.equal(result.ok, true, JSON.stringify(result));
   if (result.ok) assert.equal(result.decision, "RECOVERED");
-  assert.equal(app.repository.find(identity)?.lifecycleState, "ACTIVE");
-  assert.equal(app.repository.find(identity)?.attempts.at(-1)?.outcome, "UNKNOWN");
+  assert.equal((await app.repository.find(identity))?.lifecycleState, "ACTIVE");
+  assert.equal((await app.repository.find(identity))?.attempts.at(-1)?.outcome, "UNKNOWN");
   assert.equal(dispatchCount, 0);
 });
 
-test("F19-C RECOVER_PUBLICATION fails closed without a durable F19 recovery authorization and does not resolve the case", () => {
+test("F19-C RECOVER_PUBLICATION fails closed without a durable F19 recovery authorization and does not resolve the case", async () => {
   let dispatchCount = 0;
   const app = infrastructure({ onDispatch: () => { dispatchCount += 1; } });
   const snapshot = initialUnknown("case-recovery-authorization-required");
-  app.repository.save(snapshot);
+  await app.repository.save(snapshot);
   const action = request(snapshot, "recovery-authorization-required", { input: {
     expectedAggregateVersion: snapshot.aggregateVersion,
     caseId: "case-recovery-authorization-required",
@@ -291,17 +291,17 @@ test("F19-C RECOVER_PUBLICATION fails closed without a durable F19 recovery auth
     command: domain("recovery-authorization-required"),
   } });
 
-  const result = app.reconciliation.recover(action);
+  const result = await app.reconciliation.recover(action);
 
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.error.code, "RECOVERY_AUTHORIZATION_REQUIRED");
-  assert.equal(app.repository.find(identity)?.aggregateVersion, snapshot.aggregateVersion);
-  assert.equal(app.repository.find(identity)?.reconciliationCases.at(-1)?.status, "OPEN");
-  assert.equal(app.audit.list(identity).length, 0);
+  assert.equal((await app.repository.find(identity))?.aggregateVersion, snapshot.aggregateVersion);
+  assert.equal((await app.repository.find(identity))?.reconciliationCases.at(-1)?.status, "OPEN");
+  assert.equal((await app.audit.list(identity)).length, 0);
   assert.equal(dispatchCount, 0);
 });
 
-test("F19-C RECOVER_PUBLICATION consumes the durable new identity and executes through F17 without rewriting original history", () => {
+test("F19-C RECOVER_PUBLICATION consumes the durable new identity and executes through F17 without rewriting original history", async () => {
   const caseId = "case-authorized-recovery";
   const unknown = initialUnknown(caseId);
   const planner = new PublicationRecoveryExecutionPlanner();
@@ -313,8 +313,8 @@ test("F19-C RECOVER_PUBLICATION consumes the durable new identity and executes t
     connectorOutcome: "CONFIRMED",
     onDispatch: () => { dispatchCount += 1; },
   });
-  app.repository.save(unknown);
-  const resolved = app.reconciliation.reconcile(request(unknown, "resolve-before-authorized-recovery", { input: {
+  await app.repository.save(unknown);
+  const resolved = await app.reconciliation.reconcile(request(unknown, "resolve-before-authorized-recovery", { input: {
     expectedAggregateVersion: unknown.aggregateVersion,
     caseId,
     category: "CONFIRMED_FAILURE",
@@ -323,10 +323,10 @@ test("F19-C RECOVER_PUBLICATION consumes the durable new identity and executes t
     command: domain("resolve-before-authorized-recovery"),
   } }));
   assert.equal(resolved.ok, true, JSON.stringify(resolved));
-  const beforeRecovery = app.repository.find(identity)!;
+  const beforeRecovery = (await app.repository.find(identity))!;
   assert.equal(beforeRecovery.lifecycleState, "READY");
 
-  const result = app.reconciliation.recover(request(beforeRecovery, "execute-authorized-recovery", { input: {
+  const result = await app.reconciliation.recover(request(beforeRecovery, "execute-authorized-recovery", { input: {
     expectedAggregateVersion: beforeRecovery.aggregateVersion,
     caseId,
     category: "CONFIRMED_FAILURE",
@@ -336,7 +336,7 @@ test("F19-C RECOVER_PUBLICATION consumes the durable new identity and executes t
 
   assert.equal(result.ok, true, JSON.stringify(result));
   if (result.ok) assert.equal(result.decision, "RECOVERED");
-  const persisted = app.repository.find(identity)!;
+  const persisted = (await app.repository.find(identity))!;
   assert.equal(persisted.lifecycleState, "ACTIVE");
   assert.equal(persisted.attempts[0]?.id, `attempt-${caseId}`);
   assert.equal(persisted.attempts[0]?.outcome, "UNKNOWN");
@@ -346,7 +346,7 @@ test("F19-C RECOVER_PUBLICATION consumes the durable new identity and executes t
   assert.equal(dispatchCount, 1);
 });
 
-test("F19-C RECOVER_PUBLICATION rejects invalid durable bindings with zero provider call and zero mutation", () => {
+test("F19-C RECOVER_PUBLICATION rejects invalid durable bindings with zero provider call and zero mutation", async () => {
   const caseId = "case-invalid-binding";
   const snapshot = resolvedInitialNoEffect(caseId);
   const planned = new PublicationRecoveryExecutionPlanner().plan({ identity, recoveryCaseId: `recovery-${caseId}`, reconciliationCaseId: caseId, originalAttemptId: `attempt-${caseId}`, originalCommandId: `command-${caseId}` });
@@ -370,16 +370,16 @@ test("F19-C RECOVER_PUBLICATION rejects invalid durable bindings with zero provi
   for (const [label, candidate] of invalidBindings) {
     let dispatchCount = 0;
     const app = infrastructure({ recoveryAuthorizationReader: { findAuthorizedPublicationRecovery: () => candidate }, connectorOutcome: "CONFIRMED", onDispatch: () => { dispatchCount += 1; } });
-    app.repository.save(snapshot);
-    const result = app.reconciliation.recover(request(snapshot, `invalid-binding-${label}`, { input: { expectedAggregateVersion: snapshot.aggregateVersion, caseId, category: "CONFIRMED_FAILURE", evidenceRefs: ["caller-evidence"], command: domain(`invalid-binding-${label}`) } }));
+    await app.repository.save(snapshot);
+    const result = await app.reconciliation.recover(request(snapshot, `invalid-binding-${label}`, { input: { expectedAggregateVersion: snapshot.aggregateVersion, caseId, category: "CONFIRMED_FAILURE", evidenceRefs: ["caller-evidence"], command: domain(`invalid-binding-${label}`) } }));
     assert.equal(result.ok, false, `${label}: ${JSON.stringify(result)}`);
     if (!result.ok) assert.equal(result.error.code, "RECOVERY_AUTHORIZATION_INVALID", label);
-    assert.deepEqual(app.repository.find(identity), snapshot, label);
+    assert.deepEqual(await app.repository.find(identity), snapshot, label);
     assert.equal(dispatchCount, 0, label);
   }
 });
 
-test("F19-C RECOVER_PUBLICATION revalidates live authority, MFA, SoD, approval and verification before provider execution", () => {
+test("F19-C RECOVER_PUBLICATION revalidates live authority, MFA, SoD, approval and verification before provider execution", async () => {
   const cases = [
     [{ authorizationReason: "CAPABILITY_DENIED" as const }, "AUTHORIZATION_DENIED"],
     [{ authorizationReason: "REAUTHENTICATION_REQUIRED" as const }, "MFA_REQUIRED"],
@@ -398,18 +398,18 @@ test("F19-C RECOVER_PUBLICATION revalidates live authority, MFA, SoD, approval a
     const authorized = authorizedRecoveryCase(caseId, planned.attemptId, planned.commandId);
     let dispatchCount = 0;
     const app = infrastructure({ ...restriction, recoveryAuthorizationReader: { findAuthorizedPublicationRecovery: () => authorized }, connectorOutcome: "CONFIRMED", onDispatch: () => { dispatchCount += 1; } });
-    app.repository.save(snapshot);
+    await app.repository.save(snapshot);
 
-    const result = app.reconciliation.recover(request(snapshot, `live-${expectedCode}`, { input: { expectedAggregateVersion: snapshot.aggregateVersion, caseId, category: "CONFIRMED_FAILURE", evidenceRefs: ["caller-evidence"], command: domain(`live-${expectedCode}`) } }));
+    const result = await app.reconciliation.recover(request(snapshot, `live-${expectedCode}`, { input: { expectedAggregateVersion: snapshot.aggregateVersion, caseId, category: "CONFIRMED_FAILURE", evidenceRefs: ["caller-evidence"], command: domain(`live-${expectedCode}`) } }));
 
     assert.equal(result.ok, false, `${expectedCode}: ${JSON.stringify(result)}`);
     if (!result.ok) assert.equal(result.error.code, expectedCode);
-    assert.deepEqual(app.repository.find(identity), snapshot);
+    assert.deepEqual(await app.repository.find(identity), snapshot);
     assert.equal(dispatchCount, 0);
   }
 });
 
-test("F19-C RECOVER_PUBLICATION fails closed while the current Publication is suspended", () => {
+test("F19-C RECOVER_PUBLICATION fails closed while the current Publication is suspended", async () => {
   const caseId = "case-suspended-recovery";
   const base = resolvedInitialNoEffect(caseId);
   const snapshot: PublicationSnapshot = Object.freeze({ ...base, suspensionStatus: "SUSPENDED_SECURITY" });
@@ -417,31 +417,31 @@ test("F19-C RECOVER_PUBLICATION fails closed while the current Publication is su
   const authorized = authorizedRecoveryCase(caseId, planned.attemptId, planned.commandId);
   let dispatchCount = 0;
   const app = infrastructure({ recoveryAuthorizationReader: { findAuthorizedPublicationRecovery: () => authorized }, connectorOutcome: "CONFIRMED", onDispatch: () => { dispatchCount += 1; } });
-  app.repository.save(snapshot);
+  await app.repository.save(snapshot);
 
-  const result = app.reconciliation.recover(request(snapshot, "suspended-recovery", { input: { expectedAggregateVersion: snapshot.aggregateVersion, caseId, category: "CONFIRMED_FAILURE", evidenceRefs: ["caller-evidence"], command: domain("suspended-recovery") } }));
+  const result = await app.reconciliation.recover(request(snapshot, "suspended-recovery", { input: { expectedAggregateVersion: snapshot.aggregateVersion, caseId, category: "CONFIRMED_FAILURE", evidenceRefs: ["caller-evidence"], command: domain("suspended-recovery") } }));
 
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.error.code, "PUBLICATION_STATE_INVALID");
-  assert.deepEqual(app.repository.find(identity), snapshot);
+  assert.deepEqual(await app.repository.find(identity), snapshot);
   assert.equal(dispatchCount, 0);
 });
 
-test("F19-C exact recovery replay returns the prior F17 result without a second provider invocation", () => {
+test("F19-C exact recovery replay returns the prior F17 result without a second provider invocation", async () => {
   const caseId = "case-exact-recovery-replay";
   const snapshot = resolvedInitialNoEffect(caseId);
   const planned = new PublicationRecoveryExecutionPlanner().plan({ identity, recoveryCaseId: `recovery-${caseId}`, reconciliationCaseId: caseId, originalAttemptId: `attempt-${caseId}`, originalCommandId: `command-${caseId}` });
   let authorized = authorizedRecoveryCase(caseId, planned.attemptId, planned.commandId);
   let dispatchCount = 0;
   const app = infrastructure({ recoveryAuthorizationReader: { findAuthorizedPublicationRecovery: () => authorized }, connectorOutcome: "CONFIRMED", onDispatch: () => { dispatchCount += 1; } });
-  app.repository.save(snapshot);
+  await app.repository.save(snapshot);
   const action = request(snapshot, "exact-recovery-replay", { input: { expectedAggregateVersion: snapshot.aggregateVersion, caseId, category: "CONFIRMED_FAILURE", evidenceRefs: ["caller-evidence"], command: domain("exact-recovery-replay") } });
 
-  const first = app.reconciliation.recover(action);
+  const first = await app.reconciliation.recover(action);
   authorized = authorizedRecoveryCase(caseId, planned.attemptId, planned.commandId, {
     recovery: { ...authorized.recovery!, recoveryExecutionIdentity: Object.freeze({ commandId: planned.commandId, attemptId: planned.attemptId }) },
   });
-  const replay = app.reconciliation.recover(action);
+  const replay = await app.reconciliation.recover(action);
 
   assert.equal(first.ok, true, JSON.stringify(first));
   assert.equal(replay.ok, true, JSON.stringify(replay));
@@ -451,58 +451,58 @@ test("F19-C exact recovery replay returns the prior F17 result without a second 
     assert.equal(replay.aggregateVersion, first.aggregateVersion);
   }
   assert.equal(dispatchCount, 1);
-  assert.equal(app.repository.find(identity)?.attempts.length, 2);
+  assert.equal((await app.repository.find(identity))?.attempts.length, 2);
 });
 
-test("F19-C conflicting identity for the same recoveryId is rejected without mutation or provider reinvocation", () => {
+test("F19-C conflicting identity for the same recoveryId is rejected without mutation or provider reinvocation", async () => {
   const caseId = "case-recovery-identity-conflict";
   const snapshot = resolvedInitialNoEffect(caseId);
   const planned = new PublicationRecoveryExecutionPlanner().plan({ identity, recoveryCaseId: `recovery-${caseId}`, reconciliationCaseId: caseId, originalAttemptId: `attempt-${caseId}`, originalCommandId: `command-${caseId}` });
   let candidate = authorizedRecoveryCase(caseId, planned.attemptId, planned.commandId);
   let dispatchCount = 0;
   const app = infrastructure({ recoveryAuthorizationReader: { findAuthorizedPublicationRecovery: () => candidate }, connectorOutcome: "CONFIRMED", onDispatch: () => { dispatchCount += 1; } });
-  app.repository.save(snapshot);
+  await app.repository.save(snapshot);
   const action = request(snapshot, "recovery-identity-conflict", { input: { expectedAggregateVersion: snapshot.aggregateVersion, caseId, category: "CONFIRMED_FAILURE", evidenceRefs: ["caller-evidence"], command: domain("recovery-identity-conflict") } });
-  const first = app.reconciliation.recover(action);
+  const first = await app.reconciliation.recover(action);
   assert.equal(first.ok, true, JSON.stringify(first));
-  const priorRecord = app.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: `${candidate.recovery!.recoveryId}:publish` });
+  const priorRecord = await app.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: `${candidate.recovery!.recoveryId}:publish` });
   assert.notEqual(priorRecord, undefined);
-  const committed = app.repository.find(identity)!;
+  const committed = (await app.repository.find(identity))!;
   candidate = authorizedRecoveryCase(caseId, "attempt-conflicting-recovery", "command-conflicting-recovery");
 
-  const conflict = app.reconciliation.recover(action);
+  const conflict = await app.reconciliation.recover(action);
 
   assert.equal(conflict.ok, false);
   if (!conflict.ok) assert.equal(conflict.error.code, "IDEMPOTENCY_CONFLICT");
   assert.equal(dispatchCount, 1);
-  assert.deepEqual(app.repository.find(identity), committed);
+  assert.deepEqual(await app.repository.find(identity), committed);
 });
 
-test("F19-F conflicting immutable recovery evidence for the same recoveryId is rejected without replay or mutation", () => {
+test("F19-F conflicting immutable recovery evidence for the same recoveryId is rejected without replay or mutation", async () => {
   const caseId = "case-recovery-evidence-conflict";
   const snapshot = resolvedInitialNoEffect(caseId);
   const planned = new PublicationRecoveryExecutionPlanner().plan({ identity, recoveryCaseId: `recovery-${caseId}`, reconciliationCaseId: caseId, originalAttemptId: `attempt-${caseId}`, originalCommandId: `command-${caseId}` });
   let candidate = authorizedRecoveryCase(caseId, planned.attemptId, planned.commandId);
   let dispatchCount = 0;
   const app = infrastructure({ recoveryAuthorizationReader: { findAuthorizedPublicationRecovery: () => candidate }, connectorOutcome: "CONFIRMED", onDispatch: () => { dispatchCount += 1; } });
-  app.repository.save(snapshot);
+  await app.repository.save(snapshot);
   const action = request(snapshot, "recovery-evidence-conflict", { input: { expectedAggregateVersion: snapshot.aggregateVersion, caseId, category: "CONFIRMED_FAILURE", evidenceRefs: ["caller-evidence"], command: domain("recovery-evidence-conflict") } });
-  const first = app.reconciliation.recover(action);
+  const first = await app.reconciliation.recover(action);
   assert.equal(first.ok, true, JSON.stringify(first));
-  const committed = app.repository.find(identity)!;
+  const committed = (await app.repository.find(identity))!;
   candidate = authorizedRecoveryCase(caseId, planned.attemptId, planned.commandId, {
     recovery: { ...candidate.recovery!, evidenceRefs: Object.freeze(["evidence:attempted-overwrite"]) },
   });
 
-  const conflict = app.reconciliation.recover(action);
+  const conflict = await app.reconciliation.recover(action);
 
   assert.equal(conflict.ok, false);
   if (!conflict.ok) assert.equal(conflict.error.code, "IDEMPOTENCY_CONFLICT");
   assert.equal(dispatchCount, 1);
-  assert.deepEqual(app.repository.find(identity), committed);
+  assert.deepEqual(await app.repository.find(identity), committed);
 });
 
-test("F19-F durable recovery replay survives restart and overrides empty process-local domain history with provider call zero", () => {
+test("F19-F durable recovery replay survives restart and overrides empty process-local domain history with provider call zero", async () => {
   const directory = mkdtempSync(join(tmpdir(), "ai-mls-f19-f-publication-replay-"));
   const databasePath = join(directory, "recovery.sqlite");
   const caseId = "case-f19-f-durable-replay";
@@ -545,38 +545,38 @@ test("F19-F durable recovery replay survives restart and overrides empty process
       connectorOutcome: "CONFIRMED",
       onDispatch: () => { dispatchCount += 1; },
     });
-    app.repository.save(snapshot);
+    await app.repository.save(snapshot);
     const action = request(snapshot, "f19-f-durable-replay", { input: { expectedAggregateVersion: snapshot.aggregateVersion, caseId, category: "CONFIRMED_FAILURE", evidenceRefs: ["caller-evidence"], command: domain("f19-f-durable-replay") } });
 
-    const replay = app.reconciliation.recover(action);
+    const replay = await app.reconciliation.recover(action);
 
     assert.deepEqual(replay, { ...authoritative, replayed: true });
     assert.equal(dispatchCount, 0);
-    assert.deepEqual(app.repository.find(identity), snapshot);
+    assert.deepEqual(await app.repository.find(identity), snapshot);
   } finally {
     reopened.close();
     rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
   }
 });
 
-test("F19-F Publication recovery has no process-local execution authority when the durable execution store is missing", () => {
+test("F19-F Publication recovery has no process-local execution authority when the durable execution store is missing", async () => {
   const caseId = "case-f19-f-missing-durable-execution";
   const snapshot = resolvedInitialNoEffect(caseId);
   const planned = new PublicationRecoveryExecutionPlanner().plan({ identity, recoveryCaseId: `recovery-${caseId}`, reconciliationCaseId: caseId, originalAttemptId: `attempt-${caseId}`, originalCommandId: `command-${caseId}` });
   const authorized = authorizedRecoveryCase(caseId, planned.attemptId, planned.commandId);
   let dispatchCount = 0;
   const app = infrastructure({ recoveryAuthorizationReader: { findAuthorizedPublicationRecovery: () => authorized }, recoveryExecutionStore: null, connectorOutcome: "CONFIRMED", onDispatch: () => { dispatchCount += 1; } });
-  app.repository.save(snapshot);
+  await app.repository.save(snapshot);
 
-  const result = app.reconciliation.recover(request(snapshot, "f19-f-missing-durable-execution", { input: { expectedAggregateVersion: snapshot.aggregateVersion, caseId, category: "CONFIRMED_FAILURE", evidenceRefs: ["caller-evidence"], command: domain("f19-f-missing-durable-execution") } }));
+  const result = await app.reconciliation.recover(request(snapshot, "f19-f-missing-durable-execution", { input: { expectedAggregateVersion: snapshot.aggregateVersion, caseId, category: "CONFIRMED_FAILURE", evidenceRefs: ["caller-evidence"], command: domain("f19-f-missing-durable-execution") } }));
 
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.error.code, "RECOVERY_EXECUTION_UNAVAILABLE");
   assert.equal(dispatchCount, 0);
-  assert.deepEqual(app.repository.find(identity), snapshot);
+  assert.deepEqual(await app.repository.find(identity), snapshot);
 });
 
-test("F19-C UNKNOWN recovery creates one child recovery case and exact replay never resends or duplicates lineage", () => {
+test("F19-C UNKNOWN recovery creates one child recovery case and exact replay never resends or duplicates lineage", async () => {
   const caseId = "case-nested-recovery-ambiguity";
   const snapshot = resolvedInitialNoEffect(caseId);
   const planned = new PublicationRecoveryExecutionPlanner().plan({ identity, recoveryCaseId: `recovery-${caseId}`, reconciliationCaseId: caseId, originalAttemptId: `attempt-${caseId}`, originalCommandId: `command-${caseId}` });
@@ -593,11 +593,11 @@ test("F19-C UNKNOWN recovery creates one child recovery case and exact replay ne
     connectorOutcome: "UNKNOWN",
     onDispatch: () => { dispatchCount += 1; },
   });
-  app.repository.save(snapshot);
+  await app.repository.save(snapshot);
   const action = request(snapshot, "nested-recovery-ambiguity", { input: { expectedAggregateVersion: snapshot.aggregateVersion, caseId, category: "CONFIRMED_FAILURE", evidenceRefs: ["caller-evidence"], command: domain("nested-recovery-ambiguity") } });
 
-  const first = app.reconciliation.recover(action);
-  const replay = app.reconciliation.recover(action);
+  const first = await app.reconciliation.recover(action);
+  const replay = await app.reconciliation.recover(action);
 
   assert.equal(first.ok, false);
   assert.equal(replay.ok, false);
@@ -617,10 +617,10 @@ test("F19-C UNKNOWN recovery creates one child recovery case and exact replay ne
     createdBy: "executor-independent",
     createdAt: occurredAt,
   });
-  assert.equal(app.repository.find(identity)?.attempts.find(({ id }) => id === planned.attemptId)?.outcome, "UNKNOWN");
+  assert.equal((await app.repository.find(identity))?.attempts.find(({ id }) => id === planned.attemptId)?.outcome, "UNKNOWN");
 });
 
-test("F19-C retries UNKNOWN recovery child linkage after its writer fails without redispatching or mutating existing history", () => {
+test("F19-C retries UNKNOWN recovery child linkage after its writer fails without redispatching or mutating existing history", async () => {
   const caseId = "case-nested-recovery-writer-retry";
   const snapshot = resolvedInitialNoEffect(caseId);
   const planned = new PublicationRecoveryExecutionPlanner().plan({ identity, recoveryCaseId: `recovery-${caseId}`, reconciliationCaseId: caseId, originalAttemptId: `attempt-${caseId}`, originalCommandId: `command-${caseId}` });
@@ -639,12 +639,12 @@ test("F19-C retries UNKNOWN recovery child linkage after its writer fails withou
     connectorOutcome: "UNKNOWN",
     onDispatch: () => { dispatchCount += 1; },
   });
-  app.repository.save(snapshot);
+  await app.repository.save(snapshot);
   const action = request(snapshot, "nested-recovery-writer-retry", { input: { expectedAggregateVersion: snapshot.aggregateVersion, caseId, category: "CONFIRMED_FAILURE", evidenceRefs: ["caller-evidence"], command: domain("nested-recovery-writer-retry") } });
 
-  const first = app.reconciliation.recover(action);
-  const historyAfterWriterFailure = app.repository.find(identity)!;
-  const retry = app.reconciliation.recover(action);
+  const first = await app.reconciliation.recover(action);
+  const historyAfterWriterFailure = (await app.repository.find(identity))!;
+  const retry = await app.reconciliation.recover(action);
 
   assert.equal(first.ok, false);
   if (!first.ok) assert.equal(first.error.code, "APPLICATION_EXECUTION_FAILED");
@@ -653,7 +653,7 @@ test("F19-C retries UNKNOWN recovery child linkage after its writer fails withou
   assert.equal(dispatchCount, 1);
   assert.equal(writerCalls, 2);
   assert.equal(created.length, 1);
-  assert.deepEqual(app.repository.find(identity), historyAfterWriterFailure);
+  assert.deepEqual(await app.repository.find(identity), historyAfterWriterFailure);
   assert.equal(historyAfterWriterFailure.attempts.filter(({ id }) => id === planned.attemptId).length, 1);
   assert.equal(historyAfterWriterFailure.reconciliationCases.filter(({ attemptId }) => attemptId === planned.attemptId).length, 1);
   assert.deepEqual(created[0], {
@@ -670,7 +670,7 @@ test("F19-C retries UNKNOWN recovery child linkage after its writer fails withou
   });
 });
 
-test("F19-C recovery handoff rejects a durable Publication identity not created by its trusted planner", () => {
+test("F19-C recovery handoff rejects a durable Publication identity not created by its trusted planner", async () => {
   const caseId = "case-forged-durable-recovery-identity";
   const snapshot = resolvedInitialNoEffect(caseId);
   const forged = authorizedRecoveryCase(caseId, "caller-authored-attempt", "caller-authored-command");
@@ -680,43 +680,43 @@ test("F19-C recovery handoff rejects a durable Publication identity not created 
     connectorOutcome: "CONFIRMED",
     onDispatch: () => { dispatchCount += 1; },
   });
-  app.repository.save(snapshot);
+  await app.repository.save(snapshot);
   const action = request(snapshot, "forged-durable-recovery-identity", { input: { expectedAggregateVersion: snapshot.aggregateVersion, caseId, category: "CONFIRMED_FAILURE", evidenceRefs: ["caller-evidence"], command: domain("forged-durable-recovery-identity") } });
 
-  const result = app.reconciliation.recover(action);
+  const result = await app.reconciliation.recover(action);
 
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.error.code, "RECOVERY_AUTHORIZATION_INVALID");
   assert.equal(dispatchCount, 0);
-  assert.deepEqual(app.repository.find(identity), snapshot);
+  assert.deepEqual(await app.repository.find(identity), snapshot);
 });
 
-test("F15-TASK-008 completes a partial outcome only with an explicit canonical resolution", () => {
+test("F15-TASK-008 completes a partial outcome only with an explicit canonical resolution", async () => {
   const app = infrastructure();
   const snapshot = initialUnknown("case-partial");
-  app.repository.save(snapshot);
+  await app.repository.save(snapshot);
   const partial = request(snapshot, "partial", { input: {
     expectedAggregateVersion: snapshot.aggregateVersion, caseId: "case-partial", category: "PARTIAL_COMPLETION",
     resolution: "EFFECT_CONFIRMED", evidenceRefs: ["partial-evidence", "completion-evidence"],
     externalObjectReference: "external-listing-partial", command: domain("partial"),
   } });
 
-  const result = app.reconciliation.reconcile(partial);
+  const result = await app.reconciliation.reconcile(partial);
 
   assert.equal(result.ok, true, JSON.stringify(result));
   if (result.ok) assert.equal(result.decision, "CONFIRMED");
-  assert.equal(app.repository.find(identity)?.lifecycleState, "ACTIVE");
+  assert.equal((await app.repository.find(identity))?.lifecycleState, "ACTIVE");
 });
 
-test("F15-TASK-008 returns no action for an already resolved case and preserves the version", () => {
+test("F15-TASK-008 returns no action for an already resolved case and preserves the version", async () => {
   const app = infrastructure();
   const snapshot = initialUnknown("case-no-action");
-  app.repository.save(snapshot);
-  const first = app.reconciliation.reconcile(request(snapshot, "no-action-first"));
+  await app.repository.save(snapshot);
+  const first = await app.reconciliation.reconcile(request(snapshot, "no-action-first"));
   assert.equal(first.ok, true);
-  const resolved = app.repository.find(identity)!;
+  const resolved = (await app.repository.find(identity))!;
 
-  const result = app.reconciliation.reconcile(request(resolved, "no-action-second", { input: {
+  const result = await app.reconciliation.reconcile(request(resolved, "no-action-second", { input: {
     expectedAggregateVersion: resolved.aggregateVersion, caseId: "case-no-action", category: "CONFIRMED_SUCCESS",
     resolution: "EFFECT_CONFIRMED", evidenceRefs: ["duplicate-confirmation"], externalObjectReference: "external-listing-1",
     command: domain("no-action-second"),
@@ -724,51 +724,51 @@ test("F15-TASK-008 returns no action for an already resolved case and preserves 
 
   assert.equal(result.ok, true, JSON.stringify(result));
   if (result.ok) assert.equal(result.decision, "NO_ACTION_REQUIRED");
-  assert.equal(app.repository.find(identity)?.aggregateVersion, resolved.aggregateVersion);
-  assert.equal(app.audit.list(identity).at(-1)?.decision, "NO_ACTION_REQUIRED");
+  assert.equal((await app.repository.find(identity))?.aggregateVersion, resolved.aggregateVersion);
+  assert.equal((await app.audit.list(identity)).at(-1)?.decision, "NO_ACTION_REQUIRED");
 });
 
-test("F15-TASK-008 contains unknown, timeout and unresolved partial outcomes for manual review", () => {
+test("F15-TASK-008 contains unknown, timeout and unresolved partial outcomes for manual review", async () => {
   for (const category of ["UNKNOWN", "EXTERNAL_TIMEOUT", "MANUAL_REVIEW_REQUIRED", "PARTIAL_COMPLETION"] as const) {
     const app = infrastructure();
     const caseId = `case-${category.toLowerCase()}`;
     const snapshot = initialUnknown(caseId);
-    app.repository.save(snapshot);
+    await app.repository.save(snapshot);
     const key = `manual-${category.toLowerCase()}`;
     const manual = request(snapshot, key, { input: {
       expectedAggregateVersion: snapshot.aggregateVersion, caseId, category,
       evidenceRefs: [`evidence-${category.toLowerCase()}`], command: domain(key),
     } });
 
-    const result = app.reconciliation.reconcile(manual);
+    const result = await app.reconciliation.reconcile(manual);
 
     assert.equal(result.ok, true, `${category}: ${JSON.stringify(result)}`);
     if (result.ok) assert.equal(result.decision, "MANUAL_REVIEW_REQUIRED");
-    assert.equal(app.repository.find(identity)?.aggregateVersion, snapshot.aggregateVersion);
-    assert.equal(app.repository.find(identity)?.lifecycleState, "RECONCILIATION_REQUIRED");
-    assert.equal(app.audit.list(identity).at(-1)?.decision, "MANUAL_REVIEW_REQUIRED");
-    assert.deepEqual(app.audit.list(identity).at(-1)?.evidenceRefs, [`evidence-${category.toLowerCase()}`]);
+    assert.equal((await app.repository.find(identity))?.aggregateVersion, snapshot.aggregateVersion);
+    assert.equal((await app.repository.find(identity))?.lifecycleState, "RECONCILIATION_REQUIRED");
+    assert.equal((await app.audit.list(identity)).at(-1)?.decision, "MANUAL_REVIEW_REQUIRED");
+    assert.deepEqual((await app.audit.list(identity)).at(-1)?.evidenceRefs, [`evidence-${category.toLowerCase()}`]);
   }
 });
 
-test("F15-TASK-008 preserves idempotency, optimistic versioning and append-only recovery audit", () => {
+test("F15-TASK-008 preserves idempotency, optimistic versioning and append-only recovery audit", async () => {
   const app = infrastructure();
   const snapshot = initialUnknown("case-idempotent");
-  app.repository.save(snapshot);
+  await app.repository.save(snapshot);
   const action = request(snapshot, "idempotent");
 
-  const first = app.reconciliation.reconcile(action);
+  const first = await app.reconciliation.reconcile(action);
   assert.equal(first.ok, true);
   if (!first.ok) throw new Error("reconciliation setup failed");
-  const resolved = app.repository.find(identity)!;
+  const resolved = (await app.repository.find(identity))!;
   const advanced = PublicationAggregate.rehydrate(resolved).setSuspension({
     type: "SET_SUSPENSION",
     expectedAggregateVersion: resolved.aggregateVersion,
     suspensionStatus: "SUSPENDED_OPERATIONAL",
     command: domain("advance-after-reconciliation"),
   }).snapshot;
-  app.repository.update(resolved.aggregateVersion, advanced);
-  const replay = app.reconciliation.reconcile(action);
+  await app.repository.update(resolved.aggregateVersion, advanced);
+  const replay = await app.reconciliation.reconcile(action);
 
   assert.equal(replay.ok, true);
   if (replay.ok) {
@@ -776,10 +776,10 @@ test("F15-TASK-008 preserves idempotency, optimistic versioning and append-only 
     assert.equal(replay.aggregateVersion, first.aggregateVersion);
     assert.equal(replay.resultReference, first.resultReference);
   }
-  assert.equal(app.repository.readHistory(identity).length, 3);
-  assert.equal(app.audit.list(identity).filter(({ decision }) => decision === "CONFIRMED").length, 1);
+  assert.equal((await app.repository.readHistory(identity)).length, 3);
+  assert.equal((await app.audit.list(identity)).filter(({ decision }) => decision === "CONFIRMED").length, 1);
 
-  const conflict = app.reconciliation.reconcile({
+  const conflict = await app.reconciliation.reconcile({
     ...action,
     context: { ...action.context, intentFingerprint: "sha256:different-idempotent-intent" },
     input: { ...action.input, evidenceRefs: ["different-evidence"] },
@@ -787,19 +787,19 @@ test("F15-TASK-008 preserves idempotency, optimistic versioning and append-only 
   assert.equal(conflict.ok, false);
   if (!conflict.ok) assert.equal(conflict.error.code, "IDEMPOTENCY_CONFLICT");
 
-  const stale = app.reconciliation.reconcile(request(app.repository.find(identity)!, "stale", { input: {
+  const stale = await app.reconciliation.reconcile(request((await app.repository.find(identity))!, "stale", { input: {
     ...action.input, expectedAggregateVersion: snapshot.aggregateVersion, command: domain("stale"),
   } }));
   assert.equal(stale.ok, false);
   if (!stale.ok) assert.equal(stale.error.code, "PUBLICATION_VERSION_CONFLICT");
 });
 
-test("F15-TASK-008 rejects an idempotency collision with a different completed command", () => {
+test("F15-TASK-008 rejects an idempotency collision with a different completed command", async () => {
   const app = infrastructure();
   const snapshot = initialUnknown("case-command-collision");
-  app.repository.save(snapshot);
+  await app.repository.save(snapshot);
   const action = request(snapshot, "command-collision");
-  app.audit.append({
+  await app.audit.append({
     id: JSON.stringify([
       identity.tenantScopeId,
       identity.publicationId,
@@ -818,14 +818,14 @@ test("F15-TASK-008 rejects an idempotency collision with a different completed c
     result: "COMPLETED",
   });
 
-  const result = app.reconciliation.reconcile(action);
+  const result = await app.reconciliation.reconcile(action);
 
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.error.code, "IDEMPOTENCY_CONFLICT");
-  assert.equal(app.repository.find(identity)?.aggregateVersion, snapshot.aggregateVersion);
+  assert.equal((await app.repository.find(identity))?.aggregateVersion, snapshot.aggregateVersion);
 });
 
-test("F15-TASK-008 fails closed for authorization, live prerequisites and invalid recovery requests", () => {
+test("F15-TASK-008 fails closed for authorization, live prerequisites and invalid recovery requests", async () => {
   const cases = [
     [infrastructure({ authorizationReason: "CAPABILITY_DENIED" }), "AUTHORIZATION_DENIED", {}],
     [infrastructure({ authorizationReason: "REAUTHENTICATION_REQUIRED" }), "MFA_REQUIRED", {}],
@@ -839,7 +839,7 @@ test("F15-TASK-008 fails closed for authorization, live prerequisites and invali
   ] as const;
   for (const [app, expected, requestOverride] of cases) {
     const snapshot = initialUnknown(`case-${expected.toLowerCase()}`);
-    app.repository.save(snapshot);
+    await app.repository.save(snapshot);
     const key = expected.toLowerCase();
     const baseRequest = request(snapshot, key);
     const requestContext = "sessionId" in requestOverride
@@ -850,7 +850,7 @@ test("F15-TASK-008 fails closed for authorization, live prerequisites and invali
         intentFingerprint: baseRequest.context.intentFingerprint,
       }
       : baseRequest.context;
-    const result = app.reconciliation.reconcile({
+    const result = await app.reconciliation.reconcile({
       ...baseRequest,
       context: requestContext,
       input: {
@@ -860,25 +860,25 @@ test("F15-TASK-008 fails closed for authorization, live prerequisites and invali
     });
     assert.equal(result.ok, false);
     if (!result.ok) assert.equal(result.error.code, expected);
-    assert.equal(app.repository.find(identity)?.aggregateVersion, snapshot.aggregateVersion);
-    assert.equal(app.audit.list(identity).some(({ result: outcome }) => outcome === "COMPLETED"), false);
+    assert.equal((await app.repository.find(identity))?.aggregateVersion, snapshot.aggregateVersion);
+    assert.equal((await app.audit.list(identity)).some(({ result: outcome }) => outcome === "COMPLETED"), false);
   }
 
   const app = infrastructure();
   const snapshot = initialUnknown("case-invalid");
-  app.repository.save(snapshot);
-  const invalid = app.reconciliation.reconcile(request(snapshot, "invalid", { input: {
+  await app.repository.save(snapshot);
+  const invalid = await app.reconciliation.reconcile(request(snapshot, "invalid", { input: {
     expectedAggregateVersion: snapshot.aggregateVersion, caseId: "case-invalid", category: "CONFIRMED_SUCCESS",
     evidenceRefs: ["evidence-without-resolution"], command: domain("invalid"),
   } }));
   assert.equal(invalid.ok, false);
   if (!invalid.ok) assert.equal(invalid.error.code, "RECOVERY_REQUEST_INVALID");
-  assert.equal(app.repository.find(identity)?.aggregateVersion, snapshot.aggregateVersion);
+  assert.equal((await app.repository.find(identity))?.aggregateVersion, snapshot.aggregateVersion);
 
-  const valid = app.reconciliation.reconcile(request(snapshot, "resolve-before-bogus"));
+  const valid = await app.reconciliation.reconcile(request(snapshot, "resolve-before-bogus"));
   assert.equal(valid.ok, true);
-  const resolved = app.repository.find(identity)!;
-  const bogus = app.reconciliation.reconcile({
+  const resolved = (await app.repository.find(identity))!;
+  const bogus = await app.reconciliation.reconcile({
     ...request(resolved, "bogus-resolved-case"),
     input: {
       expectedAggregateVersion: resolved.aggregateVersion,
@@ -893,32 +893,32 @@ test("F15-TASK-008 fails closed for authorization, live prerequisites and invali
   if (!bogus.ok) assert.equal(bogus.error.code, "RECOVERY_REQUEST_INVALID");
 });
 
-test("F15-TASK-008 is registered once as a trusted internal port and caller evidence is rejected at the outer boundary", () => {
+test("F15-TASK-008 is registered once as a trusted internal port and caller evidence is rejected at the outer boundary", async () => {
   const app = infrastructure();
   const snapshot = initialUnknown("case-composed");
-  app.repository.save(snapshot);
+  await app.repository.save(snapshot);
   const graph = composePublicationApplication({ runtimeOptions: { infrastructureFactory: () => app } });
   assert.equal(graph.runtime.services.reconciliation, app.reconciliation);
 
-  const external = graph.runtime.execute({
+  const external = await graph.runtime.execute({
     operation: "COORDINATE_PUBLICATION_RECONCILIATION",
     ...request(snapshot, "composed"),
   });
 
   assert.deepEqual(external, { operationResult: "FAILED", failureCode: "INTERFACE_REQUEST_INVALID" });
-  assert.equal(app.repository.find(identity)?.lifecycleState, "RECONCILIATION_REQUIRED");
-  assert.equal(app.audit.list(identity).some(({ decision }) => decision === "CONFIRMED"), false);
+  assert.equal((await app.repository.find(identity))?.lifecycleState, "RECONCILIATION_REQUIRED");
+  assert.equal((await app.audit.list(identity)).some(({ decision }) => decision === "CONFIRMED"), false);
 
-  const result = app.reconciliation.execute(request(snapshot, "trusted-internal"));
+  const result = await app.reconciliation.execute(request(snapshot, "trusted-internal"));
   assert.equal(result.ok, true, JSON.stringify(result));
-  assert.equal(app.repository.find(identity)?.lifecycleState, "ACTIVE");
-  assert.equal(app.audit.list(identity).at(-1)?.decision, "CONFIRMED");
+  assert.equal((await app.repository.find(identity))?.lifecycleState, "ACTIVE");
+  assert.equal((await app.audit.list(identity)).at(-1)?.decision, "CONFIRMED");
 });
 
-test("F15-TASK-008 rejects incomplete recovery audit evidence", () => {
+test("F15-TASK-008 rejects incomplete recovery audit evidence", async () => {
   const app = infrastructure();
 
-  assert.throws(() => app.audit.append({
+  await assert.rejects(app.audit.append({
     id: "incomplete-recovery-audit",
     tenantScopeId: identity.tenantScopeId,
     aggregateId: identity.publicationId,
@@ -930,7 +930,7 @@ test("F15-TASK-008 rejects incomplete recovery audit evidence", () => {
     decision: "CONFIRMED",
   }), (error: unknown) => error instanceof Error && "code" in error && error.code === "AUDIT_RECORD_INVALID");
 
-  assert.throws(() => app.audit.append({
+  await assert.rejects(app.audit.append({
     id: "missing-recovery-audit",
     tenantScopeId: identity.tenantScopeId,
     aggregateId: identity.publicationId,

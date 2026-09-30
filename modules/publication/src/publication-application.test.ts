@@ -114,10 +114,10 @@ function application(
   return { unitOfWork, create, modify, service: new PublicationApplicationService(create, modify) };
 }
 
-test("F15-TASK-004 create handler commits a new Publication and immutable audit evidence", () => {
+test("F15-TASK-004 create handler commits a new Publication and immutable audit evidence", async () => {
   const execution = context("create");
   const { unitOfWork, create } = application();
-  const result = create.execute(createCommand(execution), execution);
+  const result = await create.execute(createCommand(execution), execution);
 
   assert.deepEqual(result, {
     ok: true,
@@ -126,54 +126,54 @@ test("F15-TASK-004 create handler commits a new Publication and immutable audit 
     resultReference: '["publication-application-1",1]',
     replayed: false,
   });
-  assert.equal(unitOfWork.repository.find(identity)?.lifecycleState, "READY");
-  assert.deepEqual(unitOfWork.audit.list(identity).map((record) => ({ result: record.result, version: record.version, timestamp: record.timestamp })), [
+  assert.equal((await unitOfWork.repository.find(identity))?.lifecycleState, "READY");
+  assert.deepEqual((await unitOfWork.audit.list(identity)).map((record) => ({ result: record.result, version: record.version, timestamp: record.timestamp })), [
     { result: "COMPLETED", version: 1, timestamp: applicationTime },
   ]);
-  assert.equal(Object.isFrozen(unitOfWork.audit.list(identity)[0]), true);
+  assert.equal(Object.isFrozen((await unitOfWork.audit.list(identity))[0]), true);
 });
 
-test("F15-TASK-004 modify handler rehydrates the stored snapshot and persists the approved transition", () => {
+test("F15-TASK-004 modify handler rehydrates the stored snapshot and persists the approved transition", async () => {
   const created = context("create-transition");
   const transitioned = context("transition");
   const { unitOfWork, create, modify } = application();
-  assert.equal(create.execute(createCommand(created), created).ok, true);
+  assert.equal((await create.execute(createCommand(created), created)).ok, true);
 
-  const result = modify.execute(transitionCommand(transitioned), transitioned);
+  const result = await modify.execute(transitionCommand(transitioned), transitioned);
 
   assert.equal(result.ok, true);
   assert.equal(result.ok && result.aggregateVersion, 2);
-  assert.equal(unitOfWork.repository.find(identity)?.lifecycleState, "EXECUTION_PENDING");
-  assert.deepEqual(unitOfWork.repository.readHistory(identity).map((snapshot) => snapshot.aggregateVersion), [1, 2]);
+  assert.equal((await unitOfWork.repository.find(identity))?.lifecycleState, "EXECUTION_PENDING");
+  assert.deepEqual((await unitOfWork.repository.readHistory(identity)).map((snapshot) => snapshot.aggregateVersion), [1, 2]);
 });
 
-test("F15-TASK-004 missing aggregate returns a deterministic safe error and rolls back", () => {
+test("F15-TASK-004 missing aggregate returns a deterministic safe error and rolls back", async () => {
   const execution = context("not-found");
   const { unitOfWork, modify } = application();
-  const result = modify.execute(transitionCommand(execution), execution);
+  const result = await modify.execute(transitionCommand(execution), execution);
 
   assert.deepEqual(result, {
     ok: false,
     error: { code: "PUBLICATION_NOT_FOUND", category: "NOT_FOUND", message: "Publication was not found." },
   });
-  assert.equal(unitOfWork.repository.find(identity), undefined);
-  assert.deepEqual(unitOfWork.audit.list(identity).map((record) => record.failureReason), ["PUBLICATION_NOT_FOUND"]);
-  assert.equal(unitOfWork.audit.list(identity)[0]?.actorId, execution.sessionId);
+  assert.equal(await unitOfWork.repository.find(identity), undefined);
+  assert.deepEqual((await unitOfWork.audit.list(identity)).map((record) => record.failureReason), ["PUBLICATION_NOT_FOUND"]);
+  assert.equal((await unitOfWork.audit.list(identity))[0]?.actorId, execution.sessionId);
 });
 
-test("F15-TASK-005 body actor mismatch is ignored in favor of the resolved Session Actor", () => {
+test("F15-TASK-005 body actor mismatch is ignored in favor of the resolved Session Actor", async () => {
   const commandContext = context("context-command");
   const executionContext = { ...commandContext, actorId: "actor-forged" };
   const { unitOfWork, service } = application();
 
-  const result = service.execute(createCommand(commandContext), executionContext);
+  const result = await service.execute(createCommand(commandContext), executionContext);
 
   assert.equal(result.ok, true);
-  assert.equal(unitOfWork.repository.find(identity)?.transitionHistory[0]?.actorId, commandContext.sessionId);
-  assert.notEqual(unitOfWork.repository.find(identity)?.transitionHistory[0]?.actorId, executionContext.actorId);
+  assert.equal((await unitOfWork.repository.find(identity))?.transitionHistory[0]?.actorId, commandContext.sessionId);
+  assert.notEqual((await unitOfWork.repository.find(identity))?.transitionHistory[0]?.actorId, executionContext.actorId);
 });
 
-test("F15-TASK-005 authentication failure stops before transaction, Domain, persistence, success audit, and idempotency", () => {
+test("F15-TASK-005 authentication failure stops before transaction, Domain, persistence, success audit, and idempotency", async () => {
   const execution = context("missing-resolver");
   const backing = new InMemoryPublicationUnitOfWork();
   let beginCount = 0;
@@ -182,7 +182,8 @@ test("F15-TASK-005 authentication failure stops before transaction, Domain, pers
     idempotency: backing.idempotency,
     audit: backing.audit,
     eventJournal: backing.eventJournal,
-    begin: (scope) => {
+    begin: async (scope) => {
+      await Promise.resolve();
       beginCount += 1;
       return backing.begin(scope);
     },
@@ -194,8 +195,8 @@ test("F15-TASK-005 authentication failure stops before transaction, Domain, pers
   });
   const { service } = application(unitOfWork, authorization);
 
-  const result = service.execute(createCommand(execution), execution);
-  const missingModifyResult = service.execute(transitionCommand(execution), execution);
+  const result = await service.execute(createCommand(execution), execution);
+  const missingModifyResult = await service.execute(transitionCommand(execution), execution);
 
   assert.deepEqual(result, {
     ok: false,
@@ -206,9 +207,9 @@ test("F15-TASK-005 authentication failure stops before transaction, Domain, pers
     error: { code: "AUTHENTICATION_REQUIRED", category: "DOMAIN_REJECTION", message: "Authentication is required." },
   });
   assert.equal(beginCount, 0);
-  assert.equal(unitOfWork.repository.find(identity), undefined);
-  assert.deepEqual(unitOfWork.audit.list(identity), []);
-  assert.equal(unitOfWork.idempotency.find({
+  assert.equal(await unitOfWork.repository.find(identity), undefined);
+  assert.deepEqual(await unitOfWork.audit.list(identity), []);
+  assert.equal(await unitOfWork.idempotency.find({
     tenantScopeId: identity.tenantScopeId,
     aggregateId: identity.publicationId,
     commandKey: execution.idempotencyKey,
@@ -219,33 +220,33 @@ test("F15-TASK-005 authentication failure stops before transaction, Domain, pers
   ]);
 });
 
-test("F15-TASK-005 post-authorization failure audit uses the resolved Session Actor", () => {
+test("F15-TASK-005 post-authorization failure audit uses the resolved Session Actor", async () => {
   const created = context("authoritative-audit-create");
   const rejected = context("authoritative-audit-reject");
   const forgedContext = { ...rejected, actorId: "actor-forged" };
   const { unitOfWork, service } = application();
-  assert.equal(service.execute(createCommand(created), created).ok, true);
-  assert.equal(service.execute({
+  assert.equal((await service.execute(createCommand(created), created)).ok, true);
+  assert.equal((await service.execute({
     kind: "MODIFY_PUBLICATION",
     identity,
     input: { type: "TERMINATE", expectedAggregateVersion: 1, command: domainContext(rejected) },
-  }, rejected).ok, true);
+  }, rejected)).ok, true);
 
-  const result = service.execute(transitionCommand(rejected, 2), forgedContext);
+  const result = await service.execute(transitionCommand(rejected, 2), forgedContext);
 
   assert.equal(result.ok, false);
-  const failure = unitOfWork.audit.list(identity).find((record) => record.result === "FAILED");
+  const failure = (await unitOfWork.audit.list(identity)).find((record) => record.result === "FAILED");
   assert.equal(failure?.actorId, rejected.sessionId);
   assert.notEqual(failure?.actorId, forgedContext.actorId);
 });
 
-test("F15-TASK-004 domain rejection is mapped without changing persisted state", () => {
+test("F15-TASK-004 domain rejection is mapped without changing persisted state", async () => {
   const created = context("create-domain-rejection");
   const rejected = context("domain-rejection");
   const { unitOfWork, service } = application();
-  assert.equal(service.execute(createCommand(created), created).ok, true);
+  assert.equal((await service.execute(createCommand(created), created)).ok, true);
 
-  const result = service.execute({
+  const result = await service.execute({
     kind: "MODIFY_PUBLICATION",
     identity,
     input: { type: "TERMINATE", expectedAggregateVersion: 1, command: domainContext(rejected) },
@@ -253,62 +254,62 @@ test("F15-TASK-004 domain rejection is mapped without changing persisted state",
 
   assert.equal(result.ok, true);
   const invalid = context("invalid-transition");
-  const invalidResult = service.execute(transitionCommand(invalid, 2), invalid);
+  const invalidResult = await service.execute(transitionCommand(invalid, 2), invalid);
   assert.deepEqual(invalidResult, {
     ok: false,
     error: { code: "PUBLICATION_TRANSITION_INVALID", category: "DOMAIN_REJECTION", message: "Publication command was rejected." },
   });
-  assert.equal(unitOfWork.repository.find(identity)?.lifecycleState, "TERMINATED");
-  assert.deepEqual(unitOfWork.repository.readHistory(identity).map((snapshot) => snapshot.aggregateVersion), [1, 2]);
+  assert.equal((await unitOfWork.repository.find(identity))?.lifecycleState, "TERMINATED");
+  assert.deepEqual((await unitOfWork.repository.readHistory(identity)).map((snapshot) => snapshot.aggregateVersion), [1, 2]);
 });
 
-test("F15-TASK-004 version conflict is mapped separately and rolls back", () => {
+test("F15-TASK-004 version conflict is mapped separately and rolls back", async () => {
   const created = context("create-version");
   const stale = context("stale-version");
   const { unitOfWork, service } = application();
-  assert.equal(service.execute(createCommand(created), created).ok, true);
+  assert.equal((await service.execute(createCommand(created), created)).ok, true);
 
-  const result = service.execute(transitionCommand(stale, 99), stale);
+  const result = await service.execute(transitionCommand(stale, 99), stale);
 
   assert.deepEqual(result, {
     ok: false,
     error: { code: "PUBLICATION_VERSION_CONFLICT", category: "CONFLICT", message: "Publication version conflict." },
   });
-  assert.equal(unitOfWork.repository.find(identity)?.aggregateVersion, 1);
+  assert.equal((await unitOfWork.repository.find(identity))?.aggregateVersion, 1);
 });
 
-test("F15-TASK-004 identical idempotency replay returns the original result without another transition or audit", () => {
+test("F15-TASK-004 identical idempotency replay returns the original result without another transition or audit", async () => {
   const execution = context("replay");
   const { unitOfWork, service } = application();
-  const first = service.execute(createCommand(execution), execution);
-  const second = service.execute(createCommand(execution), execution);
+  const first = await service.execute(createCommand(execution), execution);
+  const second = await service.execute(createCommand(execution), execution);
 
   assert.equal(first.ok, true);
   assert.deepEqual(second, { ...first, replayed: true });
-  assert.equal(unitOfWork.repository.readHistory(identity).length, 1);
-  assert.equal(unitOfWork.audit.list(identity).length, 1);
+  assert.equal((await unitOfWork.repository.readHistory(identity)).length, 1);
+  assert.equal((await unitOfWork.audit.list(identity)).length, 1);
 });
 
-test("F15-TASK-004 reused idempotency key with a different fingerprint fails before state change", () => {
+test("F15-TASK-004 reused idempotency key with a different fingerprint fails before state change", async () => {
   const firstContext = context("conflict", "sha256:first");
   const conflictContext = { ...firstContext, intentFingerprint: "sha256:second", correlationId: "correlation-conflict-second" };
   const { unitOfWork, service } = application();
-  assert.equal(service.execute(createCommand(firstContext), firstContext).ok, true);
+  assert.equal((await service.execute(createCommand(firstContext), firstContext)).ok, true);
 
-  const result = service.execute(createCommand(conflictContext), conflictContext);
+  const result = await service.execute(createCommand(conflictContext), conflictContext);
 
   assert.deepEqual(result, {
     ok: false,
     error: { code: "IDEMPOTENCY_CONFLICT", category: "CONFLICT", message: "Idempotency key conflicts with an earlier command." },
   });
-  assert.equal(unitOfWork.repository.readHistory(identity).length, 1);
-  assert.deepEqual(unitOfWork.audit.list(identity).map((record) => ({ result: record.result, failureReason: record.failureReason })), [
+  assert.equal((await unitOfWork.repository.readHistory(identity)).length, 1);
+  assert.deepEqual((await unitOfWork.audit.list(identity)).map((record) => ({ result: record.result, failureReason: record.failureReason })), [
     { result: "COMPLETED", failureReason: undefined },
     { result: "FAILED", failureReason: "IDEMPOTENCY_CONFLICT" },
   ]);
 });
 
-test("F15-TASK-004 failure-path repository lookup cannot replace the original safe error", () => {
+test("F15-TASK-004 failure-path repository lookup cannot replace the original safe error", async () => {
   const backing = new InMemoryPublicationUnitOfWork();
   const failingRepository: PublicationRepository = {
     save: backing.repository.save.bind(backing.repository),
@@ -332,73 +333,75 @@ test("F15-TASK-004 failure-path repository lookup cannot replace the original sa
   const execution = context("safe-original-error");
   const { service } = application(failingUnitOfWork);
 
-  const result = service.execute(createCommand(execution), execution);
+  const result = await service.execute(createCommand(execution), execution);
 
   assert.deepEqual(result, {
     ok: false,
     error: { code: "IDEMPOTENCY_CONFLICT", category: "CONFLICT", message: "Idempotency key conflicts with an earlier command." },
   });
-  assert.deepEqual(backing.audit.list(identity).map((record) => record.failureReason), ["IDEMPOTENCY_CONFLICT"]);
+  assert.deepEqual((await backing.audit.list(identity)).map((record) => record.failureReason), ["IDEMPOTENCY_CONFLICT"]);
 });
 
-test("F15-TASK-004 commit failure rolls back state and appends only failure audit evidence", () => {
+test("F15-TASK-004 commit failure rolls back state and appends only failure audit evidence", async () => {
   const backing = new InMemoryPublicationUnitOfWork();
   const failingUnitOfWork: TestUnitOfWork = {
     repository: backing.repository,
     idempotency: backing.idempotency,
     audit: backing.audit,
     eventJournal: backing.eventJournal,
-    begin(target): PublicationTransaction {
-      const transaction = backing.begin(target);
+    async begin(target): Promise<PublicationTransaction> {
+      const transaction = await backing.begin(target);
       return {
         ...transaction,
-        commit(): void { throw new Error("simulated commit failure"); },
+        async commit(): Promise<void> {
+          await Promise.resolve(); throw new Error("simulated commit failure"); },
       };
     },
   };
   const execution = context("commit-failure");
   const { service } = application(failingUnitOfWork);
 
-  const result = service.execute(createCommand(execution), execution);
+  const result = await service.execute(createCommand(execution), execution);
 
   assert.deepEqual(result, {
     ok: false,
     error: { code: "APPLICATION_COMMIT_FAILED", category: "INFRASTRUCTURE", message: "Publication command could not be committed." },
   });
-  assert.equal(backing.repository.find(identity), undefined);
-  assert.deepEqual(backing.audit.list(identity).map((record) => record.result), ["FAILED"]);
-  assert.equal(backing.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: execution.idempotencyKey }), undefined);
+  assert.equal(await backing.repository.find(identity), undefined);
+  assert.deepEqual((await backing.audit.list(identity)).map((record) => record.result), ["FAILED"]);
+  assert.equal(await backing.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: execution.idempotencyKey }), undefined);
 });
 
-test("F15-TASK-004 commit-time optimistic conflict remains a deterministic version conflict", () => {
+test("F15-TASK-004 commit-time optimistic conflict remains a deterministic version conflict", async () => {
   const backing = new InMemoryPublicationUnitOfWork();
   const conflictingUnitOfWork: TestUnitOfWork = {
     repository: backing.repository,
     idempotency: backing.idempotency,
     audit: backing.audit,
     eventJournal: backing.eventJournal,
-    begin(target): PublicationTransaction {
-      const transaction = backing.begin(target);
+    async begin(target): Promise<PublicationTransaction> {
+      const transaction = await backing.begin(target);
       return {
         ...transaction,
-        commit(): void { throw persistenceError("PUBLICATION_VERSION_CONFLICT", "simulated commit conflict"); },
+        async commit(): Promise<void> {
+          await Promise.resolve(); throw persistenceError("PUBLICATION_VERSION_CONFLICT", "simulated commit conflict"); },
       };
     },
   };
   const execution = context("commit-conflict");
   const { service } = application(conflictingUnitOfWork);
 
-  const result = service.execute(createCommand(execution), execution);
+  const result = await service.execute(createCommand(execution), execution);
 
   assert.deepEqual(result, {
     ok: false,
     error: { code: "PUBLICATION_VERSION_CONFLICT", category: "CONFLICT", message: "Publication version conflict." },
   });
-  assert.equal(backing.repository.find(identity), undefined);
-  assert.deepEqual(backing.audit.list(identity).map((record) => record.failureReason), ["PUBLICATION_VERSION_CONFLICT"]);
+  assert.equal(await backing.repository.find(identity), undefined);
+  assert.deepEqual((await backing.audit.list(identity)).map((record) => record.failureReason), ["PUBLICATION_VERSION_CONFLICT"]);
 });
 
-test("F15-TASK-004 committed audit evidence recovers replay when post-commit idempotency persistence fails", () => {
+test("F15-TASK-004 committed audit evidence recovers replay when post-commit idempotency persistence fails", async () => {
   const backing = new InMemoryPublicationUnitOfWork();
   const unavailableIdempotency: PublicationIdempotencyStore = {
     find: backing.idempotency.find.bind(backing.idempotency),
@@ -414,16 +417,16 @@ test("F15-TASK-004 committed audit evidence recovers replay when post-commit ide
   const execution = context("post-commit-idempotency");
   const { service } = application(recoveryUnitOfWork);
 
-  const first = service.execute(createCommand(execution), execution);
-  const replay = service.execute(createCommand(execution), execution);
+  const first = await service.execute(createCommand(execution), execution);
+  const replay = await service.execute(createCommand(execution), execution);
 
   assert.equal(first.ok, true);
   assert.deepEqual(replay, { ...first, replayed: true });
-  assert.equal(backing.repository.readHistory(identity).length, 1);
-  assert.deepEqual(backing.audit.list(identity).map((record) => record.result), ["COMPLETED"]);
+  assert.equal((await backing.repository.readHistory(identity)).length, 1);
+  assert.deepEqual((await backing.audit.list(identity)).map((record) => record.result), ["COMPLETED"]);
 });
 
-test("F15-TASK-004 committed audit evidence wins a post-commit idempotency race deterministically", () => {
+test("F15-TASK-004 committed audit evidence wins a post-commit idempotency race deterministically", async () => {
   const backing = new InMemoryPublicationUnitOfWork();
   const racingIdempotency: PublicationIdempotencyStore = {
     find: backing.idempotency.find.bind(backing.idempotency),
@@ -442,18 +445,18 @@ test("F15-TASK-004 committed audit evidence wins a post-commit idempotency race 
   const execution = context("post-commit-race", "sha256:committed-command");
   const { service } = application(racingUnitOfWork);
 
-  const first = service.execute(createCommand(execution), execution);
-  const replay = service.execute(createCommand(execution), execution);
-  const conflicting = service.execute(createCommand({ ...execution, intentFingerprint: "sha256:racing-command" }), { ...execution, intentFingerprint: "sha256:racing-command" });
+  const first = await service.execute(createCommand(execution), execution);
+  const replay = await service.execute(createCommand(execution), execution);
+  const conflicting = await service.execute(createCommand({ ...execution, intentFingerprint: "sha256:racing-command" }), { ...execution, intentFingerprint: "sha256:racing-command" });
 
   assert.equal(first.ok, true);
   assert.deepEqual(replay, { ...first, replayed: true });
   assert.equal(conflicting.ok, false);
   assert.equal(!conflicting.ok && conflicting.error.code, "IDEMPOTENCY_CONFLICT");
-  assert.equal(backing.repository.readHistory(identity).length, 1);
+  assert.equal((await backing.repository.readHistory(identity)).length, 1);
 });
 
-test("F15-TASK-004 audit replay rejects an idempotency key reused by a different command", () => {
+test("F15-TASK-004 audit replay rejects an idempotency key reused by a different command", async () => {
   const backing = new InMemoryPublicationUnitOfWork();
   const unavailableIdempotency: PublicationIdempotencyStore = {
     find: backing.idempotency.find.bind(backing.idempotency),
@@ -468,28 +471,28 @@ test("F15-TASK-004 audit replay rejects an idempotency key reused by a different
   };
   const execution = context("cross-command-key");
   const { service } = application(recoveryUnitOfWork);
-  assert.equal(service.execute(createCommand(execution), execution).ok, true);
+  assert.equal((await service.execute(createCommand(execution), execution)).ok, true);
 
-  const result = service.execute(transitionCommand(execution), execution);
+  const result = await service.execute(transitionCommand(execution), execution);
 
   assert.equal(result.ok, false);
   assert.equal(!result.ok && result.error.code, "IDEMPOTENCY_CONFLICT");
-  assert.equal(backing.repository.readHistory(identity).length, 1);
+  assert.equal((await backing.repository.readHistory(identity)).length, 1);
 });
 
-test("F15-TASK-004 rollback removes staged repository and success audit changes after persistence conflict", () => {
+test("F15-TASK-004 rollback removes staged repository and success audit changes after persistence conflict", async () => {
   const backing = new InMemoryPublicationUnitOfWork();
   const created = context("create-rollback");
   const { service } = application(backing);
-  assert.equal(service.execute(createCommand(created), created).ok, true);
-  const original = backing.repository.find(identity);
+  assert.equal((await service.execute(createCommand(created), created)).ok, true);
+  const original = await backing.repository.find(identity);
   const conflictUow: TestUnitOfWork = {
     repository: backing.repository,
     idempotency: backing.idempotency,
     audit: backing.audit,
     eventJournal: backing.eventJournal,
-    begin(target): PublicationTransaction {
-      const transaction = backing.begin(target);
+    async begin(target): Promise<PublicationTransaction> {
+      const transaction = await backing.begin(target);
       return {
         ...transaction,
         repository: {
@@ -499,7 +502,8 @@ test("F15-TASK-004 rollback removes staged repository and success audit changes 
           exists: transaction.repository.exists.bind(transaction.repository),
           checkVersion: transaction.repository.checkVersion.bind(transaction.repository),
           readHistory: transaction.repository.readHistory.bind(transaction.repository),
-          update(): void { throw persistenceError("PUBLICATION_VERSION_CONFLICT", "simulated persistence conflict"); },
+          async update(): Promise<void> {
+            await Promise.resolve(); throw persistenceError("PUBLICATION_VERSION_CONFLICT", "simulated persistence conflict"); },
         },
       };
     },
@@ -507,43 +511,43 @@ test("F15-TASK-004 rollback removes staged repository and success audit changes 
   const transition = context("rollback-transition");
   const failedApplication = application(conflictUow);
 
-  const result = failedApplication.service.execute(transitionCommand(transition), transition);
+  const result = await failedApplication.service.execute(transitionCommand(transition), transition);
 
   assert.equal(result.ok, false);
-  assert.deepEqual(backing.repository.find(identity), original);
-  assert.equal(backing.repository.readHistory(identity).length, 1);
-  assert.deepEqual(backing.audit.list(identity).map((record) => record.result), ["COMPLETED", "FAILED"]);
+  assert.deepEqual(await backing.repository.find(identity), original);
+  assert.equal((await backing.repository.readHistory(identity)).length, 1);
+  assert.deepEqual((await backing.audit.list(identity)).map((record) => record.result), ["COMPLETED", "FAILED"]);
 });
 
-test("F15-TASK-004 clock controls every application audit timestamp deterministically", () => {
+test("F15-TASK-004 clock controls every application audit timestamp deterministically", async () => {
   const created = context("clock-create");
   const transitioned = context("clock-transition");
   const { unitOfWork, service } = application();
-  assert.equal(service.execute(createCommand(created), created).ok, true);
-  assert.equal(service.execute(transitionCommand(transitioned), transitioned).ok, true);
+  assert.equal((await service.execute(createCommand(created), created)).ok, true);
+  assert.equal((await service.execute(transitionCommand(transitioned), transitioned)).ok, true);
 
-  assert.deepEqual(unitOfWork.audit.list(identity).map((record) => record.timestamp), [applicationTime, applicationTime]);
+  assert.deepEqual((await unitOfWork.audit.list(identity)).map((record) => record.timestamp), [applicationTime, applicationTime]);
 });
 
-test("F15-TASK-004 distinct commands sharing a correlation ID retain distinct audit identities", () => {
+test("F15-TASK-004 distinct commands sharing a correlation ID retain distinct audit identities", async () => {
   const sharedCorrelationId = "correlation-shared-workflow";
   const created = { ...context("shared-create"), correlationId: sharedCorrelationId };
   const transitioned = { ...context("shared-transition"), correlationId: sharedCorrelationId };
   const { unitOfWork, service } = application();
 
-  assert.equal(service.execute(createCommand(created), created).ok, true);
-  assert.equal(service.execute(transitionCommand(transitioned), transitioned).ok, true);
-  assert.equal(unitOfWork.audit.list(identity).length, 2);
+  assert.equal((await service.execute(createCommand(created), created)).ok, true);
+  assert.equal((await service.execute(transitionCommand(transitioned), transitioned)).ok, true);
+  assert.equal((await unitOfWork.audit.list(identity)).length, 2);
 });
 
-test("F15-TASK-004 dispatcher preserves independent create and modify handler boundaries", () => {
+test("F15-TASK-004 dispatcher preserves independent create and modify handler boundaries", async () => {
   const { unitOfWork, service } = application();
   const createExecution = context("independent-create");
   const modifyExecution = context("independent-modify");
 
-  assert.equal(service.execute(createCommand(createExecution), createExecution).ok, true);
-  assert.equal(service.execute(transitionCommand(modifyExecution), modifyExecution).ok, true);
+  assert.equal((await service.execute(createCommand(createExecution), createExecution)).ok, true);
+  assert.equal((await service.execute(transitionCommand(modifyExecution), modifyExecution)).ok, true);
 
-  assert.equal(unitOfWork.repository.find(identity)?.lifecycleState, "EXECUTION_PENDING");
-  assert.deepEqual(unitOfWork.repository.readHistory(identity).map((snapshot) => snapshot.aggregateVersion), [1, 2]);
+  assert.equal((await unitOfWork.repository.find(identity))?.lifecycleState, "EXECUTION_PENDING");
+  assert.deepEqual((await unitOfWork.repository.readHistory(identity)).map((snapshot) => snapshot.aggregateVersion), [1, 2]);
 });

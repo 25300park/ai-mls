@@ -1,6 +1,6 @@
 export interface PublicationCanonicalApiExecutionPort {
   readonly operations: readonly string[];
-  execute(request: unknown): unknown;
+  execute(request: unknown): Promise<unknown>;
 }
 
 export function canonicalApiOperations(port: PublicationCanonicalApiExecutionPort | undefined): readonly string[] {

@@ -15,7 +15,7 @@ import type { PublicationRequestMapper } from "./publication-request-mapper.js";
 import type { PublicationInterfaceValidator } from "./publication-interface-validation.js";
 
 export interface PublicationInputPort {
-  execute(request: PublicationOuterRequest): PublicationInterfaceResponse;
+  execute(request: PublicationOuterRequest): Promise<PublicationInterfaceResponse>;
 }
 
 export class PublicationInterfaceService implements PublicationInputPort {
@@ -28,7 +28,7 @@ export class PublicationInterfaceService implements PublicationInputPort {
     private readonly lifecycle?: PublicationLifecyclePort,
   ) {}
 
-  public execute(request: PublicationOuterRequest): PublicationInterfaceResponse {
+  public async execute(request: PublicationOuterRequest): Promise<PublicationInterfaceResponse> {
     if (!isJsonInterfaceValue(request) || request === null || Array.isArray(request)) {
       return this.presenter.presentInterfaceFailure("INTERFACE_VALIDATION_FAILED");
     }
@@ -42,27 +42,27 @@ export class PublicationInterfaceService implements PublicationInputPort {
     if (!validation.valid) return this.presenter.presentInterfaceFailure(validation.failureCode);
     if (request.operation === "COORDINATE_CREATE_PUBLICATION" || request.operation === "COORDINATE_PUBLISH_PUBLICATION"
       || request.operation === "COORDINATE_PUBLICATION_LIFECYCLE") {
-      return this.executeCoordination(request);
+      return await this.executeCoordination(request);
     }
-    return this.executeApplication(request);
+    return await this.executeApplication(request);
   }
 
-  private executeApplication(request: PublicationInterfaceRequest): PublicationInterfaceResponse {
+  private async executeApplication(request: PublicationInterfaceRequest): Promise<PublicationInterfaceResponse> {
     try {
       const mapped = this.mapper.map(request);
-      return this.presenter.present(this.application.execute(mapped.command, mapped.context));
+      return this.presenter.present(await this.application.execute(mapped.command, mapped.context));
     } catch {
       return this.presenter.presentInterfaceFailure("INTERFACE_EXECUTION_FAILED");
     }
   }
 
-  private executeCoordination(
+  private async executeCoordination(
     request: Exclude<PublicationOuterRequest, PublicationInterfaceRequest | CoordinatePublicationReconciliationInterfaceRequest>,
-  ): PublicationInterfaceResponse {
+  ): Promise<PublicationInterfaceResponse> {
     if (request.operation === "COORDINATE_PUBLICATION_LIFECYCLE") {
       if (this.lifecycle === undefined) return this.presenter.presentInterfaceFailure("INTERFACE_EXECUTION_FAILED");
       try {
-        return this.presenter.present(this.lifecycle.execute({
+        return this.presenter.present(await this.lifecycle.execute({
           action: request.action,
           context: request.context,
           identity: request.identity,
@@ -75,8 +75,8 @@ export class PublicationInterfaceService implements PublicationInputPort {
     if (this.coordination === undefined) return this.presenter.presentInterfaceFailure("INTERFACE_EXECUTION_FAILED");
     try {
       const result = request.operation === "COORDINATE_CREATE_PUBLICATION"
-        ? this.coordination.create({ context: request.context, command: request.command })
-        : this.coordination.publish({
+        ? await this.coordination.create({ context: request.context, command: request.command })
+        : await this.coordination.publish({
           context: request.context,
           identity: request.identity,
           command: request.command,

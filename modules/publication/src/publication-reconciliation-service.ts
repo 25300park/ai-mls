@@ -98,14 +98,14 @@ interface AuthorizedRecovery {
 export class PublicationReconciliationService implements PublicationReconciliationPort {
   public constructor(private readonly dependencies: PublicationReconciliationDependencies) {}
 
-  public reconcile(request: PublicationReconciliationRequest): PublicationReconciliationResult {
+  public reconcile(request: PublicationReconciliationRequest): Promise<PublicationReconciliationResult> {
     return this.coordinate(request);
   }
 
-  public recover(request: PublicationReconciliationRequest): PublicationReconciliationResult {
+  public async recover(request: PublicationReconciliationRequest): Promise<PublicationReconciliationResult> {
     try {
       validateRecoveryExecutionRequest(request);
-      const authorized = this.authorizeAndLoad(request, true, "BEGIN_INITIAL_EXECUTION");
+      const authorized = await this.authorizeAndLoad(request, true, "BEGIN_INITIAL_EXECUTION");
       const recovery = this.dependencies.recoveryAuthorizationReader?.findAuthorizedPublicationRecovery({
         tenantId: authorized.tenantId,
         scopeRef: authorized.scopeRef,
@@ -124,7 +124,7 @@ export class PublicationReconciliationService implements PublicationReconciliati
         const durableReplay = recoveryStoreCall(() => recoveryExecutionStore.findRecoveryExecution({ recoveryId, fingerprint: executionFingerprint }));
         if (durableReplay?.resultJson !== undefined) return replayStoredPublicationResult(durableReplay.resultJson);
       }
-      const priorExecution = recovery.recovery === undefined ? undefined : this.dependencies.idempotency.find({
+      const priorExecution = recovery.recovery === undefined ? undefined : await this.dependencies.idempotency.find({
         tenantScopeId: request.identity.tenantScopeId,
         aggregateId: request.identity.publicationId,
         commandKey: `${recovery.recovery.recoveryId}:publish`,
@@ -137,7 +137,7 @@ export class PublicationReconciliationService implements PublicationReconciliati
       if (coordination === undefined) throw new PublicationApplicationError("RECOVERY_EXECUTION_UNAVAILABLE", "INFRASTRUCTURE", "Publication recovery execution is unavailable.");
       if (this.dependencies.recoveryCaseWriter === undefined) throw new PublicationApplicationError("RECOVERY_EXECUTION_UNAVAILABLE", "INFRASTRUCTURE", "Publication recovery case linkage is unavailable.");
       recoveryStoreCall(() => recoveryExecutionStore.claimRecoveryExecution({ recoveryId: binding.recoveryId, fingerprint: executionFingerprint }));
-      const result = coordination.recover({
+      const result = await coordination.recover({
         identity: request.identity,
         context: immutableDomain({ ...request.context, idempotencyKey: binding.recoveryId, intentFingerprint: executionFingerprint }),
         command: request.input.command,
@@ -146,7 +146,7 @@ export class PublicationReconciliationService implements PublicationReconciliati
       });
       if (!result.ok) {
         if (result.error.code === "CONNECTOR_OUTCOME_UNKNOWN") {
-          const snapshot = this.dependencies.repository.find(request.identity);
+          const snapshot = await this.dependencies.repository.find(request.identity);
           const reconciliation = snapshot?.reconciliationCases.find(({ attemptId, status }) => attemptId === binding.attemptId && status === "OPEN");
           const attempt = snapshot?.attempts.find(({ id }) => id === binding.attemptId);
           if (reconciliation === undefined || attempt?.outcome !== "UNKNOWN") {
@@ -178,12 +178,12 @@ export class PublicationReconciliationService implements PublicationReconciliati
     }
   }
 
-  public execute(request: PublicationReconciliationRequest): PublicationReconciliationResult {
+  public execute(request: PublicationReconciliationRequest): Promise<PublicationReconciliationResult> {
     return this.coordinate(request);
   }
 
-  private coordinate(request: PublicationReconciliationRequest): PublicationReconciliationResult {
-    const result = this.coordinateCanonical(request);
+  private async coordinate(request: PublicationReconciliationRequest): Promise<PublicationReconciliationResult> {
+    const result = await this.coordinateCanonical(request);
     safelyObserve(this.dependencies.operations, {
       component: "RECONCILIATION",
       result: result.ok ? "COMPLETED" : "FAILED",
@@ -195,28 +195,28 @@ export class PublicationReconciliationService implements PublicationReconciliati
     return result;
   }
 
-  private coordinateCanonical(request: PublicationReconciliationRequest): PublicationReconciliationResult {
+  private async coordinateCanonical(request: PublicationReconciliationRequest): Promise<PublicationReconciliationResult> {
     try {
       validateRequest(request);
-      const replayCandidate = findRecoveryRecord(this.dependencies, request.identity, request.context);
-      const authorized = this.authorizeAndLoad(request, replayCandidate !== undefined);
-      const replay = replayResult(this.dependencies, request, authorized.snapshot, replayCandidate);
+      const replayCandidate = await findRecoveryRecord(this.dependencies, request.identity, request.context);
+      const authorized = await this.authorizeAndLoad(request, replayCandidate !== undefined);
+      const replay = await replayResult(this.dependencies, request, authorized.snapshot, replayCandidate);
       if (replay !== undefined) return replay;
 
       const reconciliation = authorized.snapshot.reconciliationCases.find(({ id }) => id === request.input.caseId);
       if (reconciliation === undefined) throw invalidRecoveryRequest();
       if (reconciliation.status === "RESOLVED") {
-        return this.recordDecision(request, authorized, "NO_ACTION_REQUIRED");
+        return await this.recordDecision(request, authorized, "NO_ACTION_REQUIRED");
       }
 
       const decision = requestedDecision(request.input.category, request.input.resolution);
       if (decision === "MANUAL_REVIEW_REQUIRED") {
-        return this.recordDecision(request, authorized, decision);
+        return await this.recordDecision(request, authorized, decision);
       }
 
       const resolution = request.input.resolution;
       if (resolution === undefined) throw invalidRecoveryRequest();
-      const applicationResult = this.dependencies.application.executeAuthorized({
+      const applicationResult = await this.dependencies.application.executeAuthorized({
         kind: "MODIFY_PUBLICATION",
         identity: request.identity,
         input: {
@@ -256,10 +256,10 @@ export class PublicationReconciliationService implements PublicationReconciliati
     }
   }
 
-  private authorizeAndLoad(request: PublicationReconciliationRequest, replayCandidate: boolean, commandType: PublicationAuthorizationCommandType = "RESOLVE_RECONCILIATION"): AuthorizedRecovery {
-    let snapshot = replayCandidate ? this.dependencies.repository.find(request.identity) : undefined;
+  private async authorizeAndLoad(request: PublicationReconciliationRequest, replayCandidate: boolean, commandType: PublicationAuthorizationCommandType = "RESOLVE_RECONCILIATION"): Promise<AuthorizedRecovery> {
+    let snapshot = replayCandidate ? await this.dependencies.repository.find(request.identity) : undefined;
     const expectedAggregateVersion = snapshot?.aggregateVersion ?? request.input.expectedAggregateVersion;
-    const authorization = this.dependencies.authorization.authorize({
+    const authorization = await this.dependencies.authorization.authorizeAsync({
       ...(request.context.sessionId === undefined ? {} : { sessionId: request.context.sessionId }),
       commandType,
       actorIdClaim: request.context.actorId,
@@ -270,8 +270,8 @@ export class PublicationReconciliationService implements PublicationReconciliati
       expectedAggregateVersion,
       reason: request.input.command.reason,
       correlationId: request.context.correlationId,
-      resolveResource: () => {
-        snapshot ??= this.dependencies.repository.find(request.identity);
+      resolveResource: async () => {
+        snapshot ??= await this.dependencies.repository.find(request.identity);
         if (snapshot === undefined) throw persistenceError("PUBLICATION_NOT_FOUND", "Publication was not found.");
         return Object.freeze({ binding: snapshot.binding, currentAggregateVersion: snapshot.aggregateVersion });
       },
@@ -287,22 +287,22 @@ export class PublicationReconciliationService implements PublicationReconciliati
     return immutableDomain({ actorId: authorization.actor.principalId, tenantId: request.identity.tenantScopeId, scopeRef: authorization.actor.teamId ?? "", snapshot });
   }
 
-  private recordDecision(
+  private async recordDecision(
     request: PublicationReconciliationRequest,
     authorized: AuthorizedRecovery,
     decision: Extract<PublicationRecoveryDecision, "MANUAL_REVIEW_REQUIRED" | "NO_ACTION_REQUIRED">,
-  ): PublicationReconciliationResult {
-    const transaction = this.dependencies.unitOfWork.begin(request.identity);
+  ): Promise<PublicationReconciliationResult> {
+    const transaction = await this.dependencies.unitOfWork.begin(request.identity);
     const checkedAt = this.dependencies.clock.now();
     try {
-      const current = transaction.repository.find(request.identity);
+      const current = await transaction.repository.find(request.identity);
       if (current === undefined) throw persistenceError("PUBLICATION_NOT_FOUND", "Publication was not found.");
       if (current.aggregateVersion !== authorized.snapshot.aggregateVersion) {
         throw persistenceError("PUBLICATION_VERSION_CONFLICT", "Publication persistence scope changed during recovery coordination.");
       }
-      transaction.audit.append(recoveryAudit(request, authorized.actorId, current.aggregateVersion, decision, checkedAt));
+      await transaction.audit.append(recoveryAudit(request, authorized.actorId, current.aggregateVersion, decision, checkedAt));
       const resultReference = JSON.stringify([request.identity.publicationId, current.aggregateVersion]);
-      transaction.idempotency.record({
+      await transaction.idempotency.record({
         tenantScopeId: request.identity.tenantScopeId,
         aggregateId: request.identity.publicationId,
         commandKey: request.context.idempotencyKey,
@@ -310,7 +310,7 @@ export class PublicationReconciliationService implements PublicationReconciliati
         resultReference,
         recordedAt: checkedAt,
       });
-      transaction.commit();
+      await transaction.commit();
       return immutableDomain({
         ok: true as const,
         publicationId: request.identity.publicationId,
@@ -320,7 +320,7 @@ export class PublicationReconciliationService implements PublicationReconciliati
         replayed: false,
       });
     } catch (error) {
-      try { transaction.rollback(); } catch { /* Commit conflict may already have closed the transaction. */ }
+      try { await transaction.rollback(); } catch { /* Commit conflict may already have closed the transaction. */ }
       throw error;
     }
   }
@@ -554,18 +554,18 @@ function recoveryAuditId(
   ]);
 }
 
-function findRecoveryRecord(
+async function findRecoveryRecord(
   dependencies: Pick<PublicationReconciliationDependencies, "audit" | "idempotency">,
   identity: PublicationIdentity,
   context: PublicationExecutionContext,
-): PublicationAuditRecord | undefined {
-  const audit = dependencies.audit.list(identity).find((record) => {
+): Promise<PublicationAuditRecord | undefined> {
+  const audit = (await dependencies.audit.list(identity)).find((record) => {
     const decoded = decodeAuditIdentity(record.id);
     return decoded?.idempotencyKey === context.idempotencyKey && decoded.outcome === "completed";
   });
   if (audit !== undefined) return audit;
   try {
-    return dependencies.idempotency.find({
+    return await dependencies.idempotency.find({
       tenantScopeId: identity.tenantScopeId,
       aggregateId: identity.publicationId,
       commandKey: context.idempotencyKey,
@@ -584,12 +584,12 @@ function findRecoveryRecord(
   }
 }
 
-function replayResult(
+async function replayResult(
   dependencies: Pick<PublicationReconciliationDependencies, "audit" | "idempotency">,
   request: PublicationReconciliationRequest,
   snapshot: PublicationSnapshot,
   candidate: PublicationAuditRecord | undefined,
-): PublicationReconciliationResult | undefined {
+): Promise<PublicationReconciliationResult | undefined> {
   if (candidate === undefined) return undefined;
   const decoded = candidate.id === "IDEMPOTENCY_RECORD" ? undefined : decodeAuditIdentity(candidate.id);
   if (decoded !== undefined && decoded.command !== "RESOLVE_RECONCILIATION") {
@@ -598,7 +598,7 @@ function replayResult(
   let storedFingerprint = decoded?.fingerprint;
   let aggregateVersion = candidate.version;
   if (storedFingerprint === undefined) {
-    const record = dependencies.idempotency.find({
+    const record = await dependencies.idempotency.find({
       tenantScopeId: request.identity.tenantScopeId,
       aggregateId: request.identity.publicationId,
       commandKey: request.context.idempotencyKey,

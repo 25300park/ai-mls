@@ -12,7 +12,7 @@ import { DeterministicPublicationTransportResponseMapper } from "./publication-t
 import type { PublicationTransportExecutionPort } from "./publication-transport-runtime-adapter.js";
 import { StructuralPublicationTransportValidator } from "./publication-transport-validation.js";
 
-type PublicationTransportOperationHandler = (request: PublicationInterfaceRequest) => PublicationInterfaceResponse;
+type PublicationTransportOperationHandler = (request: PublicationInterfaceRequest) => Promise<PublicationInterfaceResponse>;
 
 export const publicationTransportOperations: readonly PublicationTransportOperation[] = Object.freeze([
   "CREATE_PUBLICATION",
@@ -35,7 +35,7 @@ export class PublicationTransportDispatcher {
     });
   }
 
-  public dispatch(input: unknown): PublicationTransportResponse {
+  public async dispatch(input: unknown): Promise<PublicationTransportResponse> {
     let responseContext: unknown = input;
     try {
       const validation = this.validator.validate(input);
@@ -49,7 +49,7 @@ export class PublicationTransportDispatcher {
         throw new PublicationTransportError("TRANSPORT_OPERATION_NOT_FOUND", "Unknown operation.");
       }
       const interfaceRequest = this.requestMapper.map(request);
-      return this.responseMapper.map(request, handler(interfaceRequest));
+      return this.responseMapper.map(request, await handler(interfaceRequest));
     } catch (error) {
       return this.errorMapper.map(responseContext, error);
     }

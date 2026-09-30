@@ -7,6 +7,7 @@ import test from "node:test";
 import type { PostgreSqlClientPort, PostgreSqlPoolPort, PostgreSqlQueryResult } from "../../../modules/identity/src/index.js";
 import {
   assertR3B1ChildRootSchemasReady,
+  assertR3B1PublicationSchemaReady,
   R3B1_CHILD_ROOT_SCHEMA_CONTRACTS,
 } from "./child-root-postgresql-readiness.js";
 
@@ -157,4 +158,29 @@ test("R3-B1 readiness fails closed on partial or drifted schema evidence", async
   };
   const pool: PostgreSqlPoolPort = { connect: () => Promise.resolve(client), close: () => Promise.resolve() };
   await assert.rejects(() => assertR3B1ChildRootSchemasReady(pool), /R3B1_CHILD_ROOT_SCHEMA_NOT_READY/u);
+});
+
+test("R3-B2 Publication readiness accepts the exact app_publication contract independently", async () => {
+  const contract = R3B1_CHILD_ROOT_SCHEMA_CONTRACTS.find(({ schemaName }) => schemaName === "app_publication");
+  assert.notEqual(contract, undefined);
+  const row = {
+    schema_name: contract!.schemaName, artifact_sha256: contract!.artifactSha256, table_count: contract!.tableCount,
+    schema_comment: contract!.schemaComment, runtime_usage: true, runtime_create: false, public_acl_count: 0,
+    runtime_grant_option_count: 0, columns_hash: contract!.columnsHash, constraints_hash: contract!.constraintsHash,
+    indexes_hash: contract!.indexesHash, runtime_acl_hash: contract!.runtimeAclHash,
+    owner_name: "ai_mls_production_migration_operator", public_schema_acl_count: 0, schema_grant_option_count: 0,
+    function_acl_violation_count: 0, trigger_hash: contract!.triggerHash, function_hash: contract!.functionHash,
+    effective_acl_hash: contract!.effectiveAclHash, table_owner_violation_count: 0, function_owner_violation_count: 0,
+    table_acl_violation_count: 0, unexpected_runtime_membership_count: 0, sequence_count: 0,
+    unexpected_role_membership: false,
+  };
+  let released = 0;
+  const client: PostgreSqlClientPort = {
+    query: <Row extends Record<string, unknown>>() => Promise.resolve(({ rows: [row], rowCount: 1 }) as unknown as PostgreSqlQueryResult<Row>),
+    release: () => { released += 1; },
+  };
+  const pool: PostgreSqlPoolPort = { connect: () => Promise.resolve(client), close: () => Promise.resolve() };
+
+  await assertR3B1PublicationSchemaReady(pool);
+  assert.equal(released, 1);
 });

@@ -14,7 +14,7 @@ export const publicationCompositionServiceNames = Object.freeze([
 export type PublicationCompositionServiceName = typeof publicationCompositionServiceNames[number];
 
 export interface PublicationComposedApplication {
-  execute(request: unknown): PublicationPresentationViewModel;
+  execute(request: unknown): Promise<PublicationPresentationViewModel>;
   isBoundTo(
     runtime: PublicationRuntime,
     transport: InProcessPublicationTransport,

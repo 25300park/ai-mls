@@ -58,7 +58,8 @@ function createRequest() {
   });
 }
 
-test("PHASE13-6 composition root registers one explicit in-memory dependency graph", () => {
+test("PHASE13-6 composition root registers one explicit in-memory dependency graph", async () => {
+  await Promise.resolve();
   const clock = new FixedClock(timestamp);
   const configuration = createPublicationInfrastructureConfiguration({ clock });
   const infrastructure = createPublicationInfrastructure(configuration);
@@ -73,7 +74,8 @@ test("PHASE13-6 composition root registers one explicit in-memory dependency gra
   assert.equal(infrastructure.audit, infrastructure.unitOfWork.audit);
 });
 
-test("PHASE13-6 composition root canonicalizes caller-owned mutable configuration", () => {
+test("PHASE13-6 composition root canonicalizes caller-owned mutable configuration", async () => {
+  await Promise.resolve();
   const wiredClock = new FixedClock(timestamp);
   const replacementClock = new FixedClock("2026-07-27T16:00:00.000Z");
   const mutableInput = { clock: wiredClock };
@@ -86,14 +88,14 @@ test("PHASE13-6 composition root canonicalizes caller-owned mutable configuratio
   assert.equal(Object.isFrozen(infrastructure.configuration), true);
 });
 
-test("PHASE13-6 composed input port executes through repository, unit of work, audit and idempotency adapters", () => {
+test("PHASE13-6 composed input port executes through repository, unit of work, audit and idempotency adapters", async () => {
   const infrastructure = createPublicationInfrastructure(
     createPublicationInfrastructureConfiguration(createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp))),
   );
   const request = createRequest();
 
-  const first = infrastructure.inputPort.execute(request);
-  const replay = infrastructure.inputPort.execute(request);
+  const first = await infrastructure.inputPort.execute(request);
+  const replay = await infrastructure.inputPort.execute(request);
 
   assert.deepEqual(first, {
     operationResult: "SUCCEEDED",
@@ -102,22 +104,22 @@ test("PHASE13-6 composed input port executes through repository, unit of work, a
     replayed: false,
   });
   assert.deepEqual(replay, { ...first, replayed: true });
-  assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "READY");
-  assert.equal(infrastructure.repository.readHistory(identity).length, 1);
-  assert.deepEqual(infrastructure.audit.list(identity).map((entry) => entry.timestamp), [timestamp]);
-  assert.equal(infrastructure.idempotency.find({
+  assert.equal((await infrastructure.repository.find(identity))?.lifecycleState, "READY");
+  assert.equal((await infrastructure.repository.readHistory(identity)).length, 1);
+  assert.deepEqual((await infrastructure.audit.list(identity)).map((entry) => entry.timestamp), [timestamp]);
+  assert.equal((await infrastructure.idempotency.find({
     tenantScopeId: identity.tenantScopeId,
     aggregateId: identity.publicationId,
     commandKey: request.context.idempotencyKey,
-  })?.fingerprint, request.context.intentFingerprint);
+  }))?.fingerprint, request.context.intentFingerprint);
 });
 
-test("PHASE13-6 registered unit of work remains available as the approved logical transaction boundary", () => {
+test("PHASE13-6 registered unit of work remains available as the approved logical transaction boundary", async () => {
   const infrastructure = createPublicationInfrastructure(
     createPublicationInfrastructureConfiguration({ clock: new FixedClock(timestamp) }),
   );
-  const transaction = infrastructure.unitOfWork.begin(identity);
-  transaction.audit.append({
+  const transaction = await infrastructure.unitOfWork.begin(identity);
+  await transaction.audit.append({
     id: "audit-rollback-infrastructure",
     tenantScopeId: identity.tenantScopeId,
     aggregateId: identity.publicationId,
@@ -128,12 +130,13 @@ test("PHASE13-6 registered unit of work remains available as the approved logica
     result: "COMPLETED",
   });
 
-  transaction.rollback();
+  await transaction.rollback();
 
-  assert.deepEqual(infrastructure.audit.list(identity), []);
+  assert.deepEqual(await infrastructure.audit.list(identity), []);
 });
 
-test("PHASE13-6 system clock adapter wraps runtime time and deterministic replacement remains supported", () => {
+test("PHASE13-6 system clock adapter wraps runtime time and deterministic replacement remains supported", async () => {
+  await Promise.resolve();
   const before = Date.now();
   const runtimeTimestamp = new SystemPublicationClock().now();
   const after = Date.now();
@@ -145,7 +148,7 @@ test("PHASE13-6 system clock adapter wraps runtime time and deterministic replac
   assert.equal(createPublicationInfrastructureConfiguration().clock instanceof SystemPublicationClock, true);
 });
 
-test("PHASE13-6 deterministic startup creates isolated in-process state", () => {
+test("PHASE13-6 deterministic startup creates isolated in-process state", async () => {
   const configuration = createPublicationInfrastructureConfiguration(createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)));
   const first = createPublicationInfrastructure(configuration);
   const second = createPublicationInfrastructure(configuration);
@@ -153,11 +156,12 @@ test("PHASE13-6 deterministic startup creates isolated in-process state", () => 
   assert.notEqual(first, second);
   assert.notEqual(first.repository, second.repository);
   assert.deepEqual(Object.keys(first), Object.keys(second));
-  assert.equal(first.inputPort.execute(createRequest()).operationResult, "SUCCEEDED");
-  assert.equal(second.repository.find(identity), undefined);
+  assert.equal((await first.inputPort.execute(createRequest())).operationResult, "SUCCEEDED");
+  assert.equal(await second.repository.find(identity), undefined);
 });
 
-test("F17-E production composition rejects arbitrary connector dispatcher injection before dispatch", () => {
+test("F17-E production composition rejects arbitrary connector dispatcher injection before dispatch", async () => {
+  await Promise.resolve();
   const directory = mkdtempSync(join(tmpdir(), "ai-mls-f17-e-production-"));
   let dispatchCount = 0;
   let unexpectedInfrastructure: ReturnType<typeof createProductionPublicationInfrastructure> | undefined;
@@ -183,14 +187,15 @@ test("F17-E production composition rejects arbitrary connector dispatcher inject
       thrown = error;
     }
   } finally {
-    unexpectedInfrastructure?.unitOfWork.close();
+    await unexpectedInfrastructure?.unitOfWork.close();
     rmSync(directory, { recursive: true, force: true });
   }
   assert.deepEqual(thrown, new TypeError("Production Publication connector configuration is not approved."));
   assert.equal(dispatchCount, 0);
 });
 
-test("F17-E production configuration cannot change dispatcher selection between validation and composition", () => {
+test("F17-E production configuration cannot change dispatcher selection between validation and composition", async () => {
+  await Promise.resolve();
   const directory = mkdtempSync(join(tmpdir(), "ai-mls-f17-e-configuration-"));
   let reads = 0;
   let calls = 0;
@@ -206,12 +211,13 @@ test("F17-E production configuration cannot change dispatcher selection between 
     assert.throws(() => infrastructure!.connectorDispatcher.dispatch({} as never), /connector is unavailable/u);
     assert.equal(calls, 0);
   } finally {
-    infrastructure?.unitOfWork.close();
+    await infrastructure?.unitOfWork.close();
     rmSync(directory, { recursive: true, force: true });
   }
 });
 
-test("PHASE13-6 infrastructure source depends only on approved in-process contracts and adapters", () => {
+test("PHASE13-6 infrastructure source depends only on approved in-process contracts and adapters", async () => {
+  await Promise.resolve();
   const allowedImports = new Set([
     "./publication-application-service.js",
     "./publication-audit-store.js",
@@ -219,6 +225,8 @@ test("PHASE13-6 infrastructure source depends only on approved in-process contra
     "./publication-execution-eligibility.js",
     "./publication-execution-journal.js",
     "./publication-durable-persistence.js",
+    "./publication-postgresql-persistence.js",
+    "../../identity/src/postgresql-pool.js",
     "./publication-clock.js",
     "./publication-command-handlers.js",
     "./publication-idempotency-store.js",

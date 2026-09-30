@@ -25,7 +25,8 @@ import { createPublicationTransportRequestEnvelope } from "./publication-transpo
 
 const timestamp = "2026-07-29T02:00:00.000Z";
 
-test("PHASE13-11 creates an immutable host in CREATED without composing early", () => {
+test("PHASE13-11 creates an immutable host in CREATED without composing early", async () => {
+  await Promise.resolve();
   let compositions = 0;
   const host = new PublicationApplicationHost(
     () => {
@@ -47,7 +48,8 @@ test("PHASE13-11 creates an immutable host in CREATED without composing early", 
   });
 });
 
-test("PHASE13-11 bootstrap composes once and reaches READY deterministically", () => {
+test("PHASE13-11 bootstrap composes once and reaches READY deterministically", async () => {
+  await Promise.resolve();
   let compositions = 0;
   const host = new PublicationApplicationHost(
     () => {
@@ -70,7 +72,8 @@ test("PHASE13-11 bootstrap composes once and reaches READY deterministically", (
   });
 });
 
-test("PHASE13-11 duplicate start is rejected without another composition or state change", () => {
+test("PHASE13-11 duplicate start is rejected without another composition or state change", async () => {
+  await Promise.resolve();
   let compositions = 0;
   const host = new PublicationApplicationHost(
     () => {
@@ -91,7 +94,8 @@ test("PHASE13-11 duplicate start is rejected without another composition or stat
   assert.deepEqual(host.status, ready);
 });
 
-test("PHASE13-11 graceful shutdown stops and disposes Runtime before STOPPED", () => {
+test("PHASE13-11 graceful shutdown stops and disposes Runtime before STOPPED", async () => {
+  await Promise.resolve();
   const composition = composedHostApplication();
   const host = hostFromComposition(composition, new SequenceHostClock([100, 101]));
   host.start();
@@ -103,7 +107,8 @@ test("PHASE13-11 graceful shutdown stops and disposes Runtime before STOPPED", (
   assert.equal(host.diagnostics.shutdownStatus, "COMPLETE");
 });
 
-test("PHASE13-11 repeated shutdown is idempotent and returns the same final snapshot", () => {
+test("PHASE13-11 repeated shutdown is idempotent and returns the same final snapshot", async () => {
+  await Promise.resolve();
   const host = hostFromComposition(composedHostApplication(), new SequenceHostClock([100, 101]));
   host.start();
   const first = host.stop();
@@ -113,7 +118,8 @@ test("PHASE13-11 repeated shutdown is idempotent and returns the same final snap
   assert.deepEqual(second, { state: "STOPPED", sequence: 4 });
 });
 
-test("PHASE13-11 lifecycle controller accepts only the complete canonical transition table", () => {
+test("PHASE13-11 lifecycle controller accepts only the complete canonical transition table", async () => {
+  await Promise.resolve();
   const states = ["CREATED", "INITIALISING", "READY", "STOPPING", "STOPPED", "FAILED"] as const;
   const paths = {
     CREATED: [],
@@ -151,7 +157,8 @@ test("PHASE13-11 lifecycle controller accepts only the complete canonical transi
   }
 });
 
-test("PHASE13-11 diagnostics are deterministic scalar evidence without internal references", () => {
+test("PHASE13-11 diagnostics are deterministic scalar evidence without internal references", async () => {
+  await Promise.resolve();
   const host = hostFromComposition(composedHostApplication(), new SequenceHostClock([200, 207]));
   host.start();
 
@@ -165,7 +172,8 @@ test("PHASE13-11 diagnostics are deterministic scalar evidence without internal 
   }, TypeError);
 });
 
-test("PHASE13-11 lifecycle snapshots cannot be mutated by callers", () => {
+test("PHASE13-11 lifecycle snapshots cannot be mutated by callers", async () => {
+  await Promise.resolve();
   const host = hostFromComposition(composedHostApplication(), new SequenceHostClock([100, 101]));
   const created = host.status;
 
@@ -175,11 +183,11 @@ test("PHASE13-11 lifecycle snapshots cannot be mutated by callers", () => {
   assert.deepEqual(host.status, { state: "CREATED", sequence: 0 });
 });
 
-test("PHASE13-11 execution enters only through the composed application", () => {
+test("PHASE13-11 execution enters only through the composed application", async () => {
   const host = hostFromComposition(composedHostApplication(), new SequenceHostClock([100, 101]));
   host.start();
 
-  const result = host.execute(createRequest("host-execution"));
+  const result = await host.execute(createRequest("host-execution"));
 
   assert.equal(result.presentationResult, "SUCCESS");
   assert.equal(result.metadata.requestId, "host-execution");
@@ -190,7 +198,8 @@ test("PHASE13-11 execution enters only through the composed application", () => 
   ]);
 });
 
-test("PHASE13-11 invalid bootstrap enters FAILED with a safe host error", () => {
+test("PHASE13-11 invalid bootstrap enters FAILED with a safe host error", async () => {
+  await Promise.resolve();
   const host = new PublicationApplicationHost(
     () => {
       throw new Error("unexpected bootstrap secret");
@@ -208,7 +217,8 @@ test("PHASE13-11 invalid bootstrap enters FAILED with a safe host error", () => 
   assert.deepEqual(host.status, { state: "FAILED", sequence: 2 });
 });
 
-test("PHASE13-11 forged Composition facade is rejected before READY", () => {
+test("PHASE13-11 forged Composition facade is rejected before READY", async () => {
+  await Promise.resolve();
   const forged = {
     runtimeStatus: "READY",
     validationStatus: "VALID",
@@ -228,7 +238,8 @@ test("PHASE13-11 forged Composition facade is rejected before READY", () => {
   assert.deepEqual(host.status, { state: "FAILED", sequence: 2 });
 });
 
-test("PHASE13-11 Runtime bootstrap failure propagates as safe FAILED host state", () => {
+test("PHASE13-11 Runtime bootstrap failure propagates as safe FAILED host state", async () => {
+  await Promise.resolve();
   const factory = (() => {
     throw new PublicationCompositionError(
       "COMPOSITION_RUNTIME_UNAVAILABLE",
@@ -246,7 +257,8 @@ test("PHASE13-11 Runtime bootstrap failure propagates as safe FAILED host state"
   assert.deepEqual(host.status, { state: "FAILED", sequence: 2 });
 });
 
-test("PHASE13-11 post-composition startup failure disposes Runtime before FAILED", () => {
+test("PHASE13-11 post-composition startup failure disposes Runtime before FAILED", async () => {
+  await Promise.resolve();
   const composition = composedHostApplication();
   const host = hostFromComposition(composition, new FailingSecondReadHostClock());
 
@@ -261,23 +273,21 @@ test("PHASE13-11 post-composition startup failure disposes Runtime before FAILED
   assert.equal(host.diagnostics.shutdownStatus, "COMPLETE");
 });
 
-test("PHASE13-11 Runtime execution failure is cleaned up and propagated safely", () => {
+test("PHASE13-11 Runtime execution failure is cleaned up and propagated safely", async () => {
   const composition = composedHostApplication();
   const host = hostFromComposition(composition, new SequenceHostClock([100, 101]));
   host.start();
   composition.shutdown();
 
-  assert.throws(
-    () => host.execute(createRequest("host-runtime-failure")),
-    (error: unknown) => error instanceof PublicationHostError
-      && error.code === "HOST_RUNTIME_FAILURE",
-  );
+  await assert.rejects(host.execute(createRequest("host-runtime-failure")), (error: unknown) => error instanceof PublicationHostError
+      && error.code === "HOST_RUNTIME_FAILURE");
   assert.deepEqual(host.status, { state: "FAILED", sequence: 3 });
   assert.equal(composition.runtimeStatus, "DISPOSED");
   assert.equal(host.diagnostics.shutdownStatus, "COMPLETE");
 });
 
-test("PHASE13-11 public factories support CREATED and bootstrapped READY boundaries", () => {
+test("PHASE13-11 public factories support CREATED and bootstrapped READY boundaries", async () => {
+  await Promise.resolve();
   const created = createPublicationApplicationHost({
     clock: new SequenceHostClock([300, 304]),
     compositionOptions: compositionOptions(),
@@ -292,23 +302,21 @@ test("PHASE13-11 public factories support CREATED and bootstrapped READY boundar
   assert.equal(ready.diagnostics.startupDurationMs, 4);
 });
 
-test("PHASE13-11 completes create, start, execute, stop end to end", () => {
+test("PHASE13-11 completes create, start, execute, stop end to end", async () => {
   const host = createPublicationApplicationHost({
     clock: new SequenceHostClock([500, 509]),
     compositionOptions: compositionOptions(),
   });
 
   assert.equal(host.start().state, "READY");
-  assert.equal(host.execute(createRequest("host-e2e")).presentationResult, "SUCCESS");
+  assert.equal((await host.execute(createRequest("host-e2e"))).presentationResult, "SUCCESS");
   assert.equal(host.stop().state, "STOPPED");
-  assert.throws(
-    () => host.execute(createRequest("host-after-stop")),
-    (error: unknown) => error instanceof PublicationHostError
-      && error.code === "HOST_NOT_READY",
-  );
+  await assert.rejects(host.execute(createRequest("host-after-stop")), (error: unknown) => error instanceof PublicationHostError
+      && error.code === "HOST_NOT_READY");
 });
 
-test("PHASE13-11 Host production files preserve Composition-only dependency and forbidden-scope isolation", () => {
+test("PHASE13-11 Host production files preserve Composition-only dependency and forbidden-scope isolation", async () => {
+  await Promise.resolve();
   const sourceDirectory = join(process.cwd(), "modules", "publication", "src");
   const productionFiles = readdirSync(sourceDirectory)
     .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts") && file !== "index.ts");

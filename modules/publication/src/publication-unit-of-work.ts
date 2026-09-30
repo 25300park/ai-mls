@@ -15,12 +15,12 @@ export interface PublicationTransaction {
   readonly audit: PublicationAuditStore;
   readonly eventJournal: PublicationEventJournal;
   readonly execution: PublicationExecutionJournal;
-  commit(): void;
-  rollback(): void;
+  commit(): Promise<void>;
+  rollback(): Promise<void>;
 }
 
 export interface PublicationUnitOfWork {
-  begin(identity: PublicationIdentity): PublicationTransaction;
+  begin(identity: PublicationIdentity): Promise<PublicationTransaction>;
 }
 
 export class InMemoryPublicationUnitOfWork implements PublicationUnitOfWork {
@@ -33,7 +33,8 @@ export class InMemoryPublicationUnitOfWork implements PublicationUnitOfWork {
   public readonly eventJournal = new InMemoryPublicationEventJournal(this.state);
   public readonly execution = new InMemoryPublicationExecutionJournal(this.state);
 
-  public begin(identity: PublicationIdentity): PublicationTransaction {
+  public async begin(identity: PublicationIdentity): Promise<PublicationTransaction> {
+    await Promise.resolve();
     if (this.active) throw persistenceError("TRANSACTION_ALREADY_ACTIVE", "A logical transaction is already active.");
     this.active = true;
     const staged = this.state.clone();
@@ -67,8 +68,10 @@ export class InMemoryPublicationUnitOfWork implements PublicationUnitOfWork {
       audit: new InMemoryPublicationAuditStore(staged, identity, ensureActive),
       eventJournal: new InMemoryPublicationEventJournal(staged, identity, ensureActive),
       execution: new InMemoryPublicationExecutionJournal(staged, identity, ensureActive),
-      commit: (): void => { finish(true); },
-      rollback: (): void => { finish(false); },
+      commit: async (): Promise<void> => {
+        await Promise.resolve(); finish(true); },
+      rollback: async (): Promise<void> => {
+        await Promise.resolve(); finish(false); },
     };
   }
 }

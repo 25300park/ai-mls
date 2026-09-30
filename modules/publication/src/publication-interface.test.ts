@@ -77,7 +77,8 @@ function modifyRequest(): ModifyPublicationInterfaceRequest {
 
 function service(result: PublicationApplicationResult, onExecute: () => void = () => undefined): PublicationInterfaceService {
   const application: PublicationCommandHandler = {
-    execute() {
+    async execute() {
+      await Promise.resolve();
       onExecute();
       return result;
     },
@@ -90,7 +91,8 @@ function service(result: PublicationApplicationResult, onExecute: () => void = (
   );
 }
 
-test("PHASE13-5 request mapper converts immutable create input to the application contract", () => {
+test("PHASE13-5 request mapper converts immutable create input to the application contract", async () => {
+  await Promise.resolve();
   const request = createRequest();
   const mapped = new DefaultPublicationRequestMapper().map(request);
 
@@ -103,7 +105,8 @@ test("PHASE13-5 request mapper converts immutable create input to the applicatio
   assert.equal(Object.isFrozen(mapped), true);
 });
 
-test("PHASE13-5 request mapper preserves modify identity and approved command without domain execution", () => {
+test("PHASE13-5 request mapper preserves modify identity and approved command without domain execution", async () => {
+  await Promise.resolve();
   const request = modifyRequest();
   const mapped = new DefaultPublicationRequestMapper().map(request);
 
@@ -113,7 +116,8 @@ test("PHASE13-5 request mapper preserves modify identity and approved command wi
   });
 });
 
-test("PHASE13-5 presenter maps successful application result without exposing result references", () => {
+test("PHASE13-5 presenter maps successful application result without exposing result references", async () => {
+  await Promise.resolve();
   const presenter = new DeterministicPublicationPresenter();
   const response = presenter.present({
     ok: true,
@@ -133,7 +137,8 @@ test("PHASE13-5 presenter maps successful application result without exposing re
   assert.equal(Object.isFrozen(response), true);
 });
 
-test("PHASE13-5 presenter maps application failures to a failure code only", () => {
+test("PHASE13-5 presenter maps application failures to a failure code only", async () => {
+  await Promise.resolve();
   const response = new DeterministicPublicationPresenter().present({
     ok: false,
     error: { code: "PUBLICATION_VERSION_CONFLICT", category: "CONFLICT", message: "Publication version conflict." },
@@ -144,7 +149,8 @@ test("PHASE13-5 presenter maps application failures to a failure code only", () 
   assert.equal("category" in response, false);
 });
 
-test("PHASE13-5 presenter replaces unknown internal error codes with an interface-owned failure", () => {
+test("PHASE13-5 presenter replaces unknown internal error codes with an interface-owned failure", async () => {
+  await Promise.resolve();
   const presenter = new DeterministicPublicationPresenter();
   const response = presenter.present({
     ok: false,
@@ -159,7 +165,8 @@ test("PHASE13-5 presenter replaces unknown internal error codes with an interfac
   assert.deepEqual(presenter.presentInterfaceFailure("POSTGRES_INTERNAL"), { operationResult: "FAILED", failureCode: "INTERFACE_EXECUTION_FAILED" });
 });
 
-test("F15-TASK-005 presenter preserves only the approved safe authorization error vocabulary", () => {
+test("F15-TASK-005 presenter preserves only the approved safe authorization error vocabulary", async () => {
+  await Promise.resolve();
   const presenter = new DeterministicPublicationPresenter();
   for (const failureCode of [
     "AUTHENTICATION_REQUIRED",
@@ -185,7 +192,7 @@ test("F15-TASK-005 presenter preserves only the approved safe authorization erro
   });
 });
 
-test("PHASE13-5 input port invokes the application boundary and returns the presented response", () => {
+test("PHASE13-5 input port invokes the application boundary and returns the presented response", async () => {
   let executions = 0;
   const inputPort = service({
     ok: true,
@@ -195,13 +202,13 @@ test("PHASE13-5 input port invokes the application boundary and returns the pres
     replayed: false,
   }, () => { executions += 1; });
 
-  const response = inputPort.execute(createRequest());
+  const response = await inputPort.execute(createRequest());
 
   assert.deepEqual(response, { operationResult: "SUCCEEDED", publicationId: "publication-interface-1", version: 1, replayed: false });
   assert.equal(executions, 1);
 });
 
-test("PHASE13-5 structural validation fails before the application boundary", () => {
+test("PHASE13-5 structural validation fails before the application boundary", async () => {
   const invalid = {
     operation: "MODIFY_PUBLICATION",
     context: { ...executionContext, idempotencyKey: " " },
@@ -212,12 +219,12 @@ test("PHASE13-5 structural validation fails before the application boundary", ()
     throw new Error("Application boundary must not execute.");
   });
 
-  const response = inputPort.execute(invalid);
+  const response = await inputPort.execute(invalid);
 
   assert.deepEqual(response, { operationResult: "FAILED", failureCode: "INTERFACE_REQUEST_INVALID" });
 });
 
-test("FCR-001 external Interface rejects caller-authored execution confirmation before Application", () => {
+test("FCR-001 external Interface rejects caller-authored execution confirmation before Application", async () => {
   let executions = 0;
   const inputPort = service({
     ok: true,
@@ -226,7 +233,7 @@ test("FCR-001 external Interface rejects caller-authored execution confirmation 
     resultReference: "unreachable",
     replayed: false,
   }, () => { executions += 1; });
-  const response = inputPort.execute(createPublicationInterfaceRequest({
+  const response = await inputPort.execute(createPublicationInterfaceRequest({
     operation: "MODIFY_PUBLICATION",
     context: { ...executionContext, idempotencyKey: "idempotency-external-confirmation", intentFingerprint: "sha256:external-confirmation" },
     identity: { publicationId: "publication-interface-1", tenantScopeId: "team-a" },
@@ -244,15 +251,16 @@ test("FCR-001 external Interface rejects caller-authored execution confirmation 
   assert.equal(executions, 0);
 });
 
-test("FCR-001 external Interface rejects caller-authored reconciliation evidence before coordination", () => {
+test("FCR-001 external Interface rejects caller-authored reconciliation evidence before coordination", async () => {
   const inputPort = new PublicationInterfaceService(
-    { execute: () => { throw new Error("Application boundary must not execute."); } },
+    { execute: async () => {
+      await Promise.resolve(); throw new Error("Application boundary must not execute."); } },
     new DefaultPublicationRequestMapper(),
     new DeterministicPublicationPresenter(),
     new StructuralPublicationInterfaceValidator(),
   );
 
-  const response = inputPort.execute({
+  const response = await inputPort.execute({
     operation: "COORDINATE_PUBLICATION_RECONCILIATION",
     context: { ...executionContext, idempotencyKey: "idempotency-external-reconciliation" },
     identity: { publicationId: "publication-interface-1", tenantScopeId: "team-a" },
@@ -270,7 +278,8 @@ test("FCR-001 external Interface rejects caller-authored reconciliation evidence
   assert.deepEqual(response, { operationResult: "FAILED", failureCode: "INTERFACE_REQUEST_INVALID" });
 });
 
-test("PHASE13-5 structural validation rejects incomplete create and operation-specific commands", () => {
+test("PHASE13-5 structural validation rejects incomplete create and operation-specific commands", async () => {
+  await Promise.resolve();
   const validator = new StructuralPublicationInterfaceValidator();
   const completeCreate = createRequest();
   const incompleteBinding = Object.fromEntries(Object.entries(completeCreate.input.binding).filter(([key]) => key !== "representationChecksum"));
@@ -292,7 +301,8 @@ test("PHASE13-5 structural validation rejects incomplete create and operation-sp
   assert.deepEqual(modifyValidation, { valid: false, failureCode: "INTERFACE_REQUEST_INVALID" });
 });
 
-test("PHASE13-5 structural validation rejects unknown and non-JSON request values", () => {
+test("PHASE13-5 structural validation rejects unknown and non-JSON request values", async () => {
+  await Promise.resolve();
   const validator = new StructuralPublicationInterfaceValidator();
   const request = createRequest();
   const unknownNestedField = {
@@ -309,7 +319,8 @@ test("PHASE13-5 structural validation rejects unknown and non-JSON request value
   assert.throws(() => createPublicationInterfaceRequest(nonJsonValue as unknown as PublicationInterfaceRequest), TypeError);
 });
 
-test("PHASE13-5 request validation rejects sparse arrays that change JSON meaning", () => {
+test("PHASE13-5 request validation rejects sparse arrays that change JSON meaning", async () => {
+  await Promise.resolve();
   const evidenceRefs = new Array<string>(1);
   const sparseRequest = {
     operation: "MODIFY_PUBLICATION",
@@ -333,7 +344,7 @@ test("PHASE13-5 request validation rejects sparse arrays that change JSON meanin
   assert.throws(() => createPublicationInterfaceRequest(sparseRequest), TypeError);
 });
 
-test("PHASE13-5 input port converts unexpected application exceptions without leaking details", () => {
+test("PHASE13-5 input port converts unexpected application exceptions without leaking details", async () => {
   const application: PublicationCommandHandler = {
     execute(): never { throw new Error("internal stack and persistence detail"); },
   };
@@ -344,12 +355,13 @@ test("PHASE13-5 input port converts unexpected application exceptions without le
     new StructuralPublicationInterfaceValidator(),
   );
 
-  const response = inputPort.execute(createRequest());
+  const response = await inputPort.execute(createRequest());
 
   assert.deepEqual(response, { operationResult: "FAILED", failureCode: "INTERFACE_EXECUTION_FAILED" });
 });
 
-test("PHASE13-5 presenter is deterministic and stateless", () => {
+test("PHASE13-5 presenter is deterministic and stateless", async () => {
+  await Promise.resolve();
   const presenter = new DeterministicPublicationPresenter();
   const result = { ok: true, publicationId: "publication-interface-1", aggregateVersion: 3, resultReference: "opaque", replayed: false } as const;
   const first = presenter.present(result);
@@ -360,9 +372,9 @@ test("PHASE13-5 presenter is deterministic and stateless", () => {
   assert.equal(Object.isFrozen(first), true);
 });
 
-test("PHASE13-5 request and response models remain serialisable framework-independent data", () => {
+test("PHASE13-5 request and response models remain serialisable framework-independent data", async () => {
   const request = createRequest();
-  const response = service({
+  const response = await service({
     ok: true,
     publicationId: "publication-interface-1",
     aggregateVersion: 1,
@@ -379,7 +391,8 @@ test("PHASE13-5 request and response models remain serialisable framework-indepe
   assert.equal("aggregate" in response, false);
 });
 
-test("PHASE13-5 production interface modules depend only on application and interface contracts", () => {
+test("PHASE13-5 production interface modules depend only on application and interface contracts", async () => {
+  await Promise.resolve();
   const interfaceFiles = [
     "publication-interface-models.ts",
     "publication-interface-presenter.ts",

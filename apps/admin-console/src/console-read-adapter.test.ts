@@ -28,7 +28,7 @@ const now = "2026-08-13T00:00:00.000Z";
 const publicationId = "publication-console-1";
 const tenantId = "team-a";
 
-function setup(
+async function setup(
   alertReadPort?: ConsoleOperationalAlertReadPort,
   readinessReadPort?: ConsoleOperationalReadinessReadPort,
   evidenceStatusReadPort?: ConsoleOperationalEvidenceStatusReadPort,
@@ -65,7 +65,7 @@ function setup(
     authorizationEvaluator: authorization,
     publicationPolicyVersion: "publication-policy-v1",
   });
-  infrastructure.repository.save(PublicationAggregate.create({
+  await infrastructure.repository.save(PublicationAggregate.create({
     identity: { publicationId, tenantScopeId: tenantId },
     binding: {
       subjectId: "listing-console-1",
@@ -98,7 +98,7 @@ function setup(
   let commandCalls = 0;
   const api = new PublicationApi(infrastructure);
   const queryPort = {
-    executeQuery: (request: unknown) => api.executeQuery(request),
+    executeQuery: async (request: unknown) => { await Promise.resolve(); return api.executeQuery(request); },
     executeCommand: (_request: unknown) => {
       commandCalls += 1;
       throw new Error("Console must not execute commands");
@@ -220,9 +220,9 @@ function request(page: "DASHBOARD" | "UI-031" | "UI-032" | "UI-033" | "UI-035" |
   });
 }
 
-test("POST-F15-CONSOLE read adapter returns immutable UI-031 data through API-014 without command execution", () => {
-  const setupResult = setup();
-  const result = setupResult.adapter.read(request("UI-031"));
+test("POST-F15-CONSOLE read adapter returns immutable UI-031 data through API-014 without command execution", async () => {
+  const setupResult = await setup();
+  const result = await setupResult.adapter.read(request("UI-031"));
 
   assert.equal(result.state, "READY");
   assert.equal(result.page, "UI-031");
@@ -233,12 +233,13 @@ test("POST-F15-CONSOLE read adapter returns immutable UI-031 data through API-01
   assert.equal(Object.isFrozen(result.data), true);
 });
 
-test("F20-C composes the existing API-014 operations, revalidation, recovery and audit reads without mutation", () => {
-  const setupResult = setup();
+test("F20-C composes the existing API-014 operations, revalidation, recovery and audit reads without mutation", async () => {
+  const setupResult = await setup();
   const operations: string[] = [];
   const adapter = new ConsoleReadAdapter({
     queryPort: {
-      executeQuery(input: unknown) {
+      async executeQuery(input: unknown) {
+        await Promise.resolve();
         const operation = (input as Readonly<Record<string, unknown>>)["operation"] as string;
         operations.push(operation);
         const views: Readonly<Record<string, Readonly<Record<string, unknown>>>> = Object.freeze({
@@ -288,7 +289,7 @@ test("F20-C composes the existing API-014 operations, revalidation, recovery and
     clock: setupResult.clock,
   });
 
-  const result = adapter.read(request("UI-031"));
+  const result = await adapter.read(request("UI-031"));
 
   assert.deepEqual(operations, [
     "GET_PUBLICATION_OPERATIONS_VIEW", "GET_PUBLICATION_REVALIDATION_VIEW",
@@ -316,15 +317,15 @@ test("F20-C composes the existing API-014 operations, revalidation, recovery and
   assert.equal(JSON.stringify(result).includes("leaked-secret"), false);
 });
 
-test("F20-C rejects a mixed-version Publication operations projection without retry or mutation", () => {
-  const setupResult = setup();
+test("F20-C rejects a mixed-version Publication operations projection without retry or mutation", async () => {
+  const setupResult = await setup();
   const api = new PublicationApi(setupResult.infrastructure);
   let queryCalls = 0;
   const adapter = new ConsoleReadAdapter({
     queryPort: {
-      executeQuery(input: unknown): PublicationQueryResponse {
+      async executeQuery(input: unknown): Promise<PublicationQueryResponse> {
         queryCalls += 1;
-        const response = api.executeQuery(input);
+        const response = await api.executeQuery(input);
         if (!response.success || response.operation !== "GET_PUBLICATION_AUDIT_VIEW") return response;
         return Object.freeze({
           ...response,
@@ -339,7 +340,7 @@ test("F20-C rejects a mixed-version Publication operations projection without re
     clock: setupResult.clock,
   });
 
-  const result = adapter.read(request("UI-031"));
+  const result = await adapter.read(request("UI-031"));
 
   assert.equal(result.state, "ERROR");
   assert.equal(result.error?.code, "CONSOLE_READ_UNAVAILABLE");
@@ -348,11 +349,11 @@ test("F20-C rejects a mixed-version Publication operations projection without re
   assert.equal(JSON.stringify(result).includes(publicationId), false);
 });
 
-test("POST-F15-CONSOLE read adapter exposes bounded Dashboard, Projection and Operations status", () => {
-  const { adapter } = setup();
-  const dashboard = adapter.read(request("DASHBOARD"));
-  const projection = adapter.read(request("PROJECTION"));
-  const operations = adapter.read(request("OPERATIONS"));
+test("POST-F15-CONSOLE read adapter exposes bounded Dashboard, Projection and Operations status", async () => {
+  const { adapter } = await setup();
+  const dashboard = await adapter.read(request("DASHBOARD"));
+  const projection = await adapter.read(request("PROJECTION"));
+  const operations = await adapter.read(request("OPERATIONS"));
 
   assert.equal(dashboard.state, "READY");
   assert.equal(dashboard.data?.["health"], "HEALTHY");
@@ -365,9 +366,9 @@ test("POST-F15-CONSOLE read adapter exposes bounded Dashboard, Projection and Op
   assert.equal(operations.data?.["operationalReadiness"], "UNAVAILABLE");
 });
 
-test("FEAT-023-E Operations Console uses an injected tenant-safe read-only Alert port", () => {
+test("FEAT-023-E Operations Console uses an injected tenant-safe read-only Alert port", async () => {
   let captured: Readonly<Record<string, unknown>> | undefined;
-  const { adapter } = setup({
+  const { adapter } = await setup({
     readAlerts(input: unknown) {
       captured = input as Readonly<Record<string, unknown>>;
       return Object.freeze([Object.freeze({
@@ -379,7 +380,7 @@ test("FEAT-023-E Operations Console uses an injected tenant-safe read-only Alert
       })]);
     },
   });
-  const result = adapter.read(request("OPERATIONS"));
+  const result = await adapter.read(request("OPERATIONS"));
   const alerts = result.data?.["alerts"] as readonly Readonly<Record<string, unknown>>[];
   assert.equal(alerts.length, 1);
   assert.equal(alerts[0]?.["severity"], "HIGH");
@@ -392,9 +393,9 @@ test("FEAT-023-E Operations Console uses an injected tenant-safe read-only Alert
   assert.equal(Object.hasOwn(alerts[0] ?? {}, "retry"), false);
 });
 
-test("FEAT-023-F Operations Console exposes only safe fields from its injected readiness read port", () => {
+test("FEAT-023-F Operations Console exposes only safe fields from its injected readiness read port", async () => {
   let captured: Readonly<Record<string, unknown>> | undefined;
-  const { adapter } = setup(undefined, {
+  const { adapter } = await setup(undefined, {
     readReadiness(input: unknown) {
       captured = input as Readonly<Record<string, unknown>>;
       return Object.freeze([Object.freeze({
@@ -407,7 +408,7 @@ test("FEAT-023-F Operations Console exposes only safe fields from its injected r
       })]);
     },
   });
-  const result = adapter.read(request("OPERATIONS"));
+  const result = await adapter.read(request("OPERATIONS"));
   const readiness = result.data?.["operationalReadiness"] as readonly Readonly<Record<string, unknown>>[];
   assert.equal(readiness[0]?.["readinessType"], "BACKUP");
   assert.equal(readiness[0]?.["readiness"], "UNKNOWN");
@@ -419,7 +420,7 @@ test("FEAT-023-F Operations Console exposes only safe fields from its injected r
   assert.equal(Object.hasOwn(readiness[0] ?? {}, "rollback"), false);
 });
 
-test("FEAT-023-G Operations Console exposes safe immutable telemetry status and security summary DTOs through one injected port", () => {
+test("FEAT-023-G Operations Console exposes safe immutable telemetry status and security summary DTOs through one injected port", async () => {
   const safeEvidenceRef = `evidence:operational:e1${"e".repeat(14)}`;
   let telemetryInput: Readonly<Record<string, unknown>> | undefined;
   let statusInput: Readonly<Record<string, unknown>> | undefined;
@@ -443,7 +444,7 @@ test("FEAT-023-G Operations Console exposes safe immutable telemetry status and 
       })]);
     },
   };
-  const result = setup(undefined, undefined, port).adapter.read(request("OPERATIONS"));
+  const result = await (await setup(undefined, undefined, port)).adapter.read(request("OPERATIONS"));
   const telemetry = result.data?.["telemetry"] as readonly Readonly<Record<string, unknown>>[];
   const statuses = result.data?.["operationalStatuses"] as readonly Readonly<Record<string, unknown>>[];
   const summary = result.data?.["securityPrivacySummary"] as Readonly<Record<string, unknown>>;
@@ -465,8 +466,8 @@ test("FEAT-023-G Operations Console exposes safe immutable telemetry status and 
   assert.equal(Object.isFrozen(summary), true);
 });
 
-test("FEAT-023-G missing or unsafe operational evidence status port fails closed without leaking details", () => {
-  const unavailable = setup().adapter.read(request("OPERATIONS"));
+test("FEAT-023-G missing or unsafe operational evidence status port fails closed without leaking details", async () => {
+  const unavailable = await (await setup()).adapter.read(request("OPERATIONS"));
   assert.equal(unavailable.data?.["telemetry"], "UNAVAILABLE");
   assert.equal(unavailable.data?.["operationalStatuses"], "UNAVAILABLE");
   assert.equal(unavailable.data?.["securityPrivacySummary"], "UNAVAILABLE");
@@ -477,14 +478,14 @@ test("FEAT-023-G missing or unsafe operational evidence status port fails closed
     },
     readStatuses() { throw new Error("C:\\secret\\database.sqlite"); },
   };
-  const result = setup(undefined, undefined, unsafePort).adapter.read(request("OPERATIONS"));
+  const result = await (await setup(undefined, undefined, unsafePort)).adapter.read(request("OPERATIONS"));
   assert.equal(result.data?.["telemetry"], "UNAVAILABLE");
   assert.equal(result.data?.["operationalStatuses"], "UNAVAILABLE");
   assert.equal(JSON.stringify(result).includes("secret"), false);
   assert.equal(JSON.stringify(result).includes("Bearer"), false);
 });
 
-test("FEAT-023-E composed Console path reads durable Alerts through the live-authorized operational service", () => {
+test("FEAT-023-E composed Console path reads durable Alerts through the live-authorized operational service", async () => {
   const directory = mkdtempSync(join(tmpdir(), "feat-023-e-console-"));
   const store = new DurableOperationalEvidenceStore({ databasePath: join(directory, "operations.sqlite") }, createTestOperationalReadinessEvidenceAdmission());
   try {
@@ -503,7 +504,7 @@ test("FEAT-023-E composed Console path reads durable Alerts through the live-aut
       clock: () => new Date(now), policyVersion: "console-alert-policy-v1",
     });
     const service = new SecurityPrivacyOperationalControlService({ authorizationService: alertAuthorization, evidenceStore: store });
-    const result = setup(service).adapter.read(Object.freeze({
+    const result = await (await setup(service)).adapter.read(Object.freeze({
       ...request("OPERATIONS"),
       correlationId: "correlation:console-alert-read-001",
     }));
@@ -516,7 +517,7 @@ test("FEAT-023-E composed Console path reads durable Alerts through the live-aut
   }
 });
 
-test("FEAT-023-F composed Console path reads durable readiness through the live-authorized operational service", () => {
+test("FEAT-023-F composed Console path reads durable readiness through the live-authorized operational service", async () => {
   const directory = mkdtempSync(join(tmpdir(), "feat-023-f-console-"));
   const store = new DurableOperationalEvidenceStore({ databasePath: join(directory, "operations.sqlite") }, createTestOperationalReadinessEvidenceAdmission());
   try {
@@ -538,8 +539,8 @@ test("FEAT-023-F composed Console path reads durable readiness through the live-
       clock: () => new Date(now), policyVersion: "console-readiness-policy-v1",
     });
     const service = new SecurityPrivacyOperationalControlService({ authorizationService: readinessAuthorization, evidenceStore: store });
-    const setupResult = setup(undefined, service);
-    const result = setupResult.adapter.read(Object.freeze({ ...request("OPERATIONS"), correlationId: "correlation:console-readiness-read-001" }));
+    const setupResult = await setup(undefined, service);
+    const result = await setupResult.adapter.read(Object.freeze({ ...request("OPERATIONS"), correlationId: "correlation:console-readiness-read-001" }));
     const projections = result.data?.["operationalReadiness"] as readonly Readonly<Record<string, unknown>>[];
     assert.equal(projections.length, 1);
     assert.equal(projections[0]?.["readiness"], "READY");
@@ -575,8 +576,8 @@ test("FEAT-023-G composed HTTP Console path reads durable scoped telemetry and s
       }),
       evidenceStore: store,
     });
-    const setupResult = setup(undefined, undefined, service);
-    const result = setupResult.adapter.read(Object.freeze({ ...request("OPERATIONS"), correlationId: "correlation:console-status-read-001" }));
+    const setupResult = await setup(undefined, undefined, service);
+    const result = await setupResult.adapter.read(Object.freeze({ ...request("OPERATIONS"), correlationId: "correlation:console-status-read-001" }));
     const telemetry = result.data?.["telemetry"] as readonly Readonly<Record<string, unknown>>[];
     const statuses = result.data?.["operationalStatuses"] as readonly Readonly<Record<string, unknown>>[];
 
@@ -618,10 +619,10 @@ test("FEAT-023-G composed HTTP Console path reads durable scoped telemetry and s
   }
 });
 
-test("POST-F15-CONSOLE every Console DTO is deeply immutable and no command capability is exposed", () => {
-  const setupResult = setup();
+test("POST-F15-CONSOLE every Console DTO is deeply immutable and no command capability is exposed", async () => {
+  const setupResult = await setup();
   for (const page of ["UI-032", "UI-033", "UI-035", "PROJECTION", "OPERATIONS"] as const) {
-    const result = setupResult.adapter.read(request(page));
+    const result = await setupResult.adapter.read(request(page));
     assert.equal(Object.isFrozen(result), true, page);
     assert.equal(Object.isFrozen(result.data), true, page);
     for (const value of Object.values(result.data ?? {})) {
@@ -634,10 +635,11 @@ test("POST-F15-CONSOLE every Console DTO is deeply immutable and no command capa
   assert.equal(setupResult.commandCalls, 0);
 });
 
-test("POST-F15-CONSOLE unavailable backend failures return only the bounded safe error", () => {
-  const setupResult = setup();
+test("POST-F15-CONSOLE unavailable backend failures return only the bounded safe error", async () => {
+  const setupResult = await setup();
   const adapter = new ConsoleReadAdapter({
-    queryPort: { executeQuery: () => { throw new Error("C:\\restricted\\backend secret-token"); } },
+    queryPort: { executeQuery: async () => {
+      await Promise.resolve(); throw new Error("C:\\restricted\\backend secret-token"); } },
     operationsRead: setupResult.infrastructure.operationsRead,
     projectionRead: setupResult.infrastructure.operationsProjectionRead,
     sessionResolver: setupResult.session,
@@ -645,7 +647,7 @@ test("POST-F15-CONSOLE unavailable backend failures return only the bounded safe
     clock: setupResult.clock,
   });
 
-  const result = adapter.read(request("UI-031"));
+  const result = await adapter.read(request("UI-031"));
   const serialized = JSON.stringify(result);
   assert.equal(result.state, "ERROR");
   assert.equal(result.error?.code, "CONSOLE_READ_UNAVAILABLE");
@@ -653,8 +655,8 @@ test("POST-F15-CONSOLE unavailable backend failures return only the bounded safe
   assert.equal(serialized.includes("secret-token"), false);
 });
 
-test("POST-F15-CONSOLE missing and unauthorized Publication reads conceal protected data", () => {
-  const { adapter } = setup();
+test("POST-F15-CONSOLE missing and unauthorized Publication reads conceal protected data", async () => {
+  const { adapter } = await setup();
   const withPublication = request("UI-032");
   const withoutPublication = {
     page: withPublication.page,
@@ -663,8 +665,8 @@ test("POST-F15-CONSOLE missing and unauthorized Publication reads conceal protec
     teamId: withPublication.teamId,
     correlationId: withPublication.correlationId,
   };
-  const missing = adapter.read(withoutPublication);
-  const wrongTenant = adapter.read({ ...request("UI-031"), tenantId: "team-b", teamId: "team-b" });
+  const missing = await adapter.read(withoutPublication);
+  const wrongTenant = await adapter.read({ ...request("UI-031"), tenantId: "team-b", teamId: "team-b" });
 
   assert.equal(missing.state, "EMPTY");
   assert.equal(wrongTenant.state, "EMPTY");
@@ -672,10 +674,11 @@ test("POST-F15-CONSOLE missing and unauthorized Publication reads conceal protec
   assert.equal(JSON.stringify(wrongTenant).includes("console-operator"), false);
 });
 
-test("F20-B projects API-018 batch status through the read boundary without raw provider data", () => {
-  const setupResult = setup();
+test("F20-B projects API-018 batch status through the read boundary without raw provider data", async () => {
+  const setupResult = await setup();
   const adapter = new ConsoleReadAdapter({
-    queryPort: { executeQuery: () => { throw new Error("Publication query must not be used"); } },
+    queryPort: { executeQuery: async () => {
+      await Promise.resolve(); throw new Error("Publication query must not be used"); } },
     operationsRead: setupResult.infrastructure.operationsRead,
     projectionRead: setupResult.infrastructure.operationsProjectionRead,
     sessionResolver: setupResult.session,
@@ -705,7 +708,7 @@ test("F20-B projects API-018 batch status through the read boundary without raw 
     },
   });
 
-  const result = adapter.read({
+  const result = await adapter.read({
     page: "CONNECTOR",
     sessionId: "console-session",
     tenantId,
@@ -735,10 +738,11 @@ test("F20-B projects API-018 batch status through the read boundary without raw 
   assert.equal(Object.isFrozen(result.data), true);
 });
 
-test("F20-B projects API-019 exact mapping through the read boundary without raw provider data", () => {
-  const setupResult = setup();
+test("F20-B projects API-019 exact mapping through the read boundary without raw provider data", async () => {
+  const setupResult = await setup();
   const adapter = new ConsoleReadAdapter({
-    queryPort: { executeQuery: () => { throw new Error("Publication query must not be used"); } },
+    queryPort: { executeQuery: async () => {
+      await Promise.resolve(); throw new Error("Publication query must not be used"); } },
     operationsRead: setupResult.infrastructure.operationsRead,
     projectionRead: setupResult.infrastructure.operationsProjectionRead,
     sessionResolver: setupResult.session,
@@ -771,7 +775,7 @@ test("F20-B projects API-019 exact mapping through the read boundary without raw
     },
   });
 
-  const result = adapter.read({
+  const result = await adapter.read({
     page: "EXTERNAL_INTEGRATION",
     sessionId: "console-session",
     tenantId,
@@ -799,10 +803,11 @@ test("F20-B projects API-019 exact mapping through the read boundary without raw
   assert.equal(JSON.stringify(result).includes("secret-provider-response"), false);
 });
 
-test("F20-B projects API-019 exact Integration Contract through the closed query branch", () => {
-  const setupResult = setup();
+test("F20-B projects API-019 exact Integration Contract through the closed query branch", async () => {
+  const setupResult = await setup();
   const adapter = new ConsoleReadAdapter({
-    queryPort: { executeQuery: () => { throw new Error("Publication query must not be used"); } },
+    queryPort: { executeQuery: async () => {
+      await Promise.resolve(); throw new Error("Publication query must not be used"); } },
     operationsRead: setupResult.infrastructure.operationsRead,
     projectionRead: setupResult.infrastructure.operationsProjectionRead,
     sessionResolver: setupResult.session,
@@ -834,7 +839,7 @@ test("F20-B projects API-019 exact Integration Contract through the closed query
     },
   });
 
-  const result = adapter.read({
+  const result = await adapter.read({
     page: "EXTERNAL_INTEGRATION",
     sessionId: "console-session",
     tenantId,
@@ -861,10 +866,11 @@ test("F20-B projects API-019 exact Integration Contract through the closed query
   assert.equal(JSON.stringify(result).includes("secret-provider-response"), false);
 });
 
-test("F20-B projects F19 exact recovery case with finding and disposition kept separate", () => {
-  const setupResult = setup();
+test("F20-B projects F19 exact recovery case with finding and disposition kept separate", async () => {
+  const setupResult = await setup();
   const adapter = new ConsoleReadAdapter({
-    queryPort: { executeQuery: () => { throw new Error("Publication query must not be used"); } },
+    queryPort: { executeQuery: async () => {
+      await Promise.resolve(); throw new Error("Publication query must not be used"); } },
     operationsRead: setupResult.infrastructure.operationsRead,
     projectionRead: setupResult.infrastructure.operationsProjectionRead,
     sessionResolver: setupResult.session,
@@ -902,7 +908,7 @@ test("F20-B projects F19 exact recovery case with finding and disposition kept s
     },
   });
 
-  const result = adapter.read({
+  const result = await adapter.read({
     page: "RECOVERY_CASE",
     sessionId: "console-session",
     tenantId,
@@ -938,10 +944,11 @@ test("F20-B projects F19 exact recovery case with finding and disposition kept s
   assert.equal(JSON.stringify(result).includes("cross-domain-mapping"), false);
 });
 
-test("F20-B projects API-016 audit events without details or internal evidence", () => {
-  const setupResult = setup();
+test("F20-B projects API-016 audit events without details or internal evidence", async () => {
+  const setupResult = await setup();
   const adapter = new ConsoleReadAdapter({
-    queryPort: { executeQuery: () => { throw new Error("Publication query must not be used"); } },
+    queryPort: { executeQuery: async () => {
+      await Promise.resolve(); throw new Error("Publication query must not be used"); } },
     operationsRead: setupResult.infrastructure.operationsRead,
     projectionRead: setupResult.infrastructure.operationsProjectionRead,
     sessionResolver: setupResult.session,
@@ -975,7 +982,7 @@ test("F20-B projects API-016 audit events without details or internal evidence",
     },
   });
 
-  const result = adapter.read({
+  const result = await adapter.read({
     page: "EVIDENCE",
     sessionId: "console-session",
     tenantId,
@@ -1008,10 +1015,11 @@ test("F20-B projects API-016 audit events without details or internal evidence",
   assert.equal(Object.isFrozen((result.data?.events as readonly unknown[])[0]), true);
 });
 
-test("F20-B fails safely when an approved read port returns secret-like evidence", () => {
-  const setupResult = setup();
+test("F20-B fails safely when an approved read port returns secret-like evidence", async () => {
+  const setupResult = await setup();
   const adapter = new ConsoleReadAdapter({
-    queryPort: { executeQuery: () => { throw new Error("Publication query must not be used"); } },
+    queryPort: { executeQuery: async () => {
+      await Promise.resolve(); throw new Error("Publication query must not be used"); } },
     operationsRead: setupResult.infrastructure.operationsRead,
     projectionRead: setupResult.infrastructure.operationsProjectionRead,
     sessionResolver: setupResult.session,
@@ -1031,7 +1039,7 @@ test("F20-B fails safely when an approved read port returns secret-like evidence
     },
   });
 
-  const result = adapter.read({
+  const result = await adapter.read({
     page: "CONNECTOR",
     sessionId: "console-session",
     tenantId,
@@ -1048,9 +1056,9 @@ test("F20-B fails safely when an approved read port returns secret-like evidence
   assert.equal(JSON.stringify(result).includes("Authorization"), false);
 });
 
-test("F20-B new pages preserve unavailable, tenant concealment, and safe port-error states", () => {
-  const setupResult = setup();
-  const unavailable = setupResult.adapter.read({
+test("F20-B new pages preserve unavailable, tenant concealment, and safe port-error states", async () => {
+  const setupResult = await setup();
+  const unavailable = await setupResult.adapter.read({
     page: "CONNECTOR",
     sessionId: "console-session",
     tenantId,
@@ -1063,7 +1071,8 @@ test("F20-B new pages preserve unavailable, tenant concealment, and safe port-er
   assert.equal(unavailable.state, "UNAVAILABLE");
 
   const guarded = new ConsoleReadAdapter({
-    queryPort: { executeQuery: () => { throw new Error("Publication query must not be used"); } },
+    queryPort: { executeQuery: async () => {
+      await Promise.resolve(); throw new Error("Publication query must not be used"); } },
     operationsRead: setupResult.infrastructure.operationsRead,
     projectionRead: setupResult.infrastructure.operationsProjectionRead,
     sessionResolver: setupResult.session,
@@ -1071,7 +1080,7 @@ test("F20-B new pages preserve unavailable, tenant concealment, and safe port-er
     clock: setupResult.clock,
     connectorQueryPort: { execute: () => { throw new Error("C:\\restricted\\backend secret-token"); } },
   });
-  const concealed = guarded.read({
+  const concealed = await guarded.read({
     page: "CONNECTOR",
     sessionId: "console-session",
     tenantId: "team-b",
@@ -1083,7 +1092,7 @@ test("F20-B new pages preserve unavailable, tenant concealment, and safe port-er
   });
   assert.equal(concealed.state, "EMPTY");
 
-  const failed = guarded.read({
+  const failed = await guarded.read({
     page: "CONNECTOR",
     sessionId: "console-session",
     tenantId,
@@ -1099,7 +1108,7 @@ test("F20-B new pages preserve unavailable, tenant concealment, and safe port-er
   assert.equal(JSON.stringify(failed).includes("secret-token"), false);
 });
 
-test("FEAT-024-G projects exact REL-001 Staging trace only after trusted live authorization", () => {
+test("FEAT-024-G projects exact REL-001 Staging trace only after trusted live authorization", async () => {
   let reads = 0;
   let trustedActor = "";
   const port: ConsoleReleaseTraceReadPort = {
@@ -1111,9 +1120,9 @@ test("FEAT-024-G projects exact REL-001 Staging trace only after trusted live au
       return incompleteReleaseTrace();
     },
   };
-  const configured = setup(undefined, undefined, undefined, port);
+  const configured = await setup(undefined, undefined, undefined, port);
 
-  const visible = configured.adapter.read({
+  const visible = await configured.adapter.read({
     page: "OPERATIONS", sessionId: "console-session", tenantId, teamId: tenantId,
     correlationId: "release-trace-visible",
   });
@@ -1123,7 +1132,7 @@ test("FEAT-024-G projects exact REL-001 Staging trace only after trusted live au
   assert.deepEqual(visible.data?.["releaseTrace"], incompleteReleaseTrace());
   assert.equal(Object.isFrozen(visible.data?.["releaseTrace"]), true);
 
-  const concealed = configured.adapter.read({
+  const concealed = await configured.adapter.read({
     page: "OPERATIONS", sessionId: "console-session", tenantId: "team-b", teamId: "team-b",
     correlationId: "release-trace-concealed",
   });
@@ -1131,15 +1140,16 @@ test("FEAT-024-G projects exact REL-001 Staging trace only after trusted live au
   assert.equal(reads, 1);
 });
 
-test("FEAT-024-G passes the exact authorized Session to the release trace port without resolver TOCTOU", () => {
-  const setupResult = setup();
+test("FEAT-024-G passes the exact authorized Session to the release trace port without resolver TOCTOU", async () => {
+  const setupResult = await setup();
   let resolverCalls = 0;
   let observedActor = "";
   const firstSession = setupResult.session.resolve("console-session");
   assert.notEqual(firstSession, undefined);
   const secondSession = Object.freeze({ ...firstSession!, principalId: "cross-context-actor", tenantId: "team-b", teamIds: Object.freeze(["team-b"]) });
   const adapter = new ConsoleReadAdapter({
-    queryPort: { executeQuery: () => { throw new Error("Publication query must not be used"); } },
+    queryPort: { executeQuery: async () => {
+      await Promise.resolve(); throw new Error("Publication query must not be used"); } },
     operationsRead: setupResult.infrastructure.operationsRead,
     projectionRead: setupResult.infrastructure.operationsProjectionRead,
     sessionResolver: { resolve: () => (++resolverCalls === 1 ? firstSession : secondSession) },
@@ -1153,7 +1163,7 @@ test("FEAT-024-G passes the exact authorized Session to the release trace port w
     },
   });
 
-  const result = adapter.read({
+  const result = await adapter.read({
     page: "OPERATIONS", sessionId: "console-session", tenantId, teamId: tenantId,
     correlationId: "release-trace-session-toctou",
   });
@@ -1163,8 +1173,8 @@ test("FEAT-024-G passes the exact authorized Session to the release trace port w
   assert.equal(resolverCalls, 1);
 });
 
-test("FEAT-024-G rejects cross-candidate environment binding and unsafe release evidence fail closed", () => {
-  const setupResult = setup();
+test("FEAT-024-G rejects cross-candidate environment binding and unsafe release evidence fail closed", async () => {
+  const setupResult = await setup();
   const cases = [
     { ...incompleteReleaseTrace(), evidenceComposition: { ...(incompleteReleaseTrace()["evidenceComposition"] as object), artifactFingerprint: "9".repeat(64) } },
     { ...incompleteReleaseTrace(), acceptanceManifest: { ...(incompleteReleaseTrace()["acceptanceManifest"] as object), targetEnvironment: "Production" } },
@@ -1173,7 +1183,8 @@ test("FEAT-024-G rejects cross-candidate environment binding and unsafe release 
   ];
   for (const [index, value] of cases.entries()) {
     const adapter = new ConsoleReadAdapter({
-      queryPort: { executeQuery: () => { throw new Error("Publication query must not be used"); } },
+      queryPort: { executeQuery: async () => {
+        await Promise.resolve(); throw new Error("Publication query must not be used"); } },
       operationsRead: setupResult.infrastructure.operationsRead,
       projectionRead: setupResult.infrastructure.operationsProjectionRead,
       sessionResolver: setupResult.session,
@@ -1181,7 +1192,7 @@ test("FEAT-024-G rejects cross-candidate environment binding and unsafe release 
       clock: setupResult.clock,
       releaseTraceReadPort: { readReleaseTrace: () => value },
     });
-    const result = adapter.read({
+    const result = await adapter.read({
       page: "OPERATIONS", sessionId: "console-session", tenantId, teamId: tenantId,
       correlationId: `release-trace-invalid-${index}`,
     });
@@ -1192,16 +1203,17 @@ test("FEAT-024-G rejects cross-candidate environment binding and unsafe release 
   }
 });
 
-test("FEAT-024-G keeps the release trace unavailable when its injected boundary is absent or fails", () => {
-  const unavailable = setup().adapter.read({
+test("FEAT-024-G keeps the release trace unavailable when its injected boundary is absent or fails", async () => {
+  const unavailable = await (await setup()).adapter.read({
     page: "OPERATIONS", sessionId: "console-session", tenantId, teamId: tenantId,
     correlationId: "release-trace-unavailable",
   });
   assert.equal(unavailable.data?.["releaseTrace"], "UNAVAILABLE");
 
-  const setupResult = setup();
-  const failed = new ConsoleReadAdapter({
-    queryPort: { executeQuery: () => { throw new Error("Publication query must not be used"); } },
+  const setupResult = await setup();
+  const failed = await new ConsoleReadAdapter({
+    queryPort: { executeQuery: async () => {
+      await Promise.resolve(); throw new Error("Publication query must not be used"); } },
     operationsRead: setupResult.infrastructure.operationsRead,
     projectionRead: setupResult.infrastructure.operationsProjectionRead,
     sessionResolver: setupResult.session,
@@ -1217,9 +1229,9 @@ test("FEAT-024-G keeps the release trace unavailable when its injected boundary 
   assert.equal(JSON.stringify(failed).includes("unsafe"), false);
 });
 
-test("FEAT-024-G preserves a test-only exact accepted handoff as bounded read evidence without executing promotion", () => {
+test("FEAT-024-G preserves a test-only exact accepted handoff as bounded read evidence without executing promotion", async () => {
   const trace = acceptedReleaseTrace();
-  const result = setup(undefined, undefined, undefined, { readReleaseTrace: () => trace }).adapter.read({
+  const result = await (await setup(undefined, undefined, undefined, { readReleaseTrace: () => trace })).adapter.read({
     page: "OPERATIONS", sessionId: "console-session", tenantId, teamId: tenantId,
     correlationId: "release-trace-accepted-fixture",
   });

@@ -12,8 +12,8 @@ export interface PublicationHostInvocationResult {
 export class PublicationHostInvocationAdapter {
   public constructor(private readonly host: PublicationApplicationHost) {}
 
-  public invoke(request: unknown): PublicationHostInvocationResult {
-    const result = immutablePublicationExecutableValue(this.host.execute(request));
+  public async invoke(request: unknown): Promise<PublicationHostInvocationResult> {
+    const result = immutablePublicationExecutableValue(await this.host.execute(request));
     return Object.freeze({
       success: isSuccessfulPresentation(result),
       result,

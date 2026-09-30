@@ -51,7 +51,7 @@ export class ListingProjectionRebuildCoordinator {
     this.journalIdentity = dependencies.journal;
   }
 
-  public rebuild(request: ListingProjectionRebuildRequest): ListingProjectionRebuildResult {
+  public async rebuild(request: ListingProjectionRebuildRequest): Promise<ListingProjectionRebuildResult> {
     validateRequest(request);
     if (!this.dependencies.authority.authorize(request)) throw projectionError("PROJECTION_REBUILD_UNAUTHORIZED", "Listing Projection rebuild is not authorized.");
     const idempotencyKey = JSON.stringify([request.tenantId, request.projectionId, request.idempotencyKey]);
@@ -65,12 +65,12 @@ export class ListingProjectionRebuildCoordinator {
     const identity = { tenantId: request.tenantId, publicationId: request.publicationId };
     let sourceEvent;
     try {
-      const sourceEvents = this.dependencies.journal.listByAggregate(request.tenantId, request.publicationId);
+      const sourceEvents = await this.dependencies.journal.listByAggregate(request.tenantId, request.publicationId);
       sourceEvent = sourceEvents.at(-1);
       if (sourceEvent === undefined) throw projectionError("PROJECTION_GENERATION_INCOMPLETE", "Projection rebuild source stream is incomplete.");
       safelyObserve(this.dependencies.operations, { component: "PROJECTION_REBUILD", result: "COMPLETED", operationType: "REBUILD_REQUESTED", sourceReference: `${request.generationId}:request`, correlationId: request.correlationId, actorOrServiceReference: request.actorOrServiceReference });
       this.appendAudit(request, "REBUILD_REQUESTED", "COMPLETED", "PROJECTION_REBUILD_REQUESTED");
-      this.dependencies.eventCoordinator.appendProjectionRebuildEvent(
+      await this.dependencies.eventCoordinator.appendProjectionRebuildEvent(
         this.dependencies.journal,
         sourceEvent,
         { eventType: "EVT-010", generationId: request.generationId, projectionId: request.projectionId, actorOrServiceReference: request.actorOrServiceReference, correlationId: request.correlationId, idempotencyKey: request.idempotencyKey },
@@ -78,17 +78,17 @@ export class ListingProjectionRebuildCoordinator {
       this.dependencies.store.createGeneration({ projectionType: LISTING_PROJECTION_TYPE, ...identity, generationId: request.generationId, lifecycle: "REBUILDING", projectionDefinitionVersion: LISTING_PROJECTION_DEFINITION_VERSION, projectionSchemaVersion: LISTING_PROJECTION_SCHEMA_VERSION, createdAt: this.dependencies.clock.now(), updatedAt: this.dependencies.clock.now(), complete: false });
       created = true;
       this.appendAudit(request, "REBUILD_STARTED", "COMPLETED", "PROJECTION_REBUILD_STARTED");
-      const events = this.dependencies.journal.listByAggregate(request.tenantId, request.publicationId).filter((event) => event.eventSequence >= request.sourceFromSequence);
+      const events = (await this.dependencies.journal.listByAggregate(request.tenantId, request.publicationId)).filter((event) => event.eventSequence >= request.sourceFromSequence);
       if (events.length === 0 || events[0]?.eventSequence !== request.sourceFromSequence) throw projectionError("PROJECTION_GENERATION_INCOMPLETE", "Projection rebuild source stream is incomplete.");
       const consumer = new ListingProjectionConsumer({ journal: this.dependencies.journal, store: this.dependencies.store, audit: this.dependencies.audit, clock: this.dependencies.clock, ...(this.dependencies.operations === undefined ? {} : { operations: this.dependencies.operations }) });
-      for (const event of events) consumer.consume(request.tenantId, event.eventId, request.generationId);
+      for (const event of events) await consumer.consume(request.tenantId, event.eventId, request.generationId);
       const record = this.dependencies.store.getByGeneration({ tenantId: request.tenantId, publicationId: request.publicationId }, request.generationId);
       const last = events.at(-1);
       if (record === undefined || last === undefined || record.stale || record.lastEventSequence !== last.eventSequence || record.aggregateVersion !== last.aggregateVersion) throw projectionError("PROJECTION_GENERATION_INCOMPLETE", "Projection rebuild candidate did not reach complete source progress.");
       this.dependencies.store.markGeneration(identity, request.generationId, { lifecycle: "ACTIVE", complete: true, finalEventSequence: record.lastEventSequence, sourceAggregateVersion: record.aggregateVersion, publicationVersion: record.publicationVersion, sourceClassification: record.sourceClassification, privacyScope: record.privacyScope, purpose: record.purpose, consentOrLegalBasis: record.consentOrLegalBasis, audienceRestriction: record.audienceRestriction, targetReference: record.targetReference, channelReference: record.channelReference, updatedAt: this.dependencies.clock.now() });
       this.appendAudit(request, "REBUILD_VALIDATED", "COMPLETED", "PROJECTION_REBUILD_VALIDATED", record);
       this.dependencies.store.validateServingGenerationCutover(identity, request.expectedServingGenerationId, request.generationId);
-      const completionEvent = this.dependencies.eventCoordinator.createProjectionRebuildEvent(
+      const completionEvent = await this.dependencies.eventCoordinator.createProjectionRebuildEvent(
         this.dependencies.journal,
         sourceEvent,
         { eventType: "EVT-011", generationId: request.generationId, projectionId: request.projectionId, actorOrServiceReference: request.actorOrServiceReference, correlationId: request.correlationId, idempotencyKey: request.idempotencyKey, validationStatus: "VALIDATED" },
@@ -98,7 +98,7 @@ export class ListingProjectionRebuildCoordinator {
       if (prepareEvent === undefined || prepareAudit === undefined) {
         throw projectionError("PROJECTION_CUTOVER_FAILED", "Atomic Projection cutover evidence is unavailable.");
       }
-      const preparedEvent = prepareEvent(completionEvent);
+      const preparedEvent = await prepareEvent(completionEvent);
       const priorGenerationId = request.expectedServingGenerationId;
       const priorRecord = priorGenerationId === undefined ? undefined : this.dependencies.store.getByGeneration(identity, priorGenerationId);
       const completionAudits = [
@@ -108,12 +108,12 @@ export class ListingProjectionRebuildCoordinator {
           : [this.auditRecord({ ...request, generationId: priorGenerationId }, "GENERATION_ARCHIVED", "COMPLETED", "PROJECTION_GENERATION_ARCHIVED", priorRecord)]),
       ];
       const preparedAudits = prepareAudit(completionAudits);
-      this.dependencies.store.commitServingGenerationCutover(
+      await this.dependencies.store.commitServingGenerationCutover(
         identity,
         request.expectedServingGenerationId,
         request.generationId,
-        () => {
-          preparedEvent.commit();
+        async () => {
+          await preparedEvent.commit();
           preparedAudits.commit();
         },
         this.dependencies.clock.now(),

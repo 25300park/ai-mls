@@ -42,7 +42,8 @@ function mapper(): DefaultPublicationPresentationResultMapper {
   return new DefaultPublicationPresentationResultMapper(formatter, metadata, errorMapper);
 }
 
-test("PHASE13-9 creates an immutable serialisable Presentation View Model", () => {
+test("PHASE13-9 creates an immutable serialisable Presentation View Model", async () => {
+  await Promise.resolve();
   const model = createPublicationPresentationViewModel({
     presentationResult: "SUCCESS",
     category: "SUCCESS",
@@ -69,7 +70,8 @@ test("PHASE13-9 creates an immutable serialisable Presentation View Model", () =
   }, TypeError);
 });
 
-test("PHASE13-9 maps a successful Transport response to a stable Presentation model", () => {
+test("PHASE13-9 maps a successful Transport response to a stable Presentation model", async () => {
+  await Promise.resolve();
   const model = mapper().map(successResponse);
 
   assert.deepEqual(model, {
@@ -90,7 +92,8 @@ test("PHASE13-9 maps a successful Transport response to a stable Presentation mo
   });
 });
 
-test("PHASE13-9 maps every approved Transport error category to presentation-safe meaning", () => {
+test("PHASE13-9 maps every approved Transport error category to presentation-safe meaning", async () => {
+  await Promise.resolve();
   const errorMapper = new DeterministicPublicationPresentationErrorMapper(
     new DeterministicPublicationPresentationFormatter(),
     new PublicationPresentationMetadataBuilder(timeSource),
@@ -119,7 +122,8 @@ test("PHASE13-9 maps every approved Transport error category to presentation-saf
   }
 });
 
-test("PHASE13-9 metadata builder produces deterministic generic metadata", () => {
+test("PHASE13-9 metadata builder produces deterministic generic metadata", async () => {
+  await Promise.resolve();
   const builder = new PublicationPresentationMetadataBuilder(timeSource);
   const first = builder.build("request-1", "ERROR");
   const second = builder.build("request-1", "ERROR");
@@ -135,7 +139,8 @@ test("PHASE13-9 metadata builder produces deterministic generic metadata", () =>
   assert.equal(Object.isFrozen(first), true);
 });
 
-test("PHASE13-9 formatter produces deterministic labels, ordering and scalar values", () => {
+test("PHASE13-9 formatter produces deterministic labels, ordering and scalar values", async () => {
+  await Promise.resolve();
   const formatter = new DeterministicPublicationPresentationFormatter();
   const first = formatter.formatSuccess({ publicationId: "publication-1", version: 9, replayed: true });
   const second = formatter.formatSuccess({ publicationId: "publication-1", version: 9, replayed: true });
@@ -152,7 +157,8 @@ test("PHASE13-9 formatter produces deterministic labels, ordering and scalar val
   ]);
 });
 
-test("PHASE13-9 boundary validator accepts canonical models and rejects formatting inconsistencies", () => {
+test("PHASE13-9 boundary validator accepts canonical models and rejects formatting inconsistencies", async () => {
+  await Promise.resolve();
   const validator = new StructuralPublicationPresentationValidator();
   const valid = mapper().map(successResponse);
   const invalid = [
@@ -171,7 +177,8 @@ test("PHASE13-9 boundary validator accepts canonical models and rejects formatti
   }
 });
 
-test("PHASE13-9 adapter invokes the mapper and returns a validated immutable model", () => {
+test("PHASE13-9 adapter invokes the mapper and returns a validated immutable model", async () => {
+  await Promise.resolve();
   const adapter = createPublicationPresentationAdapter(timeSource);
   const model = adapter.present(successResponse);
 
@@ -180,7 +187,8 @@ test("PHASE13-9 adapter invokes the mapper and returns a validated immutable mod
   assert.equal(Object.isFrozen(model), true);
 });
 
-test("PHASE13-9 adapter normalises a valid mutable mapper result to an isolated immutable model", () => {
+test("PHASE13-9 adapter normalises a valid mutable mapper result to an isolated immutable model", async () => {
+  await Promise.resolve();
   const mutableFields = [
     { key: "publicationId", label: "Publication ID", value: "publication-mutable" },
   ];
@@ -228,7 +236,8 @@ test("PHASE13-9 adapter normalises a valid mutable mapper result to an isolated 
   assert.equal(model.metadata.requestId, successResponse.requestId);
 });
 
-test("PHASE13-9 adapter converts mapper failure or invalid output to a safe internal model", () => {
+test("PHASE13-9 adapter converts mapper failure or invalid output to a safe internal model", async () => {
+  await Promise.resolve();
   const formatter = new DeterministicPublicationPresentationFormatter();
   const metadata = new PublicationPresentationMetadataBuilder(timeSource);
   const errorMapper = new DeterministicPublicationPresentationErrorMapper(formatter, metadata);
@@ -265,7 +274,8 @@ test("PHASE13-9 adapter converts mapper failure or invalid output to a safe inte
   }
 });
 
-test("PHASE13-9 mapping does not mutate Transport input or copy internal Transport metadata", () => {
+test("PHASE13-9 mapping does not mutate Transport input or copy internal Transport metadata", async () => {
+  await Promise.resolve();
   const transport = structuredClone(successResponse);
   const before = structuredClone(transport);
   const model = createPublicationPresentationAdapter(timeSource).present(transport);
@@ -277,14 +287,14 @@ test("PHASE13-9 mapping does not mutate Transport input or copy internal Transpo
   assert.equal("error" in model, false);
 });
 
-test("PHASE13-9 completes Publication execution through Transport and Presentation boundaries", () => {
+test("PHASE13-9 completes Publication execution through Transport and Presentation boundaries", async () => {
   const runtimeResult = bootstrapPublicationRuntime({
     infrastructureConfiguration: createTestPublicationAuthorizationConfiguration(new FixedClock(generatedAt)),
   });
   assert.equal(runtimeResult.ok, true);
   if (!runtimeResult.ok) throw new Error("Runtime bootstrap unexpectedly failed.");
   const transport = createInProcessPublicationTransport(runtimeResult.runtime);
-  const transportResponse = transport.execute(createPublicationTransportRequestEnvelope({
+  const transportResponse = await transport.execute(createPublicationTransportRequestEnvelope({
     requestId: "presentation-e2e-request",
     operation: "CREATE_PUBLICATION",
     payload: {
@@ -337,13 +347,14 @@ test("PHASE13-9 completes Publication execution through Transport and Presentati
     { key: "replayed", label: "Replayed", value: "No" },
   ]);
   assert.equal(model.presentationResult, "SUCCESS");
-  assert.equal(runtimeResult.runtime.services.repository.find({
+  assert.equal((await runtimeResult.runtime.services.repository.find({
     publicationId: "publication-presentation-e2e",
     tenantScopeId: "team-a",
-  })?.lifecycleState, "READY");
+  }))?.lifecycleState, "READY");
 });
 
-test("PHASE13-9 Presentation production modules preserve isolation and framework neutrality", () => {
+test("PHASE13-9 Presentation production modules preserve isolation and framework neutrality", async () => {
+  await Promise.resolve();
   const sourceDirectory = join(process.cwd(), "modules", "publication", "src");
   const productionFiles = readdirSync(sourceDirectory)
     .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts") && file !== "index.ts");

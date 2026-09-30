@@ -35,8 +35,17 @@ test("registry binds existing actual Production compositions and prepared-schema
     "composeProductionPublicationApi014HttpHandler", "composeProductionAdministrationApi015HttpHandler",
     "createProductionConnectorApi018Composition", "createProductionExternalIntegrationComposition", "createProductionAdvisoryRuntime",
   ]) assert.match(source, new RegExp(`${factory}\\(`, "u"));
-  assert.equal((source.match(/schemaMode: "REQUIRE_EXISTING"/gu) ?? []).length, 5);
+  assert.equal((source.match(/schemaMode: "REQUIRE_EXISTING"/gu) ?? []).length, 4);
+  assert.match(source, /api014[\s\S]*postgreSqlPool: pool[\s\S]*runtimeEnvironment: "PRODUCTION"/u);
   assert.doesNotMatch(source, /API-017|API-001|API-002/u);
+});
+
+test("R3-B2 prepares only API-014 composition while the remaining four child roots stay explicit fail-closed", () => {
+  const main = readFileSync(new URL("./production-main.js", import.meta.url), "utf8");
+  assert.match(main, /api014:\s*Object\.freeze\(\{ runtimeEnvironment: "PRODUCTION" \}\)/u);
+  for (const root of ["api015", "api018", "api019", "feat022"] as const) assert.match(main, new RegExp(`${root}: null`, "u"));
+  assert.match(main, /assertR3B1PublicationSchemaReady\(pool\)/u);
+  assert.doesNotMatch(main, /assertR3B1ChildRootSchemasReady\(pool\)/u);
 });
 
 test("only the canonical bootstrap imports the internal context issuer", () => {

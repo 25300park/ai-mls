@@ -84,14 +84,14 @@ export class PublicationApplicationHost {
     }
   }
 
-  public execute(
+  public async execute(
     request: unknown,
   ): ReturnType<PublicationHostCompositionFacade["execute"]> {
     if (this.lifecycle.snapshot.state !== "READY" || this.composition === undefined) {
       throw new PublicationHostError("HOST_NOT_READY", "Host is not ready for execution.");
     }
     try {
-      return this.composition.execute(request);
+      return await this.composition.execute(request);
     } catch {
       try {
         this.composition.shutdown();
@@ -104,12 +104,12 @@ export class PublicationApplicationHost {
     }
   }
 
-  public executeCanonicalApi(request: unknown): unknown {
+  public async executeCanonicalApi(request: unknown): Promise<unknown> {
     if (this.lifecycle.snapshot.state !== "READY" || this.composition === undefined) {
       throw new PublicationHostError("HOST_NOT_READY", "Host is not ready for execution.");
     }
     try {
-      return this.composition.executeCanonicalApi(request);
+      return await this.composition.executeCanonicalApi(request);
     } catch {
       throw new PublicationHostError("HOST_RUNTIME_FAILURE", "Host Runtime execution failed.");
     }

@@ -17,18 +17,18 @@ const operations = Object.freeze([
   "GET_PUBLICATION_RECOVERY_VIEW", "GET_PUBLICATION_AUDIT_VIEW", "GET_LISTING_PROJECTION",
 ]);
 
-test("F17-D Runtime registers one closed 18-operation API-014 execution port and fails closed without it", () => {
+test("F17-D Runtime registers one closed 18-operation API-014 execution port and fails closed without it", async () => {
   const request = Object.freeze({ kind: "QUERY", request: Object.freeze({ operation: "GET_PUBLICATION" }) });
   const unavailable = bootstrapPublicationRuntime({
     infrastructureConfiguration: createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)),
   });
   assert.equal(unavailable.ok, true);
   if (!unavailable.ok) throw new Error("Runtime bootstrap unexpectedly failed.");
-  assert.throws(() => unavailable.runtime.executeCanonicalApi(request), /Canonical API execution is unavailable/u);
+  await assert.rejects(unavailable.runtime.executeCanonicalApi(request), /Canonical API execution is unavailable/u);
 
   const port: PublicationCanonicalApiExecutionPort = Object.freeze({
     operations,
-    execute: (input: unknown): unknown => Object.freeze({ input, boundary: "API-014" }),
+    execute: async (input: unknown): Promise<unknown> => { await Promise.resolve(); return Object.freeze({ input, boundary: "API-014" }); },
   });
   const ready = bootstrapPublicationRuntime({
     infrastructureConfiguration: createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)),
@@ -37,14 +37,15 @@ test("F17-D Runtime registers one closed 18-operation API-014 execution port and
   assert.equal(ready.ok, true);
   if (!ready.ok) throw new Error("Runtime bootstrap unexpectedly failed.");
   assert.deepEqual(ready.runtime.canonicalApiOperations, operations);
-  assert.deepEqual(ready.runtime.executeCanonicalApi(request), { input: request, boundary: "API-014" });
+  assert.deepEqual(await ready.runtime.executeCanonicalApi(request), { input: request, boundary: "API-014" });
 });
 
-test("F17-D canonical API execution traverses the existing Publication Application Host", () => {
+test("F17-D canonical API execution traverses the existing Publication Application Host", async () => {
   let executions = 0;
   const port: PublicationCanonicalApiExecutionPort = Object.freeze({
     operations,
-    execute: (input: unknown): unknown => {
+    execute: async (input: unknown): Promise<unknown> => {
+      await Promise.resolve();
       executions += 1;
       return Object.freeze({ input, boundary: "HOST_RUNTIME_API_014" });
     },
@@ -61,9 +62,9 @@ test("F17-D canonical API execution traverses the existing Publication Applicati
   );
   const request = Object.freeze({ kind: "COMMAND", request: Object.freeze({ operation: "CREATE_PUBLICATION" }) });
 
-  assert.throws(() => host.executeCanonicalApi(request), /Host is not ready/u);
+  await assert.rejects(host.executeCanonicalApi(request), /Host is not ready/u);
   host.start();
-  assert.deepEqual(host.executeCanonicalApi(request), { input: request, boundary: "HOST_RUNTIME_API_014" });
+  assert.deepEqual(await host.executeCanonicalApi(request), { input: request, boundary: "HOST_RUNTIME_API_014" });
   assert.equal(executions, 1);
   host.stop();
 });

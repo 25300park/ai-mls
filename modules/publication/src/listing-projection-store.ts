@@ -17,9 +17,9 @@ export interface ListingProjectionStore {
     identity: ListingProjectionIdentity,
     expectedGenerationId: string | undefined,
     candidateGenerationId: string,
-    appendCompletionEvidence: () => void,
+    appendCompletionEvidence: () => Promise<void>,
     updatedAt: string,
-  ): string;
+  ): Promise<string>;
 }
 
 export interface ListingProjectionAuditStore {

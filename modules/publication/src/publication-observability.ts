@@ -70,7 +70,7 @@ export class PublicationOperationsRebuildControl {
     clock: PublicationClock;
   }>) {}
 
-  public requestProjectionRebuild(request: PublicationOperationsRebuildRequest): ListingProjectionRebuildResult {
+  public async requestProjectionRebuild(request: PublicationOperationsRebuildRequest): Promise<ListingProjectionRebuildResult> {
     validateRebuildRequest(request);
     let session;
     try {
@@ -97,7 +97,7 @@ export class PublicationOperationsRebuildControl {
       throw operationsError("OPERATIONS_FORBIDDEN", "Projection rebuild is not authorized.");
     }
     try {
-      const result = this.dependencies.rebuild.rebuild({
+      const result = await this.dependencies.rebuild.rebuild({
         tenantId: request.tenantId, publicationId: request.publicationId, projectionId: "PRJ-002", generationId: request.generationId,
         ...(request.expectedServingGenerationId === undefined ? {} : { expectedServingGenerationId: request.expectedServingGenerationId }),
         actorOrServiceReference: session.principalId, purpose: "PROJECTION_REBUILD", reason: request.reason,

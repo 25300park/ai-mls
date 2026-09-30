@@ -70,7 +70,7 @@ export interface ConsoleReadResult {
 }
 
 interface ConsolePublicationQueryPort {
-  executeQuery(input: unknown): PublicationQueryResponse;
+  executeQuery(input: unknown): Promise<PublicationQueryResponse>;
 }
 
 interface ConsoleAuthorizationEvaluator {
@@ -170,7 +170,7 @@ const publicationOperations: Readonly<Record<Exclude<ConsolePage, "DASHBOARD" | 
 export class ConsoleReadAdapter {
   public constructor(private readonly dependencies: ConsoleReadAdapterDependencies) {}
 
-  public read(request: ConsoleReadRequest): ConsoleReadResult {
+  public async read(request: ConsoleReadRequest): Promise<ConsoleReadResult> {
     try {
       switch (request.page) {
         case "DASHBOARD": return this.readDashboard(request);
@@ -185,7 +185,7 @@ export class ConsoleReadAdapter {
         case "UI-031":
         case "UI-032":
         case "UI-033":
-        case "UI-035": return this.readPublication(request);
+        case "UI-035": return await this.readPublication(request);
       }
     } catch {
       return immutableConsole({
@@ -200,17 +200,17 @@ export class ConsoleReadAdapter {
     }
   }
 
-  private readPublication(request: ConsoleReadRequest): ConsoleReadResult {
+  private async readPublication(request: ConsoleReadRequest): Promise<ConsoleReadResult> {
     if (request.publicationId === undefined || request.publicationId.trim().length === 0) {
       return emptyResult(request.page, "No Publication record is currently selected.");
     }
-    const response = this.queryPublication(request, publicationOperations[request.page as keyof typeof publicationOperations]);
+    const response = await this.queryPublication(request, publicationOperations[request.page as keyof typeof publicationOperations]);
     if (!response.success) {
       return response.error.code === "NOT_FOUND"
         ? emptyResult(request.page, "No authorized Publication record is currently available.")
         : this.safeError(request);
     }
-    if (request.page === "UI-031") return this.readPublicationOperations(request, response);
+    if (request.page === "UI-031") return await this.readPublicationOperations(request, response);
     return immutableConsole({
       page: request.page,
       state: "READY" as const,
@@ -218,7 +218,7 @@ export class ConsoleReadAdapter {
     });
   }
 
-  private queryPublication(request: ConsoleReadRequest, operation: PublicationQueryRequest["operation"]): PublicationQueryResponse {
+  private queryPublication(request: ConsoleReadRequest, operation: PublicationQueryRequest["operation"]): Promise<PublicationQueryResponse> {
     const publicationId = request.publicationId;
     if (publicationId === undefined || publicationId.trim().length === 0) throw new Error("PUBLICATION_ID_REQUIRED");
     return this.dependencies.queryPort.executeQuery({
@@ -234,12 +234,12 @@ export class ConsoleReadAdapter {
     } satisfies PublicationQueryRequest);
   }
 
-  private readPublicationOperations(request: ConsoleReadRequest, operationsResponse: Extract<PublicationQueryResponse, { readonly success: true }>): ConsoleReadResult {
-    const supplemental = [
+  private async readPublicationOperations(request: ConsoleReadRequest, operationsResponse: Extract<PublicationQueryResponse, { readonly success: true }>): Promise<ConsoleReadResult> {
+    const supplemental = await Promise.all([
       this.queryPublication(request, "GET_PUBLICATION_REVALIDATION_VIEW"),
       this.queryPublication(request, "GET_PUBLICATION_RECOVERY_VIEW"),
       this.queryPublication(request, "GET_PUBLICATION_AUDIT_VIEW"),
-    ];
+    ]);
     if (supplemental.some((response) => !response.success)) return this.safeError(request);
     const [revalidationResponse, recoveryResponse, auditResponse] = supplemental as readonly Extract<PublicationQueryResponse, { readonly success: true }>[];
     if (supplemental.some((response) => response.success && response.result.sourceVersion !== operationsResponse.result.sourceVersion)) {

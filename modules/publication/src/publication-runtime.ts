@@ -72,23 +72,23 @@ export class PublicationRuntime {
     return this.transition("READY");
   }
 
-  public execute(
+  public async execute(
     request: Parameters<PublicationRuntimeServiceRegistry["inputPort"]["execute"]>[0],
   ): ReturnType<PublicationRuntimeServiceRegistry["inputPort"]["execute"]> {
     if (this.currentContext.status !== "READY") {
       throw new PublicationRuntimeError("RUNTIME_NOT_READY", "Runtime is not ready for execution.");
     }
-    return this.entryPoint.execute(request);
+    return await this.entryPoint.execute(request);
   }
 
-  public executeCanonicalApi(request: unknown): unknown {
+  public async executeCanonicalApi(request: unknown): Promise<unknown> {
     if (this.currentContext.status !== "READY") {
       throw new PublicationRuntimeError("RUNTIME_NOT_READY", "Runtime is not ready for execution.");
     }
     if (this.canonicalApiPort === undefined) {
       throw new PublicationRuntimeError("RUNTIME_DEPENDENCY_MISSING", "Canonical API execution is unavailable.");
     }
-    return this.canonicalApiPort.execute(request);
+    return await this.canonicalApiPort.execute(request);
   }
 
   public stop(): PublicationRuntimeContext {

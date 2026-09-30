@@ -68,50 +68,52 @@ export class DurablePublicationUnitOfWork implements PublicationUnitOfWork {
     this.repository = {
       save: (snapshot): ReturnType<PublicationRepository["save"]> => this.inTransaction(snapshot, (transaction) => transaction.repository.save(snapshot)),
       update: (expectedVersion, snapshot): ReturnType<PublicationRepository["update"]> => this.inTransaction(snapshot, (transaction) => transaction.repository.update(expectedVersion, snapshot)),
-      find: (identity): ReturnType<PublicationRepository["find"]> => { this.refresh(); return repository.find(identity); },
-      exists: (identity): ReturnType<PublicationRepository["exists"]> => { this.refresh(); return repository.exists(identity); },
-      checkVersion: (identity, version): ReturnType<PublicationRepository["checkVersion"]> => { this.refresh(); return repository.checkVersion(identity, version); },
-      readHistory: (identity): ReturnType<PublicationRepository["readHistory"]> => { this.refresh(); return repository.readHistory(identity); },
+      find: async (identity): ReturnType<PublicationRepository["find"]> => { this.refresh(); return await repository.find(identity); },
+      exists: async (identity): ReturnType<PublicationRepository["exists"]> => { this.refresh(); return await repository.exists(identity); },
+      checkVersion: async (identity, version): ReturnType<PublicationRepository["checkVersion"]> => { this.refresh(); return await repository.checkVersion(identity, version); },
+      readHistory: async (identity): ReturnType<PublicationRepository["readHistory"]> => { this.refresh(); return await repository.readHistory(identity); },
     };
     this.idempotency = {
       record: (record): ReturnType<PublicationIdempotencyStore["record"]> => this.inTransaction({ tenantScopeId: record.tenantScopeId, publicationId: record.aggregateId }, (transaction) => transaction.idempotency.record(record)),
-      find: (identity): ReturnType<PublicationIdempotencyStore["find"]> => { this.refresh(); return idempotency.find(identity); },
+      find: async (identity): ReturnType<PublicationIdempotencyStore["find"]> => { this.refresh(); return await idempotency.find(identity); },
     };
     this.audit = {
       append: (record): ReturnType<PublicationAuditStore["append"]> => this.inTransaction({ tenantScopeId: record.tenantScopeId, publicationId: record.aggregateId }, (transaction) => transaction.audit.append(record)),
-      list: (identity): ReturnType<PublicationAuditStore["list"]> => { this.refresh(); return audit.list(identity); },
+      list: async (identity): ReturnType<PublicationAuditStore["list"]> => { this.refresh(); return await audit.list(identity); },
     };
     this.eventJournal = {
       append: (event): ReturnType<PublicationEventJournal["append"]> => this.inTransaction({ tenantScopeId: event.tenantId, publicationId: event.aggregateId }, (transaction) => transaction.eventJournal.append(event)),
       appendAll: (items): ReturnType<PublicationEventJournal["appendAll"]> => {
-        if (items.length === 0) return Object.freeze([]);
+        if (items.length === 0) return Promise.resolve(Object.freeze([]));
         const first = items[0]!;
         return this.inTransaction({ tenantScopeId: first.tenantId, publicationId: first.aggregateId }, (transaction) => transaction.eventJournal.appendAll(items));
       },
-      prepareAppend: (event): ReturnType<NonNullable<PublicationEventJournal["prepareAppend"]>> => {
+      prepareAppend: async (event): ReturnType<NonNullable<PublicationEventJournal["prepareAppend"]>> => {
+        await Promise.resolve();
         let committed = false;
-        return Object.freeze({ event, commit: () => {
+        return Object.freeze({ event, commit: async () => {
           if (!committed) { committed = true; return this.eventJournal.append(event); }
-          const found = this.eventJournal.findByEventId(event.tenantId, event.eventId);
+          const found = await this.eventJournal.findByEventId(event.tenantId, event.eventId);
           if (found === undefined) throw persistenceError("PERSISTENCE_WRITE_FAILED", "Durable Publication event is unavailable.");
           return Object.freeze({ status: "REPLAYED" as const, event: found });
         } });
       },
-      findByEventId: (tenantId, eventId): ReturnType<PublicationEventJournal["findByEventId"]> => { this.refresh(); return events.findByEventId(tenantId, eventId); },
-      listByAggregate: (tenantId, aggregateId): ReturnType<PublicationEventJournal["listByAggregate"]> => { this.refresh(); return events.listByAggregate(tenantId, aggregateId); },
-      getLastSequence: (tenantId, aggregateId): ReturnType<PublicationEventJournal["getLastSequence"]> => { this.refresh(); return events.getLastSequence(tenantId, aggregateId); },
+      findByEventId: async (tenantId, eventId): ReturnType<PublicationEventJournal["findByEventId"]> => { this.refresh(); return await events.findByEventId(tenantId, eventId); },
+      listByAggregate: async (tenantId, aggregateId): ReturnType<PublicationEventJournal["listByAggregate"]> => { this.refresh(); return await events.listByAggregate(tenantId, aggregateId); },
+      getLastSequence: async (tenantId, aggregateId): ReturnType<PublicationEventJournal["getLastSequence"]> => { this.refresh(); return await events.getLastSequence(tenantId, aggregateId); },
     };
     this.execution = {
       prepare: (intent): ReturnType<PublicationExecutionJournal["prepare"]> => this.inTransaction(intent, (transaction) => transaction.execution.prepare(intent)),
       markDispatchStarted: (identity, commandId, recordedAt): ReturnType<PublicationExecutionJournal["markDispatchStarted"]> => this.inTransaction(identity, (transaction) => transaction.execution.markDispatchStarted(identity, commandId, recordedAt)),
       appendReceipt: (receipt): ReturnType<PublicationExecutionJournal["appendReceipt"]> => this.inTransaction(receipt, (transaction) => transaction.execution.appendReceipt(receipt)),
-      findIntent: (identity, commandId): ReturnType<PublicationExecutionJournal["findIntent"]> => { this.refresh(); return execution.findIntent(identity, commandId); },
-      findReceipt: (identity, commandId): ReturnType<PublicationExecutionJournal["findReceipt"]> => { this.refresh(); return execution.findReceipt(identity, commandId); },
-      recoveryDisposition: (identity, commandId): ReturnType<PublicationExecutionJournal["recoveryDisposition"]> => { this.refresh(); return execution.recoveryDisposition(identity, commandId); },
+      findIntent: async (identity, commandId): ReturnType<PublicationExecutionJournal["findIntent"]> => { this.refresh(); return await execution.findIntent(identity, commandId); },
+      findReceipt: async (identity, commandId): ReturnType<PublicationExecutionJournal["findReceipt"]> => { this.refresh(); return await execution.findReceipt(identity, commandId); },
+      recoveryDisposition: async (identity, commandId): ReturnType<PublicationExecutionJournal["recoveryDisposition"]> => { this.refresh(); return await execution.recoveryDisposition(identity, commandId); },
     };
   }
 
-  public begin(identity: PublicationIdentity): PublicationTransaction {
+  public async begin(identity: PublicationIdentity): Promise<PublicationTransaction> {
+    await Promise.resolve();
     this.assertOpen();
     if (this.#active) throw persistenceError("TRANSACTION_ALREADY_ACTIVE", "A logical transaction is already active.");
     this.refresh();
@@ -138,12 +140,15 @@ export class DurablePublicationUnitOfWork implements PublicationUnitOfWork {
       audit: new InMemoryPublicationAuditStore(staged, identity, ensureActive),
       eventJournal: new InMemoryPublicationEventJournal(staged, identity, ensureActive),
       execution: new InMemoryPublicationExecutionJournal(staged, identity, ensureActive),
-      commit: (): void => { finish(true); },
-      rollback: (): void => { finish(false); },
+      commit: async (): Promise<void> => {
+        await Promise.resolve(); finish(true); },
+      rollback: async (): Promise<void> => {
+        await Promise.resolve(); finish(false); },
     };
   }
 
-  public close(): void {
+  public async close(): Promise<void> {
+    await Promise.resolve();
     if (this.#closed) return;
     if (this.#active) throw persistenceError("TRANSACTION_ALREADY_ACTIVE", "A logical transaction is active.");
     this.#closed = true;
@@ -179,14 +184,14 @@ export class DurablePublicationUnitOfWork implements PublicationUnitOfWork {
     catch (error) { throw mapStorageError(error); }
   }
 
-  private inTransaction<Result>(identity: PublicationIdentity, operation: (transaction: PublicationTransaction) => Result): Result {
-    const transaction = this.begin(identity);
+  private async inTransaction<Result>(identity: PublicationIdentity, operation: (transaction: PublicationTransaction) => Promise<Result>): Promise<Result> {
+    const transaction = await this.begin(identity);
     try {
-      const result = operation(transaction);
-      transaction.commit();
+      const result = await operation(transaction);
+      await transaction.commit();
       return result;
     } catch (error) {
-      try { transaction.rollback(); } catch { /* transaction may already be closed */ }
+      try { await transaction.rollback(); } catch { /* transaction may already be closed */ }
       throw error;
     }
   }

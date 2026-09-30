@@ -19,7 +19,8 @@ import { createPublicationTransportRequestEnvelope } from "./publication-transpo
 
 const timestamp = "2026-07-29T01:00:00.000Z";
 
-test("PHASE13-10 composes every approved service into one immutable application graph", () => {
+test("PHASE13-10 composes every approved service into one immutable application graph", async () => {
+  await Promise.resolve();
   const graph = composedGraph();
 
   assert.deepEqual(graph.serviceNames, publicationCompositionServiceNames);
@@ -32,7 +33,8 @@ test("PHASE13-10 composes every approved service into one immutable application 
   assert.equal(Object.isFrozen(graph.diagnostics), true);
 });
 
-test("PHASE13-10 rejects duplicate dependency registration before graph construction", () => {
+test("PHASE13-10 rejects duplicate dependency registration before graph construction", async () => {
+  await Promise.resolve();
   const graph = composedGraph();
   const registrations = registrationsFrom(graph);
 
@@ -43,7 +45,8 @@ test("PHASE13-10 rejects duplicate dependency registration before graph construc
   );
 });
 
-test("PHASE13-10 rejects a missing dependency before graph construction", () => {
+test("PHASE13-10 rejects a missing dependency before graph construction", async () => {
+  await Promise.resolve();
   const graph = composedGraph();
   const registrations = registrationsFrom(graph).filter(({ name }) => name !== "presentation");
 
@@ -54,7 +57,8 @@ test("PHASE13-10 rejects a missing dependency before graph construction", () => 
   );
 });
 
-test("PHASE13-10 constructs deterministic ordered graphs with isolated services", () => {
+test("PHASE13-10 constructs deterministic ordered graphs with isolated services", async () => {
+  await Promise.resolve();
   const first = composedGraph();
   const second = composedGraph();
 
@@ -66,9 +70,9 @@ test("PHASE13-10 constructs deterministic ordered graphs with isolated services"
   assert.notEqual(first.application, second.application);
 });
 
-test("PHASE13-10 runtime composition adapter executes through Transport and Presentation", () => {
+test("PHASE13-10 runtime composition adapter executes through Transport and Presentation", async () => {
   const graph = composedGraph();
-  const result = graph.application.execute(createRequest("composition-adapter"));
+  const result = await graph.application.execute(createRequest("composition-adapter"));
 
   assert.equal(result.presentationResult, "SUCCESS");
   assert.equal(result.metadata.requestId, "composition-adapter");
@@ -77,21 +81,21 @@ test("PHASE13-10 runtime composition adapter executes through Transport and Pres
     { key: "version", label: "Version", value: "1" },
     { key: "replayed", label: "Replayed", value: "No" },
   ]);
-  assert.equal(graph.runtime.services.repository.find({
+  assert.equal((await graph.runtime.services.repository.find({
     publicationId: "publication-composition-adapter",
     tenantScopeId: "team-a",
-  })?.lifecycleState, "READY");
+  }))?.lifecycleState, "READY");
 });
 
-test("F15-TASK-005 composed execution ignores body actors and persists only the resolved Session Actor", () => {
+test("F15-TASK-005 composed execution ignores body actors and persists only the resolved Session Actor", async () => {
   const graph = composedGraph();
   const request = createRequest("authorization-session-actor", "actor-body-forged", "actor-session-authoritative");
 
-  const result = graph.application.execute(request);
+  const result = await graph.application.execute(request);
 
   assert.equal(result.presentationResult, "SUCCESS");
   const identity = { publicationId: "publication-authorization-session-actor", tenantScopeId: "team-a" };
-  const snapshot = graph.runtime.services.repository.find(identity);
+  const snapshot = await graph.runtime.services.repository.find(identity);
   assert.equal(snapshot?.transitionHistory[0]?.actorId, "actor-session-authoritative");
   assert.notEqual(snapshot?.transitionHistory[0]?.actorId, "actor-body-forged");
   assert.deepEqual(graph.runtime.services.authorizationEvidence.list(identity.publicationId).map((evidence) => ({
@@ -100,7 +104,7 @@ test("F15-TASK-005 composed execution ignores body actors and persists only the 
   })), [{ actorId: "actor-session-authoritative", decision: "ALLOW" }]);
 });
 
-test("F15-TASK-005 composed SoD rejection preserves the safe code and leaves persistence unchanged", () => {
+test("F15-TASK-005 composed SoD rejection preserves the safe code and leaves persistence unchanged", async () => {
   const clock = new FixedClock(timestamp);
   const base = createTestPublicationAuthorizationConfiguration(clock);
   const baseResolver = base.liveContextResolver!;
@@ -123,8 +127,8 @@ test("F15-TASK-005 composed SoD rejection preserves the safe code and leaves per
   });
   const request = createRequest("authorization-sod", "actor-body-forged", "actor-sod-conflict");
 
-  const transport = graph.transport.execute(request);
-  const presentation = graph.application.execute(request);
+  const transport = await graph.transport.execute(request);
+  const presentation = await graph.application.execute(request);
 
   assert.equal(transport.success, false);
   assert.equal(!transport.success && transport.status, "APPLICATION_REJECTED");
@@ -134,16 +138,17 @@ test("F15-TASK-005 composed SoD rejection preserves the safe code and leaves per
   assert.equal(presentation.category, "APPLICATION_REJECTION");
   assert.equal(presentation.message.includes("creator"), false);
   const identity = { publicationId: "publication-authorization-sod", tenantScopeId: "team-a" };
-  assert.equal(graph.runtime.services.repository.find(identity), undefined);
-  assert.deepEqual(graph.runtime.services.audit.list(identity), []);
-  assert.equal(graph.runtime.services.idempotency.find({
+  assert.equal(await graph.runtime.services.repository.find(identity), undefined);
+  assert.deepEqual(await graph.runtime.services.audit.list(identity), []);
+  assert.equal(await graph.runtime.services.idempotency.find({
     tenantScopeId: identity.tenantScopeId,
     aggregateId: identity.publicationId,
     commandKey: "idempotency-authorization-sod",
   }), undefined);
 });
 
-test("PHASE13-10 graph containers and diagnostics resist external mutation", () => {
+test("PHASE13-10 graph containers and diagnostics resist external mutation", async () => {
+  await Promise.resolve();
   const graph = composedGraph();
 
   assert.throws(() => {
@@ -157,7 +162,8 @@ test("PHASE13-10 graph containers and diagnostics resist external mutation", () 
   }, TypeError);
 });
 
-test("PHASE13-10 diagnostics expose deterministic scalar evidence without service objects", () => {
+test("PHASE13-10 diagnostics expose deterministic scalar evidence without service objects", async () => {
+  await Promise.resolve();
   const graph = composedGraph();
 
   assert.deepEqual(graph.diagnostics, {
@@ -172,7 +178,8 @@ test("PHASE13-10 diagnostics expose deterministic scalar evidence without servic
   assert.equal(encoded.includes("repository"), false);
 });
 
-test("PHASE13-10 rejects an inconsistent graph whose application has different bindings", () => {
+test("PHASE13-10 rejects an inconsistent graph whose application has different bindings", async () => {
+  await Promise.resolve();
   const first = composedGraph();
   const second = composedGraph();
   const inconsistent = registrationsFrom(first).map((registration) => registration.name === "application"
@@ -186,7 +193,8 @@ test("PHASE13-10 rejects an inconsistent graph whose application has different b
   );
 });
 
-test("PHASE13-10 rejects an unapproved application that self-certifies real bindings", () => {
+test("PHASE13-10 rejects an unapproved application that self-certifies real bindings", async () => {
+  await Promise.resolve();
   const graph = composedGraph();
   const fakeApplication = {
     execute: (request: unknown) => graph.application.execute(request),
@@ -203,7 +211,8 @@ test("PHASE13-10 rejects an unapproved application that self-certifies real bind
   );
 });
 
-test("PHASE13-10 rejects an unapproved outer service despite always-true self-certification", () => {
+test("PHASE13-10 rejects an unapproved outer service despite always-true self-certification", async () => {
+  await Promise.resolve();
   const graph = composedGraph();
   const fakePresentation = {
     present: graph.presentation.present.bind(graph.presentation),
@@ -225,7 +234,8 @@ test("PHASE13-10 rejects an unapproved outer service despite always-true self-ce
   );
 });
 
-test("PHASE13-10 rejects an unapproved application subtype that overrides binding validation", () => {
+test("PHASE13-10 rejects an unapproved application subtype that overrides binding validation", async () => {
+  await Promise.resolve();
   const first = composedGraph();
   const second = composedGraph();
   const RuntimeAdapterConstructor = PublicationRuntimeCompositionAdapter as unknown as new (
@@ -254,7 +264,8 @@ test("PHASE13-10 rejects an unapproved application subtype that overrides bindin
   );
 });
 
-test("PHASE13-10 rejects proxied Runtime, Transport, and Presentation identities", () => {
+test("PHASE13-10 rejects proxied Runtime, Transport, and Presentation identities", async () => {
+  await Promise.resolve();
   const graph = composedGraph();
   const serviceNames = ["runtime", "transport", "presentation"] as const;
 
@@ -273,7 +284,8 @@ test("PHASE13-10 rejects proxied Runtime, Transport, and Presentation identities
   }
 });
 
-test("PHASE13-10 rejects derived Runtime, Transport, and Presentation identities", () => {
+test("PHASE13-10 rejects derived Runtime, Transport, and Presentation identities", async () => {
+  await Promise.resolve();
   const graph = composedGraph();
   const serviceNames = ["runtime", "transport", "presentation"] as const;
 
@@ -292,7 +304,8 @@ test("PHASE13-10 rejects derived Runtime, Transport, and Presentation identities
   }
 });
 
-test("PHASE13-10 root fails fast when the approved runtime cannot be assembled", () => {
+test("PHASE13-10 root fails fast when the approved runtime cannot be assembled", async () => {
+  await Promise.resolve();
   assert.throws(
     () => composePublicationApplication({
       runtimeOptions: {
@@ -307,11 +320,11 @@ test("PHASE13-10 root fails fast when the approved runtime cannot be assembled",
   );
 });
 
-test("PHASE13-10 end-to-end assembly preserves idempotent execution through the outer boundary", () => {
+test("PHASE13-10 end-to-end assembly preserves idempotent execution through the outer boundary", async () => {
   const graph = composedGraph();
   const request = createRequest("composition-idempotent");
-  const first = graph.application.execute(request);
-  const second = graph.application.execute(request);
+  const first = await graph.application.execute(request);
+  const second = await graph.application.execute(request);
 
   assert.equal(first.presentationResult, "SUCCESS");
   assert.equal(second.presentationResult, "SUCCESS");
@@ -320,13 +333,14 @@ test("PHASE13-10 end-to-end assembly preserves idempotent execution through the 
     { key: "version", label: "Version", value: "1" },
     { key: "replayed", label: "Replayed", value: "Yes" },
   ]);
-  assert.equal(graph.runtime.services.repository.readHistory({
+  assert.equal((await graph.runtime.services.repository.readHistory({
     publicationId: "publication-composition-idempotent",
     tenantScopeId: "team-a",
-  }).length, 1);
+  })).length, 1);
 });
 
-test("PHASE13-10 exposes no service locator and preserves architecture isolation", () => {
+test("PHASE13-10 exposes no service locator and preserves architecture isolation", async () => {
+  await Promise.resolve();
   const graph = composedGraph();
   assert.deepEqual(Object.keys(graph), [
     "serviceNames",

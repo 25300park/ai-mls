@@ -29,16 +29,18 @@ import { PublicationApi } from "./publication-api.js";
 
 const operations = [...PUBLICATION_API_COMMAND_OPERATIONS, ...PUBLICATION_API_QUERY_OPERATIONS];
 
-test("F17-D runtime adapter registers exactly the closed API-014 12 commands and 6 queries", () => {
+test("F17-D runtime adapter registers exactly the closed API-014 12 commands and 6 queries", async () => {
   const calls: string[] = [];
   const adapter = new PublicationApiRuntimeAdapter({
-    executeCommand(request: PublicationCommandRequest) {
+    async executeCommand(request: PublicationCommandRequest) {
+      await Promise.resolve();
       calls.push(`COMMAND:${request.operation}`);
       return Object.freeze({ requestId: request.requestId, success: false as const, operation: request.operation,
         error: Object.freeze({ code: "VALIDATION_ERROR" as const, message: "The request is invalid." }),
         metadata: Object.freeze({ correlationId: request.correlationId }) });
     },
-    executeQuery(request: PublicationQueryRequest) {
+    async executeQuery(request: PublicationQueryRequest) {
+      await Promise.resolve();
       calls.push(`QUERY:${request.operation}`);
       return Object.freeze({ requestId: request.requestId, success: false as const, operation: request.operation,
         error: Object.freeze({ code: "NOT_FOUND" as const, message: "The resource was not found." }),
@@ -47,16 +49,17 @@ test("F17-D runtime adapter registers exactly the closed API-014 12 commands and
   });
 
   assert.deepEqual(adapter.operations, operations);
-  adapter.execute({ kind: "COMMAND", request: commandRequest("CREATE_PUBLICATION") });
-  adapter.execute({ kind: "QUERY", request: queryRequest("GET_PUBLICATION") });
+  await adapter.execute({ kind: "COMMAND", request: commandRequest("CREATE_PUBLICATION") });
+  await adapter.execute({ kind: "QUERY", request: queryRequest("GET_PUBLICATION") });
   assert.deepEqual(calls, ["COMMAND:CREATE_PUBLICATION", "QUERY:GET_PUBLICATION"]);
-  assert.throws(() => adapter.execute({ kind: "COMMAND", request: { ...commandRequest("CREATE_PUBLICATION"), operation: "UNKNOWN" } }));
+  await assert.rejects(() => adapter.execute({ kind: "COMMAND", request: { ...commandRequest("CREATE_PUBLICATION"), operation: "UNKNOWN" } }));
 });
 
 test("F17-D HTTP handler derives Session only from the header and traverses the Host canonical API method", async () => {
   const received: unknown[] = [];
   const handler = createPublicationApi014HttpRequestHandler({
-    executeCanonicalApi(request: unknown): unknown {
+    async executeCanonicalApi(request: unknown): Promise<unknown> {
+      await Promise.resolve();
       received.push(request);
       return Object.freeze({
         requestId: "request-http-command",
@@ -87,7 +90,8 @@ test("F17-D HTTP handler derives Session only from the header and traverses the 
 test("F17-D HTTP handler separates command/query routes and rejects unknown routes and operations", async () => {
   let executions = 0;
   const handler = createPublicationApi014HttpRequestHandler({
-    executeCanonicalApi(): unknown {
+    async executeCanonicalApi(): Promise<unknown> {
+      await Promise.resolve();
       executions += 1;
       return Object.freeze({ requestId: "unused", success: false, error: { code: "VALIDATION_ERROR", message: "The request is invalid." }, metadata: { correlationId: "safe" } });
     },
@@ -133,11 +137,13 @@ test("F17-D production composition requires durable configuration and serves API
 test("F17-D HTTP Host Runtime matrix dispatches exactly all 12 commands and 6 queries", async () => {
   const calls: string[] = [];
   const runtimeAdapter = new PublicationApiRuntimeAdapter({
-    executeCommand(request: PublicationCommandRequest) {
+    async executeCommand(request: PublicationCommandRequest) {
+      await Promise.resolve();
       calls.push(`COMMAND:${request.operation}`);
       return commandFailure(request);
     },
-    executeQuery(request: PublicationQueryRequest) {
+    async executeQuery(request: PublicationQueryRequest) {
+      await Promise.resolve();
       calls.push(`QUERY:${request.operation}`);
       return queryFailure(request);
     },
@@ -177,13 +183,13 @@ test("F17-D composed API-014 path uses the Session Actor, persists one command, 
       payload: createPayload,
     }));
     assert.equal(created.statusCode, 200, JSON.stringify(created.body));
-    assert.equal(infrastructure.repository.find({ tenantScopeId: "team-a", publicationId: "publication-http-authorized" })?.aggregateVersion, 1);
-    assert.equal(infrastructure.audit.list({ tenantScopeId: "team-a", publicationId: "publication-http-authorized" }).at(-1)?.actorId, "executor-independent");
+    assert.equal((await infrastructure.repository.find({ tenantScopeId: "team-a", publicationId: "publication-http-authorized" }))?.aggregateVersion, 1);
+    assert.equal((await infrastructure.audit.list({ tenantScopeId: "team-a", publicationId: "publication-http-authorized" })).at(-1)?.actorId, "executor-independent");
 
-    const before = infrastructure.audit.list({ tenantScopeId: "team-a", publicationId: "publication-http-authorized" }).length;
+    const before = (await infrastructure.audit.list({ tenantScopeId: "team-a", publicationId: "publication-http-authorized" })).length;
     const read = await handler.handle(httpRequest("/api/publication/queries", queryRequest("GET_PUBLICATION", "publication-http-authorized")));
     assert.equal(read.statusCode, 200, JSON.stringify(read.body));
-    assert.equal(infrastructure.audit.list({ tenantScopeId: "team-a", publicationId: "publication-http-authorized" }).length, before);
+    assert.equal((await infrastructure.audit.list({ tenantScopeId: "team-a", publicationId: "publication-http-authorized" })).length, before);
   } finally {
     host.stop();
   }
@@ -201,7 +207,7 @@ test("F17-D body Session roles and capabilities cannot elevate authority and ina
       body: { ...forged, sessionId: "session-body", roles: ["ADMIN"], capabilities: ["publication.create"], isMfaVerified: true, payload: createPayload },
     }));
     assert.equal(denied.statusCode, 400);
-    assert.equal(infrastructure.repository.find({ tenantScopeId: "team-a", publicationId: "publication-http-forged" }), undefined);
+    assert.equal(await infrastructure.repository.find({ tenantScopeId: "team-a", publicationId: "publication-http-forged" }), undefined);
 
     const concealed = await handler.handle(httpRequest("/api/publication/queries", {
       ...queryRequest("GET_PUBLICATION", "publication-http-authorized"),
@@ -218,13 +224,13 @@ test("F17-D body Session roles and capabilities cannot elevate authority and ina
 test("F17-D HTTP boundary sanitizes malformed and backend-authored error evidence", async () => {
   const request = httpRequest("/api/publication/commands", commandRequest("CREATE_PUBLICATION"));
   const unknown = await createPublicationApi014HttpRequestHandler({
-    executeCanonicalApi: () => ({ success: false, error: { code: "C:\\internal\\secret", message: "token=unsafe" } }),
+    executeCanonicalApi: async () => { await Promise.resolve(); return ({ success: false, error: { code: "C:\\internal\\secret", message: "token=unsafe" } }); },
   }).handle(request);
   assert.equal(unknown.statusCode, 500);
   assert.deepEqual(unknown.body, { success: false, error: { code: "INTERNAL_API_ERROR", message: "The request could not be completed." } });
 
   const known = await createPublicationApi014HttpRequestHandler({
-    executeCanonicalApi: () => ({ success: false, error: { code: "AUTHORIZATION_DENIED", message: "stack and policy internals" } }),
+    executeCanonicalApi: async () => { await Promise.resolve(); return ({ success: false, error: { code: "AUTHORIZATION_DENIED", message: "stack and policy internals" } }); },
   }).handle(request);
   assert.equal(known.statusCode, 403);
   assert.deepEqual(known.body, { success: false, error: { code: "AUTHORIZATION_DENIED", message: "The request could not be completed." } });
@@ -260,8 +266,8 @@ test("F17-D durable HTTP restart contains DISPATCH_STARTED ambiguity and has zer
     await composition.close();
 
     const unitOfWork = new DurablePublicationUnitOfWork({ databasePath });
-    const transaction = unitOfWork.begin(identity);
-    const ready = transaction.repository.find(identity);
+    const transaction = await unitOfWork.begin(identity);
+    const ready = await transaction.repository.find(identity);
     if (ready === undefined) throw new Error("Durable Publication setup failed.");
     const pending = PublicationAggregate.rehydrate(ready).beginInitialExecution({
       type: "BEGIN_INITIAL_EXECUTION",
@@ -269,18 +275,18 @@ test("F17-D durable HTTP restart contains DISPATCH_STARTED ambiguity and has zer
       attempt,
       command: Object.freeze({ actorId: "executor-independent", authorityContext: "PUBLICATION_EXECUTION", reason: "Approved ambiguous dispatch", correlationId: "correlation-ambiguous", occurredAt: "2026-08-31T00:00:00.000Z" }),
     }).snapshot;
-    transaction.repository.update(ready.aggregateVersion, pending);
-    transaction.execution.prepare({ ...identity, commandId: attempt.commandId, attemptId: attempt.id, dispatchFingerprint: "sha256:durable-dispatch", providerIdempotencyKey: "provider:stable-ambiguous", preparedAt: attempt.occurredAt });
-    transaction.execution.markDispatchStarted(identity, attempt.commandId, attempt.occurredAt);
-    transaction.idempotency.record({ ...identity, aggregateId: publicationId, commandKey: "idempotency-ambiguous:publish", fingerprint: "sha256:ambiguous:publish", resultReference: JSON.stringify([publicationId, pending.aggregateVersion]), recordedAt: attempt.occurredAt });
-    transaction.commit();
-    assert.equal(unitOfWork.repository.find(identity)?.lifecycleState, "EXECUTION_PENDING");
-    assert.equal(unitOfWork.idempotency.find({ ...identity, aggregateId: publicationId, commandKey: "idempotency-ambiguous:publish" })?.fingerprint, "sha256:ambiguous:publish");
-    unitOfWork.close();
+    await transaction.repository.update(ready.aggregateVersion, pending);
+    await transaction.execution.prepare({ ...identity, commandId: attempt.commandId, attemptId: attempt.id, dispatchFingerprint: "sha256:durable-dispatch", providerIdempotencyKey: "provider:stable-ambiguous", preparedAt: attempt.occurredAt });
+    await transaction.execution.markDispatchStarted(identity, attempt.commandId, attempt.occurredAt);
+    await transaction.idempotency.record({ ...identity, aggregateId: publicationId, commandKey: "idempotency-ambiguous:publish", fingerprint: "sha256:ambiguous:publish", resultReference: JSON.stringify([publicationId, pending.aggregateVersion]), recordedAt: attempt.occurredAt });
+    await transaction.commit();
+    assert.equal((await unitOfWork.repository.find(identity))?.lifecycleState, "EXECUTION_PENDING");
+    assert.equal((await unitOfWork.idempotency.find({ ...identity, aggregateId: publicationId, commandKey: "idempotency-ambiguous:publish" }))?.fingerprint, "sha256:ambiguous:publish");
+    await unitOfWork.close();
     const reopenedEvidence = new DurablePublicationUnitOfWork({ databasePath });
-    assert.equal(reopenedEvidence.repository.find(identity)?.lifecycleState, "EXECUTION_PENDING");
-    assert.equal(reopenedEvidence.idempotency.find({ ...identity, aggregateId: publicationId, commandKey: "idempotency-ambiguous:publish" })?.fingerprint, "sha256:ambiguous:publish");
-    reopenedEvidence.close();
+    assert.equal((await reopenedEvidence.repository.find(identity))?.lifecycleState, "EXECUTION_PENDING");
+    assert.equal((await reopenedEvidence.idempotency.find({ ...identity, aggregateId: publicationId, commandKey: "idempotency-ambiguous:publish" }))?.fingerprint, "sha256:ambiguous:publish");
+    await reopenedEvidence.close();
 
     composition = composeProductionPublicationApi014NodeHttpServer({ runtimeEnvironment: "TEST",
       databasePath,
@@ -301,14 +307,14 @@ test("F17-D durable HTTP restart contains DISPATCH_STARTED ambiguity and has zer
     assert.equal((JSON.parse(publish.body) as { error: { code: string } }).error.code, "RECONCILIATION_REQUIRED");
     const recovered = new DurablePublicationUnitOfWork({ databasePath });
     try {
-      assert.equal(recovered.repository.find(identity)?.lifecycleState, "RECONCILIATION_REQUIRED");
+      assert.equal((await recovered.repository.find(identity))?.lifecycleState, "RECONCILIATION_REQUIRED");
       // A dispatch to the unavailable adapter would produce connector-observation:*:unavailable instead.
-      assert.deepEqual(recovered.execution.findReceipt(identity, attempt.commandId)?.evidenceRefs, [
+      assert.deepEqual((await recovered.execution.findReceipt(identity, attempt.commandId))?.evidenceRefs, [
         "durable-execution:attempt-http-ambiguous:outcome-unproven",
       ]);
-      assert.equal(recovered.execution.findIntent(identity, attempt.commandId)?.attemptId, attempt.id);
+      assert.equal((await recovered.execution.findIntent(identity, attempt.commandId))?.attemptId, attempt.id);
     } finally {
-      recovered.close();
+      await recovered.close();
     }
   } finally {
     await composition.close();
@@ -336,16 +342,16 @@ test("F17-H real HTTP production execution persists unavailable outcome and repl
     assert.equal(first.statusCode, 409, first.body);
     assert.equal((JSON.parse(first.body) as { error: { code: string } }).error.code, "RECONCILIATION_REQUIRED");
     const evidence = new DurablePublicationUnitOfWork({ databasePath });
-    const snapshot = evidence.repository.find(identity);
-    const receipt = evidence.execution.findReceipt(identity, attempt.commandId);
-    const audit = evidence.audit.list(identity);
+    const snapshot = await evidence.repository.find(identity);
+    const receipt = await evidence.execution.findReceipt(identity, attempt.commandId);
+    const audit = await evidence.audit.list(identity);
     assert.equal(snapshot?.lifecycleState, "RECONCILIATION_REQUIRED");
     assert.equal(snapshot?.attempts.length, 1);
     assert.equal(receipt?.outcome, "UNKNOWN");
     assert.equal(receipt?.evidenceRefs.some(reference => reference.includes("unavailable")), true);
     assert.equal(audit.every(record => record.actorId === "executor-independent"), true);
-    assert.notEqual(evidence.idempotency.find({ ...identity, aggregateId: publicationId, commandKey: "key-final-publish:activation" }), undefined);
-    evidence.close();
+    assert.notEqual(await evidence.idempotency.find({ ...identity, aggregateId: publicationId, commandKey: "key-final-publish:activation" }), undefined);
+    await evidence.close();
     await composition.close();
     composition = open();
     await composition.server.start();
@@ -360,10 +366,10 @@ test("F17-H real HTTP production execution persists unavailable outcome and repl
     }
     const reopened = new DurablePublicationUnitOfWork({ databasePath });
     try {
-      assert.deepEqual(reopened.repository.find(identity), snapshot);
-      assert.deepEqual(reopened.execution.findReceipt(identity, attempt.commandId), receipt);
-      assert.deepEqual(reopened.audit.list(identity), audit);
-    } finally { reopened.close(); }
+      assert.deepEqual(await reopened.repository.find(identity), snapshot);
+      assert.deepEqual(await reopened.execution.findReceipt(identity, attempt.commandId), receipt);
+      assert.deepEqual(await reopened.audit.list(identity), audit);
+    } finally { await reopened.close(); }
   } finally { await composition.close(); rmSync(directory, { recursive: true, force: true }); }
 });
 
@@ -415,7 +421,7 @@ test("F17-H real HTTP live authorization matrix blocks dispatch and durable stat
       assert.equal(created.statusCode, 200, `${scenario}: ${created.body}`);
       const evidence = new DurablePublicationUnitOfWork({ databasePath });
       try {
-        const before = evidence.repository.find(identity);
+        const before = await evidence.repository.find(identity);
         deny = true;
         const response = await send(port, "/api/publication/commands", {
           ...commandRequest("PUBLISH_PUBLICATION", identity.publicationId), idempotencyKey: "key-denied-publish", intentFingerprint: "sha256:denied-publish",
@@ -425,11 +431,11 @@ test("F17-H real HTTP live authorization matrix blocks dispatch and durable stat
         }, scenario === "unauthenticated" ? undefined : "session-trusted");
         assert.ok([400, 401, 403, 404, 409, 422].includes(response.statusCode), `${scenario}: ${response.statusCode} ${response.body}`);
         assert.doesNotMatch(response.body, /SQLite|publication\.sqlite|stack|executor-independent/);
-        assert.deepEqual(evidence.repository.find(identity), before, scenario);
-        assert.equal(evidence.execution.findIntent(identity, "command-denied"), undefined, scenario);
-        assert.equal(evidence.execution.findReceipt(identity, "command-denied"), undefined, scenario);
-        assert.equal(evidence.idempotency.find({ ...identity, aggregateId: identity.publicationId, commandKey: "key-denied-publish:publish" }), undefined, scenario);
-      } finally { evidence.close(); }
+        assert.deepEqual(await evidence.repository.find(identity), before, scenario);
+        assert.equal(await evidence.execution.findIntent(identity, "command-denied"), undefined, scenario);
+        assert.equal(await evidence.execution.findReceipt(identity, "command-denied"), undefined, scenario);
+        assert.equal(await evidence.idempotency.find({ ...identity, aggregateId: identity.publicationId, commandKey: "key-denied-publish:publish" }), undefined, scenario);
+      } finally { await evidence.close(); }
     } finally { await composition.close(); rmSync(directory, { recursive: true, force: true }); }
   }
 });
@@ -448,8 +454,8 @@ test("F17-H real HTTP reconciliation and recovery never elevate caller-authored 
     assert.equal(created.statusCode, 200, created.body);
     const evidence = new DurablePublicationUnitOfWork({ databasePath });
     try {
-      const before = evidence.repository.find(identity);
-      const audit = evidence.audit.list(identity);
+      const before = await evidence.repository.find(identity);
+      const audit = await evidence.audit.list(identity);
       for (const operation of ["RESOLVE_RECONCILIATION", "RECOVER_PUBLICATION"] as const) {
         for (const resolution of [undefined, "EFFECT_CONFIRMED"]) {
           const result = await send(port, "/api/publication/commands", {
@@ -459,13 +465,13 @@ test("F17-H real HTTP reconciliation and recovery never elevate caller-authored 
           assert.equal(result.statusCode, 400, result.body);
           assert.equal((JSON.parse(result.body) as { error: { code: string } }).error.code, "VALIDATION_ERROR");
           assert.doesNotMatch(result.body, /NON_SECRET|case-caller|SQLite|stack/);
-          assert.equal(evidence.idempotency.find({ ...identity, aggregateId: identity.publicationId, commandKey: `key-${operation}` }), undefined);
+          assert.equal(await evidence.idempotency.find({ ...identity, aggregateId: identity.publicationId, commandKey: `key-${operation}` }), undefined);
         }
       }
-      assert.deepEqual(evidence.repository.find(identity), before);
-      assert.deepEqual(evidence.audit.list(identity), audit);
-      assert.equal(evidence.repository.find(identity)?.attempts.length, 0);
-    } finally { evidence.close(); }
+      assert.deepEqual(await evidence.repository.find(identity), before);
+      assert.deepEqual(await evidence.audit.list(identity), audit);
+      assert.equal((await evidence.repository.find(identity))?.attempts.length, 0);
+    } finally { await evidence.close(); }
   } finally { await composition.close(); rmSync(directory, { recursive: true, force: true }); }
 });
 

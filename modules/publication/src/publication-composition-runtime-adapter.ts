@@ -13,8 +13,8 @@ export class PublicationRuntimeCompositionAdapter implements PublicationComposed
     Object.freeze(this);
   }
 
-  public execute(request: unknown): PublicationPresentationViewModel {
-    return this.presentation.present(this.transport.execute(request));
+  public async execute(request: unknown): Promise<PublicationPresentationViewModel> {
+    return this.presentation.present(await this.transport.execute(request));
   }
 
   public isBoundTo(

@@ -29,7 +29,8 @@ import type { PublicationExecutableResult } from "./publication-executable-contr
 
 const timestamp = "2026-07-29T04:00:00.000Z";
 
-test("PHASE13-13 creates a canonical serialisable HTTP request model", () => {
+test("PHASE13-13 creates a canonical serialisable HTTP request model", async () => {
+  await Promise.resolve();
   const request = createPublicationHttpRequest({
     method: "post",
     path: "/publications/commands/create/",
@@ -52,7 +53,8 @@ test("PHASE13-13 creates a canonical serialisable HTTP request model", () => {
   assert.doesNotThrow(() => JSON.stringify(request));
 });
 
-test("PHASE13-13 creates a canonical serialisable HTTP response model", () => {
+test("PHASE13-13 creates a canonical serialisable HTTP response model", async () => {
+  await Promise.resolve();
   const response = createPublicationHttpResponse({
     statusCode: 200,
     headers: { "Content-Type": "application/json" },
@@ -68,7 +70,8 @@ test("PHASE13-13 creates a canonical serialisable HTTP response model", () => {
   });
 });
 
-test("PHASE13-13 request models isolate and freeze caller-owned values", () => {
+test("PHASE13-13 request models isolate and freeze caller-owned values", async () => {
+  await Promise.resolve();
   const input = validHttpRequest("request-immutable") as MutableHttpRequest;
   const request = createPublicationHttpRequest(input);
   input.body.context.actorId = "mutated";
@@ -80,7 +83,8 @@ test("PHASE13-13 request models isolate and freeze caller-owned values", () => {
   }, TypeError);
 });
 
-test("PHASE13-13 response models isolate and freeze nested values", () => {
+test("PHASE13-13 response models isolate and freeze nested values", async () => {
+  await Promise.resolve();
   const body = { nested: { value: "safe" } };
   const response = createPublicationHttpResponse({
     statusCode: 422,
@@ -94,7 +98,8 @@ test("PHASE13-13 response models isolate and freeze nested values", () => {
   assert.equal(isDeeplyFrozen(response), true);
 });
 
-test("PHASE13-13 normalises header names case-insensitively and rejects ambiguity", () => {
+test("PHASE13-13 normalises header names case-insensitively and rejects ambiguity", async () => {
+  await Promise.resolve();
   const request = createPublicationHttpRequest({
     ...validHttpRequest("headers-normalised"),
     headers: { "X-Request-Mode": "safe", Accept: "application/json" },
@@ -114,7 +119,8 @@ test("PHASE13-13 normalises header names case-insensitively and rejects ambiguit
   );
 });
 
-test("PHASE13-13 rejects malformed HTTP header names", () => {
+test("PHASE13-13 rejects malformed HTTP header names", async () => {
+  await Promise.resolve();
   assert.throws(
     () => createPublicationHttpRequest({
       ...validHttpRequest("headers-malformed"),
@@ -125,7 +131,8 @@ test("PHASE13-13 rejects malformed HTTP header names", () => {
   );
 });
 
-test("PHASE13-13 preserves own __proto__ JSON and dictionary keys without prototype mutation", () => {
+test("PHASE13-13 preserves own __proto__ JSON and dictionary keys without prototype mutation", async () => {
+  await Promise.resolve();
   const request = createPublicationHttpRequest({
     ...validHttpRequest("proto-keys"),
     headers: ownProtoValue("header-value"),
@@ -145,7 +152,8 @@ test("PHASE13-13 preserves own __proto__ JSON and dictionary keys without protot
   assert.equal(JSON.stringify(request.body), '{"__proto__":{"safe":true}}');
 });
 
-test("PHASE13-13 registers only explicit immutable routes", () => {
+test("PHASE13-13 registers only explicit immutable routes", async () => {
+  await Promise.resolve();
   const registry = createDefaultPublicationHttpRouteRegistry();
 
   assert.deepEqual(registry.routes, [
@@ -155,7 +163,8 @@ test("PHASE13-13 registers only explicit immutable routes", () => {
   assert.equal(isDeeplyFrozen(registry.routes), true);
 });
 
-test("PHASE13-13 rejects duplicate route keys", () => {
+test("PHASE13-13 rejects duplicate route keys", async () => {
+  await Promise.resolve();
   assert.throws(
     () => new PublicationHttpRouteRegistry([
       { method: "POST", path: "/publications/commands/create", operation: "CREATE_PUBLICATION" },
@@ -166,7 +175,8 @@ test("PHASE13-13 rejects duplicate route keys", () => {
   );
 });
 
-test("PHASE13-13 sanitises hostile route registration", () => {
+test("PHASE13-13 sanitises hostile route registration", async () => {
+  await Promise.resolve();
   const hostileRoutes = new Proxy([], {
     get: () => {
       throw new Error("ROUTE_REGISTRY_SECRET");
@@ -181,7 +191,8 @@ test("PHASE13-13 sanitises hostile route registration", () => {
   );
 });
 
-test("PHASE13-13 rejects sparse route registration before resolution", () => {
+test("PHASE13-13 rejects sparse route registration before resolution", async () => {
+  await Promise.resolve();
   assert.throws(
     () => new PublicationHttpRouteRegistry(new Array(1)),
     (error: unknown) => error instanceof PublicationHttpAdapterError
@@ -189,7 +200,8 @@ test("PHASE13-13 rejects sparse route registration before resolution", () => {
   );
 });
 
-test("PHASE13-13 resolves a known route deterministically", () => {
+test("PHASE13-13 resolves a known route deterministically", async () => {
+  await Promise.resolve();
   const resolved = createDefaultPublicationHttpRouteRegistry()
     .resolve("post", "/publications/commands/modify/");
 
@@ -225,7 +237,8 @@ test("PHASE13-13 maps an unsupported method to a safe 405 response", async () =>
   assert.deepEqual(response.body, failureBody("METHOD_NOT_ALLOWED", "HTTP method is not allowed."));
 });
 
-test("PHASE13-13 maps a valid HTTP request to the executable boundary", () => {
+test("PHASE13-13 maps a valid HTTP request to the executable boundary", async () => {
+  await Promise.resolve();
   const mapper = new PublicationHttpRequestMapper(createDefaultPublicationHttpRouteRegistry());
   const body = validCreateBody("mapped");
   const request = createPublicationHttpRequest({
@@ -251,7 +264,8 @@ test("PHASE13-13 maps a valid HTTP request to the executable boundary", () => {
   });
 });
 
-test("F15-TASK-005 HTTP boundary accepts Session identity only from the header and drops body authority claims", () => {
+test("F15-TASK-005 HTTP boundary accepts Session identity only from the header and drops body authority claims", async () => {
+  await Promise.resolve();
   const mapper = new PublicationHttpRequestMapper(createDefaultPublicationHttpRouteRegistry());
   const original = validCreateBody("session-boundary");
   const forgedBody = {
@@ -314,7 +328,8 @@ test("PHASE13-13 canonicalises hostile request-thrown HTTP-local errors", async 
 
 test("PHASE13-13 never trusts HTTP-local errors thrown by executable invocation", async () => {
   const response = await createAdapter({
-    execute: () => {
+    execute: async () => {
+      await Promise.resolve();
       throw new PublicationHttpAdapterError("ROUTE_NOT_FOUND", "injected");
     },
   }).handle(validHttpRequest("invocation-local-code"));
@@ -329,7 +344,8 @@ test("PHASE13-13 never trusts HTTP-local errors thrown by executable invocation"
 test("PHASE13-13 contains an invalid request body before executable invocation", async () => {
   let invocations = 0;
   const response = await createAdapter({
-    execute: () => {
+    execute: async () => {
+      await Promise.resolve();
       invocations += 1;
       return successfulExecutableResult("invalid-body");
     },
@@ -343,7 +359,8 @@ test("PHASE13-13 contains an invalid request body before executable invocation",
   assert.equal(invocations, 0);
 });
 
-test("PHASE13-13 maps executable success to HTTP 200 without changing Presentation data", () => {
+test("PHASE13-13 maps executable success to HTTP 200 without changing Presentation data", async () => {
+  await Promise.resolve();
   const response = new PublicationHttpResponseMapper(new PublicationHttpErrorMapper())
     .map(successfulExecutableResult("success-map"));
 
@@ -352,25 +369,30 @@ test("PHASE13-13 maps executable success to HTTP 200 without changing Presentati
   assert.deepEqual(response.body, presentation("success-map", "SUCCESS"));
 });
 
-test("PHASE13-13 maps Presentation validation failure to HTTP 400", () => {
+test("PHASE13-13 maps Presentation validation failure to HTTP 400", async () => {
+  await Promise.resolve();
   const response = mapPresentationFailure("validation-map", "VALIDATION");
   assert.equal(response.statusCode, 400);
   assert.deepEqual(response.body, presentation("validation-map", "VALIDATION"));
 });
 
-test("PHASE13-13 maps Presentation not-found failure to HTTP 404", () => {
+test("PHASE13-13 maps Presentation not-found failure to HTTP 404", async () => {
+  await Promise.resolve();
   assert.equal(mapPresentationFailure("not-found-map", "NOT_FOUND").statusCode, 404);
 });
 
-test("PHASE13-13 maps Presentation conflict failure to HTTP 409", () => {
+test("PHASE13-13 maps Presentation conflict failure to HTTP 409", async () => {
+  await Promise.resolve();
   assert.equal(mapPresentationFailure("conflict-map", "CONFLICT").statusCode, 409);
 });
 
-test("PHASE13-13 maps Presentation application rejection to HTTP 422", () => {
+test("PHASE13-13 maps Presentation application rejection to HTTP 422", async () => {
+  await Promise.resolve();
   assert.equal(mapPresentationFailure("rejection-map", "APPLICATION_REJECTION").statusCode, 422);
 });
 
-test("PHASE13-13 maps not-ready and stopped executables to HTTP 503", () => {
+test("PHASE13-13 maps not-ready and stopped executables to HTTP 503", async () => {
+  await Promise.resolve();
   const mapper = new PublicationHttpResponseMapper(new PublicationHttpErrorMapper());
   for (const code of ["EXECUTABLE_NOT_READY", "EXECUTABLE_STOPPED"] as const) {
     const response = mapper.map(executableFailure("unavailable", code));
@@ -384,7 +406,8 @@ test("PHASE13-13 maps not-ready and stopped executables to HTTP 503", () => {
 
 test("PHASE13-13 sanitises unknown invocation errors to a generic HTTP 500", async () => {
   const response = await createAdapter({
-    execute: () => {
+    execute: async () => {
+      await Promise.resolve();
       throw new Error("C:\\internal\\secret.ts RuntimeSecret");
     },
   }).handle(validHttpRequest("unknown-error"));
@@ -412,7 +435,7 @@ test("PHASE13-13 preserves request ID through success and local failure", async 
 
 test("PHASE13-13 rejects an executable result that changes the original request ID", async () => {
   const response = await createAdapter({
-    execute: () => successfulExecutableResult("wrong-request-id"),
+    execute: async () => { await Promise.resolve(); return successfulExecutableResult("wrong-request-id"); },
   }).handle(validHttpRequest("original-request-id"));
 
   assert.equal(response.statusCode, 500);
@@ -437,7 +460,7 @@ test("PHASE13-13 snapshots a mutable executable result before request ID validat
     },
   });
   const response = await createAdapter({
-    execute: () => proxyResult,
+    execute: async () => { await Promise.resolve(); return proxyResult; },
   }).handle(validHttpRequest("original-proxy-id"));
 
   assert.equal(response.statusCode, 500);
@@ -452,10 +475,10 @@ test("PHASE13-13 snapshots a mutable executable result before request ID validat
 test("PHASE13-13 response validation prevents internal object leakage", async () => {
   class InternalGraph {}
   const response = await createAdapter({
-    execute: () => ({
+    execute: async () => { await Promise.resolve(); return ({
       ...successfulExecutableResult("internal-leak"),
       result: new InternalGraph(),
-    }) as unknown as PublicationExecutableResult,
+    }) as unknown as PublicationExecutableResult; },
   }).handle(validHttpRequest("internal-leak"));
 
   assert.equal(response.statusCode, 500);
@@ -463,7 +486,8 @@ test("PHASE13-13 response validation prevents internal object leakage", async ()
   assert.equal(JSON.stringify(response).includes("InternalGraph"), false);
 });
 
-test("PHASE13-13 construction and import never start the executable", () => {
+test("PHASE13-13 construction and import never start the executable", async () => {
+  await Promise.resolve();
   let hostCreations = 0;
   const executable = createPublicationInProcessExecutable(undefined, () => {
     hostCreations += 1;
@@ -515,8 +539,8 @@ test("FCR-001 HTTP path rejects caller-authored execution confirmation without f
   assert.equal(created.statusCode, 200);
   if (infrastructure === undefined) throw new Error("HTTP test infrastructure was not composed.");
   const identity = { tenantScopeId: "team-a", publicationId: "publication-http-fcr-create" };
-  const auditBefore = infrastructure.audit.list(identity).length;
-  const eventCountBefore = infrastructure.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).length;
+  const auditBefore = (await infrastructure.audit.list(identity)).length;
+  const eventCountBefore = (await infrastructure.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId)).length;
 
   const rejected = await adapter.handle({
     method: "POST",
@@ -551,15 +575,16 @@ test("FCR-001 HTTP path rejects caller-authored execution confirmation without f
   });
 
   assert.equal(rejected.statusCode, 400);
-  assert.equal(infrastructure.repository.find(identity)?.lifecycleState, "READY");
-  assert.equal(infrastructure.repository.find(identity)?.aggregateVersion, 1);
-  assert.equal(infrastructure.audit.list(identity).length, auditBefore);
-  assert.equal(infrastructure.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).length, eventCountBefore);
-  assert.equal(infrastructure.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: "idempotency-http-fcr-resolve" }), undefined);
+  assert.equal((await infrastructure.repository.find(identity))?.lifecycleState, "READY");
+  assert.equal((await infrastructure.repository.find(identity))?.aggregateVersion, 1);
+  assert.equal((await infrastructure.audit.list(identity)).length, auditBefore);
+  assert.equal((await infrastructure.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId)).length, eventCountBefore);
+  assert.equal(await infrastructure.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: "idempotency-http-fcr-resolve" }), undefined);
   assert.equal(executable.stop().state, "STOPPED");
 });
 
-test("PHASE13-13 HTTP production files preserve executable-only dependency and forbidden-server isolation", () => {
+test("PHASE13-13 HTTP production files preserve executable-only dependency and forbidden-server isolation", async () => {
+  await Promise.resolve();
   const sourceDirectory = join(process.cwd(), "modules", "publication", "src");
   const productionFiles = readdirSync(sourceDirectory)
     .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts") && file !== "index.ts");
@@ -620,7 +645,7 @@ function createAdapter(invoker: PublicationExecutableInvoker) {
 
 function successfulInvoker(): PublicationExecutableInvoker {
   return {
-    execute: (request) => successfulExecutableResult(request.executionId),
+    execute: async (request) => { await Promise.resolve(); return successfulExecutableResult(request.executionId); },
   };
 }
 

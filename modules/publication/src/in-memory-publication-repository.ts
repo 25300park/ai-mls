@@ -11,7 +11,8 @@ export class InMemoryPublicationRepository implements PublicationRepository {
     private readonly assertUsable: () => void = () => undefined,
   ) {}
 
-  public save(snapshot: PublicationSnapshot): void {
+  public async save(snapshot: PublicationSnapshot): Promise<void> {
+    await Promise.resolve();
     this.assertUsable();
     this.assertScope(snapshot);
     const key = persistenceKey(snapshot.tenantScopeId, snapshot.publicationId);
@@ -22,7 +23,8 @@ export class InMemoryPublicationRepository implements PublicationRepository {
     this.state.markScopeChanged(snapshot.tenantScopeId, snapshot.publicationId);
   }
 
-  public update(expectedAggregateVersion: number, snapshot: PublicationSnapshot): void {
+  public async update(expectedAggregateVersion: number, snapshot: PublicationSnapshot): Promise<void> {
+    await Promise.resolve();
     this.assertUsable();
     this.assertScope(snapshot);
     const key = persistenceKey(snapshot.tenantScopeId, snapshot.publicationId);
@@ -37,22 +39,24 @@ export class InMemoryPublicationRepository implements PublicationRepository {
     this.state.markScopeChanged(snapshot.tenantScopeId, snapshot.publicationId);
   }
 
-  public find(identity: PublicationIdentity): PublicationSnapshot | undefined {
+  public async find(identity: PublicationIdentity): Promise<PublicationSnapshot | undefined> {
+    await Promise.resolve();
     this.assertUsable();
     this.assertScope(identity);
     const record = this.state.records.get(persistenceKey(identity.tenantScopeId, identity.publicationId));
     return record === undefined ? undefined : mapPersistenceToPublication(record);
   }
 
-  public exists(identity: PublicationIdentity): boolean {
-    return this.find(identity) !== undefined;
+  public async exists(identity: PublicationIdentity): Promise<boolean> {
+    return await this.find(identity) !== undefined;
   }
 
-  public checkVersion(identity: PublicationIdentity, expectedAggregateVersion: number): boolean {
-    return this.find(identity)?.aggregateVersion === expectedAggregateVersion;
+  public async checkVersion(identity: PublicationIdentity, expectedAggregateVersion: number): Promise<boolean> {
+    return (await this.find(identity))?.aggregateVersion === expectedAggregateVersion;
   }
 
-  public readHistory(identity: PublicationIdentity): readonly PublicationSnapshot[] {
+  public async readHistory(identity: PublicationIdentity): Promise<readonly PublicationSnapshot[]> {
+    await Promise.resolve();
     this.assertUsable();
     this.assertScope(identity);
     const history = this.state.histories.get(persistenceKey(identity.tenantScopeId, identity.publicationId)) ?? [];

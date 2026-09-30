@@ -149,16 +149,16 @@ function query(
   };
 }
 
-function createReady(api: PublicationApi, suffix = "ready"): number {
-  const response = api.executeCommand(createCommand(suffix));
+async function createReady(api: PublicationApi, suffix = "ready"): Promise<number> {
+  const response = await api.executeCommand(createCommand(suffix));
   assert.equal(response.success, true, JSON.stringify(response));
   if (!response.success) throw new Error("test setup failed");
   return response.result.aggregateVersion;
 }
 
-function createActive(api: PublicationApi, suffix = "active"): number {
-  const readyVersion = createReady(api, suffix);
-  const response = api.executeCommand(publishCommand(readyVersion, suffix));
+async function createActive(api: PublicationApi, suffix = "active"): Promise<number> {
+  const readyVersion = await createReady(api, suffix);
+  const response = await api.executeCommand(publishCommand(readyVersion, suffix));
   assert.equal(response.success, true, JSON.stringify(response));
   if (!response.success) throw new Error("test setup failed");
   return response.result.aggregateVersion;
@@ -192,43 +192,43 @@ function unresolvedSnapshot(caseId = "case-api-1"): PublicationSnapshot {
   }).snapshot;
 }
 
-test("F15-TASK-009 API-014 create uses the resolved Session Actor and ignores body Actor", () => {
+test("F15-TASK-009 API-014 create uses the resolved Session Actor and ignores body Actor", async () => {
   const app = infrastructure();
   const api = composePublicationApiModule(app);
-  const response = api.executeCommand(createCommand("actor"));
+  const response = await api.executeCommand(createCommand("actor"));
   assert.equal(response.success, true);
-  assert.equal(app.audit.list(identity).at(-1)?.actorId, "executor-independent");
-  assert.equal(app.audit.list(identity).at(-1)?.version, 1);
+  assert.equal((await app.audit.list(identity)).at(-1)?.actorId, "executor-independent");
+  assert.equal((await app.audit.list(identity)).at(-1)?.version, 1);
   assert.equal(JSON.stringify(response).includes("forged-body-actor"), false);
 });
 
-test("F15-TASK-009 API-014 publish delegates to F15-TASK-006 and persists exactly one confirmed effect", () => {
+test("F15-TASK-009 API-014 publish delegates to F15-TASK-006 and persists exactly one confirmed effect", async () => {
   const app = infrastructure();
   const api = new PublicationApi(app);
-  const readyVersion = createReady(api, "publish");
-  const response = api.executeCommand(publishCommand(readyVersion, "publish"));
+  const readyVersion = await createReady(api, "publish");
+  const response = await api.executeCommand(publishCommand(readyVersion, "publish"));
   assert.equal(response.success, true);
-  assert.equal(app.repository.find(identity)?.lifecycleState, "ACTIVE");
-  assert.equal(app.repository.find(identity)?.aggregateVersion, readyVersion + 2);
-  assert.equal(app.audit.list(identity).at(-1)?.actorId, "executor-independent");
+  assert.equal((await app.repository.find(identity))?.lifecycleState, "ACTIVE");
+  assert.equal((await app.repository.find(identity))?.aggregateVersion, readyVersion + 2);
+  assert.equal((await app.audit.list(identity)).at(-1)?.actorId, "executor-independent");
 });
 
-test("F15-TASK-009 API-014 lifecycle command delegates to F15-TASK-007", () => {
+test("F15-TASK-009 API-014 lifecycle command delegates to F15-TASK-007", async () => {
   const app = infrastructure();
   const api = new PublicationApi(app);
-  const activeVersion = createActive(api, "lifecycle");
-  const response = api.executeCommand(command("SUSPEND_PUBLICATION", {
+  const activeVersion = await createActive(api, "lifecycle");
+  const response = await api.executeCommand(command("SUSPEND_PUBLICATION", {
     input: { type: "SET_SUSPENSION", expectedAggregateVersion: activeVersion, suspensionStatus: "SUSPENDED_SECURITY" },
     occurredAt: now,
   }));
   assert.equal(response.success, true);
-  assert.equal(app.repository.find(identity)?.suspensionStatus, "SUSPENDED_SECURITY");
+  assert.equal((await app.repository.find(identity))?.suspensionStatus, "SUSPENDED_SECURITY");
 });
 
-test("FCR-001 API-014 rejects caller-authored authoritative reconciliation evidence", () => {
+test("FCR-001 API-014 rejects caller-authored authoritative reconciliation evidence", async () => {
   const app = infrastructure();
   const snapshot = unresolvedSnapshot();
-  app.repository.save(snapshot);
+  await app.repository.save(snapshot);
   const api = new PublicationApi(app);
   const request = command("RESOLVE_RECONCILIATION", {
     input: {
@@ -241,21 +241,21 @@ test("FCR-001 API-014 rejects caller-authored authoritative reconciliation evide
     },
     occurredAt: now,
   });
-  const auditCount = app.audit.list(identity).length;
-  const eventCount = app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).length;
+  const auditCount = (await app.audit.list(identity)).length;
+  const eventCount = (await app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId)).length;
 
-  const response = api.executeCommand(request);
+  const response = await api.executeCommand(request);
 
   assert.equal(response.success, false);
   assert.equal(!response.success && response.error.code, "VALIDATION_ERROR");
-  assert.deepEqual(app.repository.find(identity), snapshot);
-  assert.equal(app.repository.find(identity)?.reconciliationCases.at(-1)?.status, "OPEN");
-  assert.equal(app.audit.list(identity).length, auditCount);
-  assert.equal(app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).length, eventCount);
-  assert.equal(app.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: request.idempotencyKey }), undefined);
+  assert.deepEqual(await app.repository.find(identity), snapshot);
+  assert.equal((await app.repository.find(identity))?.reconciliationCases.at(-1)?.status, "OPEN");
+  assert.equal((await app.audit.list(identity)).length, auditCount);
+  assert.equal((await app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId)).length, eventCount);
+  assert.equal(await app.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: request.idempotencyKey }), undefined);
 });
 
-test("FCR-007 API-014 rejects omitted reconciliation resolution without trusting caller metadata", () => {
+test("FCR-007 API-014 rejects omitted reconciliation resolution without trusting caller metadata", async () => {
   const callerInputs = [
     { category: "MANUAL_REVIEW_REQUIRED" },
     { evidenceRefs: ["caller-evidence-reference"] },
@@ -267,7 +267,7 @@ test("FCR-007 API-014 rejects omitted reconciliation resolution without trusting
       const app = infrastructure();
       const caseId = `case-fcr-007-${operation}-${String(index)}`;
       const snapshot = unresolvedSnapshot(caseId);
-      app.repository.save(snapshot);
+      await app.repository.save(snapshot);
       const api = new PublicationApi(app);
       const request = command(operation, {
         input: {
@@ -280,25 +280,25 @@ test("FCR-007 API-014 rejects omitted reconciliation resolution without trusting
         idempotencyKey: `idempotency-fcr-007-${operation}-${String(index)}`,
         intentFingerprint: `sha256:fcr-007-${operation}-${String(index)}`,
       });
-      const auditCount = app.audit.list(identity).length;
-      const eventCount = app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).length;
+      const auditCount = (await app.audit.list(identity)).length;
+      const eventCount = (await app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId)).length;
 
-      const first = api.executeCommand(request);
-      const replay = api.executeCommand(request);
+      const first = await api.executeCommand(request);
+      const replay = await api.executeCommand(request);
 
       assert.equal(first.success, false);
       assert.equal(!first.success && first.error.code, "VALIDATION_ERROR");
       assert.deepEqual(replay, first);
-      assert.deepEqual(app.repository.find(identity), snapshot);
-      assert.equal(app.audit.list(identity).length, auditCount);
-      assert.equal(app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).length, eventCount);
-      assert.equal(app.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: request.idempotencyKey }), undefined);
-      assert.equal(JSON.stringify(app.audit.list(identity)).includes("caller-evidence-reference"), false);
+      assert.deepEqual(await app.repository.find(identity), snapshot);
+      assert.equal((await app.audit.list(identity)).length, auditCount);
+      assert.equal((await app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId)).length, eventCount);
+      assert.equal(await app.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: request.idempotencyKey }), undefined);
+      assert.equal(JSON.stringify(await app.audit.list(identity)).includes("caller-evidence-reference"), false);
     }
   }
 });
 
-test("FCR-008 API-014 rejects contradictory MFA Session without trusted side effects", () => {
+test("FCR-008 API-014 rejects contradictory MFA Session without trusted side effects", async () => {
   const session = Object.freeze({
     ...createTestPublicationSession("executor-independent", "session-contradictory"),
     assurance: "SINGLE_FACTOR" as const,
@@ -307,70 +307,70 @@ test("FCR-008 API-014 rejects contradictory MFA Session without trusted side eff
   const app = infrastructure({ session });
   const request = createCommand("contradictory-mfa", { sessionId: session.id });
 
-  const first = new PublicationApi(app).executeCommand(request);
-  const replay = new PublicationApi(app).executeCommand(request);
+  const first = await new PublicationApi(app).executeCommand(request);
+  const replay = await new PublicationApi(app).executeCommand(request);
 
   assert.equal(first.success, false);
   assert.equal(!first.success && first.error.code, "AUTHENTICATION_REQUIRED");
   assert.deepEqual(replay, first);
-  assert.equal(app.repository.find(identity), undefined);
-  assert.equal(app.audit.list(identity).length, 0);
-  assert.equal(app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).length, 0);
-  assert.equal(app.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: request.idempotencyKey }), undefined);
+  assert.equal(await app.repository.find(identity), undefined);
+  assert.equal((await app.audit.list(identity)).length, 0);
+  assert.equal((await app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId)).length, 0);
+  assert.equal(await app.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: request.idempotencyKey }), undefined);
 });
 
-test("F15-TASK-009 API-014 rejects missing, expired and revoked Sessions without Publication mutation", () => {
+test("F15-TASK-009 API-014 rejects missing, expired and revoked Sessions without Publication mutation", async () => {
   const states = [null, "EXPIRED", "REVOKED"] as const;
   for (const state of states) {
     const session = state === null ? null : Object.freeze({ ...createTestPublicationSession("executor-independent", "session-valid"), state });
     const app = infrastructure({ session });
     const api = new PublicationApi(app);
-    const response = api.executeCommand(createCommand(`session-${String(state)}`));
+    const response = await api.executeCommand(createCommand(`session-${String(state)}`));
     assert.equal(response.success, false);
     assert.equal(!response.success && response.error.code, "AUTHENTICATION_REQUIRED");
-    assert.equal(app.repository.find(identity), undefined);
-    assert.equal(app.audit.list(identity).length, 0);
+    assert.equal(await app.repository.find(identity), undefined);
+    assert.equal((await app.audit.list(identity)).length, 0);
   }
   const missingResolverApp = infrastructure({ omitSessionResolver: true });
-  const missingResolver = new PublicationApi(missingResolverApp).executeCommand(createCommand("missing-resolver"));
+  const missingResolver = await new PublicationApi(missingResolverApp).executeCommand(createCommand("missing-resolver"));
   assert.equal(missingResolver.success, false);
   assert.equal(!missingResolver.success && missingResolver.error.code, "AUTHENTICATION_REQUIRED");
-  assert.equal(missingResolverApp.repository.find(identity), undefined);
+  assert.equal(await missingResolverApp.repository.find(identity), undefined);
 });
 
-test("F15-TASK-009 API request validation rejects missing reason, unknown operation, hostile accessor and body authority elevation", () => {
+test("F15-TASK-009 API request validation rejects missing reason, unknown operation, hostile accessor and body authority elevation", async () => {
   const api = new PublicationApi(infrastructure());
-  const missingReason = api.executeCommand(createCommand("missing-reason", { documentedReason: "" }));
+  const missingReason = await api.executeCommand(createCommand("missing-reason", { documentedReason: "" }));
   assert.equal(missingReason.success, false);
   assert.equal(!missingReason.success && missingReason.error.code, "REASON_REQUIRED");
-  const unknown = api.executeCommand({ ...createCommand("unknown"), operation: "DELETE_PUBLICATION" });
+  const unknown = await api.executeCommand({ ...createCommand("unknown"), operation: "DELETE_PUBLICATION" });
   assert.equal(unknown.success, false);
   assert.equal(!unknown.success && unknown.error.code, "VALIDATION_ERROR");
-  const elevated = api.executeCommand({ ...createCommand("elevated"), roles: ["OPS"], capabilities: ["publication.create"] });
+  const elevated = await api.executeCommand({ ...createCommand("elevated"), roles: ["OPS"], capabilities: ["publication.create"] });
   assert.equal(elevated.success, false);
   assert.equal(!elevated.success && elevated.error.code, "VALIDATION_ERROR");
   const hostile = createCommand("hostile") as unknown as Record<string, unknown>;
   Object.defineProperty(hostile, "payload", { enumerable: true, get() { throw new Error("hostile getter"); } });
-  const hostileResponse = api.executeCommand(hostile);
+  const hostileResponse = await api.executeCommand(hostile);
   assert.equal(hostileResponse.success, false);
   assert.equal(!hostileResponse.success && hostileResponse.error.code, "VALIDATION_ERROR");
 });
 
-test("F15-TASK-009 API operation cannot be redirected to a different Domain command", () => {
+test("F15-TASK-009 API operation cannot be redirected to a different Domain command", async () => {
   const app = infrastructure();
   const api = new PublicationApi(app);
-  const version = createReady(api, "operation-mismatch");
-  const response = api.executeCommand(command("SUSPEND_PUBLICATION", {
+  const version = await createReady(api, "operation-mismatch");
+  const response = await api.executeCommand(command("SUSPEND_PUBLICATION", {
     input: { type: "TERMINATE", expectedAggregateVersion: version, suspensionStatus: "SUSPENDED_SECURITY" },
     occurredAt: now,
   }));
   assert.equal(response.success, false);
   assert.equal(!response.success && response.error.code, "VALIDATION_ERROR");
-  assert.equal(app.repository.find(identity)?.lifecycleState, "READY");
-  assert.equal(app.repository.find(identity)?.aggregateVersion, version);
+  assert.equal((await app.repository.find(identity))?.lifecycleState, "READY");
+  assert.equal((await app.repository.find(identity))?.aggregateVersion, version);
 });
 
-test("F15-TASK-009 API-014 maps MFA, SoD, stale prerequisites and binding denial to stable safe errors", () => {
+test("F15-TASK-009 API-014 maps MFA, SoD, stale prerequisites and binding denial to stable safe errors", async () => {
   const scenarios = [
     { name: "mfa", authorization: () => deny("REAUTHENTICATION_REQUIRED"), expected: "MFA_REQUIRED" },
     { name: "sod", liveTransform: (live: Parameters<NonNullable<InfrastructureOptions["liveTransform"]>>[0]) => ({ ...live, approval: { ...live.approval, decisionActorId: "executor-independent" } }), expected: "SEPARATION_OF_DUTIES_DENIED" },
@@ -385,32 +385,32 @@ test("F15-TASK-009 API-014 maps MFA, SoD, stale prerequisites and binding denial
   ] as const;
   for (const scenario of scenarios) {
     const api = new PublicationApi(infrastructure(scenario));
-    const response = api.executeCommand(createCommand(scenario.name));
+    const response = await api.executeCommand(createCommand(scenario.name));
     assert.equal(response.success, false);
     assert.equal(!response.success && response.error.code, scenario.expected);
     assert.equal(JSON.stringify(response).match(/stack|PublicationAuthorizationError|executor-independent/gu), null);
   }
 });
 
-test("F15-TASK-009 API-014 preserves optimistic concurrency and idempotency conflicts", () => {
+test("F15-TASK-009 API-014 preserves optimistic concurrency and idempotency conflicts", async () => {
   const app = infrastructure();
   const api = new PublicationApi(app);
-  const version = createReady(api, "conflict");
-  const stale = api.executeCommand(publishCommand(version + 1, "stale"));
+  const version = await createReady(api, "conflict");
+  const stale = await api.executeCommand(publishCommand(version + 1, "stale"));
   assert.equal(stale.success, false);
   assert.equal(!stale.success && stale.error.code, "VERSION_CONFLICT");
-  const first = api.executeCommand(publishCommand(version, "idempotent"));
+  const first = await api.executeCommand(publishCommand(version, "idempotent"));
   assert.equal(first.success, true);
-  const conflict = api.executeCommand(publishCommand(version, "idempotent", { intentFingerprint: "sha256:different" }));
+  const conflict = await api.executeCommand(publishCommand(version, "idempotent", { intentFingerprint: "sha256:different" }));
   assert.equal(conflict.success, false);
   assert.equal(!conflict.success && conflict.error.code, "IDEMPOTENCY_CONFLICT");
 });
 
-test("F15-TASK-009 GET_PUBLICATION returns bounded immutable canonical data", () => {
+test("F15-TASK-009 GET_PUBLICATION returns bounded immutable canonical data", async () => {
   const app = infrastructure();
   const api = new PublicationApi(app);
-  createReady(api, "read");
-  const response = api.executeQuery(query("GET_PUBLICATION"));
+  await createReady(api, "read");
+  const response = await api.executeQuery(query("GET_PUBLICATION"));
   assert.equal(response.success, true);
   if (response.success) {
     assert.equal(response.result.view.publicationId, identity.publicationId);
@@ -420,41 +420,41 @@ test("F15-TASK-009 GET_PUBLICATION returns bounded immutable canonical data", ()
   }
 });
 
-test("F15-TASK-009 UI-031 derives role-aware actions and suppresses read-only, service, manager and administrator authority", () => {
+test("F15-TASK-009 UI-031 derives role-aware actions and suppresses read-only, service, manager and administrator authority", async () => {
   const operatorApp = infrastructure();
   const operatorApi = new PublicationApi(operatorApp);
-  createReady(operatorApi, "ui31");
-  const operator = operatorApi.executeQuery(query("GET_PUBLICATION_OPERATIONS_VIEW"));
+  await createReady(operatorApi, "ui31");
+  const operator = await operatorApi.executeQuery(query("GET_PUBLICATION_OPERATIONS_VIEW"));
   assert.equal(operator.success, true);
   assert.equal(operator.success && "screenId" in operator.result.view && operator.result.view.screenId, "UI-031");
   assert.equal(operator.success && "availableActions" in operator.result.view && operator.result.view.availableActions.includes("PUBLISH_PUBLICATION"), true);
   for (const roles of [["REV"], ["MGR"], ["ADM"], ["SVC"]] as const) {
     const session = Object.freeze({ ...createTestPublicationSession("viewer", "session-valid"), principalType: roles[0] === "SVC" ? "SERVICE" as const : "HUMAN" as const, roles, assurance: roles[0] === "SVC" ? "WORKLOAD" as const : "MFA" as const });
     const app = infrastructure({ session, authorization: () => allow() });
-    app.repository.save(operatorApp.repository.find(identity)!);
-    const response = new PublicationApi(app).executeQuery(query("GET_PUBLICATION_OPERATIONS_VIEW"));
+    await app.repository.save((await operatorApp.repository.find(identity))!);
+    const response = await new PublicationApi(app).executeQuery(query("GET_PUBLICATION_OPERATIONS_VIEW"));
     assert.deepEqual(response.success && "availableActions" in response.result.view ? response.result.view.availableActions : ["unexpected"], []);
   }
 });
 
-test("F15-TASK-009 UI-031 advertises only commands accepted by the canonical lifecycle state", () => {
+test("F15-TASK-009 UI-031 advertises only commands accepted by the canonical lifecycle state", async () => {
   const readyApp = infrastructure();
   const readyApi = new PublicationApi(readyApp);
-  createReady(readyApi, "ready-actions");
-  const ready = readyApi.executeQuery(query("GET_PUBLICATION_OPERATIONS_VIEW"));
+  await createReady(readyApi, "ready-actions");
+  const ready = await readyApi.executeQuery(query("GET_PUBLICATION_OPERATIONS_VIEW"));
   assert.deepEqual(ready.success && "availableActions" in ready.result.view ? ready.result.view.availableActions : [], [
     "PUBLISH_PUBLICATION", "SUSPEND_PUBLICATION", "TERMINATE_PUBLICATION",
   ]);
 
   const activeApp = infrastructure();
   const activeApi = new PublicationApi(activeApp);
-  const activeVersion = createActive(activeApi, "active-actions");
-  const active = activeApi.executeQuery(query("GET_PUBLICATION_OPERATIONS_VIEW"));
+  const activeVersion = await createActive(activeApi, "active-actions");
+  const active = await activeApi.executeQuery(query("GET_PUBLICATION_OPERATIONS_VIEW"));
   assert.deepEqual(active.success && "availableActions" in active.result.view ? active.result.view.availableActions : [], [
     "CORRECT_PUBLICATION", "REQUEST_WITHDRAWAL", "REPUBLISH_PUBLICATION", "SUSPEND_PUBLICATION", "SUPERSEDE_PUBLICATION",
   ]);
 
-  const requested = activeApi.executeCommand(command("REQUEST_WITHDRAWAL", {
+  const requested = await activeApi.executeCommand(command("REQUEST_WITHDRAWAL", {
     input: {
       type: "REQUEST_WITHDRAWAL", expectedAggregateVersion: activeVersion,
       attempt: { id: "attempt-withdraw-actions", commandId: "command-withdraw-actions", operation: "WITHDRAWAL", occurredAt: now, evidenceRefs: [] },
@@ -462,62 +462,62 @@ test("F15-TASK-009 UI-031 advertises only commands accepted by the canonical lif
     occurredAt: now,
   }));
   assert.equal(requested.success, true, JSON.stringify(requested));
-  const pendingVersion = activeApp.repository.find(identity)!.aggregateVersion;
-  const resolved = activeApi.executeCommand(command("RESOLVE_WITHDRAWAL", {
+  const pendingVersion = (await activeApp.repository.find(identity))!.aggregateVersion;
+  const resolved = await activeApi.executeCommand(command("RESOLVE_WITHDRAWAL", {
     input: { type: "RESOLVE_WITHDRAWAL", expectedAggregateVersion: pendingVersion, outcome: "CONFIRMED", evidenceRefs: ["withdrawal-confirmed"] },
     occurredAt: now,
   }));
   assert.equal(resolved.success, true, JSON.stringify(resolved));
-  const withdrawn = activeApi.executeQuery(query("GET_PUBLICATION_OPERATIONS_VIEW"));
+  const withdrawn = await activeApi.executeQuery(query("GET_PUBLICATION_OPERATIONS_VIEW"));
   assert.deepEqual(withdrawn.success && "availableActions" in withdrawn.result.view ? withdrawn.result.view.availableActions : [], [
     "REPUBLISH_PUBLICATION", "SUSPEND_PUBLICATION",
   ]);
-  const withdrawnVersion = activeApp.repository.find(identity)!.aggregateVersion;
-  assert.equal(activeApi.executeCommand(command("SUSPEND_PUBLICATION", {
+  const withdrawnVersion = (await activeApp.repository.find(identity))!.aggregateVersion;
+  assert.equal((await activeApi.executeCommand(command("SUSPEND_PUBLICATION", {
     input: { type: "SET_SUSPENSION", expectedAggregateVersion: withdrawnVersion, suspensionStatus: "SUSPENDED_SECURITY" }, occurredAt: now,
-  })).success, true);
-  const suspendedWithdrawn = activeApi.executeQuery(query("GET_PUBLICATION_OPERATIONS_VIEW"));
+  }))).success, true);
+  const suspendedWithdrawn = await activeApi.executeQuery(query("GET_PUBLICATION_OPERATIONS_VIEW"));
   assert.deepEqual(suspendedWithdrawn.success && "availableActions" in suspendedWithdrawn.result.view ? suspendedWithdrawn.result.view.availableActions : [], ["RESUME_PUBLICATION"]);
 });
 
-test("F15-TASK-009 UI-031 suppresses external-effect actions while Publication is suspended", () => {
+test("F15-TASK-009 UI-031 suppresses external-effect actions while Publication is suspended", async () => {
   const readyApp = infrastructure();
   const readyApi = new PublicationApi(readyApp);
-  const readyVersion = createReady(readyApi, "suspended-ready");
-  assert.equal(readyApi.executeCommand(command("SUSPEND_PUBLICATION", {
+  const readyVersion = await createReady(readyApi, "suspended-ready");
+  assert.equal((await readyApi.executeCommand(command("SUSPEND_PUBLICATION", {
     input: { type: "SET_SUSPENSION", expectedAggregateVersion: readyVersion, suspensionStatus: "SUSPENDED_SECURITY" }, occurredAt: now,
-  })).success, true);
-  const ready = readyApi.executeQuery(query("GET_PUBLICATION_OPERATIONS_VIEW"));
+  }))).success, true);
+  const ready = await readyApi.executeQuery(query("GET_PUBLICATION_OPERATIONS_VIEW"));
   assert.deepEqual(ready.success && "availableActions" in ready.result.view ? ready.result.view.availableActions : [], ["RESUME_PUBLICATION", "TERMINATE_PUBLICATION"]);
 
   const activeApp = infrastructure();
   const activeApi = new PublicationApi(activeApp);
-  const activeVersion = createActive(activeApi, "suspended-active");
-  assert.equal(activeApi.executeCommand(command("SUSPEND_PUBLICATION", {
+  const activeVersion = await createActive(activeApi, "suspended-active");
+  assert.equal((await activeApi.executeCommand(command("SUSPEND_PUBLICATION", {
     input: { type: "SET_SUSPENSION", expectedAggregateVersion: activeVersion, suspensionStatus: "SUSPENDED_SECURITY" }, occurredAt: now,
-  })).success, true);
-  const active = activeApi.executeQuery(query("GET_PUBLICATION_OPERATIONS_VIEW"));
+  }))).success, true);
+  const active = await activeApi.executeQuery(query("GET_PUBLICATION_OPERATIONS_VIEW"));
   assert.deepEqual(active.success && "availableActions" in active.result.view ? active.result.view.availableActions : [], ["RESUME_PUBLICATION", "SUPERSEDE_PUBLICATION"]);
 });
 
-test("F15-TASK-009 UI action derivation uses the configured current policy version", () => {
+test("F15-TASK-009 UI action derivation uses the configured current policy version", async () => {
   const app = infrastructure({
     publicationPolicyVersion: "publication-policy-v2",
     liveTransform: (live) => ({ ...live, policyVersion: "publication-policy-v2" }),
   });
   const api = new PublicationApi(app);
-  createReady(api, "policy-v2");
-  const response = api.executeQuery(query("GET_PUBLICATION_OPERATIONS_VIEW"));
+  await createReady(api, "policy-v2");
+  const response = await api.executeQuery(query("GET_PUBLICATION_OPERATIONS_VIEW"));
   assert.equal(response.success, true);
   assert.equal(response.success && "stale" in response.result.view && response.result.view.stale, false);
   assert.equal(response.success && "availableActions" in response.result.view && response.result.view.availableActions.includes("PUBLISH_PUBLICATION"), true);
 });
 
-test("F15-TASK-009 UI actions suppress approver, verifier and Permission decision actor conflicts", () => {
+test("F15-TASK-009 UI actions suppress approver, verifier and Permission decision actor conflicts", async () => {
   const source = infrastructure();
   const sourceApi = new PublicationApi(source);
-  createReady(sourceApi, "view-sod-source");
-  const snapshot = source.repository.find(identity)!;
+  await createReady(sourceApi, "view-sod-source");
+  const snapshot = (await source.repository.find(identity))!;
   const transforms = [
     (live: Parameters<NonNullable<InfrastructureOptions["liveTransform"]>>[0]) => ({ ...live, approval: { ...live.approval, decisionActorId: "executor-independent" } }),
     (live: Parameters<NonNullable<InfrastructureOptions["liveTransform"]>>[0]) => ({ ...live, verification: { ...live.verification, decisionActorId: "executor-independent" } }),
@@ -525,54 +525,54 @@ test("F15-TASK-009 UI actions suppress approver, verifier and Permission decisio
   ];
   for (const liveTransform of transforms) {
     const app = infrastructure({ liveTransform });
-    app.repository.save(snapshot);
-    const response = new PublicationApi(app).executeQuery(query("GET_PUBLICATION_OPERATIONS_VIEW"));
+    await app.repository.save(snapshot);
+    const response = await new PublicationApi(app).executeQuery(query("GET_PUBLICATION_OPERATIONS_VIEW"));
     assert.deepEqual(response.success && "availableActions" in response.result.view ? response.result.view.availableActions : ["unexpected"], []);
   }
 });
 
-test("F15-TASK-009 UI-032 reports stale prerequisite health without mutation or reactivation", () => {
+test("F15-TASK-009 UI-032 reports stale prerequisite health without mutation or reactivation", async () => {
   let stale = false;
   const app = infrastructure({ liveTransform: (live) => stale ? ({ ...live, verification: { ...live.verification, status: "EXPIRED" } }) : live });
   const api = new PublicationApi(app);
-  createReady(api, "ui32");
+  await createReady(api, "ui32");
   stale = true;
-  const before = app.repository.find(identity)!;
-  const audits = app.audit.list(identity).length;
-  const response = api.executeQuery(query("GET_PUBLICATION_REVALIDATION_VIEW"));
+  const before = (await app.repository.find(identity))!;
+  const audits = (await app.audit.list(identity)).length;
+  const response = await api.executeQuery(query("GET_PUBLICATION_REVALIDATION_VIEW"));
   assert.equal(response.success, true);
   assert.equal(response.success && "screenId" in response.result.view && response.result.view.screenId, "UI-032");
   assert.equal(response.success && "verificationStatus" in response.result.view && response.result.view.verificationStatus, "EXPIRED");
   assert.equal(response.success && "revalidationRequired" in response.result.view && response.result.view.revalidationRequired, true);
-  assert.deepEqual(app.repository.find(identity), before);
-  assert.equal(app.audit.list(identity).length, audits);
+  assert.deepEqual(await app.repository.find(identity), before);
+  assert.equal((await app.audit.list(identity)).length, audits);
 });
 
-test("F15-TASK-009 UI-033 exposes bounded unresolved recovery context without raw evidence or side effects", () => {
+test("F15-TASK-009 UI-033 exposes bounded unresolved recovery context without raw evidence or side effects", async () => {
   const app = infrastructure();
   const snapshot = unresolvedSnapshot();
-  app.repository.save(snapshot);
+  await app.repository.save(snapshot);
   const before = structuredClone(snapshot);
-  const response = new PublicationApi(app).executeQuery(query("GET_PUBLICATION_RECOVERY_VIEW"));
+  const response = await new PublicationApi(app).executeQuery(query("GET_PUBLICATION_RECOVERY_VIEW"));
   assert.equal(response.success, true);
   assert.equal(response.success && "screenId" in response.result.view && response.result.view.screenId, "UI-033");
   assert.equal(response.success && "manualReviewRequired" in response.result.view && response.result.view.manualReviewRequired, true);
   assert.deepEqual(response.success && "availableActions" in response.result.view ? response.result.view.availableActions : ["unexpected"], []);
   assert.equal(JSON.stringify(response).includes("raw-provider-secret-must-not-leak"), false);
-  assert.deepEqual(app.repository.find(identity), before);
+  assert.deepEqual(await app.repository.find(identity), before);
 });
 
-test("F15-TASK-009 UI-035 returns append-only, bounded, immutable and redacted Publication/Audit history", () => {
+test("F15-TASK-009 UI-035 returns append-only, bounded, immutable and redacted Publication/Audit history", async () => {
   const app = infrastructure();
   const api = new PublicationApi(app);
-  createActive(api, "ui35");
+  await createActive(api, "ui35");
   const rawAuditId = JSON.stringify({ tenant: identity.tenantScopeId, publication: identity.publicationId, idempotencyKey: "secret-idempotency", intentFingerprint: "secret-fingerprint" });
-  app.audit.append({
+  await app.audit.append({
     id: rawAuditId, tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId,
     command: "INTERNAL_FAILURE", actorId: "internal-actor", timestamp: now, version: 99,
     result: "FAILED", failureReason: "database-password-and-internal-stack",
   });
-  const response = api.executeQuery(query("GET_PUBLICATION_AUDIT_VIEW", { maxEntries: 1 }));
+  const response = await api.executeQuery(query("GET_PUBLICATION_AUDIT_VIEW", { maxEntries: 1 }));
   assert.equal(response.success, true);
   assert.equal(response.success && "screenId" in response.result.view && response.result.view.screenId, "UI-035");
   assert.equal(response.success && "auditEntries" in response.result.view && response.result.view.auditEntries.length, 1);
@@ -583,17 +583,17 @@ test("F15-TASK-009 UI-035 returns append-only, bounded, immutable and redacted P
   assert.equal(response.success && "auditEntries" in response.result.view && Object.isFrozen(response.result.view.auditEntries), true);
 });
 
-test("F15-TASK-009 API-014 maps canonical Publication state conflicts without misreporting a version conflict", () => {
+test("F15-TASK-009 API-014 maps canonical Publication state conflicts without misreporting a version conflict", async () => {
   const app = infrastructure();
   const api = new PublicationApi(app);
-  const activeVersion = createActive(api, "state-error");
-  const suspended = api.executeCommand(command("SUSPEND_PUBLICATION", {
+  const activeVersion = await createActive(api, "state-error");
+  const suspended = await api.executeCommand(command("SUSPEND_PUBLICATION", {
     input: { type: "SET_SUSPENSION", expectedAggregateVersion: activeVersion, suspensionStatus: "SUSPENDED_SECURITY" },
     occurredAt: now,
   }));
   assert.equal(suspended.success, true, JSON.stringify(suspended));
-  const suspendedVersion = app.repository.find(identity)!.aggregateVersion;
-  const response = api.executeCommand(command("REPUBLISH_PUBLICATION", {
+  const suspendedVersion = (await app.repository.find(identity))!.aggregateVersion;
+  const response = await api.executeCommand(command("REPUBLISH_PUBLICATION", {
     input: {
       type: "BEGIN_ACTIVE_OPERATION", expectedAggregateVersion: suspendedVersion, operation: "REPUBLISH", materiality: "SAME_INTENT",
       nextBinding: { ...binding, approvalId: "approval-republish-state", approvalVersion: 1 },
@@ -605,95 +605,96 @@ test("F15-TASK-009 API-014 maps canonical Publication state conflicts without mi
   assert.equal(!response.success && response.error.code, "INVALID_PUBLICATION_STATE");
 });
 
-test("F15-TASK-009 inaccessible cross-tenant, cross-team, wrong-purpose and unauthorized queries conceal existence", () => {
+test("F15-TASK-009 inaccessible cross-tenant, cross-team, wrong-purpose and unauthorized queries conceal existence", async () => {
   const app = infrastructure();
   const api = new PublicationApi(app);
-  createReady(api, "conceal");
+  await createReady(api, "conceal");
   const requests = [
     query("GET_PUBLICATION", { tenantId: "other-tenant" }),
     query("GET_PUBLICATION", { teamId: "other-team" }),
     { ...query("GET_PUBLICATION"), purpose: "AUDIT_EXPLORATION" } as never,
   ];
   for (const request of requests) {
-    const response = api.executeQuery(request);
+    const response = await api.executeQuery(request);
     assert.equal(response.success, false);
     assert.equal(!response.success && response.error.code, "NOT_FOUND");
     assert.equal(JSON.stringify(response).includes(identity.publicationId), false);
   }
   const deniedApp = infrastructure({ authorization: () => deny() });
-  deniedApp.repository.save(app.repository.find(identity)!);
+  await deniedApp.repository.save((await app.repository.find(identity))!);
   const deniedApi = new PublicationApi(deniedApp);
-  const denied = deniedApi.executeQuery(query("GET_PUBLICATION"));
+  const denied = await deniedApi.executeQuery(query("GET_PUBLICATION"));
   assert.equal(denied.success, false);
   assert.equal(!denied.success && denied.error.code, "NOT_FOUND");
 
-  const callerOverride = api.executeQuery({ ...query("GET_LISTING_PROJECTION"), classification: "PUBLIC", privacyScope: "caller-selected" });
+  const callerOverride = await api.executeQuery({ ...query("GET_LISTING_PROJECTION"), classification: "PUBLIC", privacyScope: "caller-selected" });
   assert.equal(callerOverride.success, false);
   assert.equal(!callerOverride.success && callerOverride.error.code, "NOT_FOUND");
 });
 
-test("F15-TASK-009 query path rejects missing, expired and revoked Sessions before reading Publication state", () => {
+test("F15-TASK-009 query path rejects missing, expired and revoked Sessions before reading Publication state", async () => {
   const source = infrastructure();
   const sourceApi = new PublicationApi(source);
-  createReady(sourceApi, "query-session-source");
-  const snapshot = source.repository.find(identity)!;
+  await createReady(sourceApi, "query-session-source");
+  const snapshot = (await source.repository.find(identity))!;
   for (const state of [null, "EXPIRED", "REVOKED"] as const) {
     const session = state === null ? null : Object.freeze({ ...createTestPublicationSession("viewer", "session-valid"), state });
     const app = infrastructure({ session });
-    app.repository.save(snapshot);
-    const response = new PublicationApi(app).executeQuery(query("GET_PUBLICATION"));
+    await app.repository.save(snapshot);
+    const response = await new PublicationApi(app).executeQuery(query("GET_PUBLICATION"));
     assert.equal(response.success, false);
     assert.equal(!response.success && response.error.code, "AUTHENTICATION_REQUIRED");
   }
 });
 
-test("F15-TASK-009 UI-035 requires current audit.query authority and uses policy rather than role labels", () => {
+test("F15-TASK-009 UI-035 requires current audit.query authority and uses policy rather than role labels", async () => {
   let auditAllowed = false;
   const app = infrastructure({ authorization: (action) => action === "audit.query" && !auditAllowed ? deny() : allow() });
   const api = new PublicationApi(app);
-  createReady(api, "audit-authority");
-  const denied = api.executeQuery(query("GET_PUBLICATION_AUDIT_VIEW"));
+  await createReady(api, "audit-authority");
+  const denied = await api.executeQuery(query("GET_PUBLICATION_AUDIT_VIEW"));
   assert.equal(denied.success, false);
   assert.equal(!denied.success && denied.error.code, "NOT_FOUND");
 
   auditAllowed = true;
-  const allowed = api.executeQuery(query("GET_PUBLICATION_AUDIT_VIEW"));
+  const allowed = await api.executeQuery(query("GET_PUBLICATION_AUDIT_VIEW"));
   assert.equal(allowed.success, true);
   assert.equal(allowed.success && "auditEntries" in allowed.result.view && allowed.result.view.auditEntries.at(-1)?.actorId, "executor-independent");
 });
 
-test("F15-TASK-009 query path cannot invoke commands and leaves Publication, audit and idempotency unchanged", () => {
+test("F15-TASK-009 query path cannot invoke commands and leaves Publication, audit and idempotency unchanged", async () => {
   const app = infrastructure();
   const api = new PublicationApi(app);
-  createReady(api, "non-mutation");
-  const before = app.repository.find(identity)!;
-  const historyCount = app.repository.readHistory(identity).length;
-  const auditCount = app.audit.list(identity).length;
+  await createReady(api, "non-mutation");
+  const before = (await app.repository.find(identity))!;
+  const historyCount = (await app.repository.readHistory(identity)).length;
+  const auditCount = (await app.audit.list(identity)).length;
   for (const operation of ["GET_PUBLICATION", "GET_PUBLICATION_OPERATIONS_VIEW", "GET_PUBLICATION_REVALIDATION_VIEW", "GET_PUBLICATION_RECOVERY_VIEW", "GET_PUBLICATION_AUDIT_VIEW"] as const) {
-    api.executeQuery(query(operation));
+    await api.executeQuery(query(operation));
   }
-  assert.deepEqual(app.repository.find(identity), before);
-  assert.equal(app.repository.readHistory(identity).length, historyCount);
-  assert.equal(app.audit.list(identity).length, auditCount);
+  assert.deepEqual(await app.repository.find(identity), before);
+  assert.equal((await app.repository.readHistory(identity)).length, historyCount);
+  assert.equal((await app.audit.list(identity)).length, auditCount);
 });
 
-test("F15-TASK-011 API-014 reads PRJ-002 through the Projection query boundary without Aggregate lookup", () => {
+test("F15-TASK-011 API-014 reads PRJ-002 through the Projection query boundary without Aggregate lookup", async () => {
   const evaluatedVersions: (number | undefined)[] = [];
   const app = infrastructure({ authorization: (_action, version) => { evaluatedVersions.push(version); return allow(); } });
   const api = new PublicationApi(app);
-  createActive(api, "listing-projection-query");
-  const activation = app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId)
+  await createActive(api, "listing-projection-query");
+  const activation = (await app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId))
     .find(({ eventType }) => eventType === "EVT-003");
   assert.notEqual(activation, undefined);
   if (activation === undefined) throw new Error("test setup failed");
-  app.listingProjectionConsumer.consume(identity.tenantScopeId, activation.eventId);
+  await app.listingProjectionConsumer.consume(identity.tenantScopeId, activation.eventId);
   evaluatedVersions.length = 0;
   const queryOnly = new PublicationApi({
     ...app,
-    repository: { ...app.repository, find: () => { throw new Error("Aggregate Repository must not serve PRJ-002 queries"); } },
+    repository: { ...app.repository, find: async () => {
+      await Promise.resolve(); throw new Error("Aggregate Repository must not serve PRJ-002 queries"); } },
   });
 
-  const response = queryOnly.executeQuery(query("GET_LISTING_PROJECTION"));
+  const response = await queryOnly.executeQuery(query("GET_LISTING_PROJECTION"));
 
   assert.equal(response.success, true, JSON.stringify(response));
   assert.equal(response.success && response.result.provenance.source, "LISTING_PROJECTION");
@@ -704,7 +705,7 @@ test("F15-TASK-011 API-014 reads PRJ-002 through the Projection query boundary w
   assert.deepEqual(evaluatedVersions, [undefined, activation.aggregateVersion]);
 });
 
-test("FCR-003 API-014 authorizes PRJ-002 reads with exact Event-derived security context", () => {
+test("FCR-003 API-014 authorizes PRJ-002 reads with exact Event-derived security context", async () => {
   const evaluated: AuthorizationResource[] = [];
   const app = infrastructure({ authorization: (_action, _version, resource) => {
     if (resource !== undefined) evaluated.push(resource);
@@ -718,14 +719,14 @@ test("FCR-003 API-014 authorizes PRJ-002 reads with exact Event-derived security
       : deny("PROJECTION_RESTRICTION_MISSING");
   } });
   const api = new PublicationApi(app);
-  createActive(api, "listing-projection-security");
-  const activation = app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId)
+  await createActive(api, "listing-projection-security");
+  const activation = (await app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId))
     .find(({ eventType }) => eventType === "EVT-003");
   if (activation === undefined) throw new Error("test setup failed");
-  app.listingProjectionConsumer.consume(identity.tenantScopeId, activation.eventId);
+  await app.listingProjectionConsumer.consume(identity.tenantScopeId, activation.eventId);
   evaluated.length = 0;
 
-  const response = api.executeQuery(query("GET_LISTING_PROJECTION"));
+  const response = await api.executeQuery(query("GET_LISTING_PROJECTION"));
 
   assert.equal(response.success, true, JSON.stringify({ response, evaluated }));
   assert.equal(evaluated.some((resource) => resource.classification === "RESTRICTED_SECURITY"), true);
@@ -738,12 +739,12 @@ test("FCR-003 API-014 authorizes PRJ-002 reads with exact Event-derived security
     query("GET_LISTING_PROJECTION", { tenantId: "other-tenant" }),
     { ...query("GET_LISTING_PROJECTION"), purpose: "AUDIT_EXPLORATION" },
   ]) {
-    const concealed = api.executeQuery(inaccessible);
+    const concealed = await api.executeQuery(inaccessible);
     assert.equal(concealed.success, false);
     assert.equal(!concealed.success && concealed.error.code, "NOT_FOUND");
   }
 
-  const denied = new PublicationApi({ ...app, configuration: {
+  const denied = await new PublicationApi({ ...app, configuration: {
     ...app.configuration,
     authorizationEvaluator: { evaluate: () => deny("CLASSIFICATION_DENIED") },
   } }).executeQuery(query("GET_LISTING_PROJECTION"));
@@ -751,7 +752,7 @@ test("FCR-003 API-014 authorizes PRJ-002 reads with exact Event-derived security
   assert.equal(!denied.success && denied.error.code, "NOT_FOUND");
 });
 
-test("FCR-003 API-014 production authorization denies a Projection without exact classification assignment", () => {
+test("FCR-003 API-014 production authorization denies a Projection without exact classification assignment", async () => {
   const base = createTestPublicationAuthorizationConfiguration(new FixedClock(now));
   const assignment = (resourceTypes: readonly string[]): RoleAssignment => Object.freeze({
     id: `assignment-${resourceTypes.join("-")}`,
@@ -781,19 +782,19 @@ test("FCR-003 API-014 production authorization denies a Projection without exact
       }),
     });
   };
-  const arrange = (resourceTypes: readonly string[]) => {
+  const arrange = async (resourceTypes: readonly string[]) => {
     const seed = infrastructure();
     const seedApi = new PublicationApi(seed);
-    createActive(seedApi, `production-policy-${resourceTypes.length}`);
+    await createActive(seedApi, `production-policy-${resourceTypes.length}`);
     const app = withPolicy(resourceTypes);
-    const snapshot = seed.repository.find(identity);
+    const snapshot = await seed.repository.find(identity);
     if (snapshot === undefined) throw new Error("test setup failed");
-    app.repository.save(snapshot);
-    for (const event of seed.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId)) app.eventJournal.append(event);
+    await app.repository.save(snapshot);
+    for (const event of await seed.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId)) await app.eventJournal.append(event);
     const api = new PublicationApi(app);
-    const activation = app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).find(({ eventType }) => eventType === "EVT-003");
+    const activation = (await app.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId)).find(({ eventType }) => eventType === "EVT-003");
     if (activation === undefined) throw new Error("test setup failed");
-    app.listingProjectionConsumer.consume(identity.tenantScopeId, activation.eventId);
+    await app.listingProjectionConsumer.consume(identity.tenantScopeId, activation.eventId);
     const preflight = app.configuration.authorizationEvaluator?.evaluate({
       session: createTestPublicationSession("session-valid", "session-valid"),
       action: "resource.view",
@@ -822,49 +823,50 @@ test("FCR-003 API-014 production authorization denies a Projection without exact
     return api;
   };
 
-  const denied = arrange(["Publication", "ListingProjection"]).executeQuery(query("GET_LISTING_PROJECTION"));
+  const denied = await (await arrange(["Publication", "ListingProjection"])).executeQuery(query("GET_LISTING_PROJECTION"));
   assert.equal(denied.success, false);
   assert.equal(!denied.success && denied.error.code, "NOT_FOUND");
 
-  const allowed = arrange(["Publication", projectionRestrictionResourceType({
+  const allowed = await (await arrange(["Publication", projectionRestrictionResourceType({
     type: "ListingProjection",
     classification: "RESTRICTED_SECURITY",
     privacyScope: "privacy-scope:publication-approved-fields",
     purpose: "PUBLICATION_EXECUTION",
     consentOrLegalBasis: "legal-basis-reference:publication-test",
     audienceRestriction: "AUD_PUBLIC",
-  })]).executeQuery(query("GET_LISTING_PROJECTION"));
+  })])).executeQuery(query("GET_LISTING_PROJECTION"));
   assert.equal(allowed.success, true, JSON.stringify(allowed));
 });
 
-test("F15-TASK-009 view visibility never bypasses command-time authorization revalidation", () => {
+test("F15-TASK-009 view visibility never bypasses command-time authorization revalidation", async () => {
   let commandAllowed = true;
   const app = infrastructure({ authorization: (action) => action === "resource.view" || commandAllowed ? allow() : deny() });
   const api = new PublicationApi(app);
-  const version = createReady(api, "revalidation");
-  const view = api.executeQuery(query("GET_PUBLICATION_OPERATIONS_VIEW"));
+  const version = await createReady(api, "revalidation");
+  const view = await api.executeQuery(query("GET_PUBLICATION_OPERATIONS_VIEW"));
   assert.equal(view.success && "availableActions" in view.result.view && view.result.view.availableActions.includes("PUBLISH_PUBLICATION"), true);
   commandAllowed = false;
-  const denied = api.executeCommand(publishCommand(version, "revalidation"));
+  const denied = await api.executeCommand(publishCommand(version, "revalidation"));
   assert.equal(denied.success, false);
   assert.equal(!denied.success && denied.error.code, "AUTHORIZATION_DENIED");
-  assert.equal(app.repository.find(identity)?.aggregateVersion, version);
+  assert.equal((await app.repository.find(identity))?.aggregateVersion, version);
 });
 
-test("F15-TASK-009 unknown internal failures are sanitized", () => {
+test("F15-TASK-009 unknown internal failures are sanitized", async () => {
   const app = infrastructure();
-  const api = new PublicationApi({ ...app, repository: { ...app.repository, find: () => { throw new Error("internal class and stack secret"); } } });
-  const response = api.executeQuery(query("GET_PUBLICATION"));
+  const api = new PublicationApi({ ...app, repository: { ...app.repository, find: async () => {
+    await Promise.resolve(); throw new Error("internal class and stack secret"); } } });
+  const response = await api.executeQuery(query("GET_PUBLICATION"));
   assert.equal(response.success, false);
   assert.equal(!response.success && response.error.code, "INTERNAL_API_ERROR");
   assert.equal(JSON.stringify(response).match(/internal class|stack secret|Error/gu), null);
 });
 
-test("F15-TASK-009 closed schema rejects sparse arrays and prototype-pollution-shaped payloads", () => {
+test("F15-TASK-009 closed schema rejects sparse arrays and prototype-pollution-shaped payloads", async () => {
   const api = new PublicationApi(infrastructure());
   const sparseEvidence = new Array<string>(2);
   const sparse = publishCommand(1, "sparse");
-  const sparseResponse = api.executeCommand({
+  const sparseResponse = await api.executeCommand({
     ...sparse,
     payload: {
       ...sparse.payload,
@@ -875,12 +877,12 @@ test("F15-TASK-009 closed schema rejects sparse arrays and prototype-pollution-s
   assert.equal(!sparseResponse.success && sparseResponse.error.code, "VALIDATION_ERROR");
   const pollutedPayload = Object.create(null) as Record<string, unknown>;
   Object.defineProperty(pollutedPayload, "__proto__", { enumerable: true, value: "polluted" });
-  const polluted = api.executeCommand({ ...createCommand("polluted"), payload: pollutedPayload });
+  const polluted = await api.executeCommand({ ...createCommand("polluted"), payload: pollutedPayload });
   assert.equal(polluted.success, false);
   assert.equal(!polluted.success && polluted.error.code, "VALIDATION_ERROR");
 });
 
-test("F15-TASK-009 main API composition registers API-014 with the same PublicationInfrastructure", () => {
+test("F15-TASK-009 main API composition registers API-014 with the same PublicationInfrastructure", async () => {
   const app = infrastructure();
   const composed = composeApiModules({
     publicationInfrastructure: app,
@@ -888,35 +890,35 @@ test("F15-TASK-009 main API composition registers API-014 with the same Publicat
   } as unknown as ApiModuleDependencies);
   assert.equal(composed.publication instanceof PublicationApi, true);
   if (composed.publication === undefined) throw new Error("test setup failed");
-  const response = composed.publication.executeCommand(createCommand("main-composition"));
+  const response = await composed.publication.executeCommand(createCommand("main-composition"));
   assert.equal(response.success, true);
-  assert.equal(app.repository.find(identity)?.aggregateVersion, 1);
+  assert.equal((await app.repository.find(identity))?.aggregateVersion, 1);
   const missing = {
     sessionService: {}, authorizationService: {}, administrationService: {}, auditLog: {}, sourceRegistryService: {}, intakeService: {}, jobService: {}, propertyService: {}, listingService: {}, contactService: {}, clientRequirementService: {}, matchingService: {}, matchingInputResolver: {}, verificationService: {}, permissionService: {}, proposalService: {}, publicationApprovalService: {},
   } as unknown as ApiModuleDependencies;
   assert.throws(() => composeApiModules(missing), /PublicationInfrastructure/u);
 });
 
-test("F15-TASK-009 composed E2E proves authoritative Actor, exact mutation, audit, bounded read and denial containment", () => {
+test("F15-TASK-009 composed E2E proves authoritative Actor, exact mutation, audit, bounded read and denial containment", async () => {
   let commandAllowed = true;
   let readAllowed = true;
   const app = infrastructure({ authorization: (action) => action === "resource.view" || action === "audit.query" ? (readAllowed ? allow() : deny()) : (commandAllowed ? allow() : deny()) });
   const api = composePublicationApiModule(app);
-  const created = api.executeCommand(createCommand("e2e"));
+  const created = await api.executeCommand(createCommand("e2e"));
   assert.equal(created.success, true);
-  assert.equal(app.repository.find(identity)?.aggregateVersion, 1);
-  assert.equal(app.audit.list(identity).at(-1)?.actorId, "executor-independent");
-  assert.equal(app.audit.list(identity).at(-1)?.result, "COMPLETED");
-  const read = api.executeQuery(query("GET_PUBLICATION_OPERATIONS_VIEW"));
+  assert.equal((await app.repository.find(identity))?.aggregateVersion, 1);
+  assert.equal((await app.audit.list(identity)).at(-1)?.actorId, "executor-independent");
+  assert.equal((await app.audit.list(identity)).at(-1)?.result, "COMPLETED");
+  const read = await api.executeQuery(query("GET_PUBLICATION_OPERATIONS_VIEW"));
   assert.equal(read.success && "lifecycle" in read.result.view && read.result.view.lifecycle, "READY");
   assert.equal(read.success && read.result.sourceVersion, 1);
   commandAllowed = false;
-  const beforeDenied = app.repository.find(identity)!;
-  const denied = api.executeCommand(command("TERMINATE_PUBLICATION", { input: { type: "TERMINATE", expectedAggregateVersion: 1 }, occurredAt: now }));
+  const beforeDenied = (await app.repository.find(identity))!;
+  const denied = await api.executeCommand(command("TERMINATE_PUBLICATION", { input: { type: "TERMINATE", expectedAggregateVersion: 1 }, occurredAt: now }));
   assert.equal(denied.success, false);
-  assert.deepEqual(app.repository.find(identity), beforeDenied);
+  assert.deepEqual(await app.repository.find(identity), beforeDenied);
   readAllowed = false;
-  const concealed = api.executeQuery(query("GET_PUBLICATION"));
+  const concealed = await api.executeQuery(query("GET_PUBLICATION"));
   assert.equal(concealed.success, false);
   assert.equal(!concealed.success && concealed.error.code, "NOT_FOUND");
   assert.equal(JSON.stringify({ created, read, denied, concealed }).match(/forged-body-actor|session-valid|approval-1|connector-confirmed|executor-independent/gu), null);

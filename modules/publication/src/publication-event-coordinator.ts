@@ -33,12 +33,12 @@ export class PublicationEventCoordinator {
     private readonly operations?: PublicationOperationsObserver,
   ) {}
 
-  public appendAcceptedTransition(
+  public async appendAcceptedTransition(
     transaction: PublicationEventEmissionTransaction,
     previous: PublicationSnapshot | undefined,
     current: PublicationSnapshot,
     command: PublicationApplicationCommand,
-  ): readonly PublicationEventEnvelope[] {
+  ): Promise<readonly PublicationEventEnvelope[]> {
     const candidates = mapAcceptedPublicationTransition(previous, current, command);
     if (candidates.length === 0) return Object.freeze([]);
     const domain = command.input.command;
@@ -47,8 +47,8 @@ export class PublicationEventCoordinator {
     const commandId = command.kind === "MODIFY_PUBLICATION" && "attempt" in command.input
       ? command.input.attempt.commandId
       : `${domain.correlationId}:${command.kind === "CREATE_PUBLICATION" ? command.kind : command.input.type}`;
-    let sequence = transaction.eventJournal.getLastSequence(current.tenantScopeId, current.aggregateId);
-    const committed = transaction.eventJournal.listByAggregate(current.tenantScopeId, current.aggregateId);
+    let sequence = await transaction.eventJournal.getLastSequence(current.tenantScopeId, current.aggregateId);
+    const committed = await transaction.eventJournal.listByAggregate(current.tenantScopeId, current.aggregateId);
     const envelopes = candidates.map((candidate) => {
       const existing = committed.find((event) => event.aggregateVersion === current.aggregateVersion && event.eventType === candidate.eventType && event.commandId === commandId);
       const eventSequence = existing?.eventSequence ?? ++sequence;
@@ -90,7 +90,7 @@ export class PublicationEventCoordinator {
     });
     let results;
     try {
-      results = transaction.eventJournal.appendAll(envelopes);
+      results = await transaction.eventJournal.appendAll(envelopes);
     } catch (error) {
       const first = envelopes[0];
       safelyObserve(this.operations, { component: "EVENT_JOURNAL", result: "FAILED", failureCode: error instanceof PublicationEventError ? error.code : "EVENT_JOURNAL_UNAVAILABLE", sourceReference: first?.eventId ?? current.aggregateId, correlationId: domain.correlationId, actorOrServiceReference: domain.actorId });
@@ -98,7 +98,7 @@ export class PublicationEventCoordinator {
       throw error;
     }
     for (const result of results) {
-      transaction.audit.append({
+      await transaction.audit.append({
         id: JSON.stringify([current.tenantScopeId, current.aggregateId, "canonical-event", result.event.eventId, result.status]),
         tenantScopeId: current.tenantScopeId,
         aggregateId: current.aggregateId,
@@ -121,24 +121,24 @@ export class PublicationEventCoordinator {
     for (const event of events) safelyObserve(this.operations, { component: "EVENT_JOURNAL", result: "COMPLETED", sourceReference: event.eventId, correlationId: event.correlationId, actorOrServiceReference });
   }
 
-  public appendProjectionRebuildEvent(
+  public async appendProjectionRebuildEvent(
     eventJournal: PublicationEventJournal,
     sourceEvent: PublicationEventEnvelope,
     input: PublicationProjectionRebuildEventInput,
-  ): PublicationEventEnvelope {
-    const event = this.createProjectionRebuildEvent(eventJournal, sourceEvent, input);
-    const result = eventJournal.append(event);
+  ): Promise<PublicationEventEnvelope> {
+    const event = await this.createProjectionRebuildEvent(eventJournal, sourceEvent, input);
+    const result = await eventJournal.append(event);
     return immutableDomain(result.event);
   }
 
-  public createProjectionRebuildEvent(
+  public async createProjectionRebuildEvent(
     eventJournal: PublicationEventJournal,
     sourceEvent: PublicationEventEnvelope,
     input: PublicationProjectionRebuildEventInput,
-  ): PublicationEventEnvelope {
+  ): Promise<PublicationEventEnvelope> {
     const governance = resolvePublicationTechnicalEventSourceContext(this.sourceContextResolver, sourceEvent);
     const commandId = `projection-rebuild:${createHash("sha256").update(input.idempotencyKey).digest("hex")}:${input.eventType}`;
-    const committed = eventJournal.listByAggregate(sourceEvent.tenantId, sourceEvent.aggregateId);
+    const committed = await eventJournal.listByAggregate(sourceEvent.tenantId, sourceEvent.aggregateId);
     const existing = committed.find((event) => event.eventType === input.eventType && event.commandId === commandId);
     const event = createPublicationEventEnvelope({
       source: {
@@ -155,7 +155,7 @@ export class PublicationEventCoordinator {
       eventType: input.eventType,
       aggregateId: sourceEvent.aggregateId,
       aggregateVersion: sourceEvent.aggregateVersion,
-      eventSequence: existing?.eventSequence ?? eventJournal.getLastSequence(sourceEvent.tenantId, sourceEvent.aggregateId) + 1,
+      eventSequence: existing?.eventSequence ?? (await eventJournal.getLastSequence(sourceEvent.tenantId, sourceEvent.aggregateId)) + 1,
       occurredAt: existing?.occurredAt ?? this.clock.now(),
       recordedAt: existing?.recordedAt ?? this.clock.now(),
       correlationId: input.correlationId,

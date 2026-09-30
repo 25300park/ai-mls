@@ -4,6 +4,7 @@ import type { AuthorizationService } from "../../../modules/authorization/src/au
 import type { ClientRequirementService } from "../../../modules/client/src/client-requirement-service.js";
 import type { ContactService } from "../../../modules/contact/src/contact-service.js";
 import type { SessionService } from "../../../modules/identity/src/session-service.js";
+import type { PostgreSqlPoolPort } from "../../../modules/identity/src/postgresql-pool.js";
 import type { IntakeService } from "../../../modules/intake/src/intake-service.js";
 import type { JobService } from "../../../modules/jobs/src/job-service.js";
 import type { ListingService } from "../../../modules/listing/src/listing-service.js";
@@ -16,6 +17,7 @@ import type { SourceRegistryService } from "../../../modules/source/src/source-r
 import type { VerificationService } from "../../../modules/verification/src/verification-service.js";
 import {
   createProductionPublicationInfrastructure,
+  createPostgreSqlProductionPublicationInfrastructure,
   type PublicationInfrastructure,
 } from "../../../modules/publication/src/publication-infrastructure.js";
 import type { PublicationInfrastructureConfigurationInput } from "../../../modules/publication/src/publication-infrastructure-configuration.js";
@@ -60,7 +62,8 @@ export {
 } from "./administration-production-composition.js";
 
 export interface ProductionPublicationApi014NodeHttpCompositionOptions {
-  readonly databasePath: string;
+  readonly databasePath?: string;
+  readonly postgreSqlPool?: PostgreSqlPoolPort;
   readonly runtimeEnvironment: "TEST" | "STAGING" | "PRODUCTION";
   readonly bootstrapContext?: ProductionBootstrapContextView;
   readonly schemaMode?: "INITIALIZE" | "REQUIRE_EXISTING";
@@ -89,11 +92,22 @@ export function composeProductionPublicationApi014HttpHandler(
   if (!isRuntimeEnvironment(options.runtimeEnvironment)) throw new TypeError("Runtime environment is required.");
   if (options.runtimeEnvironment === "PRODUCTION") assertProductionRootBootstrapContext(options.bootstrapContext);
   else if (options.bootstrapContext !== undefined) throw new TypeError("Bootstrap context is Production-only.");
-  const infrastructure = createProductionPublicationInfrastructure({
-    databasePath: options.databasePath,
-    ...(options.schemaMode === undefined ? {} : { schemaMode: options.schemaMode }),
-    ...(options.infrastructureConfiguration === undefined ? {} : { configuration: options.infrastructureConfiguration }),
-  });
+  if (options.runtimeEnvironment === "PRODUCTION" && (options.postgreSqlPool === undefined || options.databasePath !== undefined)) {
+    throw new TypeError("Production Publication PostgreSQL persistence is required.");
+  }
+  if (options.runtimeEnvironment !== "PRODUCTION" && (options.databasePath === undefined || options.postgreSqlPool !== undefined)) {
+    throw new TypeError("Local/Test Publication SQLite persistence is required.");
+  }
+  const infrastructure = options.runtimeEnvironment === "PRODUCTION"
+    ? createPostgreSqlProductionPublicationInfrastructure({
+      pool: options.postgreSqlPool!,
+      ...(options.infrastructureConfiguration === undefined ? {} : { configuration: options.infrastructureConfiguration }),
+    })
+    : createProductionPublicationInfrastructure({
+      databasePath: options.databasePath!,
+      ...(options.schemaMode === undefined ? {} : { schemaMode: options.schemaMode }),
+      ...(options.infrastructureConfiguration === undefined ? {} : { configuration: options.infrastructureConfiguration }),
+    });
   let host: PublicationApplicationHost | undefined;
   try {
     const api = new PublicationApi(infrastructure);
@@ -108,15 +122,14 @@ export function composeProductionPublicationApi014HttpHandler(
     return Object.freeze({
       httpHandler,
       activateRuntime: (): void => { if (host?.status.state !== "READY") host?.start(); },
-      close: (): Promise<void> => {
+      close: async (): Promise<void> => {
         try { if (host?.status.state === "READY") host.stop(); }
-        finally { infrastructure.unitOfWork.close(); }
-        return Promise.resolve();
+        finally { await infrastructure.unitOfWork.close(); }
       },
     });
   } catch (error) {
     try { if (host?.status.state === "READY") host.stop(); }
-    finally { infrastructure.unitOfWork.close(); }
+    finally { void infrastructure.unitOfWork.close(); }
     throw error;
   }
 }

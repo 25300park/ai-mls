@@ -4,13 +4,13 @@ import { PublicationRuntimeTransportAdapter } from "./publication-transport-runt
 import type { PublicationRuntime } from "./publication-runtime.js";
 
 export interface InProcessPublicationTransport {
-  execute(request: unknown): PublicationTransportResponse;
+  execute(request: unknown): Promise<PublicationTransportResponse>;
 }
 
 export class InProcessPublicationTransportAdapter implements InProcessPublicationTransport {
   public constructor(private readonly dispatcher: PublicationTransportDispatcher) {}
 
-  public execute(request: unknown): PublicationTransportResponse {
+  public execute(request: unknown): Promise<PublicationTransportResponse> {
     return this.dispatcher.dispatch(request);
   }
 }

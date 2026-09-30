@@ -24,7 +24,8 @@ import type { PublicationHostClock } from "./publication-host-clock.js";
 
 const timestamp = "2026-07-29T03:00:00.000Z";
 
-test("PHASE13-12 creation has no startup side effect and exposes CREATED", () => {
+test("PHASE13-12 creation has no startup side effect and exposes CREATED", async () => {
+  await Promise.resolve();
   let hostCreations = 0;
   const executable = createPublicationInProcessExecutable(undefined, () => {
     hostCreations += 1;
@@ -44,7 +45,8 @@ test("PHASE13-12 creation has no startup side effect and exposes CREATED", () =>
   });
 });
 
-test("PHASE13-12 configuration defaults and caller input are immutable isolated values", () => {
+test("PHASE13-12 configuration defaults and caller input are immutable isolated values", async () => {
+  await Promise.resolve();
   const input = { executionMode: "IN_PROCESS" };
   const executable = createPublicationInProcessExecutable(input);
 
@@ -57,7 +59,8 @@ test("PHASE13-12 configuration defaults and caller input are immutable isolated 
   }, TypeError);
 });
 
-test("PHASE13-12 direct construction cannot bypass configuration canonicalisation", () => {
+test("PHASE13-12 direct construction cannot bypass configuration canonicalisation", async () => {
+  await Promise.resolve();
   const input = { executionMode: "IN_PROCESS" as const };
   const executable = new PublicationInProcessExecutable(input, () => createRealHost());
 
@@ -67,7 +70,8 @@ test("PHASE13-12 direct construction cannot bypass configuration canonicalisatio
   assert.equal(Object.isFrozen(executable.configuration), true);
 });
 
-test("PHASE13-12 valid startup creates and starts exactly one approved Host", () => {
+test("PHASE13-12 valid startup creates and starts exactly one approved Host", async () => {
+  await Promise.resolve();
   let hostCreations = 0;
   const executable = createPublicationInProcessExecutable(undefined, () => {
     hostCreations += 1;
@@ -79,7 +83,8 @@ test("PHASE13-12 valid startup creates and starts exactly one approved Host", ()
   assert.equal(executable.diagnostics.hostState, "READY");
 });
 
-test("PHASE13-12 invalid configuration is rejected before Host construction", () => {
+test("PHASE13-12 invalid configuration is rejected before Host construction", async () => {
+  await Promise.resolve();
   let hostCreations = 0;
 
   assert.throws(
@@ -97,7 +102,8 @@ test("PHASE13-12 invalid configuration is rejected before Host construction", ()
   assert.equal(hostCreations, 0);
 });
 
-test("PHASE13-12 hostile configuration accessors and proxies are sanitised", () => {
+test("PHASE13-12 hostile configuration accessors and proxies are sanitised", async () => {
+  await Promise.resolve();
   const accessorConfiguration = Object.defineProperty({}, "executionMode", {
     enumerable: true,
     get: () => {
@@ -120,10 +126,10 @@ test("PHASE13-12 hostile configuration accessors and proxies are sanitised", () 
   }
 });
 
-test("PHASE13-12 execution before startup returns a safe rejection without Host invocation", () => {
+test("PHASE13-12 execution before startup returns a safe rejection without Host invocation", async () => {
   const executable = createPublicationInProcessExecutable();
 
-  const result = executable.execute({
+  const result = await executable.execute({
     executionId: "execution-before-start",
     request: createRequest("before-start"),
   });
@@ -138,7 +144,7 @@ test("PHASE13-12 execution before startup returns a safe rejection without Host 
   assert.equal(result.diagnostics.executionCount, 0);
 });
 
-test("PHASE13-12 hostile executable request accessors and proxies are sanitised", () => {
+test("PHASE13-12 hostile executable request accessors and proxies are sanitised", async () => {
   const executable = createTestExecutable();
   executable.start();
   const accessorRequest = Object.defineProperty({ request: {} }, "executionId", {
@@ -154,7 +160,7 @@ test("PHASE13-12 hostile executable request accessors and proxies are sanitised"
   });
 
   for (const request of [accessorRequest, proxyRequest]) {
-    const result = executable.execute(request as PublicationExecutableRequest);
+    const result = await executable.execute(request as PublicationExecutableRequest);
     assert.equal(result.error?.code, "INTERNAL_EXECUTABLE_ERROR");
     assert.equal(result.error?.message, "Executable request is invalid.");
     assert.equal(JSON.stringify(result).includes("SECRET"), false);
@@ -163,11 +169,11 @@ test("PHASE13-12 hostile executable request accessors and proxies are sanitised"
   }
 });
 
-test("PHASE13-12 successful READY execution preserves Presentation meaning", () => {
+test("PHASE13-12 successful READY execution preserves Presentation meaning", async () => {
   const executable = createTestExecutable();
   executable.start();
 
-  const result = executable.execute({
+  const result = await executable.execute({
     executionId: "execution-success",
     request: createRequest("executable-success"),
   });
@@ -196,11 +202,11 @@ test("PHASE13-12 successful READY execution preserves Presentation meaning", () 
   assert.equal(result.diagnostics.lastExecutionStatus, "SUCCESS");
 });
 
-test("PHASE13-12 unknown operation is contained as Presentation failure and Host stays READY", () => {
+test("PHASE13-12 unknown operation is contained as Presentation failure and Host stays READY", async () => {
   const executable = createTestExecutable();
   executable.start();
 
-  const result = executable.execute({
+  const result = await executable.execute({
     executionId: "execution-unknown",
     request: {
       requestId: "unknown-operation",
@@ -217,7 +223,8 @@ test("PHASE13-12 unknown operation is contained as Presentation failure and Host
   assert.equal(executable.status.state, "READY");
 });
 
-test("PHASE13-12 Host startup failure maps safely and preserves FAILED", () => {
+test("PHASE13-12 Host startup failure maps safely and preserves FAILED", async () => {
+  await Promise.resolve();
   const host = new PublicationApplicationHost(
     () => {
       throw new Error("startup secret");
@@ -237,7 +244,7 @@ test("PHASE13-12 Host startup failure maps safely and preserves FAILED", () => {
   assert.equal(executable.diagnostics.hostState, "FAILED");
 });
 
-test("PHASE13-12 Host execution failure returns a sanitised terminal result", () => {
+test("PHASE13-12 Host execution failure returns a sanitised terminal result", async () => {
   const composition = composePublicationHostApplication(compositionOptions());
   const host = new PublicationApplicationHost(
     () => composition,
@@ -248,7 +255,7 @@ test("PHASE13-12 Host execution failure returns a sanitised terminal result", ()
   executable.start();
   composition.shutdown();
 
-  const result = executable.execute({
+  const result = await executable.execute({
     executionId: "execution-host-failure",
     request: createRequest("host-failure"),
   });
@@ -263,7 +270,8 @@ test("PHASE13-12 Host execution failure returns a sanitised terminal result", ()
   assert.equal(JSON.stringify(result).includes("Runtime"), false);
 });
 
-test("PHASE13-12 Host stop failure maps safely and preserves FAILED", () => {
+test("PHASE13-12 Host stop failure maps safely and preserves FAILED", async () => {
+  await Promise.resolve();
   const host = createRealHost();
   Object.defineProperty(host, "stop", {
     value: () => {
@@ -282,7 +290,8 @@ test("PHASE13-12 Host stop failure maps safely and preserves FAILED", () => {
   assert.deepEqual(executable.status, { state: "FAILED", sequence: 4 });
 });
 
-test("PHASE13-12 graceful shutdown stops the Host and executable", () => {
+test("PHASE13-12 graceful shutdown stops the Host and executable", async () => {
+  await Promise.resolve();
   const executable = createTestExecutable();
   executable.start();
 
@@ -298,7 +307,8 @@ test("PHASE13-12 graceful shutdown stops the Host and executable", () => {
   });
 });
 
-test("PHASE13-12 repeated stop is idempotent and returns the same snapshot", () => {
+test("PHASE13-12 repeated stop is idempotent and returns the same snapshot", async () => {
+  await Promise.resolve();
   const executable = createTestExecutable();
   executable.start();
   const first = executable.stop();
@@ -306,12 +316,12 @@ test("PHASE13-12 repeated stop is idempotent and returns the same snapshot", () 
   assert.equal(executable.stop(), first);
 });
 
-test("PHASE13-12 execution and restart after STOPPED are rejected safely", () => {
+test("PHASE13-12 execution and restart after STOPPED are rejected safely", async () => {
   const executable = createTestExecutable();
   executable.start();
   executable.stop();
 
-  const result = executable.execute({
+  const result = await executable.execute({
     executionId: "execution-after-stop",
     request: createRequest("after-stop"),
   });
@@ -324,7 +334,8 @@ test("PHASE13-12 execution and restart after STOPPED are rejected safely", () =>
   );
 });
 
-test("PHASE13-12 lifecycle controller accepts only the complete canonical transition table", () => {
+test("PHASE13-12 lifecycle controller accepts only the complete canonical transition table", async () => {
+  await Promise.resolve();
   const states = ["CREATED", "STARTING", "READY", "EXECUTING", "STOPPING", "STOPPED", "FAILED"] as const;
   const paths = {
     CREATED: [],
@@ -366,10 +377,10 @@ test("PHASE13-12 lifecycle controller accepts only the complete canonical transi
   }
 });
 
-test("PHASE13-12 executable results are deeply immutable", () => {
+test("PHASE13-12 executable results are deeply immutable", async () => {
   const executable = createTestExecutable();
   executable.start();
-  const result = executable.execute({
+  const result = await executable.execute({
     executionId: "execution-immutable",
     request: createRequest("immutable"),
   });
@@ -383,7 +394,8 @@ test("PHASE13-12 executable results are deeply immutable", () => {
   }, TypeError);
 });
 
-test("PHASE13-12 diagnostics are deeply immutable safe scalar evidence", () => {
+test("PHASE13-12 diagnostics are deeply immutable safe scalar evidence", async () => {
+  await Promise.resolve();
   const executable = createTestExecutable();
   executable.start();
   const diagnostics = executable.diagnostics;
@@ -397,10 +409,10 @@ test("PHASE13-12 diagnostics are deeply immutable safe scalar evidence", () => {
   assert.equal(JSON.stringify(diagnostics).includes("configuration"), false);
 });
 
-test("PHASE13-12 public snapshots leak no Host or inner implementation instance", () => {
+test("PHASE13-12 public snapshots leak no Host or inner implementation instance", async () => {
   const executable = createTestExecutable();
   executable.start();
-  const result = executable.execute({
+  const result = await executable.execute({
     executionId: "execution-no-leak",
     request: createRequest("no-leak"),
   });
@@ -418,7 +430,8 @@ test("PHASE13-12 public snapshots leak no Host or inner implementation instance"
   }
 });
 
-test("PHASE13-12 importing and constructing does not automatically start or execute", () => {
+test("PHASE13-12 importing and constructing does not automatically start or execute", async () => {
+  await Promise.resolve();
   let hostCreations = 0;
   const factory: PublicationExecutableHostFactory = () => {
     hostCreations += 1;
@@ -432,7 +445,8 @@ test("PHASE13-12 importing and constructing does not automatically start or exec
   assert.equal(second.status.state, "CREATED");
 });
 
-test("PHASE13-12 repeated construction produces equal isolated snapshots", () => {
+test("PHASE13-12 repeated construction produces equal isolated snapshots", async () => {
+  await Promise.resolve();
   const first = createPublicationInProcessExecutable();
   const second = createPublicationInProcessExecutable();
 
@@ -442,11 +456,11 @@ test("PHASE13-12 repeated construction produces equal isolated snapshots", () =>
   assert.deepEqual(first.diagnostics, second.diagnostics);
 });
 
-test("PHASE13-12 completes the full in-process executable path", () => {
+test("PHASE13-12 completes the full in-process executable path", async () => {
   const executable = createTestExecutable();
   assert.equal(executable.start().state, "READY");
 
-  const result = executable.execute({
+  const result = await executable.execute({
     executionId: "execution-e2e",
     request: createRequest("e2e"),
   });
@@ -459,7 +473,8 @@ test("PHASE13-12 completes the full in-process executable path", () => {
   assert.equal(containsNonPlainObject(result), false);
 });
 
-test("PHASE13-12 executable production files preserve Host-only dependency and forbidden-scope isolation", () => {
+test("PHASE13-12 executable production files preserve Host-only dependency and forbidden-scope isolation", async () => {
+  await Promise.resolve();
   const sourceDirectory = join(process.cwd(), "modules", "publication", "src");
   const productionFiles = readdirSync(sourceDirectory)
     .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts") && file !== "index.ts");

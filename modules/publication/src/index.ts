@@ -13,6 +13,7 @@ export * from "./publication-persistence-model.js";
 export * from "./publication-repository.js";
 export * from "./publication-unit-of-work.js";
 export * from "./publication-durable-persistence.js";
+export * from "./publication-postgresql-persistence.js";
 export * from "./in-memory-publication-repository.js";
 export * from "./publication-application-contracts.js";
 export * from "./publication-application-error.js";

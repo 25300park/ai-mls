@@ -23,10 +23,10 @@ async function createAdapter(outcome: PublicationConnectorOutcome): Promise<Publ
 test("F17-E deterministic adapter emits stable immutable normalized outcomes across calls and instances", async () => {
   for (const outcome of ["CONFIRMED", "REJECTED", "UNKNOWN"] as const) {
     const adapter = await createAdapter(outcome);
-    const first = adapter.dispatch(input);
+    const first = await adapter.dispatch(input);
     assert.equal(first.outcome, outcome);
-    assert.deepEqual(adapter.dispatch(input), first);
-    assert.deepEqual((await createAdapter(outcome)).dispatch(input), first);
+    assert.deepEqual(await adapter.dispatch(input), first);
+    assert.deepEqual(await (await createAdapter(outcome)).dispatch(input), first);
     assert.equal(Object.isFrozen(first), true);
     assert.equal(Object.isFrozen(first.evidenceRefs), true);
     assert.match(first.evidenceRefs[0] ?? "", /^test-provider:[a-f0-9]{64}:(confirmed|rejected|unknown)$/u);
@@ -38,21 +38,21 @@ test("F17-E deterministic adapter emits stable immutable normalized outcomes acr
 
 test("F17-E deterministic adapter contains conflicting provider idempotency without overwriting prior observation", async () => {
   const adapter = await createAdapter("CONFIRMED");
-  const first = adapter.dispatch(input);
-  const changedBinding = adapter.dispatch({ ...input, targetId: "different-target" });
-  const changedKey = adapter.dispatch({ ...input, providerIdempotencyKey: "different-key" });
+  const first = await adapter.dispatch(input);
+  const changedBinding = await adapter.dispatch({ ...input, targetId: "different-target" });
+  const changedKey = await adapter.dispatch({ ...input, providerIdempotencyKey: "different-key" });
   for (const result of [changedBinding, changedKey]) {
     assert.equal(result.outcome, "UNKNOWN");
     assert.equal(result.externalObjectReference, undefined);
     assert.match(result.evidenceRefs[0] ?? "", /^test-provider:[a-f0-9]{64}:idempotency-conflict$/u);
   }
-  assert.deepEqual(adapter.dispatch(input), first);
+  assert.deepEqual(await adapter.dispatch(input), first);
 });
 
 test("F17-E deterministic adapter is explicitly injected into test composition and rejected by production", async () => {
   const adapter = await createAdapter("CONFIRMED");
   const testGraph = createPublicationInfrastructure({ connectorDispatcher: adapter });
-  assert.equal(testGraph.connectorDispatcher.dispatch(input).outcome, "CONFIRMED");
+  assert.equal((await testGraph.connectorDispatcher.dispatch(input)).outcome, "CONFIRMED");
   assert.throws(() => createPublicationInfrastructure().connectorDispatcher.dispatch(input), /connector is unavailable/u);
   const directory = mkdtempSync(join(tmpdir(), "ai-mls-f17-e-isolation-"));
   try {
@@ -66,8 +66,8 @@ test("F17-E deterministic adapter is explicitly injected into test composition a
 
 test("F17-E deterministic adapter does not reflect arbitrary extra provider input into evidence", async () => {
   const adapter = await createAdapter("CONFIRMED");
-  const first = adapter.dispatch(input);
+  const first = await adapter.dispatch(input);
   const extraInput = { ...input, rawPayload: "NON_SECRET_RAW_PROVIDER_FIXTURE", destination: "https://invalid.example", authorization: "NON_SECRET_HEADER_FIXTURE" };
-  assert.deepEqual(adapter.dispatch(extraInput), first);
+  assert.deepEqual(await adapter.dispatch(extraInput), first);
   assert.equal(JSON.stringify(first).includes("NON_SECRET"), false);
 });

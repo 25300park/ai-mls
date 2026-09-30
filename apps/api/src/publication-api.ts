@@ -72,13 +72,13 @@ const inputKeys: Readonly<Record<PublicationApiCommandOperation, readonly string
 export class PublicationApiCommandService {
   public constructor(private readonly infrastructure: PublicationInfrastructure) {}
 
-  public execute(input: unknown): PublicationCommandResponse {
+  public async execute(input: unknown): Promise<PublicationCommandResponse> {
     const metadata = safeMetadata(input);
     try {
       const request = validateCommandRequest(input);
-      const result = this.dispatch(request);
+      const result = await this.dispatch(request);
       if (!result.ok) return commandFailure(request, mapPublicationApplicationFailure(result));
-      const snapshot = this.infrastructure.repository.find(identityOf(request));
+      const snapshot = await this.infrastructure.repository.find(identityOf(request));
       if (snapshot === undefined) return commandFailure(request, "INTERNAL_API_ERROR");
       return immutableApiValue({
         requestId: request.requestId,
@@ -92,7 +92,7 @@ export class PublicationApiCommandService {
     }
   }
 
-  private dispatch(request: PublicationCommandRequest): PublicationApplicationResult | PublicationCoordinationResult | PublicationReconciliationResult {
+  private dispatch(request: PublicationCommandRequest): Promise<PublicationApplicationResult | PublicationCoordinationResult | PublicationReconciliationResult> {
     const context = executionContext(request);
     const identity = identityOf(request);
     const payload = request.payload;
@@ -147,7 +147,7 @@ export class PublicationApiCommandService {
 export class PublicationApiQueryService {
   public constructor(private readonly infrastructure: PublicationInfrastructure) {}
 
-  public execute(input: unknown): PublicationQueryResponse {
+  public async execute(input: unknown): Promise<PublicationQueryResponse> {
     const metadata = safeMetadata(input);
     try {
       const request = validateQueryRequest(input);
@@ -175,7 +175,7 @@ export class PublicationApiQueryService {
           metadata: { correlationId: request.correlationId },
         });
       }
-      const snapshot = this.infrastructure.repository.find(identity);
+      const snapshot = await this.infrastructure.repository.find(identity);
       if (snapshot === undefined) throw new PublicationApiError("NOT_FOUND");
       this.authorizeRead(request, session, snapshot);
       const live = this.resolveLive(snapshot, request);
@@ -184,7 +184,7 @@ export class PublicationApiQueryService {
         snapshot,
         session,
         live,
-        audit: this.infrastructure.audit.list(identity),
+        audit: await this.infrastructure.audit.list(identity),
         authorizationDecisions: this.infrastructure.authorizationEvidence.list(snapshot.publicationId),
         authorizeAction: (action) => this.evaluate(session, request, snapshot, action),
         maxEntries,
@@ -315,11 +315,11 @@ export class PublicationApi {
     Object.freeze(this);
   }
 
-  public executeCommand(input: unknown): PublicationCommandResponse {
+  public executeCommand(input: unknown): Promise<PublicationCommandResponse> {
     return this.commands.execute(input);
   }
 
-  public executeQuery(input: unknown): PublicationQueryResponse {
+  public executeQuery(input: unknown): Promise<PublicationQueryResponse> {
     return this.queries.execute(input);
   }
 }

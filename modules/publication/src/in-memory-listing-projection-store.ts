@@ -100,7 +100,7 @@ export class InMemoryListingProjectionStore implements ListingProjectionStore {
     return candidateGenerationId;
   }
 
-  public commitServingGenerationCutover(identity: ListingProjectionIdentity, expectedGenerationId: string | undefined, candidateGenerationId: string, appendCompletionEvidence: () => void, updatedAt: string): string {
+  public async commitServingGenerationCutover(identity: ListingProjectionIdentity, expectedGenerationId: string | undefined, candidateGenerationId: string, appendCompletionEvidence: () => Promise<void>, updatedAt: string): Promise<string> {
     const key = servingKey(identity);
     const current = this.serving.get(key);
     this.validateCutoverCandidate(identity, expectedGenerationId, candidateGenerationId);
@@ -108,7 +108,7 @@ export class InMemoryListingProjectionStore implements ListingProjectionStore {
     // Synchronous evidence append occurs only after every CAS/candidate check and
     // before the infallible in-memory pointer update. If evidence fails, neither
     // the serving pointer nor the prior generation lifecycle is changed.
-    appendCompletionEvidence();
+    await appendCompletionEvidence();
     if (expectedGenerationId !== undefined && expectedGenerationId !== candidateGenerationId) {
       const priorKey = generationKey(identity.tenantId, expectedGenerationId);
       const prior = this.generations.get(priorKey);

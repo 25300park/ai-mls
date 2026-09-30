@@ -40,16 +40,16 @@ export interface PublicationApplicationDependencies {
 export class CreatePublicationHandler implements PublicationCommandHandler<CreatePublicationApplicationCommand> {
   public constructor(private readonly dependencies: PublicationApplicationDependencies) {}
 
-  public execute(command: CreatePublicationApplicationCommand, context: PublicationExecutionContext): PublicationApplicationResult {
+  public execute(command: CreatePublicationApplicationCommand, context: PublicationExecutionContext): Promise<PublicationApplicationResult> {
     return this.executeAuthorized(command, context);
   }
 
-  public executeAuthorized(command: CreatePublicationApplicationCommand, context: PublicationExecutionContext, preflight?: PublicationAuthorizedPreflight): PublicationApplicationResult {
+  public executeAuthorized(command: CreatePublicationApplicationCommand, context: PublicationExecutionContext, preflight?: PublicationAuthorizedPreflight): Promise<PublicationApplicationResult> {
     const identity = command.input.identity;
-    return executeModificationBoundary(this.dependencies, command, identity, context, (transaction, authorizedCommand) => {
+    return executeModificationBoundary(this.dependencies, command, identity, context, async (transaction, authorizedCommand) => {
       if (authorizedCommand.kind !== "CREATE_PUBLICATION") throw new Error("APPLICATION_COMMAND_INVALID");
       const aggregate = PublicationAggregate.create(authorizedCommand.input);
-      transaction.repository.save(aggregate.snapshot);
+      await transaction.repository.save(aggregate.snapshot);
       return { snapshot: aggregate.snapshot, previous: undefined };
     }, preflight);
   }
@@ -58,33 +58,33 @@ export class CreatePublicationHandler implements PublicationCommandHandler<Creat
 export class ModifyPublicationHandler implements PublicationCommandHandler<ModifyPublicationApplicationCommand> {
   public constructor(private readonly dependencies: PublicationApplicationDependencies) {}
 
-  public execute(command: ModifyPublicationApplicationCommand, context: PublicationExecutionContext): PublicationApplicationResult {
+  public execute(command: ModifyPublicationApplicationCommand, context: PublicationExecutionContext): Promise<PublicationApplicationResult> {
     return this.executeAuthorized(command, context);
   }
 
-  public executeAuthorized(command: ModifyPublicationApplicationCommand, context: PublicationExecutionContext, preflight?: PublicationAuthorizedPreflight, auditDetails?: PublicationApplicationAuditDetails, stage?: PublicationTransactionalStage): PublicationApplicationResult {
-    return executeModificationBoundary(this.dependencies, command, command.identity, context, (transaction, authorizedCommand) => {
+  public executeAuthorized(command: ModifyPublicationApplicationCommand, context: PublicationExecutionContext, preflight?: PublicationAuthorizedPreflight, auditDetails?: PublicationApplicationAuditDetails, stage?: PublicationTransactionalStage): Promise<PublicationApplicationResult> {
+    return executeModificationBoundary(this.dependencies, command, command.identity, context, async (transaction, authorizedCommand) => {
       if (authorizedCommand.kind !== "MODIFY_PUBLICATION") throw new Error("APPLICATION_COMMAND_INVALID");
-      const snapshot = transaction.repository.find(authorizedCommand.identity);
+      const snapshot = await transaction.repository.find(authorizedCommand.identity);
       if (snapshot === undefined) throw persistenceError("PUBLICATION_NOT_FOUND", "Publication was not found.");
       const aggregate = PublicationAggregate.rehydrate(snapshot);
       const updated = executeDomainBehaviour(aggregate, authorizedCommand.input).snapshot;
-      transaction.repository.update(snapshot.aggregateVersion, updated);
+      await transaction.repository.update(snapshot.aggregateVersion, updated);
       return { snapshot: updated, previous: snapshot };
     }, preflight, auditDetails, stage);
   }
 }
 
-function executeModificationBoundary(
+async function executeModificationBoundary(
   dependencies: PublicationApplicationDependencies,
   applicationCommand: PublicationApplicationCommand,
   identity: PublicationIdentity,
   context: PublicationExecutionContext,
-  executeDomain: (transaction: PublicationTransaction, authorizedCommand: PublicationApplicationCommand) => { readonly snapshot: PublicationSnapshot; readonly previous: PublicationSnapshot | undefined },
+  executeDomain: (transaction: PublicationTransaction, authorizedCommand: PublicationApplicationCommand) => Promise<{ readonly snapshot: PublicationSnapshot; readonly previous: PublicationSnapshot | undefined }>,
   preflight?: PublicationAuthorizedPreflight,
   auditDetails?: PublicationApplicationAuditDetails,
   stage?: PublicationTransactionalStage,
-): PublicationApplicationResult {
+): Promise<PublicationApplicationResult> {
   let transaction: PublicationTransaction | undefined;
   let currentVersion = applicationCommand.kind === "MODIFY_PUBLICATION" ? applicationCommand.input.expectedAggregateVersion : 0;
   let committing = false;
@@ -96,15 +96,15 @@ function executeModificationBoundary(
     validateApplicationContext(applicationCommand, context);
     const commandType = authorizationCommandType(applicationCommand);
     const replayKeyExists = applicationCommand.kind === "MODIFY_PUBLICATION"
-      && hasRecordedIdempotencyKey(dependencies, identity, context);
+      && await hasRecordedIdempotencyKey(dependencies, identity, context);
     if (replayKeyExists) {
-      current = dependencies.repository.find(identity);
+      current = await dependencies.repository.find(identity);
       if (current !== undefined) currentVersion = current.aggregateVersion;
     }
     const expectedAggregateVersion = applicationCommand.kind === "CREATE_PUBLICATION"
       ? 0
       : replayKeyExists ? currentVersion : applicationCommand.input.expectedAggregateVersion;
-    const authorization = dependencies.authorization.authorize({
+    const authorization = await dependencies.authorization.authorizeAsync({
       ...(context.sessionId === undefined ? {} : { sessionId: context.sessionId }),
       commandType,
       actorIdClaim: context.actorId,
@@ -115,13 +115,13 @@ function executeModificationBoundary(
       expectedAggregateVersion,
       reason: applicationCommand.input.command.reason,
       correlationId: context.correlationId,
-      resolveResource: (actor) => {
+      resolveResource: async (actor) => {
         auditContext = immutableDomain({ ...context, actorId: actor.principalId });
         sessionActorResolved = true;
         if (applicationCommand.kind === "CREATE_PUBLICATION") {
           return Object.freeze({ binding: applicationCommand.input.binding, currentAggregateVersion: 0 });
         }
-        current ??= dependencies.repository.find(identity);
+        current ??= await dependencies.repository.find(identity);
         if (current === undefined) throw persistenceError("PUBLICATION_NOT_FOUND", "Publication was not found.");
         currentVersion = current.aggregateVersion;
         return Object.freeze({
@@ -134,22 +134,22 @@ function executeModificationBoundary(
     const authorizedContext = immutableDomain({ ...context, actorId: authorization.actor.principalId });
     auditContext = authorizedContext;
     const authorizedCommand = withAuthoritativeActor(applicationCommand, authorization.actor.principalId);
-    preflight?.(immutableDomain({
+    await preflight?.(immutableDomain({
       actorId: authorization.actor.principalId,
       binding: authorizationBinding(authorizedCommand, current),
       currentAggregateVersion: current?.aggregateVersion ?? 0,
     }));
-    const replay = findReplay(dependencies, authorizedCommand, identity, authorizedContext);
+    const replay = await findReplay(dependencies, authorizedCommand, identity, authorizedContext);
     if (replay !== undefined) return replay;
 
-    transaction = dependencies.unitOfWork.begin(identity);
-    const execution = executeDomain(transaction, authorizedCommand);
+    transaction = await dependencies.unitOfWork.begin(identity);
+    const execution = await executeDomain(transaction, authorizedCommand);
     const snapshot = execution.snapshot;
-    stage?.(transaction, snapshot);
+    await stage?.(transaction, snapshot);
     currentVersion = snapshot.aggregateVersion;
-    const events = dependencies.eventCoordinator.appendAcceptedTransition(transaction, execution.previous, snapshot, authorizedCommand);
+    const events = await dependencies.eventCoordinator.appendAcceptedTransition(transaction, execution.previous, snapshot, authorizedCommand);
     const auditTimestamp = dependencies.clock.now();
-    transaction.audit.append({
+    await transaction.audit.append({
       id: auditId(identity, authorizedContext, commandName(authorizedCommand), authorizedContext.intentFingerprint, "completed"),
       tenantScopeId: identity.tenantScopeId,
       aggregateId: identity.publicationId,
@@ -167,7 +167,7 @@ function executeModificationBoundary(
       }),
     });
     const result = success(identity.publicationId, snapshot.aggregateVersion, false);
-    transaction.idempotency.record({
+    await transaction.idempotency.record({
       tenantScopeId: identity.tenantScopeId,
       aggregateId: identity.publicationId,
       commandKey: authorizedContext.idempotencyKey,
@@ -176,18 +176,18 @@ function executeModificationBoundary(
       recordedAt: auditTimestamp,
     });
     committing = true;
-    transaction.commit();
+    await transaction.commit();
     committing = false;
     dependencies.eventCoordinator.observeCommitted(events, authorizedContext.actorId);
     return result;
   } catch (error) {
     if (transaction !== undefined) {
-      try { transaction.rollback(); } catch { /* Commit conflict may already have closed the logical transaction. */ }
-      appendFailureAudit(dependencies, applicationCommand, identity, auditContext, currentVersion, error, committing);
+      try { await transaction.rollback(); } catch { /* Commit conflict may already have closed the logical transaction. */ }
+      await appendFailureAudit(dependencies, applicationCommand, identity, auditContext, currentVersion, error, committing);
     } else if (guardPassed || mapPublicationApplicationError(error, false).error.code === "PUBLICATION_NOT_FOUND") {
       let persistedVersion = currentVersion;
-      try { persistedVersion = dependencies.repository.find(identity)?.aggregateVersion ?? currentVersion; } catch { /* Auxiliary evidence lookup cannot replace the original safe error. */ }
-      appendFailureAudit(
+      try { persistedVersion = (await dependencies.repository.find(identity))?.aggregateVersion ?? currentVersion; } catch { /* Auxiliary evidence lookup cannot replace the original safe error. */ }
+      await appendFailureAudit(
         dependencies,
         applicationCommand,
         identity,
@@ -201,12 +201,12 @@ function executeModificationBoundary(
   }
 }
 
-function hasRecordedIdempotencyKey(
+async function hasRecordedIdempotencyKey(
   dependencies: PublicationApplicationDependencies,
   identity: PublicationIdentity,
   context: PublicationExecutionContext,
-): boolean {
-  const auditMatch = dependencies.audit.list(identity).some((record) => {
+): Promise<boolean> {
+  const auditMatch = (await dependencies.audit.list(identity)).some((record) => {
     const evidence = decodeAuditId(record.id);
     return evidence?.tenantScopeId === identity.tenantScopeId
       && evidence.publicationId === identity.publicationId
@@ -215,7 +215,7 @@ function hasRecordedIdempotencyKey(
   });
   if (auditMatch) return true;
   try {
-    return dependencies.idempotency.find({
+    return await dependencies.idempotency.find({
       tenantScopeId: identity.tenantScopeId,
       aggregateId: identity.publicationId,
       commandKey: context.idempotencyKey,
@@ -258,15 +258,15 @@ function withAuthoritativeActor(command: PublicationApplicationCommand, actorId:
   }) as PublicationApplicationCommand;
 }
 
-function findReplay(
+async function findReplay(
   dependencies: PublicationApplicationDependencies,
   command: PublicationApplicationCommand,
   identity: PublicationIdentity,
   context: PublicationExecutionContext,
-): PublicationApplicationSuccessResult | undefined {
-  const committedReplay = findAuditReplay(dependencies, command, identity, context);
+): Promise<PublicationApplicationSuccessResult | undefined> {
+  const committedReplay = await findAuditReplay(dependencies, command, identity, context);
   if (committedReplay !== undefined) return committedReplay;
-  const record = dependencies.idempotency.find({
+  const record = await dependencies.idempotency.find({
     tenantScopeId: identity.tenantScopeId,
     aggregateId: identity.publicationId,
     commandKey: context.idempotencyKey,
@@ -279,13 +279,13 @@ function findReplay(
   return immutableDomain({ ok: true as const, publicationId, aggregateVersion, resultReference: record.resultReference, replayed: true });
 }
 
-function findAuditReplay(
+async function findAuditReplay(
   dependencies: PublicationApplicationDependencies,
   command: PublicationApplicationCommand,
   identity: PublicationIdentity,
   context: PublicationExecutionContext,
-): PublicationApplicationSuccessResult | undefined {
-  const matching = dependencies.audit.list(identity).find((record) => {
+): Promise<PublicationApplicationSuccessResult | undefined> {
+  const matching = (await dependencies.audit.list(identity)).find((record) => {
     const evidence = decodeAuditId(record.id);
     return evidence?.tenantScopeId === identity.tenantScopeId
       && evidence.publicationId === identity.publicationId
@@ -343,7 +343,7 @@ function success(publicationId: string, aggregateVersion: number, replayed: bool
   });
 }
 
-function appendFailureAudit(
+async function appendFailureAudit(
   dependencies: PublicationApplicationDependencies,
   command: PublicationApplicationCommand,
   identity: PublicationIdentity,
@@ -351,10 +351,10 @@ function appendFailureAudit(
   version: number,
   error: unknown,
   commitFailed: boolean,
-): void {
+): Promise<void> {
   const mapped = mapPublicationApplicationError(error, commitFailed);
   try {
-    dependencies.audit.append({
+    await dependencies.audit.append({
       id: auditId(identity, context, commandName(command), context.intentFingerprint, "failed"),
       tenantScopeId: identity.tenantScopeId,
       aggregateId: identity.publicationId,

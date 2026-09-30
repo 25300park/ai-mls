@@ -11,7 +11,7 @@ import {
 } from "./publication-api-contracts.js";
 
 export interface PublicationApiCanonicalHost {
-  executeCanonicalApi(request: unknown): unknown;
+  executeCanonicalApi(request: unknown): Promise<unknown>;
 }
 
 export interface PublicationApi014HttpRequestHandler {
@@ -67,7 +67,7 @@ class InProcessPublicationApi014HttpAdapter implements PublicationApi014HttpRequ
       ...(sessionId === undefined || sessionId.trim().length === 0 ? {} : { sessionId }),
     });
     try {
-      const response = this.host.executeCanonicalApi(Object.freeze({ kind, request: canonicalRequest }));
+      const response = await this.host.executeCanonicalApi(Object.freeze({ kind, request: canonicalRequest }));
       if (!isRecord(response)) throw new Error("Invalid API response.");
       if (response["success"] === false) {
         const code = errorCode(response);

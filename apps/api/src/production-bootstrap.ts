@@ -48,6 +48,7 @@ export type ProductionChildRootFactories = Readonly<Record<ProductionChildCompon
   context: ProductionBootstrapContextView,
   configuration: ProductionRuntimeConfiguration,
   identities: readonly ProductionServiceIdentityBinding[],
+  pool: PostgreSqlPoolPort,
 ) => ProductionChildRoot>>;
 
 export interface ProductionBootstrapDependencies {
@@ -67,7 +68,7 @@ export interface ProductionBootstrapDependencies {
     identities: readonly ProductionServiceIdentityBinding[],
   ) => string;
   readonly createSessionUnitOfWork: (pool: PostgreSqlPoolPort) => Promise<ProductionAsyncClosableResource>;
-  readonly assertComponentSchemasReady: (configuration: ProductionRuntimeConfiguration) => Promise<void>;
+  readonly assertComponentSchemasReady: (configuration: ProductionRuntimeConfiguration, pool: PostgreSqlPoolPort) => Promise<void>;
   readonly childRootOptions: CanonicalProductionChildRootOptions | null;
   readonly startListeners: (
     context: ProductionBootstrapContextView,

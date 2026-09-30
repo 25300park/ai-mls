@@ -65,7 +65,8 @@ function assertRuntimeError(code: string): (error: unknown) => boolean {
   return (error) => error instanceof PublicationRuntimeError && error.code === code;
 }
 
-test("PHASE13-7 bootstrap reports a deterministic ready runtime", () => {
+test("PHASE13-7 bootstrap reports a deterministic ready runtime", async () => {
+  await Promise.resolve();
   const result = bootstrapPublicationRuntime({
     infrastructureConfiguration: createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)),
   });
@@ -89,7 +90,8 @@ test("PHASE13-7 bootstrap reports a deterministic ready runtime", () => {
   assert.equal(Object.isFrozen(result.runtime.health), true);
 });
 
-test("PHASE13-7 lifecycle requires initialize, start and ready ordering", () => {
+test("PHASE13-7 lifecycle requires initialize, start and ready ordering", async () => {
+  await Promise.resolve();
   const infrastructure = createPublicationInfrastructure({ clock: new FixedClock(timestamp) });
   const runtime = new PublicationRuntime(createPublicationRuntimeServiceRegistry(infrastructure));
 
@@ -101,7 +103,8 @@ test("PHASE13-7 lifecycle requires initialize, start and ready ordering", () => 
   assert.equal(runtime.entryPoint, infrastructure.inputPort);
 });
 
-test("PHASE13-7 immutable registry preserves explicit deterministic service ordering", () => {
+test("PHASE13-7 immutable registry preserves explicit deterministic service ordering", async () => {
+  await Promise.resolve();
   const infrastructure = createPublicationInfrastructure({ clock: new FixedClock(timestamp) });
   const registry = createPublicationRuntimeServiceRegistry(infrastructure);
 
@@ -131,7 +134,8 @@ test("PHASE13-7 immutable registry preserves explicit deterministic service orde
   }, TypeError);
 });
 
-test("PHASE13-7 startup validation reports a missing mandatory dependency", () => {
+test("PHASE13-7 startup validation reports a missing mandatory dependency", async () => {
+  await Promise.resolve();
   const result = bootstrapPublicationRuntime({
     infrastructureFactory(configuration) {
       const infrastructure = createPublicationInfrastructure(configuration);
@@ -146,7 +150,8 @@ test("PHASE13-7 startup validation reports a missing mandatory dependency", () =
   });
 });
 
-test("PHASE13-7 startup validation reports inconsistent infrastructure configuration", () => {
+test("PHASE13-7 startup validation reports inconsistent infrastructure configuration", async () => {
+  await Promise.resolve();
   const result = bootstrapPublicationRuntime({
     infrastructureFactory(configuration) {
       const infrastructure = createPublicationInfrastructure(configuration);
@@ -164,7 +169,8 @@ test("PHASE13-7 startup validation reports inconsistent infrastructure configura
   });
 });
 
-test("PHASE13-7 startup validation rejects structurally unusable mandatory adapters", () => {
+test("PHASE13-7 startup validation rejects structurally unusable mandatory adapters", async () => {
+  await Promise.resolve();
   const cases = [
     {
       name: "clock",
@@ -243,7 +249,8 @@ test("PHASE13-7 startup validation rejects structurally unusable mandatory adapt
   }
 });
 
-test("PHASE13-7 bootstrap redacts unexpected startup failures", () => {
+test("PHASE13-7 bootstrap redacts unexpected startup failures", async () => {
+  await Promise.resolve();
   const result = bootstrapPublicationRuntime({
     infrastructureFactory() {
       throw new Error("internal startup stack and secret detail");
@@ -256,14 +263,14 @@ test("PHASE13-7 bootstrap redacts unexpected startup failures", () => {
   });
 });
 
-test("PHASE13-7 complete publication command executes through the ready runtime", () => {
+test("PHASE13-7 complete publication command executes through the ready runtime", async () => {
   const result = bootstrapPublicationRuntime({
     infrastructureConfiguration: createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)),
   });
   assert.equal(result.ok, true);
   if (!result.ok) throw new Error("Runtime bootstrap unexpectedly failed.");
 
-  const response = result.runtime.execute(createRequest());
+  const response = await result.runtime.execute(createRequest());
 
   assert.deepEqual(response, {
     operationResult: "SUCCEEDED",
@@ -271,27 +278,28 @@ test("PHASE13-7 complete publication command executes through the ready runtime"
     version: 1,
     replayed: false,
   });
-  assert.equal(result.runtime.services.repository.find(identity)?.lifecycleState, "READY");
-  assert.deepEqual(result.runtime.services.audit.list(identity).map((entry) => entry.timestamp), [timestamp]);
+  assert.equal((await result.runtime.services.repository.find(identity))?.lifecycleState, "READY");
+  assert.deepEqual((await result.runtime.services.audit.list(identity)).map((entry) => entry.timestamp), [timestamp]);
 });
 
-test("PHASE13-7 graceful shutdown prevents duplicate shutdown and preserves in-memory business data", () => {
+test("PHASE13-7 graceful shutdown prevents duplicate shutdown and preserves in-memory business data", async () => {
   const result = bootstrapPublicationRuntime({
     infrastructureConfiguration: createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)),
   });
   assert.equal(result.ok, true);
   if (!result.ok) throw new Error("Runtime bootstrap unexpectedly failed.");
-  assert.equal(result.runtime.execute(createRequest()).operationResult, "SUCCEEDED");
+  assert.equal((await result.runtime.execute(createRequest())).operationResult, "SUCCEEDED");
 
   assert.equal(result.runtime.stop().status, "STOPPED");
   assert.equal(result.runtime.health.healthy, false);
-  assert.throws(() => result.runtime.execute(createRequest()), assertRuntimeError("RUNTIME_NOT_READY"));
+  await assert.rejects(result.runtime.execute(createRequest()), assertRuntimeError("RUNTIME_NOT_READY"));
   assert.throws(() => result.runtime.stop(), assertRuntimeError("RUNTIME_ALREADY_STOPPED"));
   assert.equal(result.runtime.dispose().status, "DISPOSED");
-  assert.equal(result.runtime.services.repository.find(identity)?.lifecycleState, "READY");
+  assert.equal((await result.runtime.services.repository.find(identity))?.lifecycleState, "READY");
 });
 
-test("PHASE13-7 repeated bootstrap with the same clock produces equal runtime state and isolated services", () => {
+test("PHASE13-7 repeated bootstrap with the same clock produces equal runtime state and isolated services", async () => {
+  await Promise.resolve();
   const options = { infrastructureConfiguration: createTestPublicationAuthorizationConfiguration(new FixedClock(timestamp)) } as const;
   const first = bootstrapPublicationRuntime(options);
   const second = bootstrapPublicationRuntime(options);
@@ -305,7 +313,8 @@ test("PHASE13-7 repeated bootstrap with the same clock produces equal runtime st
   assert.notEqual(first.runtime.services.repository, second.runtime.services.repository);
 });
 
-test("PHASE13-7 runtime source depends only on Infrastructure and Interface boundary contracts", () => {
+test("PHASE13-7 runtime source depends only on Infrastructure and Interface boundary contracts", async () => {
+  await Promise.resolve();
   const allowedImports = new Set([
     "./publication-infrastructure-configuration.js",
     "./publication-infrastructure.js",

@@ -85,7 +85,8 @@ function readyRuntime(): PublicationRuntime {
   return result.runtime;
 }
 
-test("PHASE13-8 creates an immutable serialisable transport request envelope", () => {
+test("PHASE13-8 creates an immutable serialisable transport request envelope", async () => {
+  await Promise.resolve();
   const envelope = createEnvelope();
 
   assert.equal(Object.isFrozen(envelope), true);
@@ -97,7 +98,8 @@ test("PHASE13-8 creates an immutable serialisable transport request envelope", (
   }, TypeError);
 });
 
-test("PHASE13-8 transport validation accepts a valid envelope and rejects malformed structure", () => {
+test("PHASE13-8 transport validation accepts a valid envelope and rejects malformed structure", async () => {
+  await Promise.resolve();
   const validator = new StructuralPublicationTransportValidator();
 
   assert.deepEqual(validator.validate(createEnvelope()), { valid: true });
@@ -114,7 +116,7 @@ test("PHASE13-8 transport validation accepts a valid envelope and rejects malfor
   }), { valid: false, failureCode: "TRANSPORT_REQUEST_INVALID" });
 });
 
-test("PHASE13-8 non-plain and hostile envelopes always produce deterministic safe failures", () => {
+test("PHASE13-8 non-plain and hostile envelopes always produce deterministic safe failures", async () => {
   const transport = createInProcessPublicationTransport(readyRuntime());
   const withDateMetadata = {
     ...createEnvelope("transport-date-metadata"),
@@ -129,21 +131,21 @@ test("PHASE13-8 non-plain and hostile envelopes always produce deterministic saf
     },
   });
 
-  assert.deepEqual(transport.execute(withDateMetadata), {
+  assert.deepEqual(await transport.execute(withDateMetadata), {
     requestId: "transport-date-metadata",
     success: false,
     status: "VALIDATION_ERROR",
     error: { code: "TRANSPORT_REQUEST_INVALID", message: "Transport request is invalid." },
     metadata: {},
   });
-  assert.deepEqual(transport.execute(customPrototype), {
+  assert.deepEqual(await transport.execute(customPrototype), {
     requestId: "UNKNOWN_REQUEST",
     success: false,
     status: "VALIDATION_ERROR",
     error: { code: "TRANSPORT_REQUEST_INVALID", message: "Transport request is invalid." },
     metadata: {},
   });
-  assert.deepEqual(transport.execute(hostile), {
+  assert.deepEqual(await transport.execute(hostile), {
     requestId: "UNKNOWN_REQUEST",
     success: false,
     status: "INTERNAL_ERROR",
@@ -152,7 +154,8 @@ test("PHASE13-8 non-plain and hostile envelopes always produce deterministic saf
   });
 });
 
-test("PHASE13-8 request mapper converts transport payload to the approved Interface request", () => {
+test("PHASE13-8 request mapper converts transport payload to the approved Interface request", async () => {
+  await Promise.resolve();
   const envelope = createEnvelope();
   const mapped = new DefaultPublicationTransportRequestMapper().map(envelope);
 
@@ -164,9 +167,9 @@ test("PHASE13-8 request mapper converts transport payload to the approved Interf
   assert.equal(Object.isFrozen(mapped.input), true);
 });
 
-test("PHASE13-8 dispatcher routes a known operation through the ready Runtime", () => {
+test("PHASE13-8 dispatcher routes a known operation through the ready Runtime", async () => {
   const transport = createInProcessPublicationTransport(readyRuntime());
-  const response = transport.execute(createEnvelope());
+  const response = await transport.execute(createEnvelope());
 
   assert.deepEqual(response, {
     requestId: "transport-request-1",
@@ -177,11 +180,11 @@ test("PHASE13-8 dispatcher routes a known operation through the ready Runtime", 
   });
 });
 
-test("PHASE13-8 dispatcher rejects an unknown operation deterministically", () => {
+test("PHASE13-8 dispatcher rejects an unknown operation deterministically", async () => {
   const transport = createInProcessPublicationTransport(readyRuntime());
   const envelope = createEnvelope("transport-request-unknown", { operation: "DELETE_PUBLICATION" });
 
-  assert.deepEqual(transport.execute(envelope), {
+  assert.deepEqual(await transport.execute(envelope), {
     requestId: "transport-request-unknown",
     success: false,
     status: "OPERATION_NOT_FOUND",
@@ -190,7 +193,7 @@ test("PHASE13-8 dispatcher rejects an unknown operation deterministically", () =
   });
 });
 
-test("PHASE13-8 malformed transport input fails before Runtime invocation", () => {
+test("PHASE13-8 malformed transport input fails before Runtime invocation", async () => {
   let executions = 0;
   const runtime = {
     context: { status: "READY" },
@@ -201,7 +204,7 @@ test("PHASE13-8 malformed transport input fails before Runtime invocation", () =
   } as unknown as PublicationRuntime;
   const transport = createInProcessPublicationTransport(runtime);
 
-  assert.deepEqual(transport.execute({ requestId: "transport-invalid", operation: "CREATE_PUBLICATION", metadata: {} }), {
+  assert.deepEqual(await transport.execute({ requestId: "transport-invalid", operation: "CREATE_PUBLICATION", metadata: {} }), {
     requestId: "transport-invalid",
     success: false,
     status: "VALIDATION_ERROR",
@@ -211,11 +214,11 @@ test("PHASE13-8 malformed transport input fails before Runtime invocation", () =
   assert.equal(executions, 0);
 });
 
-test("PHASE13-8 Interface validation failures map to a transport validation error", () => {
+test("PHASE13-8 Interface validation failures map to a transport validation error", async () => {
   const transport = createInProcessPublicationTransport(readyRuntime());
   const envelope = createEnvelope("transport-interface-invalid", { payload: { context } });
 
-  assert.deepEqual(transport.execute(envelope), {
+  assert.deepEqual(await transport.execute(envelope), {
     requestId: "transport-interface-invalid",
     success: false,
     status: "VALIDATION_ERROR",
@@ -224,7 +227,8 @@ test("PHASE13-8 Interface validation failures map to a transport validation erro
   });
 });
 
-test("PHASE13-8 response mapper preserves safe success data without internal references", () => {
+test("PHASE13-8 response mapper preserves safe success data without internal references", async () => {
+  await Promise.resolve();
   const response = new DeterministicPublicationTransportResponseMapper().map(
     createEnvelope(),
     { operationResult: "SUCCEEDED", publicationId: "publication-1", version: 7, replayed: true },
@@ -240,7 +244,8 @@ test("PHASE13-8 response mapper preserves safe success data without internal ref
   assert.equal(Object.isFrozen(response.data), true);
 });
 
-test("PHASE13-8 response mapper rejects malformed Runtime result shapes", () => {
+test("PHASE13-8 response mapper rejects malformed Runtime result shapes", async () => {
+  await Promise.resolve();
   const mapper = new DeterministicPublicationTransportResponseMapper();
   const envelope = createEnvelope();
   const malformed = [
@@ -261,7 +266,8 @@ test("PHASE13-8 response mapper rejects malformed Runtime result shapes", () => 
   }
 });
 
-test("PHASE13-8 maps not-found and conflict Interface failures to closed transport categories", () => {
+test("PHASE13-8 maps not-found and conflict Interface failures to closed transport categories", async () => {
+  await Promise.resolve();
   const mapper = new DeterministicPublicationTransportResponseMapper();
   const envelope = createEnvelope();
 
@@ -276,7 +282,8 @@ test("PHASE13-8 maps not-found and conflict Interface failures to closed transpo
   assert.deepEqual(mapper.map(envelope, { operationResult: "FAILED", failureCode: "IDEMPOTENCY_CONFLICT" }).status, "CONFLICT");
 });
 
-test("PHASE13-8 maps approved domain rejection codes without changing application semantics", () => {
+test("PHASE13-8 maps approved domain rejection codes without changing application semantics", async () => {
+  await Promise.resolve();
   const response = new DeterministicPublicationTransportResponseMapper().map(
     createEnvelope(),
     { operationResult: "FAILED", failureCode: "PUBLICATION_TRANSITION_INVALID" },
@@ -291,7 +298,8 @@ test("PHASE13-8 maps approved domain rejection codes without changing applicatio
   });
 });
 
-test("F15-TASK-005 preserves approved safe authorization rejection codes through Transport", () => {
+test("F15-TASK-005 preserves approved safe authorization rejection codes through Transport", async () => {
+  await Promise.resolve();
   const mapper = new DeterministicPublicationTransportResponseMapper();
   for (const failureCode of [
     "AUTHENTICATION_REQUIRED",
@@ -314,7 +322,8 @@ test("F15-TASK-005 preserves approved safe authorization rejection codes through
   }
 });
 
-test("PHASE13-8 unknown Interface failure codes are sanitised", () => {
+test("PHASE13-8 unknown Interface failure codes are sanitised", async () => {
+  await Promise.resolve();
   const response = new DeterministicPublicationTransportResponseMapper().map(
     createEnvelope(),
     { operationResult: "FAILED", failureCode: "SECRET_DATABASE_DETAIL" },
@@ -329,7 +338,8 @@ test("PHASE13-8 unknown Interface failure codes are sanitised", () => {
   });
 });
 
-test("PHASE13-8 unknown exceptions are sanitised to a generic internal error", () => {
+test("PHASE13-8 unknown exceptions are sanitised to a generic internal error", async () => {
+  await Promise.resolve();
   const response = new DeterministicPublicationTransportErrorMapper().map(
     createEnvelope(),
     new Error("database password and internal stack"),
@@ -346,12 +356,12 @@ test("PHASE13-8 unknown exceptions are sanitised to a generic internal error", (
   assert.equal("stack" in response.error, false);
 });
 
-test("PHASE13-8 stopped Runtime rejects transport execution with a safe response", () => {
+test("PHASE13-8 stopped Runtime rejects transport execution with a safe response", async () => {
   const runtime = readyRuntime();
   runtime.stop();
   const transport = createInProcessPublicationTransport(runtime);
 
-  assert.deepEqual(transport.execute(createEnvelope("transport-runtime-stopped")), {
+  assert.deepEqual(await transport.execute(createEnvelope("transport-runtime-stopped")), {
     requestId: "transport-runtime-stopped",
     success: false,
     status: "APPLICATION_REJECTED",
@@ -360,7 +370,7 @@ test("PHASE13-8 stopped Runtime rejects transport execution with a safe response
   });
 });
 
-test("PHASE13-8 runtime adapter delegates only through PublicationRuntime.execute", () => {
+test("PHASE13-8 runtime adapter delegates only through PublicationRuntime.execute", async () => {
   let executions = 0;
   const expected = { operationResult: "FAILED", failureCode: "PUBLICATION_NOT_FOUND" } as const;
   const runtime = {
@@ -371,13 +381,13 @@ test("PHASE13-8 runtime adapter delegates only through PublicationRuntime.execut
     },
   } as unknown as PublicationRuntime;
 
-  assert.equal(new PublicationRuntimeTransportAdapter(runtime).execute(
+  assert.equal(await new PublicationRuntimeTransportAdapter(runtime).execute(
     new DefaultPublicationTransportRequestMapper().map(createEnvelope()),
   ), expected);
   assert.equal(executions, 1);
 });
 
-test("PHASE13-8 repeated dispatch returns deterministic isolated response envelopes", () => {
+test("PHASE13-8 repeated dispatch returns deterministic isolated response envelopes", async () => {
   const runtime = {
     context: { status: "READY" },
     execute() {
@@ -386,8 +396,8 @@ test("PHASE13-8 repeated dispatch returns deterministic isolated response envelo
   } as unknown as PublicationRuntime;
   const dispatcher = new PublicationTransportDispatcher(new PublicationRuntimeTransportAdapter(runtime));
   const request = createEnvelope();
-  const first = dispatcher.dispatch(request);
-  const second = dispatcher.dispatch(request);
+  const first = await dispatcher.dispatch(request);
+  const second = await dispatcher.dispatch(request);
 
   assert.deepEqual(first, second);
   assert.notEqual(first, second);
@@ -397,11 +407,11 @@ test("PHASE13-8 repeated dispatch returns deterministic isolated response envelo
   assert.equal(Object.isFrozen(first.error), true);
 });
 
-test("FCR-001 Transport rejects caller-authored execution confirmation without false success evidence", () => {
+test("FCR-001 Transport rejects caller-authored execution confirmation without false success evidence", async () => {
   const runtime = readyRuntime();
   const transport = createInProcessPublicationTransport(runtime);
-  const createResult = transport.execute(createEnvelope("workflow-create"));
-  const beginResult = transport.execute(createPublicationTransportRequestEnvelope({
+  const createResult = await transport.execute(createEnvelope("workflow-create"));
+  const beginResult = await transport.execute(createPublicationTransportRequestEnvelope({
     requestId: "workflow-begin",
     operation: "MODIFY_PUBLICATION",
     payload: {
@@ -422,9 +432,9 @@ test("FCR-001 Transport rejects caller-authored execution confirmation without f
     },
     metadata: {},
   }));
-  const auditBefore = runtime.services.audit.list(identity).length;
-  const eventCountBefore = runtime.services.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).length;
-  const resolveResult = transport.execute(createPublicationTransportRequestEnvelope({
+  const auditBefore = (await runtime.services.audit.list(identity)).length;
+  const eventCountBefore = (await runtime.services.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId)).length;
+  const resolveResult = await transport.execute(createPublicationTransportRequestEnvelope({
     requestId: "workflow-resolve",
     operation: "MODIFY_PUBLICATION",
     payload: {
@@ -444,14 +454,15 @@ test("FCR-001 Transport rejects caller-authored execution confirmation without f
 
   assert.deepEqual([createResult.status, beginResult.status, resolveResult.status], ["SUCCESS", "SUCCESS", "VALIDATION_ERROR"]);
   assert.equal(resolveResult.success, false);
-  assert.equal(runtime.services.repository.find(identity)?.lifecycleState, "EXECUTION_PENDING");
-  assert.equal(runtime.services.repository.find(identity)?.aggregateVersion, 2);
-  assert.equal(runtime.services.audit.list(identity).length, auditBefore);
-  assert.equal(runtime.services.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId).length, eventCountBefore);
-  assert.equal(runtime.services.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: "idempotency-transport-resolve" }), undefined);
+  assert.equal((await runtime.services.repository.find(identity))?.lifecycleState, "EXECUTION_PENDING");
+  assert.equal((await runtime.services.repository.find(identity))?.aggregateVersion, 2);
+  assert.equal((await runtime.services.audit.list(identity)).length, auditBefore);
+  assert.equal((await runtime.services.eventJournal.listByAggregate(identity.tenantScopeId, identity.publicationId)).length, eventCountBefore);
+  assert.equal(await runtime.services.idempotency.find({ tenantScopeId: identity.tenantScopeId, aggregateId: identity.publicationId, commandKey: "idempotency-transport-resolve" }), undefined);
 });
 
-test("PHASE13-8 Transport production modules preserve dependency direction and forbidden framework absence", () => {
+test("PHASE13-8 Transport production modules preserve dependency direction and forbidden framework absence", async () => {
+  await Promise.resolve();
   const sourceDirectory = join(process.cwd(), "modules", "publication", "src");
   const productionFiles = readdirSync(sourceDirectory)
     .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts") && file !== "index.ts");
@@ -502,7 +513,8 @@ test("PHASE13-8 Transport production modules preserve dependency direction and f
   ]);
 });
 
-test("PHASE13-8 runtime errors are categorised without exposing Runtime internals", () => {
+test("PHASE13-8 runtime errors are categorised without exposing Runtime internals", async () => {
+  await Promise.resolve();
   const mapper = new DeterministicPublicationTransportErrorMapper();
   const response = mapper.map(createEnvelope(), new PublicationRuntimeError("RUNTIME_NOT_READY", "internal runtime detail"));
 

@@ -47,6 +47,8 @@ import { PublicationOperationsProjectionReadService, PublicationOperationsRebuil
 import type { PublicationOperationalEvidenceStore, PublicationOperationalMetrics, PublicationOperationsRetryDecision, PublicationOperationsRetryRequest } from "./publication-operations-contracts.js";
 import { PublicationExecutionEligibilityGate } from "./publication-execution-eligibility.js";
 import { DurablePublicationUnitOfWork } from "./publication-durable-persistence.js";
+import { PostgreSqlPublicationUnitOfWork } from "./publication-postgresql-persistence.js";
+import type { PostgreSqlPoolPort } from "../../identity/src/postgresql-pool.js";
 import type { PublicationExecutionJournal } from "./publication-execution-journal.js";
 
 export interface PublicationPersistenceBundle extends PublicationUnitOfWork {
@@ -87,7 +89,7 @@ export interface PublicationInfrastructure {
   readonly operationsMetrics: PublicationOperationalMetrics;
   readonly operationsStatus: PublicationOperationsStatusPort;
   readonly operationsRead: PublicationOperationsReadPort;
-  readonly operationsRetry: { decide(request: PublicationOperationsRetryRequest): PublicationOperationsRetryDecision };
+  readonly operationsRetry: { decide(request: PublicationOperationsRetryRequest): Promise<PublicationOperationsRetryDecision> };
   readonly operationsProjectionRead: PublicationOperationsProjectionReadPort;
   readonly operationsControl: PublicationOperationsRebuildControl;
   readonly hasConsistentOperationsDependencies: (candidate: unknown) => boolean;
@@ -114,6 +116,17 @@ export function createProductionPublicationInfrastructure(
   }
   const unitOfWork = new DurablePublicationUnitOfWork({ databasePath: input.databasePath, ...(input.schemaMode === undefined ? {} : { schemaMode: input.schemaMode }) });
   return createPublicationInfrastructureWithPersistence(configuration, unitOfWork) as PublicationInfrastructure & Readonly<{ readonly unitOfWork: DurablePublicationUnitOfWork }>;
+}
+
+export function createPostgreSqlProductionPublicationInfrastructure(
+  input: Readonly<{ readonly pool: PostgreSqlPoolPort; readonly configuration?: PublicationInfrastructureConfigurationInput }>,
+): PublicationInfrastructure & Readonly<{ readonly unitOfWork: PostgreSqlPublicationUnitOfWork }> {
+  const configuration = createPublicationInfrastructureConfiguration(input.configuration ?? {});
+  if (configuration.connectorDispatcher !== undefined) {
+    throw new TypeError("Production Publication connector configuration is not approved.");
+  }
+  const unitOfWork = new PostgreSqlPublicationUnitOfWork(input.pool);
+  return createPublicationInfrastructureWithPersistence(configuration, unitOfWork) as PublicationInfrastructure & Readonly<{ readonly unitOfWork: PostgreSqlPublicationUnitOfWork }>;
 }
 
 function createPublicationInfrastructureWithPersistence(
@@ -219,14 +232,19 @@ function createPublicationInfrastructureWithPersistence(
   const effectiveApproval = configuration.effectiveApprovalPort ?? unavailablePublicationEffectiveApprovalPort;
   const executionEligibility = new PublicationExecutionEligibilityGate({ effectiveApproval });
   const retryEligibility = new PublicationDurableRetryEligibility({ unitOfWork, authorization, effectiveApproval, clock: configuration.clock, ...(configuration.approvedRetryPolicy === undefined ? {} : { policy: configuration.approvedRetryPolicy }) });
-  const operationsRetry: PublicationInfrastructure["operationsRetry"] = unitOfWork instanceof DurablePublicationUnitOfWork ? {
-    decide(request): ReturnType<PublicationInfrastructure["operationsRetry"]["decide"]> {
+  const operationsRetry: PublicationInfrastructure["operationsRetry"] = unitOfWork instanceof DurablePublicationUnitOfWork || unitOfWork instanceof PostgreSqlPublicationUnitOfWork ? {
+    async decide(request): ReturnType<PublicationInfrastructure["operationsRetry"]["decide"]> {
       if (request.executionRequest?.identity.tenantScopeId !== request.tenantId || request.operationIdentity !== request.executionRequest.identity.publicationId) {
         return Object.freeze({ decision: "NOT_ALLOWED", classification: "UNKNOWN", retryEligible: false, retryExhausted: false, attemptNumber: 0, maximumAttempts: 0, operationIdentity: request.operationIdentity });
       }
-      return retryEligibility.evaluate(request.executionRequest);
+      return await retryEligibility.evaluate(request.executionRequest);
     },
-  } : legacyOperationsRetry;
+  } : {
+    async decide(request): Promise<PublicationOperationsRetryDecision> {
+      await Promise.resolve();
+      return legacyOperationsRetry.decide(request);
+    },
+  };
   const connectorDispatcher = configuration.connectorDispatcher ?? unavailablePublicationConnectorDispatcher;
   const coordination = new PublicationCoordinationService({
     application,

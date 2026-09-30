@@ -35,12 +35,12 @@ export type PublicationExecutionRecoveryDisposition = Readonly<{
 }>;
 
 export interface PublicationExecutionJournal {
-  prepare(intent: PublicationExecutionIntent): PublicationExecutionIntent;
-  markDispatchStarted(identity: PublicationIdentity, commandId: string, recordedAt: string): "STARTED" | "ALREADY_STARTED";
-  appendReceipt(receipt: PublicationExecutionReceipt): PublicationExecutionReceipt;
-  findIntent(identity: PublicationIdentity, commandId: string): PublicationExecutionIntent | undefined;
-  findReceipt(identity: PublicationIdentity, commandId: string): PublicationExecutionReceipt | undefined;
-  recoveryDisposition(identity: PublicationIdentity, commandId: string): PublicationExecutionRecoveryDisposition;
+  prepare(intent: PublicationExecutionIntent): Promise<PublicationExecutionIntent>;
+  markDispatchStarted(identity: PublicationIdentity, commandId: string, recordedAt: string): Promise<"STARTED" | "ALREADY_STARTED">;
+  appendReceipt(receipt: PublicationExecutionReceipt): Promise<PublicationExecutionReceipt>;
+  findIntent(identity: PublicationIdentity, commandId: string): Promise<PublicationExecutionIntent | undefined>;
+  findReceipt(identity: PublicationIdentity, commandId: string): Promise<PublicationExecutionReceipt | undefined>;
+  recoveryDisposition(identity: PublicationIdentity, commandId: string): Promise<PublicationExecutionRecoveryDisposition>;
 }
 
 export class InMemoryPublicationExecutionJournal implements PublicationExecutionJournal {
@@ -50,7 +50,8 @@ export class InMemoryPublicationExecutionJournal implements PublicationExecution
     private readonly assertUsable: () => void = () => undefined,
   ) {}
 
-  public prepare(input: PublicationExecutionIntent): PublicationExecutionIntent {
+  public async prepare(input: PublicationExecutionIntent): Promise<PublicationExecutionIntent> {
+    await Promise.resolve();
     this.assertUsable();
     this.assertScope(input);
     requireExactKeys(input, ["tenantScopeId", "publicationId", "commandId", "attemptId", "dispatchFingerprint", "providerIdempotencyKey", "preparedAt"]);
@@ -67,10 +68,10 @@ export class InMemoryPublicationExecutionJournal implements PublicationExecution
     return stored;
   }
 
-  public markDispatchStarted(identity: PublicationIdentity, commandId: string, recordedAt: string): "STARTED" | "ALREADY_STARTED" {
+  public async markDispatchStarted(identity: PublicationIdentity, commandId: string, recordedAt: string): Promise<"STARTED" | "ALREADY_STARTED"> {
     this.assertUsable();
     this.assertScope(identity);
-    const intent = this.findIntent(identity, commandId);
+    const intent = await this.findIntent(identity, commandId);
     if (intent === undefined) throw persistenceError("EXECUTION_INTENT_NOT_FOUND", "Execution intent was not found.");
     const key = executionKey(identity, commandId);
     const events = this.state.dispatchEvents.get(key) ?? [];
@@ -83,7 +84,8 @@ export class InMemoryPublicationExecutionJournal implements PublicationExecution
     return "STARTED";
   }
 
-  public appendReceipt(input: PublicationExecutionReceipt): PublicationExecutionReceipt {
+  public async appendReceipt(input: PublicationExecutionReceipt): Promise<PublicationExecutionReceipt> {
+    await Promise.resolve();
     this.assertUsable();
     this.assertScope(input);
     requireExactKeys(input, ["tenantScopeId", "publicationId", "receiptId", "commandId", "attemptId", "outcome", "evidenceRefs", "recordedAt", "externalObjectReference"]);
@@ -104,24 +106,26 @@ export class InMemoryPublicationExecutionJournal implements PublicationExecution
     return stored;
   }
 
-  public findIntent(identity: PublicationIdentity, commandId: string): PublicationExecutionIntent | undefined {
+  public async findIntent(identity: PublicationIdentity, commandId: string): Promise<PublicationExecutionIntent | undefined> {
+    await Promise.resolve();
     this.assertUsable();
     this.assertScope(identity);
     const found = this.state.executionIntents.get(executionKey(identity, commandId));
     return found === undefined ? undefined : immutableDomain(found);
   }
 
-  public findReceipt(identity: PublicationIdentity, commandId: string): PublicationExecutionReceipt | undefined {
+  public async findReceipt(identity: PublicationIdentity, commandId: string): Promise<PublicationExecutionReceipt | undefined> {
+    await Promise.resolve();
     this.assertUsable();
     this.assertScope(identity);
     const found = this.state.executionReceipts.get(executionKey(identity, commandId));
     return found === undefined ? undefined : immutableDomain(found);
   }
 
-  public recoveryDisposition(identity: PublicationIdentity, commandId: string): PublicationExecutionRecoveryDisposition {
-    const intent = this.findIntent(identity, commandId);
+  public async recoveryDisposition(identity: PublicationIdentity, commandId: string): Promise<PublicationExecutionRecoveryDisposition> {
+    const intent = await this.findIntent(identity, commandId);
     if (intent === undefined) throw persistenceError("EXECUTION_INTENT_NOT_FOUND", "Execution intent was not found.");
-    if (this.findReceipt(identity, commandId) !== undefined) return immutableDomain({ condition: "AUTHORITATIVE_RECEIPT" as const, providerInvocationPermitted: false, attemptId: intent.attemptId });
+    if (await this.findReceipt(identity, commandId) !== undefined) return immutableDomain({ condition: "AUTHORITATIVE_RECEIPT" as const, providerInvocationPermitted: false, attemptId: intent.attemptId });
     const started = (this.state.dispatchEvents.get(executionKey(identity, commandId)) ?? []).some((event) => event.state === "DISPATCH_STARTED");
     return started
       ? immutableDomain({ condition: "RECONCILIATION_REQUIRED" as const, providerInvocationPermitted: false, attemptId: intent.attemptId })

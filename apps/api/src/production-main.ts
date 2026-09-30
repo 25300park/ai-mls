@@ -21,6 +21,7 @@ import {
   type ProductionReadinessState,
   type ProductionRuntimeHttpListenerFactory,
 } from "./production-readiness-http.js";
+import { assertR3B1PublicationSchemaReady } from "./child-root-postgresql-readiness.js";
 import {
   parseRailwayProductionRuntimeConfiguration,
   type RailwayProductionRuntimeConfiguration,
@@ -185,7 +186,7 @@ export function createRailwayProductionDependencies(
         createRailwaySealedProductionPostgreSqlPool(
           configuration as RailwayProductionRuntimeConfiguration,
           environment,
-          "PG_IDENTITY_POOL",
+          "PG_PRODUCTION_POOL",
         )),
     openIdentityAuthorityReadOnly: (): Promise<AsyncRegisteredServiceWorkloadAuthorityLease> => unavailablePromise(),
     validateHumanIdentityAuthority: unreachable,
@@ -194,8 +195,14 @@ export function createRailwayProductionDependencies(
     validateStartupGate: unreachable,
     createSessionUnitOfWork: (pool: PostgreSqlPoolPort): Promise<ProductionAsyncClosableResource> =>
       Promise.resolve(new PostgreSqlSessionUnitOfWork(pool)),
-    assertComponentSchemasReady: (): Promise<void> => unavailablePromise(),
-    childRootOptions: null,
+    assertComponentSchemasReady: (_configuration: ProductionRuntimeConfiguration, pool: PostgreSqlPoolPort): Promise<void> => assertR3B1PublicationSchemaReady(pool),
+    childRootOptions: Object.freeze({
+      api014: Object.freeze({ runtimeEnvironment: "PRODUCTION" as const }),
+      api015: null,
+      api018: null,
+      api019: null,
+      feat022: null,
+    }),
     startListeners: (context: ProductionBootstrapContextView, roots: readonly ProductionChildRoot[]) => createProductionRuntimeListenerStarter(
       parseRailwayProductionRuntimeConfiguration(environment),
       readiness,

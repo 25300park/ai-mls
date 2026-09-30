@@ -48,11 +48,11 @@ export async function executeProductionBootstrap(rawConfiguration: unknown, depe
     const context = issueProductionBootstrapContext({ validationFingerprint, configurationReference: configuration.configurationReference });
     const session = await dependencies.createSessionUnitOfWork(pool);
     cleanup.push(() => session.close());
-    await dependencies.assertComponentSchemasReady(configuration);
+    await dependencies.assertComponentSchemasReady(configuration, pool);
 
     const roots: ProductionChildRoot[] = [];
     for (const componentId of ["API-014", "API-015", "API-018", "API-019", "FEAT-022"] as const) {
-      const root = dependencies.childRootFactories[componentId](context, configuration, identities);
+      const root = dependencies.childRootFactories[componentId](context, configuration, identities, pool);
       if (typeof root?.close === "function") cleanup.push(() => root.close());
       if (root?.componentId !== componentId || typeof root.close !== "function" || typeof root.activateRuntime !== "function") throw unavailable();
       roots.push(root);

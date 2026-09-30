@@ -23,39 +23,39 @@ export interface PublicationLifecycleDependencies {
 export class PublicationLifecycleService implements PublicationLifecyclePort {
   public constructor(private readonly dependencies: PublicationLifecycleDependencies) {}
 
-  public correctPublication(request: CorrectPublicationRequest): PublicationApplicationResult {
+  public correctPublication(request: CorrectPublicationRequest): Promise<PublicationApplicationResult> {
     return this.executeCommand(request);
   }
 
-  public republishPublication(request: RepublishPublicationRequest): PublicationApplicationResult {
+  public republishPublication(request: RepublishPublicationRequest): Promise<PublicationApplicationResult> {
     return this.executeCommand(request);
   }
 
-  public requestWithdrawal(request: RequestWithdrawalLifecycleRequest): PublicationApplicationResult {
+  public requestWithdrawal(request: RequestWithdrawalLifecycleRequest): Promise<PublicationApplicationResult> {
     return this.executeCommand(request);
   }
 
-  public resolveWithdrawal(request: ResolveWithdrawalLifecycleRequest): PublicationApplicationResult {
+  public resolveWithdrawal(request: ResolveWithdrawalLifecycleRequest): Promise<PublicationApplicationResult> {
     return this.executeCommand(request);
   }
 
-  public suspendPublication(request: SuspendPublicationRequest): PublicationApplicationResult {
+  public suspendPublication(request: SuspendPublicationRequest): Promise<PublicationApplicationResult> {
     return this.executeCommand(request);
   }
 
-  public resumePublication(request: ResumePublicationRequest): PublicationApplicationResult {
+  public resumePublication(request: ResumePublicationRequest): Promise<PublicationApplicationResult> {
     return this.executeCommand(request);
   }
 
-  public supersedePublication(request: SupersedePublicationRequest): PublicationApplicationResult {
+  public supersedePublication(request: SupersedePublicationRequest): Promise<PublicationApplicationResult> {
     return this.executeCommand(request);
   }
 
-  public terminatePublication(request: TerminatePublicationRequest): PublicationApplicationResult {
+  public terminatePublication(request: TerminatePublicationRequest): Promise<PublicationApplicationResult> {
     return this.executeCommand(request);
   }
 
-  public execute(request: PublicationLifecycleCoordinationRequest): PublicationApplicationResult {
+  public execute(request: PublicationLifecycleCoordinationRequest): Promise<PublicationApplicationResult> {
     switch (request.action) {
       case "CORRECT": return this.correctPublication(request);
       case "REPUBLISH": return this.republishPublication(request);
@@ -70,7 +70,7 @@ export class PublicationLifecycleService implements PublicationLifecyclePort {
 
   private executeCommand(request: CorrectPublicationRequest | RepublishPublicationRequest | RequestWithdrawalLifecycleRequest
     | ResolveWithdrawalLifecycleRequest | SuspendPublicationRequest | ResumePublicationRequest
-    | SupersedePublicationRequest | TerminatePublicationRequest): PublicationApplicationResult {
+    | SupersedePublicationRequest | TerminatePublicationRequest): Promise<PublicationApplicationResult> {
     return this.dependencies.application.executeAuthorized({
       kind: "MODIFY_PUBLICATION",
       identity: request.identity,
