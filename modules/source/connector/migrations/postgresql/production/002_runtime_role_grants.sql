@@ -1,0 +1,13 @@
+BEGIN;
+DO $$ BEGIN IF current_user <> 'ai_mls_production_migration_operator' THEN RAISE EXCEPTION 'REL002_R3B1_MIGRATION_OPERATOR_REQUIRED'; END IF; END $$;
+REVOKE ALL ON SCHEMA app_connector FROM PUBLIC;
+REVOKE ALL ON ALL TABLES IN SCHEMA app_connector FROM PUBLIC;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA app_connector FROM PUBLIC;
+REVOKE ALL ON SCHEMA app_connector FROM ai_mls_production_runtime;
+REVOKE ALL ON ALL TABLES IN SCHEMA app_connector FROM ai_mls_production_runtime;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA app_connector FROM ai_mls_production_runtime;
+GRANT USAGE ON SCHEMA app_connector TO ai_mls_production_runtime;
+GRANT SELECT ON ALL TABLES IN SCHEMA app_connector TO ai_mls_production_runtime;
+GRANT INSERT,UPDATE ON app_connector.connector_scopes,app_connector.connector_leases,app_connector.connector_invocations,app_connector.connector_idempotency,app_connector.connector_checkpoints,app_connector.connector_technical_records,app_connector.connector_technical_idempotency TO ai_mls_production_runtime;
+GRANT INSERT ON app_connector.connector_results,app_connector.connector_evidence,app_connector.connector_technical_evidence TO ai_mls_production_runtime;
+COMMIT;

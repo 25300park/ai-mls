@@ -20,7 +20,7 @@
 | Status | `APPROVED` |
 | Decision | Production child-root persistence SHALL use five dedicated schemas: `app_publication`, `app_administration`, `app_connector`, `app_external_integration`, and `app_advisory`. It SHALL NOT place child-root business persistence in `app_identity`. `ai_mls_production_migration_operator` SHALL own schema/DDL execution; `ai_mls_production_runtime` SHALL receive only exact verified runtime privileges. |
 | Rationale | Separates ownership, migration/version boundaries, ACL verification, incident isolation, naming, and audit evidence from Identity authority. |
-| Scope | Current 36 durable tables and their required schema metadata, indexes, constraints, triggers/functions. |
+| Scope | Current 36 durable tables and their required schema metadata, indexes, constraints, triggers/functions. External Integration preserves insertion semantics with contract-local immutable `ordinal bigint`, exactly three immediate `NO ACTION` contract-parent FKs, validated JSON `TEXT`; Advisory retains canonical `JSONB`. Version/fingerprint evidence remains catalog metadata and adds no table. |
 | Affected documents/modules | DOC-DEV-368–371; Publication, Administration, Source Connector, External Integration, Advisory persistence modules. |
 | Compatibility impact | SQLite remains local/test evidence only; business semantics and authority remain unchanged. PostgreSQL names are schema-qualified. |
 | Production impact | No impact until separately authorized migrations and grants execute. Current deployability remains `BLOCKED`. |
@@ -44,7 +44,7 @@
 | Field | Disposition text |
 |---|---|
 | Status | `APPROVED` |
-| Decision | Each child-root domain SHALL use module-owned forward-only Production migrations, exact checksum/schema-version/structure verifiers, fail-closed preconditions and exact least-privilege runtime grants. Application startup SHALL NOT create, migrate or repair schema. Runtime DDL, grant options, unexpected role membership and PUBLIC leakage are prohibited. Aggregate readiness SHALL pass before child roots, listeners or workers start. |
+| Decision | Each child-root domain SHALL use module-owned forward-only Production migrations, exact checksum/schema-version/structure verifiers, fail-closed preconditions and exact least-privilege runtime grants. Exact verification includes the approved 20-trigger attachment/timing/event/level/function/enabled topology, function identity/owner/source, table/function ownership, direct and effective ACLs, grant options, PUBLIC leakage and unexpected role membership/authority. Application startup SHALL NOT create, migrate or repair schema. Aggregate readiness SHALL atomically require all five exact domain verdicts before child roots, listeners or workers start. |
 | Rationale | Preserves controlled migration ownership and makes schema/ACL drift observable before runtime activation. |
 | Scope | Migration/verifier/grant/readiness contracts for all five schemas; no Production execution in R3-B0. |
 | Affected documents/modules | DOC-DEV-368–371; future per-domain PostgreSQL migration directories; ProductionBootstrap readiness. |
@@ -79,7 +79,7 @@ Introduce `PG_PRODUCTION_POOL` as the canonical internal authority name while pr
 | Field | Disposition text |
 |---|---|
 | Status | `APPROVED`; R3-B1 implementation authorized after R3-B0 closeout and main integration |
-| Requested change | Implement schema, forward migration, exact verifier, readiness and least-privilege grant artifacts for the verified 36-table inventory after DEC-195/197 ratification. |
+| Requested change | Implement schema, forward migration, exact verifier, readiness and least-privilege grant artifacts for the verified 36-table inventory, including the ratified External ordinal/FK/validated-TEXT and Advisory JSONB semantics plus exact 20-trigger/function/owner/direct/effective-authority aggregate readiness. |
 | Rationale | Identity is currently the only Production PostgreSQL persistence implementation. |
 | Scope | R3-B1 only; no adapter implementation or Production execution. |
 | Affected documents/modules | DOC-DEV-368–371; future five module-owned PostgreSQL migration sets. |

@@ -1,0 +1,11 @@
+BEGIN;
+DO $$ BEGIN IF current_user <> 'ai_mls_production_migration_operator' THEN RAISE EXCEPTION 'REL002_R3B1_MIGRATION_OPERATOR_REQUIRED'; END IF; END $$;
+REVOKE ALL ON SCHEMA app_advisory FROM PUBLIC;
+REVOKE ALL ON ALL TABLES IN SCHEMA app_advisory FROM PUBLIC;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA app_advisory FROM PUBLIC;
+REVOKE ALL ON SCHEMA app_advisory FROM ai_mls_production_runtime;
+REVOKE ALL ON ALL TABLES IN SCHEMA app_advisory FROM ai_mls_production_runtime;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA app_advisory FROM ai_mls_production_runtime;
+GRANT USAGE ON SCHEMA app_advisory TO ai_mls_production_runtime;
+GRANT SELECT,INSERT ON app_advisory.advisory_prompts,app_advisory.advisory_records,app_advisory.advisory_idempotency TO ai_mls_production_runtime;
+COMMIT;

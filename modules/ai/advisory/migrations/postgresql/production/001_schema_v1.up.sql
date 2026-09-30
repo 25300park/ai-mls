@@ -1,0 +1,12 @@
+BEGIN;
+DO $$ BEGIN IF current_user<>'ai_mls_production_migration_operator' THEN RAISE EXCEPTION 'REL002_R3B1_MIGRATION_OPERATOR_REQUIRED'; END IF; IF to_regnamespace('app_advisory') IS NOT NULL THEN RAISE EXCEPTION 'REL002_R3B1_ADVISORY_SCHEMA_ALREADY_EXISTS'; END IF; END $$;
+CREATE SCHEMA app_advisory AUTHORIZATION ai_mls_production_migration_operator;
+COMMENT ON SCHEMA app_advisory IS 'REL002-R3B1-ADVISORY-V1|schema_version=1|contract_fingerprint=advisory-v1-3-tables';
+CREATE TABLE app_advisory.advisory_prompts(prompt_id text NOT NULL,prompt_version text NOT NULL,capability_id text NOT NULL CHECK(capability_id IN('AI-001','AI-002','AI-003','AI-004','AI-005','AI-006','AI-007')),schema_id text NOT NULL,content_fingerprint text NOT NULL,status text NOT NULL CHECK(status IN('ACTIVE','RETIRED')),created_at timestamptz NOT NULL,payload_json jsonb NOT NULL,PRIMARY KEY(prompt_id,prompt_version));
+CREATE TABLE app_advisory.advisory_records(advisory_id text PRIMARY KEY,tenant_id text NOT NULL,scope_ref text NOT NULL,capability_id text NOT NULL CHECK(capability_id IN('AI-001','AI-002','AI-003','AI-004','AI-005','AI-006','AI-007')),schema_id text NOT NULL,execution_fingerprint text NOT NULL,payload_json jsonb NOT NULL);
+CREATE TABLE app_advisory.advisory_idempotency(tenant_id text NOT NULL,scope_ref text NOT NULL,idempotency_key text NOT NULL,execution_fingerprint text NOT NULL,advisory_id text NOT NULL REFERENCES app_advisory.advisory_records(advisory_id),PRIMARY KEY(tenant_id,scope_ref,idempotency_key));
+CREATE FUNCTION app_advisory.reject_append_only_mutation() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'append-only' USING ERRCODE='55000'; END $$;
+CREATE TRIGGER advisory_prompts_append_only BEFORE UPDATE OR DELETE ON app_advisory.advisory_prompts FOR EACH ROW EXECUTE FUNCTION app_advisory.reject_append_only_mutation();
+CREATE TRIGGER advisory_records_append_only BEFORE UPDATE OR DELETE ON app_advisory.advisory_records FOR EACH ROW EXECUTE FUNCTION app_advisory.reject_append_only_mutation();
+CREATE TRIGGER advisory_idempotency_append_only BEFORE UPDATE OR DELETE ON app_advisory.advisory_idempotency FOR EACH ROW EXECUTE FUNCTION app_advisory.reject_append_only_mutation();
+COMMIT;
