@@ -19,6 +19,9 @@ import {
   composeProductionAdministrationApi015NodeHttpServer,
   type ProductionAdministrationCompositionOptions,
 } from "./composition.js";
+import { composeProductionAdministrationApi015HttpHandler } from "./administration-production-composition.js";
+import { issueProductionBootstrapContext } from "../../../packages/security-contracts/src/production-bootstrap-proof.js";
+import type { PostgreSqlPoolPort } from "../../../modules/identity/src/index.js";
 
 const requiredDependencies = Object.freeze({
   runtimeEnvironment: "TEST" as const,
@@ -516,4 +519,39 @@ test("F16-R1 production Administration composition requires a durable file datab
         && error.code === "PERSISTENCE_INPUT_INVALID",
     );
   }
+});
+
+test("R3-B3 Production Administration composition selects the shared PostgreSQL pool and rejects SQLite", async () => {
+  let connections = 0;
+  const pool: PostgreSqlPoolPort = Object.freeze({
+    connect: () => { connections += 1; return Promise.reject(new Error("unused")); },
+    close: () => Promise.resolve(),
+  });
+  const context = issueProductionBootstrapContext({
+    validationFingerprint: "r3b3-fingerprint",
+    configurationReference: "r3b3-configuration",
+  });
+  const root = composeProductionAdministrationApi015HttpHandler({
+    runtimeEnvironment: "PRODUCTION",
+    postgreSqlPool: pool,
+    bootstrapContext: context,
+    clock: requiredDependencies.clock,
+    idFactory: () => "r3b3-id",
+    auditSink: requiredDependencies.auditSink,
+    policyVersion: "REL002-R3B3",
+    sessionResolver: { resolve: () => undefined },
+  });
+  assert.equal(connections, 0);
+  await root.close();
+  assert.throws(() => composeProductionAdministrationApi015HttpHandler({
+    runtimeEnvironment: "PRODUCTION",
+    postgreSqlPool: pool,
+    databasePath: "forbidden.sqlite",
+    bootstrapContext: context,
+    clock: requiredDependencies.clock,
+    idFactory: () => "r3b3-id",
+    auditSink: requiredDependencies.auditSink,
+    policyVersion: "REL002-R3B3",
+    sessionResolver: { resolve: () => undefined },
+  }), /PostgreSQL persistence is required/u);
 });

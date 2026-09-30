@@ -16,9 +16,9 @@ import {
 } from "./administration-api-contracts.js";
 
 export interface AdministrationGovernanceApplicationPort {
-  execute(input: unknown): AdministrationApiCommandResult;
-  read(input: unknown): AdministrationReadView;
-  list(input: unknown): AdministrationCollectionView<AdministrationReadView>;
+  execute(input: unknown): AdministrationApiCommandResult | Promise<AdministrationApiCommandResult>;
+  read(input: unknown): AdministrationReadView | Promise<AdministrationReadView>;
+  list(input: unknown): AdministrationCollectionView<AdministrationReadView> | Promise<AdministrationCollectionView<AdministrationReadView>>;
 }
 
 export interface AdministrationHttpRequestHandler {
@@ -51,11 +51,7 @@ const runtimeQueryOperations = new Set<string>([
 export class InProcessAdministrationHttpAdapter implements AdministrationHttpRequestHandler {
   public constructor(private readonly application: AdministrationGovernanceApplicationPort) {}
 
-  public handle(input: unknown): Promise<PublicationHttpResponse> {
-    return Promise.resolve(this.handleSynchronous(input));
-  }
-
-  private handleSynchronous(input: unknown): PublicationHttpResponse {
+  public async handle(input: unknown): Promise<PublicationHttpResponse> {
     let requestId = safeRequestId(input);
     try {
       const request = createPublicationHttpRequest(input);
@@ -81,10 +77,10 @@ export class InProcessAdministrationHttpAdapter implements AdministrationHttpReq
         operation: body.operation, payload: body.payload,
       };
       const data = route === "COMMAND"
-        ? this.application.execute(applicationRequest)
+        ? await this.application.execute(applicationRequest)
         : runtimeListOperations.has(body.operation)
-          ? this.application.list(applicationRequest)
-          : this.application.read(applicationRequest);
+          ? await this.application.list(applicationRequest)
+          : await this.application.read(applicationRequest);
       return createPublicationHttpResponse({
         statusCode: 200, headers: { "content-type": "application/json" },
         body: { success: true, data }, requestId,

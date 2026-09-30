@@ -32,6 +32,7 @@ import {
   type AdministrationTransactionTrackerSnapshot,
   type GovernedRecord,
 } from "./administration-persistence-engine.js";
+import { validateHydratedAdministrationState } from "./administration-persistence-validation.js";
 
 const SCHEMA_VERSION = 1;
 const NO_FAILURES: AdministrationPersistenceFailurePort = Object.freeze({ check: () => undefined });
@@ -277,6 +278,7 @@ function loadState(database: DatabaseSync): AdministrationTransactionState {
     state.revisions.set(identityKey(identity), revision);
   }
   validateLoadedLinkage(state);
+  validateHydratedAdministrationState(state);
   return state;
 }
 

@@ -7,6 +7,7 @@ import { composeDevelopmentAdminConsole } from "../../admin-console/src/console-
 import { AuditLog } from "../../../modules/audit/src/audit-log.js";
 import {
   createAdministrationBackedAuthorizationService,
+  adaptSynchronousAdministrationPersistence,
   InMemoryAdministrationUnitOfWork,
   type AdministrationDecisionRecord,
   type AdministrationIdempotencyRecord,
@@ -233,12 +234,19 @@ function fixture(
     clock, policyVersion: "authorization-phase8-v1",
   });
   let id = 0;
-  const application = new AdministrationGovernanceApplication({
-    authorizationService, unitOfWork: wrapUnitOfWork?.(unitOfWork) ?? unitOfWork,
-    roleAssignments: unitOfWork.roleAssignments, roles: unitOfWork.roles,
-    policies: unitOfWork.policies, teamScopes: unitOfWork.teamScopes, sourceGovernance: unitOfWork.sourceGovernance,
+  const transactionAuthority = wrapUnitOfWork?.(unitOfWork) ?? unitOfWork;
+  const persistence = adaptSynchronousAdministrationPersistence(Object.assign(transactionAuthority, {
+    roleAssignments: unitOfWork.roleAssignments, roles: unitOfWork.roles, policies: unitOfWork.policies,
+    teamScopes: unitOfWork.teamScopes, sourceGovernance: unitOfWork.sourceGovernance,
     publicationTargets: unitOfWork.publicationTargets, proposals: unitOfWork.proposals,
     decisions: unitOfWork.decisions, idempotency: unitOfWork.idempotency,
+  }));
+  const application = new AdministrationGovernanceApplication({
+    authorizationService, unitOfWork: persistence,
+    roleAssignments: persistence.roleAssignments, roles: persistence.roles,
+    policies: persistence.policies, teamScopes: persistence.teamScopes, sourceGovernance: persistence.sourceGovernance,
+    publicationTargets: persistence.publicationTargets, proposals: persistence.proposals,
+    decisions: persistence.decisions, idempotency: persistence.idempotency,
     sessionResolver: { resolve: (sessionId) => sessions.get(sessionId) }, clock,
     idFactory: () => `phase8-${++id}`,
   });
@@ -270,10 +278,10 @@ function roleAssignmentProposal(idempotencyKey: string) {
   };
 }
 
-test("F16-PHASE-9 Role Assignment proposal and independent approval use the canonical UoW", () => {
+test("F16-PHASE-9 Role Assignment proposal and independent approval use the canonical UoW", async () => {
   const { application, unitOfWork } = fixture();
   const proposedInput = command("PROPOSE_ROLE_ASSIGNMENT", "session-policy-proposer", roleAssignmentProposal("idem-role-propose-phase9"));
-  const proposed = application.execute(proposedInput);
+  const proposed = await application.execute(proposedInput);
   assert.equal(proposed.status, "PROPOSED");
   const identity = { tenantId, resourceType: "ROLE_ASSIGNMENT" as const, resourceId: proposed.resourceId };
   assert.equal(unitOfWork.roleAssignments.find(identity)?.proposedBy, "policy-proposer");
@@ -282,22 +290,22 @@ test("F16-PHASE-9 Role Assignment proposal and independent approval use the cano
     proposalId: proposed.proposalId, roleAssignmentId: proposed.resourceId,
     ...common(roleAssignmentScope, 1, "idem-role-approve-phase9"),
   });
-  const approved = application.execute(approvedInput);
+  const approved = await application.execute(approvedInput);
   assert.equal(approved.status, "ACTIVE");
   assert.equal(unitOfWork.roleAssignments.find(identity)?.approvedBy, "policy-approver");
   assert.equal(unitOfWork.decisions.list(identity).length, 1);
-  assert.deepEqual(application.execute(approvedInput), approved);
+  assert.deepEqual(await application.execute(approvedInput), approved);
   assert.equal(unitOfWork.decisions.list(identity).length, 1);
 });
 
-test("F16-PHASE-9A ACTIVE Role Assignment successor proposal enables canonical revocation", () => {
+test("F16-PHASE-9A ACTIVE Role Assignment successor proposal enables canonical revocation", async () => {
   const { application, unitOfWork } = fixture();
-  const initial = application.execute(command("PROPOSE_ROLE_ASSIGNMENT", "session-policy-proposer", roleAssignmentProposal("idem-role-initial-phase9a")));
-  application.execute(command("APPROVE_ROLE_ASSIGNMENT", "session-policy-approver", {
+  const initial = await application.execute(command("PROPOSE_ROLE_ASSIGNMENT", "session-policy-proposer", roleAssignmentProposal("idem-role-initial-phase9a")));
+  await application.execute(command("APPROVE_ROLE_ASSIGNMENT", "session-policy-approver", {
     proposalId: initial.proposalId, roleAssignmentId: initial.resourceId,
     ...common(roleAssignmentScope, 1, "idem-role-activate-phase9a"),
   }));
-  const successor = application.execute(command("PROPOSE_ROLE_ASSIGNMENT", "session-policy-proposer", {
+  const successor = await application.execute(command("PROPOSE_ROLE_ASSIGNMENT", "session-policy-proposer", {
     ...roleAssignmentProposal("idem-role-successor-phase9a"),
     roleAssignmentId: initial.resourceId, expectedVersion: 2,
   }));
@@ -309,28 +317,28 @@ test("F16-PHASE-9A ACTIVE Role Assignment successor proposal enables canonical r
     proposalId: successor.proposalId, roleAssignmentId: initial.resourceId,
     ...common(roleAssignmentScope, 2, "idem-role-revoke-phase9a"),
   });
-  const revoked = application.execute(revokeInput);
+  const revoked = await application.execute(revokeInput);
   assert.equal(revoked.status, "REVOKED");
   assert.equal(unitOfWork.roleAssignments.find(identity)?.revokedBy, "policy-approver");
   assert.equal(unitOfWork.decisions.list(identity).length, 2);
-  assert.deepEqual(application.execute(revokeInput), revoked);
+  assert.deepEqual(await application.execute(revokeInput), revoked);
   assert.equal(unitOfWork.decisions.list(identity).length, 2);
 });
 
-test("F16-PHASE-9 Role Assignment read and list are live-authorized and scope bounded", () => {
+test("F16-PHASE-9 Role Assignment read and list are live-authorized and scope bounded", async () => {
   const { application } = fixture();
-  const proposed = application.execute(command("PROPOSE_ROLE_ASSIGNMENT", "session-policy-proposer", roleAssignmentProposal("idem-role-query-phase9")));
-  const read = application.read(command("READ_ROLE_ASSIGNMENT", "session-policy-proposer", {
+  const proposed = await application.execute(command("PROPOSE_ROLE_ASSIGNMENT", "session-policy-proposer", roleAssignmentProposal("idem-role-query-phase9")));
+  const read = await application.read(command("READ_ROLE_ASSIGNMENT", "session-policy-proposer", {
     roleAssignmentId: proposed.resourceId, scope: roleAssignmentScope,
   }));
   assert.equal("viewType" in read && read.viewType, "ROLE_ASSIGNMENT");
-  const listed = application.list(command("LIST_ROLE_ASSIGNMENTS", "session-policy-proposer", {
+  const listed = await application.list(command("LIST_ROLE_ASSIGNMENTS", "session-policy-proposer", {
     scope: roleAssignmentScope, status: "PROPOSED", pagination: { limit: 25 },
   }));
   assert.equal("items" in listed && listed.items.length, 1);
 });
 
-test("F16-R2 Role change proposal, approval and reads use the canonical application boundary", () => {
+test("F16-R2 Role change proposal, approval and reads use the canonical application boundary", async () => {
   const { application, unitOfWork } = fixture();
   const scope = { tenantId, scopeType: "TENANT" as const, scopeId: tenantId };
   const identity = { tenantId, resourceType: "ROLE" as const, resourceId: "role-agent-phase9" };
@@ -338,7 +346,7 @@ test("F16-R2 Role change proposal, approval and reads use the canonical applicat
     roleId: identity.resourceId, proposedChangeReference: "policy-role-agent-r2",
     ...common(scope, 1, "idem-role-change-propose-r2"),
   });
-  const proposed = application.execute(proposedInput);
+  const proposed = await application.execute(proposedInput);
   assert.equal(proposed.status, "PROPOSED");
   assert.equal(unitOfWork.roles.find(identity)?.policyReference, "policy-role-agent-phase9");
 
@@ -346,19 +354,19 @@ test("F16-R2 Role change proposal, approval and reads use the canonical applicat
     proposalId: proposed.proposalId, roleId: identity.resourceId,
     ...common(scope, 1, "idem-role-change-approve-r2"),
   });
-  const approved = application.execute(approvedInput);
+  const approved = await application.execute(approvedInput);
   assert.equal(approved.status, "ACTIVE");
   assert.equal(approved.version, 2);
   assert.equal(unitOfWork.roles.find(identity)?.policyReference, "policy-role-agent-r2");
   assert.equal(unitOfWork.roles.find(identity)?.roleCode, "AGT");
   assert.equal(unitOfWork.decisions.list(identity).length, 1);
-  assert.deepEqual(application.execute(approvedInput), approved);
+  assert.deepEqual(await application.execute(approvedInput), approved);
   assert.equal(unitOfWork.decisions.list(identity).length, 1);
-  assert.throws(() => application.execute({
+  await assert.rejects(() => application.execute({
     ...approvedInput, payload: { ...approvedInput.payload, reason: "conflicting approved role change reason" },
   }), (error: unknown) => error instanceof AdministrationApiError && error.code === "IDEMPOTENCY_CONFLICT");
 
-  const read = application.read(command("READ_ROLE", "session-policy-approver", {
+  const read = await application.read(command("READ_ROLE", "session-policy-approver", {
     roleId: identity.resourceId, scope,
   }));
   assert.equal(read.viewType, "ROLE");
@@ -366,15 +374,15 @@ test("F16-R2 Role change proposal, approval and reads use the canonical applicat
   assert.equal(read.version, 2);
 });
 
-test("F16-R2 Role rejection persists evidence without mutating governed state", () => {
+test("F16-R2 Role rejection persists evidence without mutating governed state", async () => {
   const { application, unitOfWork } = fixture();
   const scope = { tenantId, scopeType: "TENANT" as const, scopeId: tenantId };
   const identity = { tenantId, resourceType: "ROLE" as const, resourceId: "role-agent-phase9" };
-  const proposed = application.execute(command("PROPOSE_ROLE_CHANGE", "session-policy-proposer", {
+  const proposed = await application.execute(command("PROPOSE_ROLE_CHANGE", "session-policy-proposer", {
     roleId: identity.resourceId, proposedChangeReference: "policy-role-rejected-r2",
     ...common(scope, 1, "idem-role-change-reject-propose-r2"),
   }));
-  const rejected = application.execute(command("REJECT_ROLE_CHANGE", "session-policy-approver", {
+  const rejected = await application.execute(command("REJECT_ROLE_CHANGE", "session-policy-approver", {
     proposalId: proposed.proposalId, roleId: identity.resourceId,
     ...common(scope, 1, "idem-role-change-reject-r2"),
   }));
@@ -385,23 +393,23 @@ test("F16-R2 Role rejection persists evidence without mutating governed state", 
   assert.equal(unitOfWork.decisions.list(identity).length, 1);
 });
 
-test("F16-R2 Role decisions fail closed for self approval, stale version and unauthorized scope", () => {
+test("F16-R2 Role decisions fail closed for self approval, stale version and unauthorized scope", async () => {
   const { application, unitOfWork } = fixture();
   const scope = { tenantId, scopeType: "TENANT" as const, scopeId: tenantId };
   const identity = { tenantId, resourceType: "ROLE" as const, resourceId: "role-agent-phase9" };
-  const proposed = application.execute(command("PROPOSE_ROLE_CHANGE", "session-policy-proposer", {
+  const proposed = await application.execute(command("PROPOSE_ROLE_CHANGE", "session-policy-proposer", {
     roleId: identity.resourceId, proposedChangeReference: "policy-role-denied-r2",
     ...common(scope, 1, "idem-role-denied-propose-r2"),
   }));
-  assert.throws(() => application.execute(command("APPROVE_ROLE_CHANGE", "session-policy-proposer", {
+  await assert.rejects(() => application.execute(command("APPROVE_ROLE_CHANGE", "session-policy-proposer", {
     proposalId: proposed.proposalId, roleId: identity.resourceId,
     ...common(scope, 1, "idem-role-self-approve-r2"),
   })), (error: unknown) => error instanceof AdministrationApiError && error.code === "SELF_APPROVAL_FORBIDDEN");
-  assert.throws(() => application.execute(command("APPROVE_ROLE_CHANGE", "session-policy-approver", {
+  await assert.rejects(() => application.execute(command("APPROVE_ROLE_CHANGE", "session-policy-approver", {
     proposalId: proposed.proposalId, roleId: identity.resourceId,
     ...common(scope, 2, "idem-role-stale-r2"),
   })), (error: unknown) => error instanceof AdministrationApiError && error.code === "VERSION_CONFLICT");
-  assert.throws(() => application.read(command("READ_ROLE", "session-policy-proposer", {
+  await assert.rejects(() => application.read(command("READ_ROLE", "session-policy-proposer", {
     roleId: identity.resourceId,
     scope: { tenantId, scopeType: "TENANT", scopeId: "tenant-outside-r2" },
   })), (error: unknown) => error instanceof AdministrationApiError && error.code === "AUTHORIZATION_DENIED");
@@ -411,7 +419,7 @@ test("F16-R2 Role decisions fail closed for self approval, stale version and una
   assert.equal(unitOfWork.idempotency.find({ ...identity, idempotencyKey: "idem-role-stale-r2" }), undefined);
 });
 
-test("F16-R2 Team scope proposal, approval, rejection and read preserve canonical identity", () => {
+test("F16-R2 Team scope proposal, approval, rejection and read preserve canonical identity", async () => {
   const scope = { tenantId, scopeType: "TEAM" as const, scopeId: teamId };
   const governedTeamScope: TeamScopePersistenceRecord = {
     recordType: "TEAM_SCOPE", tenantId, teamId, organizationId: "organization-phase8",
@@ -420,11 +428,11 @@ test("F16-R2 Team scope proposal, approval, rejection and read preserve canonica
   };
   const { application, unitOfWork } = fixture(undefined, [], [governedTeamScope]);
   const identity = { tenantId, resourceType: "TEAM_SCOPE" as const, resourceId: teamId };
-  const proposed = application.execute(command("PROPOSE_TEAM_SCOPE_CHANGE", "session-policy-proposer", {
+  const proposed = await application.execute(command("PROPOSE_TEAM_SCOPE_CHANGE", "session-policy-proposer", {
     teamId, proposedChangeReference: "team-scope-change-r2",
     ...common(scope, 2, "idem-team-change-propose-r2"),
   }));
-  const approved = application.execute(command("APPROVE_TEAM_SCOPE_CHANGE", "session-policy-approver", {
+  const approved = await application.execute(command("APPROVE_TEAM_SCOPE_CHANGE", "session-policy-approver", {
     proposalId: proposed.proposalId, teamId,
     ...common(scope, 2, "idem-team-change-approve-r2"),
   }));
@@ -435,16 +443,16 @@ test("F16-R2 Team scope proposal, approval, rejection and read preserve canonica
   assert.equal(stored?.version, 3);
   assert.equal(unitOfWork.decisions.list(identity).length, 2);
 
-  const read = application.read(command("READ_TEAM_SCOPE", "session-policy-approver", { teamId, scope }));
+  const read = await application.read(command("READ_TEAM_SCOPE", "session-policy-approver", { teamId, scope }));
   assert.equal(read.viewType, "TEAM_SCOPE");
   assert.equal("teamId" in read && read.teamId, teamId);
   assert.equal(read.version, 3);
 
-  const secondProposal = application.execute(command("PROPOSE_TEAM_SCOPE_CHANGE", "session-policy-proposer", {
+  const secondProposal = await application.execute(command("PROPOSE_TEAM_SCOPE_CHANGE", "session-policy-proposer", {
     teamId, proposedChangeReference: "team-scope-rejected-r2",
     ...common(scope, 3, "idem-team-change-reject-propose-r2"),
   }));
-  const rejected = application.execute(command("REJECT_TEAM_SCOPE_CHANGE", "session-policy-approver", {
+  const rejected = await application.execute(command("REJECT_TEAM_SCOPE_CHANGE", "session-policy-approver", {
     proposalId: secondProposal.proposalId, teamId,
     ...common(scope, 3, "idem-team-change-reject-r2"),
   }));
@@ -453,19 +461,19 @@ test("F16-R2 Team scope proposal, approval, rejection and read preserve canonica
   assert.equal(unitOfWork.decisions.list(identity).length, 3);
 });
 
-test("F16-R2 decision read and list return live-authorized immutable evidence", () => {
+test("F16-R2 decision read and list return live-authorized immutable evidence", async () => {
   const { application } = fixture();
   const scope = { tenantId, scopeType: "TENANT" as const, scopeId: tenantId };
-  const proposed = application.execute(command("PROPOSE_ROLE_CHANGE", "session-policy-proposer", {
+  const proposed = await application.execute(command("PROPOSE_ROLE_CHANGE", "session-policy-proposer", {
     roleId: "role-agent-phase9", proposedChangeReference: "policy-role-decision-read-r2",
     ...common(scope, 1, "idem-decision-read-propose-r2"),
   }));
-  const approved = application.execute(command("APPROVE_ROLE_CHANGE", "session-policy-approver", {
+  const approved = await application.execute(command("APPROVE_ROLE_CHANGE", "session-policy-approver", {
     proposalId: proposed.proposalId, roleId: "role-agent-phase9",
     ...common(scope, 1, "idem-decision-read-approve-r2"),
   }));
   const decisionId = approved.decisionReferences[0]!;
-  const read = application.read(command("READ_ADMINISTRATION_DECISION", "session-policy-approver", {
+  const read = await application.read(command("READ_ADMINISTRATION_DECISION", "session-policy-approver", {
     decisionId, scope,
   }));
   assert.equal(read.viewType, "ADMINISTRATION_DECISION");
@@ -473,21 +481,21 @@ test("F16-R2 decision read and list return live-authorized immutable evidence", 
   assert.equal("proposalId" in read && read.proposalId, proposed.proposalId);
   assert.equal(Object.isFrozen(read), true);
 
-  const listed = application.list(command("LIST_ADMINISTRATION_DECISIONS", "session-policy-approver", {
+  const listed = await application.list(command("LIST_ADMINISTRATION_DECISIONS", "session-policy-approver", {
     scope, status: "APPROVED", pagination: { limit: 10 },
   }));
   assert.deepEqual(listed.items.map((item) => "decisionId" in item ? item.decisionId : undefined), [decisionId]);
   assert.equal(Object.isFrozen(listed.items), true);
 });
 
-test("F16-PHASE-11A LIST_ROLES returns authorized scope-bounded selector views in canonical ID order", () => {
+test("F16-PHASE-11A LIST_ROLES returns authorized scope-bounded selector views in canonical ID order", async () => {
   const { application, unitOfWork, sessions } = fixture();
   activateSecurityAuthority(unitOfWork, "tenant-role-reader", {
     resourceTypes: [`Administration:TENANT:${tenantId}`],
   });
   sessions.set("session-tenant-role-reader", session("tenant-role-reader"));
 
-  const listed = application.list(command("LIST_ROLES", "session-tenant-role-reader", {
+  const listed = await application.list(command("LIST_ROLES", "session-tenant-role-reader", {
     scope: { tenantId, scopeType: "TENANT", scopeId: tenantId },
     status: "ACTIVE",
     pagination: { limit: 10 },
@@ -503,7 +511,7 @@ test("F16-PHASE-11A LIST_ROLES returns authorized scope-bounded selector views i
   assert.equal(Object.isFrozen(listed.items), true);
 });
 
-test("F16-PHASE-11A selector lists expose deterministic bounded continuation without duplicate records", () => {
+test("F16-PHASE-11A selector lists expose deterministic bounded continuation without duplicate records", async () => {
   const { application, unitOfWork, sessions } = fixture();
   activateSecurityAuthority(unitOfWork, "tenant-pagination-reader", {
     resourceTypes: [`Administration:TENANT:${tenantId}`],
@@ -511,20 +519,20 @@ test("F16-PHASE-11A selector lists expose deterministic bounded continuation wit
   sessions.set("session-tenant-pagination-reader", session("tenant-pagination-reader"));
   const scope = { tenantId, scopeType: "TENANT" as const, scopeId: tenantId };
 
-  const first = application.list(command("LIST_ROLES", "session-tenant-pagination-reader", {
+  const first = await application.list(command("LIST_ROLES", "session-tenant-pagination-reader", {
     scope, status: "ACTIVE", pagination: { limit: 1 },
   }));
   assert.deepEqual(first.items.map((item) => "roleId" in item ? item.roleId : undefined), ["role-agent-phase9"]);
   assert.equal(first.nextCursor, "role-agent-phase9");
 
-  const second = application.list(command("LIST_ROLES", "session-tenant-pagination-reader", {
+  const second = await application.list(command("LIST_ROLES", "session-tenant-pagination-reader", {
     scope, status: "ACTIVE", pagination: { limit: 1, cursor: first.nextCursor },
   }));
   assert.deepEqual(second.items.map((item) => "roleId" in item ? item.roleId : undefined), ["role-security-phase8"]);
   assert.equal(second.nextCursor, undefined);
 });
 
-test("F16-PHASE-11A selector pagination uses the same canonical comparator for cursor continuation", () => {
+test("F16-PHASE-11A selector pagination uses the same canonical comparator for cursor continuation", async () => {
   const mixedCaseRole: RolePersistenceRecord = {
     recordType: "ROLE" as const,
     tenantId,
@@ -543,10 +551,10 @@ test("F16-PHASE-11A selector pagination uses the same canonical comparator for c
   sessions.set("session-tenant-pagination-reader", session("tenant-pagination-reader"));
 
   const scope = { tenantId, scopeType: "TENANT" as const, scopeId: tenantId };
-  const first = application.list(command("LIST_ROLES", "session-tenant-pagination-reader", {
+  const first = await application.list(command("LIST_ROLES", "session-tenant-pagination-reader", {
     scope, status: "ACTIVE", pagination: { limit: 1 },
   }));
-  const second = application.list(command("LIST_ROLES", "session-tenant-pagination-reader", {
+  const second = await application.list(command("LIST_ROLES", "session-tenant-pagination-reader", {
     scope, status: "ACTIVE", pagination: { limit: 2, cursor: first.nextCursor },
   }));
 
@@ -557,7 +565,7 @@ test("F16-PHASE-11A selector pagination uses the same canonical comparator for c
   ]);
 });
 
-test("F16-PHASE-11A LIST_TEAM_SCOPES returns only canonical records in the authorized scope", () => {
+test("F16-PHASE-11A LIST_TEAM_SCOPES returns only canonical records in the authorized scope", async () => {
   const { application, unitOfWork } = fixture();
   const scope = { tenantId, scopeType: "TEAM" as const, scopeId: teamId };
   const identity = { tenantId, resourceType: "TEAM_SCOPE" as const, resourceId: teamId };
@@ -582,7 +590,7 @@ test("F16-PHASE-11A LIST_TEAM_SCOPES returns only canonical records in the autho
   transaction.commit();
 
   const before = unitOfWork.teamScopes.find(identity);
-  const listed = application.list(command("LIST_TEAM_SCOPES", "session-policy-proposer", {
+  const listed = await application.list(command("LIST_TEAM_SCOPES", "session-policy-proposer", {
     scope,
     status: "PROPOSED",
     pagination: { limit: 10 },
@@ -593,14 +601,14 @@ test("F16-PHASE-11A LIST_TEAM_SCOPES returns only canonical records in the autho
   assert.deepEqual(unitOfWork.teamScopes.find(identity), before);
 });
 
-test("F16-PHASE-11A LIST_POLICIES returns authorized canonical IDs and versions without policy internals", () => {
+test("F16-PHASE-11A LIST_POLICIES returns authorized canonical IDs and versions without policy internals", async () => {
   const { application } = fixture();
-  application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
+  await application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
     policyId: "policy-selector-phase11a", proposedChangeReference: "policy-selector-reference-phase11a",
     ...common(policyScope, 0, "idem-policy-selector-phase11a"),
   }));
 
-  const listed = application.list(command("LIST_POLICIES", "session-policy-approver", {
+  const listed = await application.list(command("LIST_POLICIES", "session-policy-approver", {
     scope: policyScope,
     status: "PROPOSED",
     pagination: { limit: 10 },
@@ -615,15 +623,15 @@ test("F16-PHASE-11A LIST_POLICIES returns authorized canonical IDs and versions 
   assert.equal(JSON.stringify(listed).includes("reasonReference"), false);
 });
 
-test("F16-PHASE-11B LIST_ADMINISTRATION_PROPOSALS returns safe resource-bound pending proposals", () => {
+test("F16-PHASE-11B LIST_ADMINISTRATION_PROPOSALS returns safe resource-bound pending proposals", async () => {
   const { application } = fixture();
-  const proposed = application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
+  const proposed = await application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
     policyId: "policy-proposal-selector-phase11b",
     proposedChangeReference: "policy-change-selector-phase11b",
     ...common(policyScope, 0, "idem-policy-proposal-selector-phase11b"),
   }));
 
-  const listed = application.list(command("LIST_ADMINISTRATION_PROPOSALS", "session-policy-approver", {
+  const listed = await application.list(command("LIST_ADMINISTRATION_PROPOSALS", "session-policy-approver", {
     scope: policyScope,
     status: "PROPOSED",
     pagination: { limit: 10 },
@@ -645,9 +653,9 @@ test("F16-PHASE-11B LIST_ADMINISTRATION_PROPOSALS returns safe resource-bound pe
   assert.equal(Object.isFrozen(listed.items[0]), true);
 });
 
-test("F16-PHASE-11A LIST_SOURCE_GOVERNANCE returns safe scoped metadata without source execution", () => {
+test("F16-PHASE-11A LIST_SOURCE_GOVERNANCE returns safe scoped metadata without source execution", async () => {
   const { application, unitOfWork } = fixture();
-  const proposed = application.execute(command("PROPOSE_SOURCE_GOVERNANCE", "session-policy-proposer", {
+  const proposed = await application.execute(command("PROPOSE_SOURCE_GOVERNANCE", "session-policy-proposer", {
     name: "Selector Source Phase 11A", sourceType: "PUBLIC_WEBSITE",
     policyReference: "source-selector-policy-phase11a", allowedMethods: ["MANUAL_CAPTURE"],
     allowedPurposes: ["LISTING_DISCOVERY"], classification: "INTERNAL",
@@ -656,7 +664,7 @@ test("F16-PHASE-11A LIST_SOURCE_GOVERNANCE returns safe scoped metadata without 
   const identity = { tenantId, resourceType: "SOURCE_REGISTRY" as const, resourceId: proposed.resourceId };
   const before = unitOfWork.sourceGovernance.find(identity);
 
-  const listed = application.list(command("LIST_SOURCE_GOVERNANCE", "session-policy-approver", {
+  const listed = await application.list(command("LIST_SOURCE_GOVERNANCE", "session-policy-approver", {
     scope: sourceScope, status: "DRAFT", pagination: { limit: 10 },
   }));
 
@@ -667,9 +675,9 @@ test("F16-PHASE-11A LIST_SOURCE_GOVERNANCE returns safe scoped metadata without 
   assert.deepEqual(unitOfWork.sourceGovernance.find(identity), before);
 });
 
-test("F16-PHASE-11A LIST_PUBLICATION_TARGET_GOVERNANCE returns safe scoped metadata without publication execution", () => {
+test("F16-PHASE-11A LIST_PUBLICATION_TARGET_GOVERNANCE returns safe scoped metadata without publication execution", async () => {
   const { application, unitOfWork } = fixture();
-  const proposed = application.execute(command("PROPOSE_PUBLICATION_TARGET_GOVERNANCE", "session-policy-proposer", {
+  const proposed = await application.execute(command("PROPOSE_PUBLICATION_TARGET_GOVERNANCE", "session-policy-proposer", {
     name: "Selector Target Phase 11A", targetType: "MLS_PORTAL",
     channelReference: "channel-selector-phase11a", policyReference: "target-selector-policy-phase11a",
     allowedFieldReferences: ["field-selector-phase11a"],
@@ -678,7 +686,7 @@ test("F16-PHASE-11A LIST_PUBLICATION_TARGET_GOVERNANCE returns safe scoped metad
   const identity = { tenantId, resourceType: "PUBLICATION_TARGET" as const, resourceId: proposed.resourceId };
   const before = unitOfWork.publicationTargets.find(identity);
 
-  const listed = application.list(command("LIST_PUBLICATION_TARGET_GOVERNANCE", "session-policy-approver", {
+  const listed = await application.list(command("LIST_PUBLICATION_TARGET_GOVERNANCE", "session-policy-approver", {
     scope: targetScope, status: "PROPOSED", pagination: { limit: 10 },
   }));
 
@@ -688,23 +696,23 @@ test("F16-PHASE-11A LIST_PUBLICATION_TARGET_GOVERNANCE returns safe scoped metad
   assert.deepEqual(unitOfWork.publicationTargets.find(identity), before);
 });
 
-test("F16-PHASE-11A selector list fails closed when live authority does not cover the requested scope", () => {
+test("F16-PHASE-11A selector list fails closed when live authority does not cover the requested scope", async () => {
   const { application } = fixture();
-  assert.throws(() => application.list(command("LIST_SOURCE_GOVERNANCE", "session-policy-proposer", {
+  await assert.rejects(() => application.list(command("LIST_SOURCE_GOVERNANCE", "session-policy-proposer", {
     scope: { tenantId, scopeType: "SOURCE", scopeId: "source-outside-authority-phase11a" },
     pagination: { limit: 10 },
   })), (error: unknown) => error instanceof AdministrationApiError && error.code === "AUTHORIZATION_DENIED");
 });
 
-test("F16-PHASE-9 Role Assignment self approval and stale version fail without persistence", () => {
+test("F16-PHASE-9 Role Assignment self approval and stale version fail without persistence", async () => {
   const { application, unitOfWork } = fixture();
-  const proposed = application.execute(command("PROPOSE_ROLE_ASSIGNMENT", "session-policy-proposer", roleAssignmentProposal("idem-role-denial-phase9")));
+  const proposed = await application.execute(command("PROPOSE_ROLE_ASSIGNMENT", "session-policy-proposer", roleAssignmentProposal("idem-role-denial-phase9")));
   const identity = { tenantId, resourceType: "ROLE_ASSIGNMENT" as const, resourceId: proposed.resourceId };
-  assert.throws(() => application.execute(command("APPROVE_ROLE_ASSIGNMENT", "session-policy-proposer", {
+  await assert.rejects(() => application.execute(command("APPROVE_ROLE_ASSIGNMENT", "session-policy-proposer", {
     proposalId: proposed.proposalId, roleAssignmentId: proposed.resourceId,
     ...common(roleAssignmentScope, 1, "idem-role-self-approve-phase9"),
   })), (error: unknown) => error instanceof AdministrationApiError && error.code === "SELF_APPROVAL_FORBIDDEN");
-  assert.throws(() => application.execute(command("APPROVE_ROLE_ASSIGNMENT", "session-policy-approver", {
+  await assert.rejects(() => application.execute(command("APPROVE_ROLE_ASSIGNMENT", "session-policy-approver", {
     proposalId: proposed.proposalId, roleAssignmentId: proposed.resourceId,
     ...common(roleAssignmentScope, 2, "idem-role-stale-phase9"),
   })), (error: unknown) => error instanceof AdministrationApiError && error.code === "VERSION_CONFLICT");
@@ -712,12 +720,12 @@ test("F16-PHASE-9 Role Assignment self approval and stale version fail without p
   assert.equal(unitOfWork.decisions.list(identity).length, 0);
 });
 
-test("F16-PHASE-9A successor lookup conceals an assignment outside the authorized scope", () => {
+test("F16-PHASE-9A successor lookup conceals an assignment outside the authorized scope", async () => {
   const { application, unitOfWork, sessions } = fixture();
-  const proposed = application.execute(command("PROPOSE_ROLE_ASSIGNMENT", "session-policy-proposer", roleAssignmentProposal("idem-role-scope-source-phase9")));
+  const proposed = await application.execute(command("PROPOSE_ROLE_ASSIGNMENT", "session-policy-proposer", roleAssignmentProposal("idem-role-scope-source-phase9")));
   activateSecurityAuthority(unitOfWork, "other-scope-actor", {}, "team-other-phase9");
   sessions.set("session-other-scope-actor", session("other-scope-actor", "team-other-phase9"));
-  assert.throws(() => application.execute(command("PROPOSE_ROLE_ASSIGNMENT", "session-other-scope-actor", {
+  await assert.rejects(() => application.execute(command("PROPOSE_ROLE_ASSIGNMENT", "session-other-scope-actor", {
     ...roleAssignmentProposal("idem-role-scope-probe-phase9"), roleAssignmentId: proposed.resourceId,
     scope: { tenantId, scopeType: "TEAM", scopeId: "team-other-phase9" }, expectedVersion: 1,
   })), (error: unknown) => error instanceof AdministrationApiError && error.code === "NOT_FOUND");
@@ -741,7 +749,7 @@ test("F16-PHASE-9 HTTP command route derives the Session and reaches the single 
 
 test("F16-PHASE-9 HTTP query route is separated from commands and returns bounded Role Assignment views", async () => {
   const { application } = fixture();
-  application.execute(command("PROPOSE_ROLE_ASSIGNMENT", "session-policy-proposer", roleAssignmentProposal("idem-role-http-query-phase9")));
+  await application.execute(command("PROPOSE_ROLE_ASSIGNMENT", "session-policy-proposer", roleAssignmentProposal("idem-role-http-query-phase9")));
   const handler = createAdministrationHttpRequestHandler(application);
   const response = await handler.handle(httpRequest("GET", "/administration/queries", "session-policy-proposer", {}, {
     tenantId, correlationId: "correlation-role-http-query-phase9", operation: "LIST_ROLE_ASSIGNMENTS",
@@ -1071,9 +1079,9 @@ test("F16-PHASE-12 Console command crosses API-015 and refreshes canonical propo
   }
 });
 
-test("F16-PHASE-12 client-authored resource rebinding cannot create decision or idempotency evidence", () => {
+test("F16-PHASE-12 client-authored resource rebinding cannot create decision or idempotency evidence", async () => {
   const { application, unitOfWork } = fixture();
-  const proposed = application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
+  const proposed = await application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
     policyId: "policy-phase12-bound",
     proposedChangeReference: "policy-change-phase12-bound",
     ...common(policyScope, 0, "phase12-binding-proposal-repeat"),
@@ -1081,7 +1089,7 @@ test("F16-PHASE-12 client-authored resource rebinding cannot create decision or 
   const originalIdentity = { tenantId, resourceType: "POLICY" as const, resourceId: "policy-phase12-bound" };
   const reboundIdentity = { tenantId, resourceType: "POLICY" as const, resourceId: "policy-phase12-rebound" };
 
-  assert.throws(() => application.execute(command("APPROVE_POLICY_CHANGE", "session-policy-approver", {
+  await assert.rejects(() => application.execute(command("APPROVE_POLICY_CHANGE", "session-policy-approver", {
     proposalId: proposed.proposalId,
     policyId: reboundIdentity.resourceId,
     ...common(policyScope, 1, "phase12-binding-decision-repeat"),
@@ -1114,9 +1122,9 @@ function httpRequest(
   };
 }
 
-test("F16-PHASE-8 Policy proposal and independent approval persist one atomic authoritative result", () => {
+test("F16-PHASE-8 Policy proposal and independent approval persist one atomic authoritative result", async () => {
   const { application, unitOfWork } = fixture();
-  const proposed = application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
+  const proposed = await application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
     policyId: "policy-phase8", proposedChangeReference: "policy-reference-v1",
     ...common(policyScope, 0, "idem-policy-propose-phase8"),
   }));
@@ -1127,16 +1135,16 @@ test("F16-PHASE-8 Policy proposal and independent approval persist one atomic au
     proposalId: proposed.proposalId, policyId: "policy-phase8",
     ...common(policyScope, 1, "idem-policy-approve-phase8"),
   });
-  const approved = application.execute(approvedInput);
+  const approved = await application.execute(approvedInput);
   assert.equal(approved.status, "ACTIVE");
   assert.equal(approved.version, 2);
   assert.equal(unitOfWork.policies.find({ tenantId, resourceType: "POLICY", resourceId: "policy-phase8" })?.status, "ACTIVE");
   assert.equal(unitOfWork.decisions.list({ tenantId, resourceType: "POLICY", resourceId: "policy-phase8" }).length, 1);
-  assert.deepEqual(application.execute(approvedInput), approved);
+  assert.deepEqual(await application.execute(approvedInput), approved);
   assert.equal(unitOfWork.decisions.list({ tenantId, resourceType: "POLICY", resourceId: "policy-phase8" }).length, 1);
 });
 
-test("F16-PHASE-8 Source governance proposal and approval persist metadata without execution", () => {
+test("F16-PHASE-8 Source governance proposal and approval persist metadata without execution", async () => {
   const { application, unitOfWork } = fixture();
   const proposedInput = command("PROPOSE_SOURCE_GOVERNANCE", "session-policy-proposer", {
     name: "Approved Source Phase 8", sourceType: "PUBLIC_WEBSITE",
@@ -1144,25 +1152,25 @@ test("F16-PHASE-8 Source governance proposal and approval persist metadata witho
     allowedPurposes: ["LISTING_DISCOVERY"], classification: "INTERNAL",
     ...common(sourceScope, 0, "idem-source-propose-phase8"),
   });
-  const proposed = application.execute(proposedInput);
+  const proposed = await application.execute(proposedInput);
   assert.equal(proposed.status, "PROPOSED");
   const approvedInput = command("APPROVE_SOURCE_GOVERNANCE", "session-policy-approver", {
     proposalId: proposed.proposalId, sourceRegistryEntryId: proposed.resourceId,
     ...common(sourceScope, 1, "idem-source-approve-phase8"),
   });
-  const approved = application.execute(approvedInput);
+  const approved = await application.execute(approvedInput);
   assert.equal(approved.status, "ACTIVE");
   assert.equal(approved.version, 2);
   assert.equal(unitOfWork.sourceGovernance.find({
     tenantId, resourceType: "SOURCE_REGISTRY", resourceId: proposed.resourceId,
   })?.status, "ACTIVE");
-  assert.deepEqual(application.execute(proposedInput), proposed);
-  assert.deepEqual(application.execute(approvedInput), approved);
+  assert.deepEqual(await application.execute(proposedInput), proposed);
+  assert.deepEqual(await application.execute(approvedInput), approved);
 });
 
-test("F16-PHASE-8 Publication Target governance approval changes no Publication execution state", () => {
+test("F16-PHASE-8 Publication Target governance approval changes no Publication execution state", async () => {
   const { application, unitOfWork } = fixture();
-  const proposed = application.execute(command("PROPOSE_PUBLICATION_TARGET_GOVERNANCE", "session-policy-proposer", {
+  const proposed = await application.execute(command("PROPOSE_PUBLICATION_TARGET_GOVERNANCE", "session-policy-proposer", {
     name: "Approved Target Phase 8", targetType: "MLS_PORTAL", channelReference: "channel-phase8",
     policyReference: "target-policy-phase8", allowedFieldReferences: ["field-title", "field-price"],
     ...common(targetScope, 0, "idem-target-propose-phase8"),
@@ -1171,7 +1179,7 @@ test("F16-PHASE-8 Publication Target governance approval changes no Publication 
     proposalId: proposed.proposalId, publicationTargetId: proposed.resourceId,
     ...common(targetScope, 1, "idem-target-approve-phase8"),
   });
-  const approved = application.execute(approvedInput);
+  const approved = await application.execute(approvedInput);
   assert.equal(approved.status, "ACTIVE");
   assert.equal(approved.version, 2);
   const stored = unitOfWork.publicationTargets.find({
@@ -1182,34 +1190,34 @@ test("F16-PHASE-8 Publication Target governance approval changes no Publication 
   assert.equal(unitOfWork.decisions.list({
     tenantId, resourceType: "PUBLICATION_TARGET", resourceId: proposed.resourceId,
   }).length, 1);
-  assert.deepEqual(application.execute(approvedInput), approved);
+  assert.deepEqual(await application.execute(approvedInput), approved);
 });
 
-test("F16-PHASE-8 Source governance transition requires a current successor proposal", () => {
+test("F16-PHASE-8 Source governance transition requires a current successor proposal", async () => {
   const { application, unitOfWork } = fixture();
-  const created = application.execute(command("PROPOSE_SOURCE_GOVERNANCE", "session-policy-proposer", {
+  const created = await application.execute(command("PROPOSE_SOURCE_GOVERNANCE", "session-policy-proposer", {
     name: "Transition Source Phase 8", sourceType: "PUBLIC_WEBSITE",
     policyReference: "source-policy-phase8", allowedMethods: ["MANUAL_CAPTURE"],
     allowedPurposes: ["LISTING_DISCOVERY"], classification: "INTERNAL",
     ...common(sourceScope, 0, "idem-source-create-transition-phase8"),
   }));
-  application.execute(command("APPROVE_SOURCE_GOVERNANCE", "session-policy-approver", {
+  await application.execute(command("APPROVE_SOURCE_GOVERNANCE", "session-policy-approver", {
     proposalId: created.proposalId, sourceRegistryEntryId: created.resourceId,
     ...common(sourceScope, 1, "idem-source-activate-transition-phase8"),
   }));
-  const successor = application.execute(command("PROPOSE_SOURCE_GOVERNANCE", "session-policy-proposer", {
+  const successor = await application.execute(command("PROPOSE_SOURCE_GOVERNANCE", "session-policy-proposer", {
     sourceRegistryEntryId: created.resourceId, name: "Transition Source Phase 8", sourceType: "PUBLIC_WEBSITE",
     policyReference: "source-policy-phase8-v2", allowedMethods: ["MANUAL_CAPTURE"],
     allowedPurposes: ["LISTING_DISCOVERY"], classification: "CONFIDENTIAL_BUSINESS",
     ...common(sourceScope, 2, "idem-source-successor-phase8"),
   }));
-  const transitioned = application.execute(command("TRANSITION_SOURCE_GOVERNANCE", "session-policy-approver", {
+  const transitioned = await application.execute(command("TRANSITION_SOURCE_GOVERNANCE", "session-policy-approver", {
     proposalId: successor.proposalId, sourceRegistryEntryId: created.resourceId, targetStatus: "PAUSED",
     ...common(sourceScope, 2, "idem-source-pause-phase8"),
   }));
   assert.equal(transitioned.status, "PAUSED");
   assert.equal(transitioned.version, 3);
-  const replayed = application.execute(command("TRANSITION_SOURCE_GOVERNANCE", "session-policy-approver", {
+  const replayed = await application.execute(command("TRANSITION_SOURCE_GOVERNANCE", "session-policy-approver", {
     proposalId: successor.proposalId, sourceRegistryEntryId: created.resourceId, targetStatus: "PAUSED",
     ...common(sourceScope, 2, "idem-source-pause-phase8"),
   }));
@@ -1221,22 +1229,22 @@ test("F16-PHASE-8 Source governance transition requires a current successor prop
   assert.equal(stored?.classification, "CONFIDENTIAL_BUSINESS");
 });
 
-test("F16-PHASE-8 rejects self-approval, stale version and conflicting idempotency without false success", () => {
+test("F16-PHASE-8 rejects self-approval, stale version and conflicting idempotency without false success", async () => {
   const { application, unitOfWork } = fixture();
   const proposedInput = command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
     policyId: "policy-negative-phase8", proposedChangeReference: "policy-negative-v1",
     ...common(policyScope, 0, "idem-policy-negative-phase8"),
   });
-  const proposed = application.execute(proposedInput);
-  assert.throws(() => application.execute(command("APPROVE_POLICY_CHANGE", "session-policy-proposer", {
+  const proposed = await application.execute(proposedInput);
+  await assert.rejects(() => application.execute(command("APPROVE_POLICY_CHANGE", "session-policy-proposer", {
     proposalId: proposed.proposalId, policyId: "policy-negative-phase8",
     ...common(policyScope, 1, "idem-policy-self-approve-phase8"),
   })), (error: unknown) => error instanceof Error && error.message === "SELF_APPROVAL_FORBIDDEN");
-  assert.throws(() => application.execute(command("APPROVE_POLICY_CHANGE", "session-policy-approver", {
+  await assert.rejects(() => application.execute(command("APPROVE_POLICY_CHANGE", "session-policy-approver", {
     proposalId: proposed.proposalId, policyId: "policy-negative-phase8",
     ...common(policyScope, 2, "idem-policy-stale-phase8"),
   })), (error: unknown) => error instanceof Error && error.message === "VERSION_CONFLICT");
-  assert.throws(() => application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
+  await assert.rejects(() => application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
     policyId: "policy-negative-phase8", proposedChangeReference: "different-policy-intent",
     ...common(policyScope, 1, "idem-policy-negative-phase8"),
   })), (error: unknown) => error instanceof Error && error.message === "IDEMPOTENCY_CONFLICT");
@@ -1244,7 +1252,7 @@ test("F16-PHASE-8 rejects self-approval, stale version and conflicting idempoten
   assert.equal(unitOfWork.decisions.list({ tenantId, resourceType: "POLICY", resourceId: "policy-negative-phase8" }).length, 0);
 });
 
-test("F16-PHASE-8 fails closed for forged authority, insufficient MFA, scope mismatch and revoked live authority", () => {
+test("F16-PHASE-8 fails closed for forged authority, insufficient MFA, scope mismatch and revoked live authority", async () => {
   const { application, unitOfWork, sessions } = fixture();
   sessions.set("session-low-assurance", session("policy-proposer"));
   sessions.set("session-low-assurance", Object.freeze({
@@ -1254,61 +1262,61 @@ test("F16-PHASE-8 fails closed for forged authority, insufficient MFA, scope mis
     policyId: "policy-security-phase8", proposedChangeReference: "policy-security-v1",
     ...common(policyScope, 0, "idem-policy-security-phase8"),
   };
-  assert.throws(() => application.execute({
+  await assert.rejects(() => application.execute({
     ...command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", validPayload), actorId: "forged-actor",
   }), (error: unknown) => error instanceof Error && error.message === "VALIDATION_FAILED");
-  assert.throws(() => application.execute(command("PROPOSE_POLICY_CHANGE", "session-low-assurance", validPayload)),
+  await assert.rejects(() => application.execute(command("PROPOSE_POLICY_CHANGE", "session-low-assurance", validPayload)),
     (error: unknown) => error instanceof Error && error.message === "MFA_REQUIRED");
-  assert.throws(() => application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
+  await assert.rejects(() => application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
     ...validPayload, policyId: "policy-wrong-scope-phase8",
     ...common({ tenantId, scopeType: "POLICY", scopeId: "other-policy-scope" }, 0, "idem-policy-wrong-scope-phase8"),
   })), (error: unknown) => error instanceof Error && error.message === "AUTHORIZATION_DENIED");
   revokeSecurityAuthority(unitOfWork, "policy-proposer");
-  assert.throws(() => application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
+  await assert.rejects(() => application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
     ...validPayload, policyId: "policy-after-revoke-phase8",
     ...common(policyScope, 0, "idem-policy-after-revoke-phase8"),
   })), (error: unknown) => error instanceof Error && error.message === "AUTHORIZATION_DENIED");
   assert.equal(unitOfWork.policies.find({ tenantId, resourceType: "POLICY", resourceId: "policy-after-revoke-phase8" }), undefined);
 });
 
-test("F16-PHASE-8 Policy rejection persists decision evidence without activating authority", () => {
+test("F16-PHASE-8 Policy rejection persists decision evidence without activating authority", async () => {
   const { application, unitOfWork } = fixture();
-  const proposed = application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
+  const proposed = await application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
     policyId: "policy-reject-phase8", proposedChangeReference: "policy-reject-v1",
     ...common(policyScope, 0, "idem-policy-reject-propose-phase8"),
   }));
-  const rejected = application.execute(command("REJECT_POLICY_CHANGE", "session-policy-approver", {
+  const rejected = await application.execute(command("REJECT_POLICY_CHANGE", "session-policy-approver", {
     proposalId: proposed.proposalId, policyId: "policy-reject-phase8",
     ...common(policyScope, 1, "idem-policy-reject-decision-phase8"),
   }));
   assert.equal(rejected.status, "REJECTED");
   assert.equal(unitOfWork.policies.find({ tenantId, resourceType: "POLICY", resourceId: "policy-reject-phase8" })?.status, "PROPOSED");
   assert.equal(unitOfWork.decisions.list({ tenantId, resourceType: "POLICY", resourceId: "policy-reject-phase8" })[0]?.status, "REJECTED");
-  assert.throws(() => application.execute(command("APPROVE_POLICY_CHANGE", "session-policy-approver", {
+  await assert.rejects(() => application.execute(command("APPROVE_POLICY_CHANGE", "session-policy-approver", {
     proposalId: proposed.proposalId, policyId: "policy-reject-phase8",
     ...common(policyScope, 1, "idem-policy-rejected-reuse-phase8"),
   })), (error: unknown) => error instanceof AdministrationApiError && error.code === "INVALID_STATE");
   assert.equal(unitOfWork.decisions.list({ tenantId, resourceType: "POLICY", resourceId: "policy-reject-phase8" }).length, 1);
 });
 
-test("F16-PHASE-8 Policy successor proposal preserves current state until independently approved", () => {
+test("F16-PHASE-8 Policy successor proposal preserves current state until independently approved", async () => {
   const { application, unitOfWork } = fixture();
-  const first = application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
+  const first = await application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
     policyId: "policy-successor-phase8", proposedChangeReference: "policy-successor-v1",
     ...common(policyScope, 0, "idem-policy-successor-v1-phase8"),
   }));
-  application.execute(command("APPROVE_POLICY_CHANGE", "session-policy-approver", {
+  await application.execute(command("APPROVE_POLICY_CHANGE", "session-policy-approver", {
     proposalId: first.proposalId, policyId: "policy-successor-phase8",
     ...common(policyScope, 1, "idem-policy-successor-v1-approve-phase8"),
   }));
-  const successor = application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
+  const successor = await application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
     policyId: "policy-successor-phase8", proposedChangeReference: "policy-successor-v2",
     ...common(policyScope, 2, "idem-policy-successor-v2-phase8"),
   }));
   assert.equal(unitOfWork.policies.find({
     tenantId, resourceType: "POLICY", resourceId: "policy-successor-phase8",
   })?.policyReference, "policy-successor-v1");
-  const approved = application.execute(command("APPROVE_POLICY_CHANGE", "session-policy-approver", {
+  const approved = await application.execute(command("APPROVE_POLICY_CHANGE", "session-policy-approver", {
     proposalId: successor.proposalId, policyId: "policy-successor-phase8",
     ...common(policyScope, 2, "idem-policy-successor-v2-approve-phase8"),
   }));
@@ -1318,30 +1326,30 @@ test("F16-PHASE-8 Policy successor proposal preserves current state until indepe
   })?.policyReference, "policy-successor-v2");
 });
 
-test("F16-PHASE-8 Publication Target transition uses a successor proposal and remains execution-isolated", () => {
+test("F16-PHASE-8 Publication Target transition uses a successor proposal and remains execution-isolated", async () => {
   const { application, unitOfWork } = fixture();
-  const created = application.execute(command("PROPOSE_PUBLICATION_TARGET_GOVERNANCE", "session-policy-proposer", {
+  const created = await application.execute(command("PROPOSE_PUBLICATION_TARGET_GOVERNANCE", "session-policy-proposer", {
     name: "Transition Target Phase 8", targetType: "MLS_PORTAL", channelReference: "channel-phase8",
     policyReference: "target-policy-phase8", allowedFieldReferences: ["field-title"],
     ...common(targetScope, 0, "idem-target-create-transition-phase8"),
   }));
-  application.execute(command("APPROVE_PUBLICATION_TARGET_GOVERNANCE", "session-policy-approver", {
+  await application.execute(command("APPROVE_PUBLICATION_TARGET_GOVERNANCE", "session-policy-approver", {
     proposalId: created.proposalId, publicationTargetId: created.resourceId,
     ...common(targetScope, 1, "idem-target-activate-transition-phase8"),
   }));
-  const successor = application.execute(command("PROPOSE_PUBLICATION_TARGET_GOVERNANCE", "session-policy-proposer", {
+  const successor = await application.execute(command("PROPOSE_PUBLICATION_TARGET_GOVERNANCE", "session-policy-proposer", {
     publicationTargetId: created.resourceId, name: "Transition Target Phase 8", targetType: "MLS_PORTAL",
     channelReference: "channel-phase8-v2", policyReference: "target-policy-phase8-v2",
     allowedFieldReferences: ["field-title"],
     ...common(targetScope, 2, "idem-target-successor-phase8"),
   }));
-  const transitioned = application.execute(command("TRANSITION_PUBLICATION_TARGET_GOVERNANCE", "session-policy-approver", {
+  const transitioned = await application.execute(command("TRANSITION_PUBLICATION_TARGET_GOVERNANCE", "session-policy-approver", {
     proposalId: successor.proposalId, publicationTargetId: created.resourceId, targetStatus: "PAUSED",
     ...common(targetScope, 2, "idem-target-pause-phase8"),
   }));
   assert.equal(transitioned.status, "PAUSED");
   assert.equal(transitioned.version, 3);
-  assert.deepEqual(application.execute(command("TRANSITION_PUBLICATION_TARGET_GOVERNANCE", "session-policy-approver", {
+  assert.deepEqual(await application.execute(command("TRANSITION_PUBLICATION_TARGET_GOVERNANCE", "session-policy-approver", {
     proposalId: successor.proposalId, publicationTargetId: created.resourceId, targetStatus: "PAUSED",
     ...common(targetScope, 2, "idem-target-pause-phase8"),
   })), transitioned);
@@ -1352,9 +1360,9 @@ test("F16-PHASE-8 Publication Target transition uses a successor proposal and re
   assert.equal(stored?.policyReference, "target-policy-phase8-v2");
 });
 
-test("F16-PHASE-8 Publication Target rejection replay preserves the rejected outcome without duplicate evidence", () => {
+test("F16-PHASE-8 Publication Target rejection replay preserves the rejected outcome without duplicate evidence", async () => {
   const { application, unitOfWork } = fixture();
-  const proposed = application.execute(command("PROPOSE_PUBLICATION_TARGET_GOVERNANCE", "session-policy-proposer", {
+  const proposed = await application.execute(command("PROPOSE_PUBLICATION_TARGET_GOVERNANCE", "session-policy-proposer", {
     name: "Rejected Target Phase 8", targetType: "MLS_PORTAL", channelReference: "channel-rejected-phase8",
     policyReference: "target-policy-rejected-phase8", allowedFieldReferences: ["field-title"],
     ...common(targetScope, 0, "idem-target-rejected-propose-phase8"),
@@ -1363,9 +1371,9 @@ test("F16-PHASE-8 Publication Target rejection replay preserves the rejected out
     proposalId: proposed.proposalId, publicationTargetId: proposed.resourceId,
     ...common(targetScope, 1, "idem-target-rejected-decision-phase8"),
   });
-  const rejected = application.execute(rejectionInput);
+  const rejected = await application.execute(rejectionInput);
   assert.equal(rejected.status, "REJECTED");
-  assert.deepEqual(application.execute(rejectionInput), rejected);
+  assert.deepEqual(await application.execute(rejectionInput), rejected);
   assert.equal(unitOfWork.decisions.list({
     tenantId, resourceType: "PUBLICATION_TARGET", resourceId: proposed.resourceId,
   }).length, 1);
@@ -1374,13 +1382,13 @@ test("F16-PHASE-8 Publication Target rejection replay preserves the rejected out
   })?.status, "PROPOSED");
 });
 
-test("F16-PHASE-8 bounded Policy, Source and Target reads are live-authorized and immutable", () => {
+test("F16-PHASE-8 bounded Policy, Source and Target reads are live-authorized and immutable", async () => {
   const { application } = fixture();
-  const policy = application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
+  const policy = await application.execute(command("PROPOSE_POLICY_CHANGE", "session-policy-proposer", {
     policyId: "policy-read-phase8", proposedChangeReference: "policy-read-v1",
     ...common(policyScope, 0, "idem-policy-read-phase8"),
   }));
-  const policyView = application.read({
+  const policyView = await application.read({
     requestId: "request-read-policy-phase8", sessionId: "session-policy-approver", tenantId,
     correlationId: "correlation-read-policy-phase8", operation: "READ_POLICY",
     payload: { scope: policyScope, policyId: policy.resourceId },
@@ -1389,12 +1397,12 @@ test("F16-PHASE-8 bounded Policy, Source and Target reads are live-authorized an
   assert.equal(policyView.status, "PROPOSED");
   assert.equal(Object.isFrozen(policyView), true);
 
-  const source = application.execute(command("PROPOSE_SOURCE_GOVERNANCE", "session-policy-proposer", {
+  const source = await application.execute(command("PROPOSE_SOURCE_GOVERNANCE", "session-policy-proposer", {
     name: "Read Source Phase 8", sourceType: "PUBLIC_WEBSITE", policyReference: "source-read-policy",
     allowedMethods: ["MANUAL_CAPTURE"], allowedPurposes: ["LISTING_DISCOVERY"], classification: "INTERNAL",
     ...common(sourceScope, 0, "idem-source-read-phase8"),
   }));
-  const sourceView = application.read({
+  const sourceView = await application.read({
     requestId: "request-read-source-phase8", sessionId: "session-policy-approver", tenantId,
     correlationId: "correlation-read-source-phase8", operation: "READ_SOURCE_GOVERNANCE",
     payload: { scope: sourceScope, sourceRegistryEntryId: source.resourceId },
@@ -1402,12 +1410,12 @@ test("F16-PHASE-8 bounded Policy, Source and Target reads are live-authorized an
   assert.equal(sourceView.viewType, "SOURCE_GOVERNANCE");
   assert.equal(sourceView.status, "DRAFT");
 
-  const target = application.execute(command("PROPOSE_PUBLICATION_TARGET_GOVERNANCE", "session-policy-proposer", {
+  const target = await application.execute(command("PROPOSE_PUBLICATION_TARGET_GOVERNANCE", "session-policy-proposer", {
     name: "Read Target Phase 8", targetType: "MLS_PORTAL", channelReference: "channel-read-phase8",
     policyReference: "target-read-policy", allowedFieldReferences: ["field-title"],
     ...common(targetScope, 0, "idem-target-read-phase8"),
   }));
-  const targetView = application.read({
+  const targetView = await application.read({
     requestId: "request-read-target-phase8", sessionId: "session-policy-approver", tenantId,
     correlationId: "correlation-read-target-phase8", operation: "READ_PUBLICATION_TARGET_GOVERNANCE",
     payload: { scope: targetScope, publicationTargetId: target.resourceId },
@@ -1416,7 +1424,7 @@ test("F16-PHASE-8 bounded Policy, Source and Target reads are live-authorized an
   assert.equal(targetView.status, "PROPOSED");
 });
 
-test("F16-PHASE-8 repository commit failure rolls back without state, evidence or idempotency success", () => {
+test("F16-PHASE-8 repository commit failure rolls back without state, evidence or idempotency success", async () => {
   let failCommit = true;
   const { application, unitOfWork } = fixture((delegate) => ({
     begin: (identity) => {
@@ -1436,7 +1444,7 @@ test("F16-PHASE-8 repository commit failure rolls back without state, evidence o
     allowedPurposes: ["LISTING_DISCOVERY"], classification: "INTERNAL",
     ...common(sourceScope, 0, "idem-source-rollback-phase8"),
   });
-  assert.throws(() => application.execute(input), (error: unknown) => {
+  await assert.rejects(() => application.execute(input), (error: unknown) => {
     assert.ok(error instanceof AdministrationApiError);
     assert.deepEqual(safeAdministrationApiError(error), Object.freeze({ code: "INTERNAL_ERROR", message: "Request could not be completed." }));
     return true;
@@ -1444,7 +1452,7 @@ test("F16-PHASE-8 repository commit failure rolls back without state, evidence o
   assert.equal(unitOfWork.sourceGovernance.listByScope(sourceScope).length, 0);
   assert.equal(unitOfWork.proposals.listPending(sourceScope).length, 0);
   failCommit = false;
-  const retry = application.execute(input);
+  const retry = await application.execute(input);
   assert.equal(retry.status, "PROPOSED");
   assert.equal(unitOfWork.sourceGovernance.listByScope(sourceScope).length, 1);
 });

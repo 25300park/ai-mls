@@ -35,6 +35,13 @@ export {
   DurableAdministrationUnitOfWork,
   type DurableAdministrationUnitOfWorkOptions,
 } from "./administration-durable-persistence.js";
+export {
+  AsyncDurableAdministrationUnitOfWork,
+  adaptSynchronousAdministrationPersistence,
+  type AsyncAdministrationUnitOfWork,
+  type AsyncAdministrationTransaction,
+} from "./administration-async-persistence.js";
+export { PostgreSqlAdministrationUnitOfWork } from "./administration-postgresql-persistence.js";
 
 export {
   AdministrationLiveAssignmentAdapter,

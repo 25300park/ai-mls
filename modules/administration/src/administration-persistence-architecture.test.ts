@@ -4,7 +4,6 @@ import test from "node:test";
 
 const productionFiles = [
   "modules/administration/src/administration-persistence.ts",
-  "modules/administration/src/index.ts",
 ] as const;
 
 test("F16-PHASE-6 persistence ports and adapter contain no physical database or execution dependency", () => {
@@ -16,6 +15,13 @@ test("F16-PHASE-6 persistence ports and adapter contain no physical database or 
   ]) {
     assert.equal(source.toLowerCase().includes(forbidden), false, `forbidden dependency leaked: ${forbidden}`);
   }
+});
+
+test("R3-B3 PostgreSQL dependency remains isolated to the bounded Administration adapter", () => {
+  const adapter = readFileSync("modules/administration/src/administration-postgresql-persistence.ts", "utf8");
+  const asyncPort = readFileSync("modules/administration/src/administration-async-persistence.ts", "utf8");
+  assert.match(adapter, /PostgreSqlPoolPort/);
+  assert.doesNotMatch(asyncPort, /postgresql-pool|from ["']pg["']|node:sqlite|supabase/iu);
 });
 
 test("F16-PHASE-6 main Administration exports do not expose test failure controls or generic repositories", () => {

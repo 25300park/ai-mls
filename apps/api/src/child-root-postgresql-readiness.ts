@@ -100,6 +100,10 @@ export async function assertR3B1PublicationSchemaReady(pool: PostgreSqlPoolPort)
   await assertContractsReady(pool, R3B1_CHILD_ROOT_SCHEMA_CONTRACTS.filter((contract) => contract.schemaName === "app_publication"));
 }
 
+export async function assertR3B1AdministrationSchemaReady(pool: PostgreSqlPoolPort): Promise<void> {
+  await assertContractsReady(pool, R3B1_CHILD_ROOT_SCHEMA_CONTRACTS.filter((contract) => contract.schemaName === "app_administration"));
+}
+
 async function assertContractsReady(pool: PostgreSqlPoolPort, contracts: readonly R3B1ChildRootSchemaContract[]): Promise<void> {
   const client = await pool.connect();
   try {

@@ -1,29 +1,31 @@
 import { createHash } from "node:crypto";
 
 import type { IdFactory } from "../../../packages/security-contracts/src/index.js";
-import type { LiveAdministrationAuthorizationService } from "../../../modules/administration/src/live-assignment-adapter.js";
+import type { AuthorizationDecision, AuthorizationRequest } from "../../../modules/authorization/src/authorization-service.js";
 import type {
-  AdministrationDecisionReadRepository,
   AdministrationDecisionRecord,
   AdministrationEvidenceReference as PersistenceEvidenceReference,
-  AdministrationIdempotencyReadRepository,
   AdministrationIdempotencyRecord,
   AdministrationPersistenceResourceType,
   AdministrationPersistenceScope,
-  AdministrationProposalReadRepository,
   AdministrationProposalRecord,
   AdministrationTransactionIdentity,
-  AdministrationUnitOfWork,
-  PolicyReadRepository,
-  PublicationTargetReadRepository,
-  RoleAssignmentReadRepository,
   RoleAssignmentPersistenceRecord,
-  RoleReadRepository,
   RolePersistenceRecord,
-  SourceGovernanceReadRepository,
-  TeamScopeReadRepository,
   TeamScopePersistenceRecord,
 } from "../../../modules/administration/src/administration-persistence.js";
+import type {
+  AsyncAdministrationDecisionReadRepository,
+  AsyncAdministrationIdempotencyReadRepository,
+  AsyncAdministrationProposalReadRepository,
+  AsyncAdministrationUnitOfWork,
+  AsyncPolicyReadRepository,
+  AsyncPublicationTargetReadRepository,
+  AsyncRoleAssignmentReadRepository,
+  AsyncRoleReadRepository,
+  AsyncSourceGovernanceReadRepository,
+  AsyncTeamScopeReadRepository,
+} from "../../../modules/administration/src/administration-async-persistence.js";
 import type { SessionContext } from "../../../modules/identity/src/session-service.js";
 import {
   AdministrationApiError,
@@ -33,7 +35,7 @@ import {
   createAdministrationCollectionView,
   createAdministrationReadView,
   parseAdministrationApiRequest,
-  resolveAdministrationApiSession,
+  resolveAdministrationApiSessionAsync,
   type AdministrationApiCommandOperation,
   type AdministrationApiCommandRequest,
   type AdministrationApiCommandResult,
@@ -44,22 +46,23 @@ import {
   type AdministrationProposalEvidence,
   type AdministrationScopeReference,
   type AdministrationSessionResolver,
+  type AsyncAdministrationSessionResolver,
   type ResolvedAdministrationApiRequest,
 } from "./administration-api-contracts.js";
 
 export interface AdministrationGovernanceApplicationDependencies {
-  readonly authorizationService: LiveAdministrationAuthorizationService;
-  readonly unitOfWork: AdministrationUnitOfWork;
-  readonly roleAssignments: RoleAssignmentReadRepository;
-  readonly roles: RoleReadRepository;
-  readonly policies: PolicyReadRepository;
-  readonly teamScopes: TeamScopeReadRepository;
-  readonly sourceGovernance: SourceGovernanceReadRepository;
-  readonly publicationTargets: PublicationTargetReadRepository;
-  readonly proposals: AdministrationProposalReadRepository;
-  readonly decisions: AdministrationDecisionReadRepository;
-  readonly idempotency: AdministrationIdempotencyReadRepository;
-  readonly sessionResolver: AdministrationSessionResolver;
+  readonly authorizationService: { evaluate(request: AuthorizationRequest): AuthorizationDecision | Promise<AuthorizationDecision> };
+  readonly unitOfWork: AsyncAdministrationUnitOfWork;
+  readonly roleAssignments: AsyncRoleAssignmentReadRepository;
+  readonly roles: AsyncRoleReadRepository;
+  readonly policies: AsyncPolicyReadRepository;
+  readonly teamScopes: AsyncTeamScopeReadRepository;
+  readonly sourceGovernance: AsyncSourceGovernanceReadRepository;
+  readonly publicationTargets: AsyncPublicationTargetReadRepository;
+  readonly proposals: AsyncAdministrationProposalReadRepository;
+  readonly decisions: AsyncAdministrationDecisionReadRepository;
+  readonly idempotency: AsyncAdministrationIdempotencyReadRepository;
+  readonly sessionResolver: AdministrationSessionResolver | AsyncAdministrationSessionResolver;
   readonly clock: () => Date;
   readonly idFactory: IdFactory;
 }
@@ -74,23 +77,23 @@ type TeamScopeOperation = "PROPOSE_TEAM_SCOPE_CHANGE" | "APPROVE_TEAM_SCOPE_CHAN
 export class AdministrationGovernanceApplication {
   public constructor(private readonly dependencies: AdministrationGovernanceApplicationDependencies) {}
 
-  public execute(input: unknown): AdministrationApiCommandResult {
+  public async execute(input: unknown): Promise<AdministrationApiCommandResult> {
     const request = parseAdministrationApiRequest(input);
     if (request.kind !== "COMMAND") throw new AdministrationApiError("VALIDATION_FAILED");
-    const resolved = resolveAdministrationApiSession(request, this.dependencies.sessionResolver, this.dependencies.clock);
+    const resolved = await resolveAdministrationApiSessionAsync(request, this.dependencies.sessionResolver, this.dependencies.clock);
     try {
       if (isRoleAssignmentOperation(request.operation)) return request.operation === "PROPOSE_ROLE_ASSIGNMENT"
-        ? this.proposeRoleAssignment(resolved) : this.decideRoleAssignment(resolved);
+        ? await this.proposeRoleAssignment(resolved) : await this.decideRoleAssignment(resolved);
       if (isRoleOperation(request.operation)) return request.operation === "PROPOSE_ROLE_CHANGE"
-        ? this.proposeRole(resolved) : this.decideRole(resolved);
+        ? await this.proposeRole(resolved) : await this.decideRole(resolved);
       if (isTeamScopeOperation(request.operation)) return request.operation === "PROPOSE_TEAM_SCOPE_CHANGE"
-        ? this.proposeTeamScope(resolved) : this.decideTeamScope(resolved);
+        ? await this.proposeTeamScope(resolved) : await this.decideTeamScope(resolved);
       if (isPolicyOperation(request.operation)) return request.operation === "PROPOSE_POLICY_CHANGE"
-        ? this.proposePolicy(resolved) : this.decidePolicy(resolved);
+        ? await this.proposePolicy(resolved) : await this.decidePolicy(resolved);
       if (isSourceOperation(request.operation)) return request.operation === "PROPOSE_SOURCE_GOVERNANCE"
-        ? this.proposeSource(resolved) : this.decideSource(resolved);
+        ? await this.proposeSource(resolved) : await this.decideSource(resolved);
       if (isTargetOperation(request.operation)) return request.operation === "PROPOSE_PUBLICATION_TARGET_GOVERNANCE"
-        ? this.proposeTarget(resolved) : this.decideTarget(resolved);
+        ? await this.proposeTarget(resolved) : await this.decideTarget(resolved);
       throw new AdministrationApiError("VALIDATION_FAILED");
     } catch (error: unknown) {
       if (error instanceof AdministrationApiError) throw error;
@@ -102,22 +105,22 @@ export class AdministrationGovernanceApplication {
     }
   }
 
-  public read(input: unknown): AdministrationReadView {
+  public async read(input: unknown): Promise<AdministrationReadView> {
     const request = parseAdministrationApiRequest(input);
     if (request.kind !== "QUERY") throw new AdministrationApiError("VALIDATION_FAILED");
-    const resolved = resolveAdministrationApiSession(request, this.dependencies.sessionResolver, this.dependencies.clock);
+    const resolved = await resolveAdministrationApiSessionAsync(request, this.dependencies.sessionResolver, this.dependencies.clock);
     const scope = asPersistenceScope(request.payload.scope);
     if (request.operation === "READ_ROLE_ASSIGNMENT") {
       const resourceId = requiredString(request.payload["roleAssignmentId"]);
-      this.authorizeRead(resolved.actor, request, scope, resourceId);
-      const record = this.dependencies.roleAssignments.find(transactionIdentity(request.tenantId, "ROLE_ASSIGNMENT", resourceId));
+      await this.authorizeRead(resolved.actor, request, scope, resourceId);
+      const record = await this.dependencies.roleAssignments.find(transactionIdentity(request.tenantId, "ROLE_ASSIGNMENT", resourceId));
       if (record === undefined || !sameScope(record.scope, scope)) throw new AdministrationApiError("NOT_FOUND");
       return roleAssignmentView(record);
     }
     if (request.operation === "READ_ROLE") {
       const resourceId = requiredString(request.payload["roleId"]);
-      this.authorizeRead(resolved.actor, request, scope, resourceId);
-      const record = this.dependencies.roles.find(transactionIdentity(request.tenantId, "ROLE", resourceId));
+      await this.authorizeRead(resolved.actor, request, scope, resourceId);
+      const record = await this.dependencies.roles.find(transactionIdentity(request.tenantId, "ROLE", resourceId));
       if (record === undefined || !sameScope(record.scope, scope)) throw new AdministrationApiError("NOT_FOUND");
       return createAdministrationReadView({
         viewType: "ROLE", roleId: resourceId, roleCode: record.roleCode, scope: record.scope,
@@ -126,8 +129,8 @@ export class AdministrationGovernanceApplication {
     }
     if (request.operation === "READ_TEAM_SCOPE") {
       const resourceId = requiredString(request.payload["teamId"]);
-      this.authorizeRead(resolved.actor, request, scope, resourceId);
-      const record = this.dependencies.teamScopes.find(transactionIdentity(request.tenantId, "TEAM_SCOPE", resourceId));
+      await this.authorizeRead(resolved.actor, request, scope, resourceId);
+      const record = await this.dependencies.teamScopes.find(transactionIdentity(request.tenantId, "TEAM_SCOPE", resourceId));
       if (record === undefined || !sameScope(record.scope, scope)) throw new AdministrationApiError("NOT_FOUND");
       return createAdministrationReadView({
         viewType: "TEAM_SCOPE", teamId: resourceId, scope: record.scope,
@@ -136,15 +139,15 @@ export class AdministrationGovernanceApplication {
     }
     if (request.operation === "READ_ADMINISTRATION_DECISION") {
       const decisionId = requiredString(request.payload["decisionId"]);
-      this.authorizeRead(resolved.actor, request, scope, decisionId);
-      const decision = this.dependencies.decisions.findById(request.tenantId, decisionId);
+      await this.authorizeRead(resolved.actor, request, scope, decisionId);
+      const decision = await this.dependencies.decisions.findById(request.tenantId, decisionId);
       if (decision === undefined || !sameScope(decision.scope, scope)) throw new AdministrationApiError("NOT_FOUND");
       return decisionView(decision);
     }
     if (request.operation === "READ_POLICY") {
       const resourceId = requiredString(request.payload["policyId"]);
-      this.authorizeRead(resolved.actor, request, scope, resourceId);
-      const record = this.dependencies.policies.find(transactionIdentity(request.tenantId, "POLICY", resourceId));
+      await this.authorizeRead(resolved.actor, request, scope, resourceId);
+      const record = await this.dependencies.policies.find(transactionIdentity(request.tenantId, "POLICY", resourceId));
       if (record === undefined || !sameScope(record.scope, scope)) throw new AdministrationApiError("NOT_FOUND");
       return createAdministrationReadView({
         viewType: "POLICY", policyId: resourceId, scope: record.scope, status: record.status,
@@ -153,8 +156,8 @@ export class AdministrationGovernanceApplication {
     }
     if (request.operation === "READ_SOURCE_GOVERNANCE") {
       const resourceId = requiredString(request.payload["sourceRegistryEntryId"]);
-      this.authorizeRead(resolved.actor, request, scope, resourceId);
-      const record = this.dependencies.sourceGovernance.find(transactionIdentity(request.tenantId, "SOURCE_REGISTRY", resourceId));
+      await this.authorizeRead(resolved.actor, request, scope, resourceId);
+      const record = await this.dependencies.sourceGovernance.find(transactionIdentity(request.tenantId, "SOURCE_REGISTRY", resourceId));
       if (record === undefined || !sameScope(record.scope, scope)) throw new AdministrationApiError("NOT_FOUND");
       return createAdministrationReadView({
         viewType: "SOURCE_GOVERNANCE", sourceRegistryEntryId: resourceId, scope: record.scope,
@@ -164,8 +167,8 @@ export class AdministrationGovernanceApplication {
     }
     if (request.operation === "READ_PUBLICATION_TARGET_GOVERNANCE") {
       const resourceId = requiredString(request.payload["publicationTargetId"]);
-      this.authorizeRead(resolved.actor, request, scope, resourceId);
-      const record = this.dependencies.publicationTargets.find(transactionIdentity(request.tenantId, "PUBLICATION_TARGET", resourceId));
+      await this.authorizeRead(resolved.actor, request, scope, resourceId);
+      const record = await this.dependencies.publicationTargets.find(transactionIdentity(request.tenantId, "PUBLICATION_TARGET", resourceId));
       if (record === undefined || !sameScope(record.scope, scope)) throw new AdministrationApiError("NOT_FOUND");
       return createAdministrationReadView({
         viewType: "PUBLICATION_TARGET_GOVERNANCE", publicationTargetId: resourceId, scope: record.scope,
@@ -176,16 +179,16 @@ export class AdministrationGovernanceApplication {
     throw new AdministrationApiError("VALIDATION_FAILED");
   }
 
-  public list(input: unknown): AdministrationCollectionView<AdministrationReadView> {
+  public async list(input: unknown): Promise<AdministrationCollectionView<AdministrationReadView>> {
     const request = parseAdministrationApiRequest(input);
     if (request.kind !== "QUERY") throw new AdministrationApiError("VALIDATION_FAILED");
-    const resolved = resolveAdministrationApiSession(request, this.dependencies.sessionResolver, this.dependencies.clock);
+    const resolved = await resolveAdministrationApiSessionAsync(request, this.dependencies.sessionResolver, this.dependencies.clock);
     const scope = asPersistenceScope(request.payload.scope);
-    this.authorizeRead(resolved.actor, request, scope, scope.scopeId);
+    await this.authorizeRead(resolved.actor, request, scope, scope.scopeId);
     const pagination = queryPagination(request.payload["pagination"]);
     const requestedStatus = request.payload["status"];
     if (request.operation === "LIST_ROLES") {
-      const records = this.dependencies.roles.listByScope(scope)
+      const records = (await this.dependencies.roles.listByScope(scope))
         .filter((record) => requestedStatus === undefined || record.status === requestedStatus)
         .filter((record) => pagination.cursor === undefined || record.roleId.localeCompare(pagination.cursor) > 0)
         .sort((left, right) => left.roleId.localeCompare(right.roleId));
@@ -195,7 +198,7 @@ export class AdministrationGovernanceApplication {
       }));
     }
     if (request.operation === "LIST_TEAM_SCOPES") {
-      const records = this.dependencies.teamScopes.listByScope(scope)
+      const records = (await this.dependencies.teamScopes.listByScope(scope))
         .filter((record) => requestedStatus === undefined || record.status === requestedStatus)
         .filter((record) => pagination.cursor === undefined || record.teamId.localeCompare(pagination.cursor) > 0)
         .sort((left, right) => left.teamId.localeCompare(right.teamId));
@@ -205,7 +208,7 @@ export class AdministrationGovernanceApplication {
       }));
     }
     if (request.operation === "LIST_POLICIES") {
-      const records = this.dependencies.policies.listByScope(scope)
+      const records = (await this.dependencies.policies.listByScope(scope))
         .filter((record) => requestedStatus === undefined || record.status === requestedStatus)
         .filter((record) => pagination.cursor === undefined || record.policyId.localeCompare(pagination.cursor) > 0)
         .sort((left, right) => left.policyId.localeCompare(right.policyId));
@@ -215,7 +218,7 @@ export class AdministrationGovernanceApplication {
       }));
     }
     if (request.operation === "LIST_SOURCE_GOVERNANCE") {
-      const records = this.dependencies.sourceGovernance.listByScope(scope)
+      const records = (await this.dependencies.sourceGovernance.listByScope(scope))
         .filter((record) => requestedStatus === undefined || record.status === requestedStatus)
         .filter((record) => pagination.cursor === undefined || record.sourceRegistryEntryId.localeCompare(pagination.cursor) > 0)
         .sort((left, right) => left.sourceRegistryEntryId.localeCompare(right.sourceRegistryEntryId));
@@ -226,7 +229,7 @@ export class AdministrationGovernanceApplication {
       }));
     }
     if (request.operation === "LIST_PUBLICATION_TARGET_GOVERNANCE") {
-      const records = this.dependencies.publicationTargets.listByScope(scope)
+      const records = (await this.dependencies.publicationTargets.listByScope(scope))
         .filter((record) => requestedStatus === undefined || record.status === requestedStatus)
         .filter((record) => pagination.cursor === undefined || record.publicationTargetId.localeCompare(pagination.cursor) > 0)
         .sort((left, right) => left.publicationTargetId.localeCompare(right.publicationTargetId));
@@ -238,7 +241,7 @@ export class AdministrationGovernanceApplication {
       }));
     }
     if (request.operation === "LIST_ADMINISTRATION_PROPOSALS") {
-      const records = this.dependencies.proposals.listByScope(scope)
+      const records = (await this.dependencies.proposals.listByScope(scope))
         .filter((record) => requestedStatus === undefined || record.status === requestedStatus)
         .filter((record) => pagination.cursor === undefined || record.proposalId.localeCompare(pagination.cursor) > 0)
         .sort((left, right) => left.proposalId.localeCompare(right.proposalId));
@@ -251,7 +254,7 @@ export class AdministrationGovernanceApplication {
       }));
     }
     if (request.operation === "LIST_ADMINISTRATION_DECISIONS") {
-      const records = this.dependencies.decisions.listByScope(scope)
+      const records = (await this.dependencies.decisions.listByScope(scope))
         .filter((record) => requestedStatus === undefined || record.status === requestedStatus)
         .filter((record) => pagination.cursor === undefined || record.decisionId.localeCompare(pagination.cursor) > 0)
         .sort((left, right) => left.decisionId.localeCompare(right.decisionId));
@@ -259,14 +262,14 @@ export class AdministrationGovernanceApplication {
     }
 
     if (request.operation !== "LIST_ROLE_ASSIGNMENTS") throw new AdministrationApiError("VALIDATION_FAILED");
-    const records = this.dependencies.roleAssignments.listByScope(scope)
+    const records = (await this.dependencies.roleAssignments.listByScope(scope))
       .filter((record) => requestedStatus === undefined || record.status === requestedStatus)
       .filter((record) => pagination.cursor === undefined || record.roleAssignmentId.localeCompare(pagination.cursor) > 0)
       .sort((left, right) => left.roleAssignmentId.localeCompare(right.roleAssignmentId));
     return pagedAdministrationCollection(records, pagination, (record) => record.roleAssignmentId, roleAssignmentView);
   }
 
-  private proposeRoleAssignment(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): AdministrationApiCommandResult {
+  private async proposeRoleAssignment(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): Promise<AdministrationApiCommandResult> {
     const request = resolved.request;
     const requestedAssignmentId = request.payload["roleAssignmentId"];
     const assignmentId = typeof requestedAssignmentId === "string"
@@ -275,10 +278,10 @@ export class AdministrationGovernanceApplication {
     const scope = asPersistenceScope(request.payload.scope);
     const identity = transactionIdentity(request.tenantId, "ROLE_ASSIGNMENT", assignmentId);
     const fingerprint = createAdministrationCommandFingerprint(request);
-    this.authorize(resolved.actor, request, scope, assignmentId);
-    const replay = this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
+    await this.authorize(resolved.actor, request, scope, assignmentId);
+    const replay = await this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
     if (replay !== undefined) return replay;
-    const current = this.dependencies.roleAssignments.find(identity);
+    const current = await this.dependencies.roleAssignments.find(identity);
     if (requestedAssignmentId === undefined && current !== undefined) throw new AdministrationApiError("VERSION_CONFLICT");
     if (requestedAssignmentId !== undefined && current === undefined) throw new AdministrationApiError("NOT_FOUND");
     if (current !== undefined && !sameScope(current.scope, scope)) throw new AdministrationApiError("NOT_FOUND");
@@ -287,9 +290,9 @@ export class AdministrationGovernanceApplication {
       throw new AdministrationApiError("VERSION_CONFLICT");
     }
     const requestedRoleCode = requiredString(request.payload["role"]);
-    const role = this.dependencies.roles.listByScope({
+    const role = (await this.dependencies.roles.listByScope({
       tenantId: request.tenantId, scopeType: "TENANT", scopeId: request.tenantId,
-    }).find((candidate) => candidate.roleCode === requestedRoleCode && candidate.status === "ACTIVE");
+    })).find((candidate) => candidate.roleCode === requestedRoleCode && candidate.status === "ACTIVE");
     if (role === undefined) throw new AdministrationApiError("NOT_FOUND");
     const proposalId = this.dependencies.idFactory();
     const evidence = asPersistenceEvidence(request.payload.evidenceReferences);
@@ -313,31 +316,31 @@ export class AdministrationGovernanceApplication {
       policyReference: role.policyReference, status: "PROPOSED", version: 1,
       reasonReference: reasonReference(fingerprint), evidenceReferences: evidence,
     };
-    const transaction = this.dependencies.unitOfWork.begin(identity);
+    const transaction = await this.dependencies.unitOfWork.begin(identity);
     try {
       if (current === undefined) transaction.roleAssignments.save(assignment);
       transaction.proposals.save(proposal);
       transaction.idempotency.record(idempotencyRecord(identity, request, fingerprint, proposalId, 1, "PROPOSED", this.dependencies.clock, evidence));
-      transaction.commit();
+      await transaction.commit();
     } catch (error) {
-      if (transaction.isActive()) transaction.rollback();
+      if (transaction.isActive()) await transaction.rollback();
       throw error;
     }
     return proposalResult(request.operation, proposal);
   }
 
-  private decideRoleAssignment(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): AdministrationApiCommandResult {
+  private async decideRoleAssignment(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): Promise<AdministrationApiCommandResult> {
     const request = resolved.request;
     const assignmentId = requiredString(request.payload["roleAssignmentId"]);
     const proposalId = requiredString(request.payload["proposalId"]);
     const scope = asPersistenceScope(request.payload.scope);
     const identity = transactionIdentity(request.tenantId, "ROLE_ASSIGNMENT", assignmentId);
     const fingerprint = createAdministrationCommandFingerprint(request);
-    this.authorize(resolved.actor, request, scope, assignmentId);
-    const replay = this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
+    await this.authorize(resolved.actor, request, scope, assignmentId);
+    const replay = await this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
     if (replay !== undefined) return replay;
-    const current = this.dependencies.roleAssignments.find(identity);
-    const proposal = this.dependencies.proposals.findById(request.tenantId, proposalId);
+    const current = await this.dependencies.roleAssignments.find(identity);
+    const proposal = await this.dependencies.proposals.findById(request.tenantId, proposalId);
     if (current === undefined || proposal?.resourceType !== "ROLE_ASSIGNMENT" || proposal.resourceId !== assignmentId
       || !sameScope(current.scope, scope) || !sameScope(proposal.scope, scope)) throw new AdministrationApiError("NOT_FOUND");
     if (proposal.status !== "PROPOSED") throw new AdministrationApiError("INVALID_STATE");
@@ -362,7 +365,7 @@ export class AdministrationGovernanceApplication {
       reasonReference: reasonReference(fingerprint), evidenceReferences: combinedEvidence,
       version: resultVersion, decidedAt: this.dependencies.clock().toISOString(),
     };
-    const transaction = this.dependencies.unitOfWork.begin(identity);
+    const transaction = await this.dependencies.unitOfWork.begin(identity);
     try {
       if (!rejected) transaction.roleAssignments.update(current.version, {
         ...current, status: revoked ? "REVOKED" : "ACTIVE", version: resultVersion,
@@ -375,9 +378,9 @@ export class AdministrationGovernanceApplication {
       });
       transaction.decisions.append(decision);
       transaction.idempotency.record(idempotencyRecord(identity, request, fingerprint, decisionId, resultVersion, status, this.dependencies.clock));
-      transaction.commit();
+      await transaction.commit();
     } catch (error) {
-      if (transaction.isActive()) transaction.rollback();
+      if (transaction.isActive()) await transaction.rollback();
       throw error;
     }
     return createAdministrationCommandResult({
@@ -386,7 +389,7 @@ export class AdministrationGovernanceApplication {
     });
   }
 
-  private proposeTarget(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): AdministrationApiCommandResult {
+  private async proposeTarget(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): Promise<AdministrationApiCommandResult> {
     const request = resolved.request;
     const requestedTargetId = request.payload["publicationTargetId"];
     const targetId = typeof requestedTargetId === "string"
@@ -395,10 +398,10 @@ export class AdministrationGovernanceApplication {
     const scope = asPersistenceScope(request.payload.scope);
     const identity = transactionIdentity(request.tenantId, "PUBLICATION_TARGET", targetId);
     const fingerprint = createAdministrationCommandFingerprint(request);
-    this.authorize(resolved.actor, request, scope, targetId);
-    const replay = this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
+    await this.authorize(resolved.actor, request, scope, targetId);
+    const replay = await this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
     if (replay !== undefined) return replay;
-    const current = this.dependencies.publicationTargets.find(identity);
+    const current = await this.dependencies.publicationTargets.find(identity);
     if (requestedTargetId !== undefined && current === undefined) throw new AdministrationApiError("NOT_FOUND");
     if ((current?.version ?? 0) !== request.payload.expectedVersion) throw new AdministrationApiError("VERSION_CONFLICT");
     const proposalId = this.dependencies.idFactory();
@@ -415,7 +418,7 @@ export class AdministrationGovernanceApplication {
       proposedChangeReference: `intent:${fingerprint}`, policyReference, status: "PROPOSED", version: 1,
       reasonReference: reasonReference(fingerprint), evidenceReferences: evidence, publicationTargetGovernanceChange,
     };
-    const transaction = this.dependencies.unitOfWork.begin(identity);
+    const transaction = await this.dependencies.unitOfWork.begin(identity);
     try {
       if (current === undefined) transaction.publicationTargets.save({
           recordType: "PUBLICATION_TARGET", tenantId: request.tenantId, publicationTargetId: targetId,
@@ -424,26 +427,26 @@ export class AdministrationGovernanceApplication {
         });
       transaction.proposals.save(proposal);
       transaction.idempotency.record(idempotencyRecord(identity, request, fingerprint, proposalId, 1, "PROPOSED", this.dependencies.clock, evidence));
-      transaction.commit();
+      await transaction.commit();
     } catch (error) {
-      if (transaction.isActive()) transaction.rollback();
+      if (transaction.isActive()) await transaction.rollback();
       throw error;
     }
     return proposalResult(request.operation, proposal);
   }
 
-  private decideTarget(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): AdministrationApiCommandResult {
+  private async decideTarget(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): Promise<AdministrationApiCommandResult> {
     const request = resolved.request;
     const targetId = requiredString(request.payload["publicationTargetId"]);
     const proposalId = requiredString(request.payload["proposalId"]);
     const scope = asPersistenceScope(request.payload.scope);
     const identity = transactionIdentity(request.tenantId, "PUBLICATION_TARGET", targetId);
     const fingerprint = createAdministrationCommandFingerprint(request);
-    this.authorize(resolved.actor, request, scope, targetId);
-    const replay = this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
+    await this.authorize(resolved.actor, request, scope, targetId);
+    const replay = await this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
     if (replay !== undefined) return replay;
-    const current = this.dependencies.publicationTargets.find(identity);
-    const proposal = this.dependencies.proposals.findById(request.tenantId, proposalId);
+    const current = await this.dependencies.publicationTargets.find(identity);
+    const proposal = await this.dependencies.proposals.findById(request.tenantId, proposalId);
     if (current === undefined || proposal?.resourceType !== "PUBLICATION_TARGET"
       || proposal.resourceId !== targetId || !sameScope(proposal.scope, scope)) {
       throw new AdministrationApiError("NOT_FOUND");
@@ -471,7 +474,7 @@ export class AdministrationGovernanceApplication {
       reasonReference: reasonReference(fingerprint), evidenceReferences: combinedEvidence,
       version: resultVersion, decidedAt: this.dependencies.clock().toISOString(),
     };
-    const transaction = this.dependencies.unitOfWork.begin(identity);
+    const transaction = await this.dependencies.unitOfWork.begin(identity);
     try {
       if (!rejected) transaction.publicationTargets.update(current.version, {
         ...current, status: authoritativeStatus, policyReference: proposal.policyReference,
@@ -484,9 +487,9 @@ export class AdministrationGovernanceApplication {
       });
       transaction.decisions.append(decision);
       transaction.idempotency.record(idempotencyRecord(identity, request, fingerprint, decisionId, resultVersion, status, this.dependencies.clock));
-      transaction.commit();
+      await transaction.commit();
     } catch (error) {
-      if (transaction.isActive()) transaction.rollback();
+      if (transaction.isActive()) await transaction.rollback();
       throw error;
     }
     return createAdministrationCommandResult({
@@ -495,7 +498,7 @@ export class AdministrationGovernanceApplication {
     });
   }
 
-  private proposeSource(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): AdministrationApiCommandResult {
+  private async proposeSource(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): Promise<AdministrationApiCommandResult> {
     const request = resolved.request;
     const requestedSourceId = request.payload["sourceRegistryEntryId"];
     const sourceId = typeof requestedSourceId === "string"
@@ -504,10 +507,10 @@ export class AdministrationGovernanceApplication {
     const scope = asPersistenceScope(request.payload.scope);
     const identity = transactionIdentity(request.tenantId, "SOURCE_REGISTRY", sourceId);
     const fingerprint = createAdministrationCommandFingerprint(request);
-    this.authorize(resolved.actor, request, scope, sourceId);
-    const replay = this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
+    await this.authorize(resolved.actor, request, scope, sourceId);
+    const replay = await this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
     if (replay !== undefined) return replay;
-    const current = this.dependencies.sourceGovernance.find(identity);
+    const current = await this.dependencies.sourceGovernance.find(identity);
     if (requestedSourceId !== undefined && current === undefined) throw new AdministrationApiError("NOT_FOUND");
     if ((current?.version ?? 0) !== request.payload.expectedVersion) throw new AdministrationApiError("VERSION_CONFLICT");
     const proposalId = this.dependencies.idFactory();
@@ -525,7 +528,7 @@ export class AdministrationGovernanceApplication {
       proposedChangeReference: `intent:${fingerprint}`, policyReference, status: "PROPOSED", version: 1,
       reasonReference: reasonReference(fingerprint), evidenceReferences: evidence, sourceGovernanceChange,
     };
-    const transaction = this.dependencies.unitOfWork.begin(identity);
+    const transaction = await this.dependencies.unitOfWork.begin(identity);
     try {
       if (current === undefined) transaction.sourceGovernance.save({
           recordType: "SOURCE_REGISTRY", tenantId: request.tenantId, sourceRegistryEntryId: sourceId,
@@ -534,26 +537,26 @@ export class AdministrationGovernanceApplication {
         });
       transaction.proposals.save(proposal);
       transaction.idempotency.record(idempotencyRecord(identity, request, fingerprint, proposalId, 1, "PROPOSED", this.dependencies.clock, evidence));
-      transaction.commit();
+      await transaction.commit();
     } catch (error) {
-      if (transaction.isActive()) transaction.rollback();
+      if (transaction.isActive()) await transaction.rollback();
       throw error;
     }
     return proposalResult(request.operation, proposal);
   }
 
-  private decideSource(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): AdministrationApiCommandResult {
+  private async decideSource(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): Promise<AdministrationApiCommandResult> {
     const request = resolved.request;
     const sourceId = requiredString(request.payload["sourceRegistryEntryId"]);
     const proposalId = requiredString(request.payload["proposalId"]);
     const scope = asPersistenceScope(request.payload.scope);
     const identity = transactionIdentity(request.tenantId, "SOURCE_REGISTRY", sourceId);
     const fingerprint = createAdministrationCommandFingerprint(request);
-    this.authorize(resolved.actor, request, scope, sourceId);
-    const replay = this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
+    await this.authorize(resolved.actor, request, scope, sourceId);
+    const replay = await this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
     if (replay !== undefined) return replay;
-    const current = this.dependencies.sourceGovernance.find(identity);
-    const proposal = this.dependencies.proposals.findById(request.tenantId, proposalId);
+    const current = await this.dependencies.sourceGovernance.find(identity);
+    const proposal = await this.dependencies.proposals.findById(request.tenantId, proposalId);
     if (current === undefined || proposal?.resourceType !== "SOURCE_REGISTRY"
       || proposal.resourceId !== sourceId || !sameScope(proposal.scope, scope)) {
       throw new AdministrationApiError("NOT_FOUND");
@@ -581,7 +584,7 @@ export class AdministrationGovernanceApplication {
       reasonReference: reasonReference(fingerprint), evidenceReferences: combinedEvidence,
       version: resultVersion, decidedAt: this.dependencies.clock().toISOString(),
     };
-    const transaction = this.dependencies.unitOfWork.begin(identity);
+    const transaction = await this.dependencies.unitOfWork.begin(identity);
     try {
       if (!rejected) transaction.sourceGovernance.update(current.version, {
         ...current, status: authoritativeStatus, policyReference: proposal.policyReference,
@@ -594,9 +597,9 @@ export class AdministrationGovernanceApplication {
       });
       transaction.decisions.append(decision);
       transaction.idempotency.record(idempotencyRecord(identity, request, fingerprint, decisionId, resultVersion, status, this.dependencies.clock));
-      transaction.commit();
+      await transaction.commit();
     } catch (error) {
-      if (transaction.isActive()) transaction.rollback();
+      if (transaction.isActive()) await transaction.rollback();
       throw error;
     }
     return createAdministrationCommandResult({
@@ -605,16 +608,16 @@ export class AdministrationGovernanceApplication {
     });
   }
 
-  private proposeRole(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): AdministrationApiCommandResult {
+  private async proposeRole(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): Promise<AdministrationApiCommandResult> {
     const request = resolved.request;
     const roleId = requiredString(request.payload["roleId"]);
     const scope = asPersistenceScope(request.payload.scope);
     const identity = transactionIdentity(request.tenantId, "ROLE", roleId);
     const fingerprint = createAdministrationCommandFingerprint(request);
-    this.authorize(resolved.actor, request, scope, roleId);
-    const replay = this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
+    await this.authorize(resolved.actor, request, scope, roleId);
+    const replay = await this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
     if (replay !== undefined) return replay;
-    const current = this.dependencies.roles.find(identity);
+    const current = await this.dependencies.roles.find(identity);
     if (current === undefined || !sameScope(current.scope, scope)) throw new AdministrationApiError("NOT_FOUND");
     if (current.status !== "ACTIVE") throw new AdministrationApiError("INVALID_STATE");
     if (current.version !== request.payload.expectedVersion) throw new AdministrationApiError("VERSION_CONFLICT");
@@ -626,22 +629,22 @@ export class AdministrationGovernanceApplication {
       policyReference: requiredString(request.payload["proposedChangeReference"]), status: "PROPOSED", version: 1,
       reasonReference: reasonReference(fingerprint), evidenceReferences: asPersistenceEvidence(request.payload.evidenceReferences),
     };
-    this.persistProposal(identity, request, fingerprint, proposal);
+    await this.persistProposal(identity, request, fingerprint, proposal);
     return proposalResult(request.operation, proposal);
   }
 
-  private decideRole(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): AdministrationApiCommandResult {
+  private async decideRole(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): Promise<AdministrationApiCommandResult> {
     const request = resolved.request;
     const roleId = requiredString(request.payload["roleId"]);
     const proposalId = requiredString(request.payload["proposalId"]);
     const scope = asPersistenceScope(request.payload.scope);
     const identity = transactionIdentity(request.tenantId, "ROLE", roleId);
     const fingerprint = createAdministrationCommandFingerprint(request);
-    this.authorize(resolved.actor, request, scope, roleId);
-    const replay = this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
+    await this.authorize(resolved.actor, request, scope, roleId);
+    const replay = await this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
     if (replay !== undefined) return replay;
-    const current = this.dependencies.roles.find(identity);
-    const proposal = this.dependencies.proposals.findById(request.tenantId, proposalId);
+    const current = await this.dependencies.roles.find(identity);
+    const proposal = await this.dependencies.proposals.findById(request.tenantId, proposalId);
     if (current === undefined || proposal?.resourceType !== "ROLE" || proposal.resourceId !== roleId
       || !sameScope(current.scope, scope) || !sameScope(proposal.scope, scope)) throw new AdministrationApiError("NOT_FOUND");
     if (current.status !== "ACTIVE" || proposal.status !== "PROPOSED") throw new AdministrationApiError("INVALID_STATE");
@@ -649,15 +652,15 @@ export class AdministrationGovernanceApplication {
       throw new AdministrationApiError("VERSION_CONFLICT");
     }
     assertIndependentAdministrationApproval(resolved.actor, proposalEvidence(proposal));
-    return this.persistRoleDecision(current, proposal, resolved, fingerprint);
+    return await this.persistRoleDecision(current, proposal, resolved, fingerprint);
   }
 
-  private persistRoleDecision(
+  private async persistRoleDecision(
     current: RolePersistenceRecord,
     proposal: AdministrationProposalRecord,
     resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>,
     fingerprint: string,
-  ): AdministrationApiCommandResult {
+  ): Promise<AdministrationApiCommandResult> {
     const request = resolved.request;
     const rejected = request.operation === "REJECT_ROLE_CHANGE";
     const resultVersion = rejected ? current.version : current.version + 1;
@@ -667,7 +670,7 @@ export class AdministrationGovernanceApplication {
     const decision = decisionRecord(proposal, resolved, decisionId, resultVersion, combinedEvidence, rejected,
       fingerprint, this.dependencies.clock().toISOString());
     const identity = transactionIdentity(request.tenantId, "ROLE", current.roleId);
-    const transaction = this.dependencies.unitOfWork.begin(identity);
+    const transaction = await this.dependencies.unitOfWork.begin(identity);
     try {
       if (!rejected) transaction.roles.update(current.version, {
         ...current, status: "ACTIVE", policyReference: proposal.proposedChangeReference,
@@ -677,24 +680,24 @@ export class AdministrationGovernanceApplication {
       transaction.decisions.append(decision);
       transaction.idempotency.record(idempotencyRecord(identity, request, fingerprint, decisionId, resultVersion,
         rejected ? "REJECTED" : "ACTIVE", this.dependencies.clock));
-      transaction.commit();
+      await transaction.commit();
     } catch (error) {
-      if (transaction.isActive()) transaction.rollback();
+      if (transaction.isActive()) await transaction.rollback();
       throw error;
     }
     return decisionResult(request.operation, proposal, decisionId, resultVersion, combinedEvidence, rejected);
   }
 
-  private proposeTeamScope(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): AdministrationApiCommandResult {
+  private async proposeTeamScope(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): Promise<AdministrationApiCommandResult> {
     const request = resolved.request;
     const teamId = requiredString(request.payload["teamId"]);
     const scope = asPersistenceScope(request.payload.scope);
     const identity = transactionIdentity(request.tenantId, "TEAM_SCOPE", teamId);
     const fingerprint = createAdministrationCommandFingerprint(request);
-    this.authorize(resolved.actor, request, scope, teamId);
-    const replay = this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
+    await this.authorize(resolved.actor, request, scope, teamId);
+    const replay = await this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
     if (replay !== undefined) return replay;
-    const current = this.dependencies.teamScopes.find(identity);
+    const current = await this.dependencies.teamScopes.find(identity);
     if (current === undefined || !sameScope(current.scope, scope)) throw new AdministrationApiError("NOT_FOUND");
     if (current.status !== "ACTIVE") throw new AdministrationApiError("INVALID_STATE");
     if (current.version !== request.payload.expectedVersion) throw new AdministrationApiError("VERSION_CONFLICT");
@@ -706,22 +709,22 @@ export class AdministrationGovernanceApplication {
       proposedChangeReference: changeReference, policyReference: changeReference, status: "PROPOSED", version: 1,
       reasonReference: reasonReference(fingerprint), evidenceReferences: asPersistenceEvidence(request.payload.evidenceReferences),
     };
-    this.persistProposal(identity, request, fingerprint, proposal);
+    await this.persistProposal(identity, request, fingerprint, proposal);
     return proposalResult(request.operation, proposal);
   }
 
-  private decideTeamScope(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): AdministrationApiCommandResult {
+  private async decideTeamScope(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): Promise<AdministrationApiCommandResult> {
     const request = resolved.request;
     const teamId = requiredString(request.payload["teamId"]);
     const proposalId = requiredString(request.payload["proposalId"]);
     const scope = asPersistenceScope(request.payload.scope);
     const identity = transactionIdentity(request.tenantId, "TEAM_SCOPE", teamId);
     const fingerprint = createAdministrationCommandFingerprint(request);
-    this.authorize(resolved.actor, request, scope, teamId);
-    const replay = this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
+    await this.authorize(resolved.actor, request, scope, teamId);
+    const replay = await this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
     if (replay !== undefined) return replay;
-    const current = this.dependencies.teamScopes.find(identity);
-    const proposal = this.dependencies.proposals.findById(request.tenantId, proposalId);
+    const current = await this.dependencies.teamScopes.find(identity);
+    const proposal = await this.dependencies.proposals.findById(request.tenantId, proposalId);
     if (current === undefined || proposal?.resourceType !== "TEAM_SCOPE" || proposal.resourceId !== teamId
       || !sameScope(current.scope, scope) || !sameScope(proposal.scope, scope)) throw new AdministrationApiError("NOT_FOUND");
     if (current.status !== "ACTIVE" || proposal.status !== "PROPOSED") throw new AdministrationApiError("INVALID_STATE");
@@ -729,15 +732,15 @@ export class AdministrationGovernanceApplication {
       throw new AdministrationApiError("VERSION_CONFLICT");
     }
     assertIndependentAdministrationApproval(resolved.actor, proposalEvidence(proposal));
-    return this.persistTeamScopeDecision(current, proposal, resolved, fingerprint);
+    return await this.persistTeamScopeDecision(current, proposal, resolved, fingerprint);
   }
 
-  private persistTeamScopeDecision(
+  private async persistTeamScopeDecision(
     current: TeamScopePersistenceRecord,
     proposal: AdministrationProposalRecord,
     resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>,
     fingerprint: string,
-  ): AdministrationApiCommandResult {
+  ): Promise<AdministrationApiCommandResult> {
     const request = resolved.request;
     const rejected = request.operation === "REJECT_TEAM_SCOPE_CHANGE";
     const resultVersion = rejected ? current.version : current.version + 1;
@@ -747,7 +750,7 @@ export class AdministrationGovernanceApplication {
     const decision = decisionRecord(proposal, resolved, decisionId, resultVersion, combinedEvidence, rejected,
       fingerprint, this.dependencies.clock().toISOString());
     const identity = transactionIdentity(request.tenantId, "TEAM_SCOPE", current.teamId);
-    const transaction = this.dependencies.unitOfWork.begin(identity);
+    const transaction = await this.dependencies.unitOfWork.begin(identity);
     try {
       if (!rejected) transaction.teamScopes.update(current.version, {
         ...current, status: "ACTIVE", version: resultVersion,
@@ -757,42 +760,42 @@ export class AdministrationGovernanceApplication {
       transaction.decisions.append(decision);
       transaction.idempotency.record(idempotencyRecord(identity, request, fingerprint, decisionId, resultVersion,
         rejected ? "REJECTED" : "ACTIVE", this.dependencies.clock));
-      transaction.commit();
+      await transaction.commit();
     } catch (error) {
-      if (transaction.isActive()) transaction.rollback();
+      if (transaction.isActive()) await transaction.rollback();
       throw error;
     }
     return decisionResult(request.operation, proposal, decisionId, resultVersion, combinedEvidence, rejected);
   }
 
-  private persistProposal(
+  private async persistProposal(
     identity: AdministrationTransactionIdentity,
     request: AdministrationApiCommandRequest,
     fingerprint: string,
     proposal: AdministrationProposalRecord,
-  ): void {
-    const transaction = this.dependencies.unitOfWork.begin(identity);
+  ): Promise<void> {
+    const transaction = await this.dependencies.unitOfWork.begin(identity);
     try {
       transaction.proposals.save(proposal);
       transaction.idempotency.record(idempotencyRecord(identity, request, fingerprint, proposal.proposalId, 1,
         "PROPOSED", this.dependencies.clock, proposal.evidenceReferences));
-      transaction.commit();
+      await transaction.commit();
     } catch (error) {
-      if (transaction.isActive()) transaction.rollback();
+      if (transaction.isActive()) await transaction.rollback();
       throw error;
     }
   }
 
-  private proposePolicy(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): AdministrationApiCommandResult {
+  private async proposePolicy(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): Promise<AdministrationApiCommandResult> {
     const request = resolved.request;
     const policyId = requiredString(request.payload["policyId"]);
     const scope = asPersistenceScope(request.payload.scope);
     const identity = transactionIdentity(request.tenantId, "POLICY", policyId);
     const fingerprint = createAdministrationCommandFingerprint(request);
-    this.authorize(resolved.actor, request, scope, policyId);
-    const replay = this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
+    await this.authorize(resolved.actor, request, scope, policyId);
+    const replay = await this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
     if (replay !== undefined) return replay;
-    const current = this.dependencies.policies.find(identity);
+    const current = await this.dependencies.policies.find(identity);
     if ((current?.version ?? 0) !== request.payload.expectedVersion) throw new AdministrationApiError("VERSION_CONFLICT");
     const proposalId = this.dependencies.idFactory();
     const evidence = asPersistenceEvidence(request.payload.evidenceReferences);
@@ -803,7 +806,7 @@ export class AdministrationGovernanceApplication {
       policyReference: requiredString(request.payload["proposedChangeReference"]), status: "PROPOSED", version: 1,
       reasonReference: reasonReference(fingerprint), evidenceReferences: evidence,
     };
-    const transaction = this.dependencies.unitOfWork.begin(identity);
+    const transaction = await this.dependencies.unitOfWork.begin(identity);
     try {
       if (current === undefined) transaction.policies.save({
         recordType: "POLICY", tenantId: request.tenantId, policyId, scope, status: "PROPOSED",
@@ -811,26 +814,26 @@ export class AdministrationGovernanceApplication {
       });
       transaction.proposals.save(proposal);
       transaction.idempotency.record(idempotencyRecord(identity, request, fingerprint, proposalId, 1, "PROPOSED", this.dependencies.clock, evidence));
-      transaction.commit();
+      await transaction.commit();
     } catch (error) {
-      if (transaction.isActive()) transaction.rollback();
+      if (transaction.isActive()) await transaction.rollback();
       throw error;
     }
     return proposalResult(request.operation, proposal);
   }
 
-  private decidePolicy(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): AdministrationApiCommandResult {
+  private async decidePolicy(resolved: ResolvedAdministrationApiRequest<AdministrationApiCommandRequest>): Promise<AdministrationApiCommandResult> {
     const request = resolved.request;
     const policyId = requiredString(request.payload["policyId"]);
     const proposalId = requiredString(request.payload["proposalId"]);
     const scope = asPersistenceScope(request.payload.scope);
     const identity = transactionIdentity(request.tenantId, "POLICY", policyId);
     const fingerprint = createAdministrationCommandFingerprint(request);
-    this.authorize(resolved.actor, request, scope, policyId);
-    const replay = this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
+    await this.authorize(resolved.actor, request, scope, policyId);
+    const replay = await this.replay(identity, request.payload.idempotencyKey, request.operation, fingerprint);
     if (replay !== undefined) return replay;
-    const current = this.dependencies.policies.find(identity);
-    const proposal = this.dependencies.proposals.findById(request.tenantId, proposalId);
+    const current = await this.dependencies.policies.find(identity);
+    const proposal = await this.dependencies.proposals.findById(request.tenantId, proposalId);
     if (current === undefined || proposal?.resourceType !== "POLICY"
       || proposal.resourceId !== policyId || !sameScope(proposal.scope, scope)) {
       throw new AdministrationApiError("NOT_FOUND");
@@ -853,7 +856,7 @@ export class AdministrationGovernanceApplication {
       reasonReference: reasonReference(fingerprint), evidenceReferences: combinedEvidence,
       version: resultVersion, decidedAt: this.dependencies.clock().toISOString(),
     };
-    const transaction = this.dependencies.unitOfWork.begin(identity);
+    const transaction = await this.dependencies.unitOfWork.begin(identity);
     try {
       if (!rejected) transaction.policies.update(current.version, {
         ...current, status: "ACTIVE", policyReference: proposal.proposedChangeReference,
@@ -865,9 +868,9 @@ export class AdministrationGovernanceApplication {
       });
       transaction.decisions.append(decision);
       transaction.idempotency.record(idempotencyRecord(identity, request, fingerprint, decisionId, resultVersion, rejected ? "REJECTED" : "ACTIVE", this.dependencies.clock));
-      transaction.commit();
+      await transaction.commit();
     } catch (error) {
-      if (transaction.isActive()) transaction.rollback();
+      if (transaction.isActive()) await transaction.rollback();
       throw error;
     }
     return createAdministrationCommandResult({
@@ -877,13 +880,13 @@ export class AdministrationGovernanceApplication {
     });
   }
 
-  private authorize(
+  private async authorize(
     actor: SessionContext,
     request: AdministrationApiCommandRequest,
     scope: AdministrationPersistenceScope,
     resourceId: string,
-  ): void {
-    const decision = this.dependencies.authorizationService.evaluate({
+  ): Promise<void> {
+    const decision = await this.dependencies.authorizationService.evaluate({
       session: actor, action: "security.admin",
       resource: {
         type: `Administration:${scope.scopeType}:${scope.scopeId}`, id: resourceId,
@@ -895,13 +898,13 @@ export class AdministrationGovernanceApplication {
     if (decision.effect !== "ALLOW") throw new AdministrationApiError("AUTHORIZATION_DENIED");
   }
 
-  private authorizeRead(
+  private async authorizeRead(
     actor: SessionContext,
     request: AdministrationApiQueryRequest,
     scope: AdministrationPersistenceScope,
     resourceId: string,
-  ): void {
-    const decision = this.dependencies.authorizationService.evaluate({
+  ): Promise<void> {
+    const decision = await this.dependencies.authorizationService.evaluate({
       session: actor, action: "resource.view",
       resource: {
         type: `Administration:${scope.scopeType}:${scope.scopeId}`, id: resourceId,
@@ -912,29 +915,32 @@ export class AdministrationGovernanceApplication {
     if (decision.effect !== "ALLOW") throw new AdministrationApiError("AUTHORIZATION_DENIED");
   }
 
-  private replay(
+  private async replay(
     identity: AdministrationTransactionIdentity,
     idempotencyKey: string,
     operation: AdministrationApiCommandOperation,
     fingerprint: string,
-  ): AdministrationApiCommandResult | undefined {
-    const stored = this.dependencies.idempotency.find({ ...identity, idempotencyKey });
+  ): Promise<AdministrationApiCommandResult | undefined> {
+    const stored = await this.dependencies.idempotency.find({ ...identity, idempotencyKey });
     if (stored === undefined) return undefined;
     if (stored.operation !== operation || stored.fingerprint !== fingerprint) throw new AdministrationApiError("IDEMPOTENCY_CONFLICT");
-    const proposal = operation.startsWith("PROPOSE_")
-      ? this.dependencies.proposals.findById(identity.tenantId, stored.resultReference)
-      : this.dependencies.proposals.findById(identity.tenantId, requiredDecision(this.dependencies.decisions, identity, stored.resultReference).proposalId);
+    const decision = operation.startsWith("PROPOSE_")
+      ? undefined
+      : requiredDecision(await this.dependencies.decisions.list(identity), stored.resultReference);
+    const proposal = await this.dependencies.proposals.findById(
+      identity.tenantId,
+      operation.startsWith("PROPOSE_") ? stored.resultReference : decision!.proposalId,
+    );
     if (proposal === undefined) throw new AdministrationApiError("INTERNAL_ERROR");
     if (operation.startsWith("PROPOSE_")) return createAdministrationCommandResult({
       operation, proposalId: proposal.proposalId, resourceType: proposal.resourceType, resourceId: proposal.resourceId,
       status: "PROPOSED", version: stored.resultVersion, decisionReferences: [],
       evidenceReferences: stored.resultEvidenceReferences ?? proposal.evidenceReferences,
     });
-    const decision = requiredDecision(this.dependencies.decisions, identity, stored.resultReference);
     return createAdministrationCommandResult({
       operation, proposalId: proposal.proposalId, resourceType: identity.resourceType,
-      resourceId: identity.resourceId, status: stored.resultStatus ?? (decision.status === "APPROVED" ? "ACTIVE" : decision.status),
-      version: stored.resultVersion, decisionReferences: [decision.decisionId], evidenceReferences: decision.evidenceReferences,
+      resourceId: identity.resourceId, status: stored.resultStatus ?? (decision!.status === "APPROVED" ? "ACTIVE" : decision!.status),
+      version: stored.resultVersion, decisionReferences: [decision!.decisionId], evidenceReferences: decision!.evidenceReferences,
     });
   }
 }
@@ -1151,11 +1157,10 @@ function proposalResult(operation: AdministrationApiCommandOperation, proposal: 
 }
 
 function requiredDecision(
-  decisions: AdministrationDecisionReadRepository,
-  identity: AdministrationTransactionIdentity,
+  decisions: readonly AdministrationDecisionRecord[],
   decisionId: string,
 ): AdministrationDecisionRecord {
-  const decision = decisions.list(identity).find((item) => item.decisionId === decisionId);
+  const decision = decisions.find((item) => item.decisionId === decisionId);
   if (decision === undefined) throw new AdministrationApiError("INTERNAL_ERROR");
   return decision;
 }

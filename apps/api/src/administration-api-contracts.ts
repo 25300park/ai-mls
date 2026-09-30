@@ -140,6 +140,10 @@ export interface AdministrationSessionResolver {
   resolve(sessionId: string): SessionContext | undefined;
 }
 
+export interface AsyncAdministrationSessionResolver {
+  resolve(sessionId: string): Promise<SessionContext | undefined>;
+}
+
 export interface ResolvedAdministrationApiRequest<Request extends AdministrationApiRequest = AdministrationApiRequest> {
   readonly request: Request;
   readonly actor: SessionContext;
@@ -297,6 +301,20 @@ export function resolveAdministrationApiSession<Request extends AdministrationAp
     if (!hasVerifiedMfaAssurance(session)) throw new AdministrationApiError("MFA_REQUIRED");
   }
   return immutableAdministrationApiValue({ request, actor: session });
+}
+
+export async function resolveAdministrationApiSessionAsync<Request extends AdministrationApiRequest>(
+  request: Request,
+  sessionResolver: AdministrationSessionResolver | AsyncAdministrationSessionResolver | undefined,
+  clock: () => Date = () => new Date(),
+): Promise<ResolvedAdministrationApiRequest<Request>> {
+  let session: SessionContext | undefined;
+  try {
+    session = await sessionResolver?.resolve(request.sessionId);
+  } catch {
+    throw new AdministrationApiError("AUTHENTICATION_REQUIRED");
+  }
+  return resolveAdministrationApiSession(request, { resolve: () => session }, clock);
 }
 
 export function assertIndependentAdministrationApproval(

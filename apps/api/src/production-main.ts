@@ -1,10 +1,12 @@
 import { pathToFileURL } from "node:url";
+import { randomUUID } from "node:crypto";
 
 import {
   PostgreSqlSessionUnitOfWork,
   type AsyncRegisteredServiceWorkloadAuthorityLease,
   type PostgreSqlPoolPort,
 } from "../../../modules/identity/src/index.js";
+import { AuditLog } from "../../../modules/audit/src/index.js";
 import {
   ProductionBootstrapError,
   startProductionRuntime,
@@ -21,7 +23,7 @@ import {
   type ProductionReadinessState,
   type ProductionRuntimeHttpListenerFactory,
 } from "./production-readiness-http.js";
-import { assertR3B1PublicationSchemaReady } from "./child-root-postgresql-readiness.js";
+import { assertR3B1AdministrationSchemaReady, assertR3B1PublicationSchemaReady } from "./child-root-postgresql-readiness.js";
 import {
   parseRailwayProductionRuntimeConfiguration,
   type RailwayProductionRuntimeConfiguration,
@@ -177,6 +179,8 @@ export function createRailwayProductionDependencies(
 ): ProductionBootstrapDependencies {
   const unreachable = (): never => { throw new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE"); };
   const unavailablePromise = <Value>(): Promise<Value> => Promise.reject(new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE"));
+  const clock = (): Date => new Date();
+  const auditSink = new AuditLog({ clock, idFactory: randomUUID });
   return Object.freeze({
     parseConfiguration: parseRailwayProductionRuntimeConfiguration,
     validateConfiguration: () => undefined,
@@ -195,10 +199,20 @@ export function createRailwayProductionDependencies(
     validateStartupGate: unreachable,
     createSessionUnitOfWork: (pool: PostgreSqlPoolPort): Promise<ProductionAsyncClosableResource> =>
       Promise.resolve(new PostgreSqlSessionUnitOfWork(pool)),
-    assertComponentSchemasReady: (_configuration: ProductionRuntimeConfiguration, pool: PostgreSqlPoolPort): Promise<void> => assertR3B1PublicationSchemaReady(pool),
+    assertComponentSchemasReady: async (_configuration: ProductionRuntimeConfiguration, pool: PostgreSqlPoolPort): Promise<void> => {
+      await assertR3B1PublicationSchemaReady(pool);
+      await assertR3B1AdministrationSchemaReady(pool);
+    },
     childRootOptions: Object.freeze({
       api014: Object.freeze({ runtimeEnvironment: "PRODUCTION" as const }),
-      api015: null,
+      api015: Object.freeze({
+        runtimeEnvironment: "PRODUCTION" as const,
+        auditSink,
+        policyVersion: "REL002-R3B3",
+        clock,
+        idFactory: randomUUID,
+        sessionResolver: Object.freeze({ resolve: (): Promise<never> => unavailablePromise() }),
+      }),
       api018: null,
       api019: null,
       feat022: null,

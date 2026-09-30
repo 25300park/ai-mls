@@ -18,6 +18,12 @@ import type {
   AdministrationDecisionReadRepository,
   AdministrationEvidenceReference,
 } from "./administration-persistence.js";
+import type {
+  AsyncAdministrationDecisionReadRepository,
+  AsyncAdministrationProposalReadRepository,
+  AsyncRoleAssignmentReadRepository,
+  AsyncRoleReadRepository,
+} from "./administration-async-persistence.js";
 
 interface LiveAuthorityReadDependencies {
   readonly roleAssignments: RoleAssignmentReadRepository;
@@ -71,6 +77,68 @@ export function createAdministrationBackedAuthorizationService(
   });
 }
 
+interface AsyncLiveAuthorizationCompositionDependencies {
+  readonly roleAssignments: AsyncRoleAssignmentReadRepository;
+  readonly roles: AsyncRoleReadRepository;
+  readonly proposals: AsyncAdministrationProposalReadRepository;
+  readonly decisions: AsyncAdministrationDecisionReadRepository;
+  readonly auditSink: AuditSink;
+  readonly clock: Clock;
+  readonly policyVersion: string;
+}
+
+export interface AsyncLiveAdministrationAuthorizationService {
+  evaluate(request: AuthorizationRequest): Promise<AuthorizationDecision>;
+}
+
+/** Resolves the same canonical Administration authority through async persistence. */
+export function createAsyncAdministrationBackedAuthorizationService(
+  dependencies: AsyncLiveAuthorizationCompositionDependencies,
+): AsyncLiveAdministrationAuthorizationService {
+  return Object.freeze({
+    evaluate: async (request: AuthorizationRequest): Promise<AuthorizationDecision> => {
+      const context: LiveAssignmentResolutionContext = {
+        tenantId: request.resource.tenantId ?? "",
+        subjectPrincipalId: request.session.principalId,
+        subjectPrincipalType: request.session.principalType,
+        resourceType: request.resource.type,
+        purpose: request.purpose,
+        ...(request.session.teamId === undefined ? {} : { teamId: request.session.teamId }),
+      };
+      const records = await dependencies.roleAssignments.listBySubject(context.tenantId, context.subjectPrincipalId);
+      const assignments: LiveRoleAssignment[] = [];
+      for (const record of records) {
+        const mapped = await mapCurrentAssignmentAsync(record, context, dependencies);
+        if (mapped !== undefined) assignments.push(mapped);
+      }
+      const service = new AuthorizationService({
+        liveAssignmentResolver: { resolveCurrentAssignments: (): readonly LiveRoleAssignment[] => Object.freeze(assignments) },
+        auditSink: dependencies.auditSink,
+        clock: dependencies.clock,
+        policyVersion: dependencies.policyVersion,
+      });
+      return service.evaluate(request);
+    },
+  });
+}
+
+async function mapCurrentAssignmentAsync(
+  record: RoleAssignmentPersistenceRecord,
+  context: LiveAssignmentResolutionContext,
+  dependencies: AsyncLiveAuthorizationCompositionDependencies,
+): Promise<LiveRoleAssignment | undefined> {
+  assertCanonicalAssignment(record);
+  if (record.status !== "ACTIVE" || record.subjectPrincipalType !== context.subjectPrincipalType) return undefined;
+  if (record.scope.scopeType === "TEAM" && record.scope.scopeId !== context.teamId) return undefined;
+  if (record.scope.scopeType !== "TEAM" && record.scope.scopeType !== "TENANT") return undefined;
+  const [role, proposal, decisionHistory] = await Promise.all([
+    dependencies.roles.find({ tenantId: record.tenantId, resourceType: "ROLE", resourceId: record.roleId }),
+    dependencies.proposals.findById(record.tenantId, record.proposalId),
+    dependencies.decisions.list({ tenantId: record.tenantId, resourceType: "ROLE_ASSIGNMENT", resourceId: record.roleAssignmentId }),
+  ]);
+  return mapVerifiedAssignment(record, context, role, proposal, decisionHistory);
+}
+
 function mapCurrentAssignment(
   record: RoleAssignmentPersistenceRecord,
   context: LiveAssignmentResolutionContext,
@@ -85,6 +153,16 @@ function mapCurrentAssignment(
   const decisionHistory = dependencies.decisions.list({
     tenantId: record.tenantId, resourceType: "ROLE_ASSIGNMENT", resourceId: record.roleAssignmentId,
   });
+  return mapVerifiedAssignment(record, context, role, proposal, decisionHistory);
+}
+
+function mapVerifiedAssignment(
+  record: RoleAssignmentPersistenceRecord,
+  context: LiveAssignmentResolutionContext,
+  role: RolePersistenceRecord | undefined,
+  proposal: ReturnType<AdministrationProposalReadRepository["findById"]>,
+  decisionHistory: ReturnType<AdministrationDecisionReadRepository["list"]>,
+): LiveRoleAssignment {
   const approvalDecisions = decisionHistory.filter((item) =>
     item.operation === "APPROVE_ROLE_ASSIGNMENT" && item.proposalId === record.proposalId);
   const decision = approvalDecisions[0];

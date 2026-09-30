@@ -17,7 +17,7 @@ test("F16-PHASE-8 workflow uses API-015, Phase 6 UoW and Phase 7 live authorizat
   ]);
   assert.match(workflow, /parseAdministrationApiRequest/);
   assert.match(workflow, /AdministrationUnitOfWork/);
-  assert.match(workflow, /LiveAdministrationAuthorizationService/);
+  assert.match(workflow, /resolveAdministrationApiSessionAsync/);
   assert.doesNotMatch(workflow, /import type \{ AuthorizationService \}/);
   assert.match(exports, /administration-governance-api\.js/);
   for (const forbidden of [
@@ -46,20 +46,21 @@ test("F16-PHASE-9 HTTP adapter uses one governance application boundary and pres
   ]) assert.doesNotMatch(adapter, new RegExp(forbidden, "i"));
 });
 
-test("F16-R1 production composition selects durable persistence with no in-memory fallback", async () => {
+test("R3-B3 production composition selects async SQLite or shared-pool PostgreSQL with no in-memory fallback", async () => {
   const [root, durable] = await Promise.all([
     readFile(administrationComposition, "utf8"),
     readFile(durablePersistence, "utf8"),
   ]);
   assert.match(root, /composeProductionAdministrationApi015NodeHttpServer/);
-  assert.match(root, /new DurableAdministrationUnitOfWork/);
+  assert.match(root, /new AsyncDurableAdministrationUnitOfWork/);
+  assert.match(root, /new PostgreSqlAdministrationUnitOfWork/);
   assert.match(root, /new AdministrationGovernanceApplication/);
   assert.doesNotMatch(root, /InMemoryAdministrationUnitOfWork/);
   const productionFactory = root.slice(
     root.indexOf("export interface ProductionAdministrationCompositionOptions"),
     root.indexOf("export interface ApiModuleDependencies"),
   );
-  assert.match(productionFactory, /createAdministrationBackedAuthorizationService/);
+  assert.match(productionFactory, /createAsyncAdministrationBackedAuthorizationService/);
   assert.match(productionFactory, /roleAssignments: unitOfWork\.roleAssignments/);
   assert.doesNotMatch(productionFactory, /authorizationService: options\.authorizationService/);
   assert.match(durable, /node:sqlite/);

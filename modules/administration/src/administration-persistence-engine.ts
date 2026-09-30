@@ -37,6 +37,7 @@ import {
   type TeamScopeReadRepository,
   type TeamScopeWriteRepository,
 } from "./administration-persistence.js";
+import type { AsyncAdministrationTransaction } from "./administration-async-persistence.js";
 
 export type GovernedRecord =
   | RoleAssignmentPersistenceRecord
@@ -189,6 +190,72 @@ export function createAdministrationTransaction(input: {
           tracker: immutableTracker(tracker),
         });
       }
+    } finally {
+      active = false;
+      input.release();
+    }
+  };
+  return {
+    roleAssignments: writeRepository(staged, "ROLE_ASSIGNMENT", staged.roleAssignments, input.identity, guarded, input.failures, tracker),
+    roles: writeRepository(staged, "ROLE", staged.roles, input.identity, guarded, input.failures, tracker),
+    policies: writeRepository(staged, "POLICY", staged.policies, input.identity, guarded, input.failures, tracker),
+    teamScopes: writeRepository(staged, "TEAM_SCOPE", staged.teamScopes, input.identity, guarded, input.failures, tracker),
+    sourceGovernance: writeRepository(staged, "SOURCE_REGISTRY", staged.sources, input.identity, guarded, input.failures, tracker),
+    publicationTargets: writeRepository(staged, "PUBLICATION_TARGET", staged.targets, input.identity, guarded, input.failures, tracker),
+    proposals: proposalWriteRepository(staged, input.identity, guarded, input.failures, tracker),
+    decisions: decisionWriteRepository(staged, input.identity, guarded, input.failures, tracker),
+    idempotency: idempotencyWriteRepository(staged, input.identity, guarded, input.failures, tracker),
+    commit: () => finish(true),
+    rollback: () => finish(false),
+    isActive: () => active,
+  };
+}
+
+export function createAsyncAdministrationTransaction(input: {
+  readonly identity: AdministrationTransactionIdentity;
+  readonly initialState: AdministrationTransactionState;
+  readonly initialRevision: number;
+  readonly failures: AdministrationPersistenceFailurePort;
+  readonly commit: (input: {
+    readonly identity: AdministrationTransactionIdentity;
+    readonly initialRevision: number;
+    readonly state: AdministrationTransactionState;
+    readonly tracker: AdministrationTransactionTrackerSnapshot;
+  }) => Promise<void>;
+  readonly rollback: () => Promise<void>;
+  readonly release: () => void;
+}): AsyncAdministrationTransaction {
+  validateIdentity(input.identity);
+  const staged = input.initialState.clone();
+  const existingRecord = optionalClone(governedRecord(staged, input.identity));
+  const tracker: AdministrationTransactionTracker = {
+    rollbackOnly: false,
+    ...(existingRecord === undefined ? {} : { existingRecord }),
+  };
+  let active = true;
+  const ensureActive = (): void => {
+    if (!active) throw persistenceError("TRANSACTION_ALREADY_COMPLETED");
+  };
+  const guarded = <Result>(operation: () => Result): Result => {
+    ensureActive();
+    if (tracker.rollbackOnly) throw persistenceError("TRANSACTION_ROLLBACK_ONLY");
+    try { return operation(); }
+    catch (error) { tracker.rollbackOnly = true; throw error; }
+  };
+  const finish = async (commit: boolean): Promise<void> => {
+    ensureActive();
+    try {
+      if (commit) {
+        if (tracker.rollbackOnly) throw persistenceError("TRANSACTION_ROLLBACK_ONLY");
+        validateAtomicBundle(tracker, input.identity);
+        input.failures.check("COMMIT");
+        await input.commit({
+          identity: input.identity,
+          initialRevision: input.initialRevision,
+          state: staged,
+          tracker: immutableTracker(tracker),
+        });
+      } else await input.rollback();
     } finally {
       active = false;
       input.release();

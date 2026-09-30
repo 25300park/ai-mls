@@ -18,14 +18,17 @@ export interface CanonicalProductionChildRootOptions {
   readonly feat022: ProductionAdvisoryRuntimeOptions | null;
 }
 
-/** R3-B2 permits only API-014 to receive the bootstrap-owned PostgreSQL pool. */
+/** R3-B3 permits API-014 and API-015 to receive the same bootstrap-owned PostgreSQL pool. */
 export function assertCanonicalProductionChildRootsPostgreSqlReady(
   options: CanonicalProductionChildRootOptions,
 ): void {
   if (options.api014.databasePath !== undefined || options.api014.postgreSqlPool !== undefined) {
     throw new Error("Production child-root persistence is unavailable.");
   }
-  for (const child of [options.api015, options.api018, options.api019, options.feat022]) {
+  if (options.api015 !== null && (options.api015.databasePath !== undefined || options.api015.postgreSqlPool !== undefined)) {
+    throw new Error("Production child-root persistence is unavailable.");
+  }
+  for (const child of [options.api018, options.api019, options.feat022]) {
     if (child !== null && Object.prototype.hasOwnProperty.call(child, "databasePath")) throw new Error("Production child-root persistence is unavailable.");
   }
 }
@@ -39,10 +42,10 @@ export function createCanonicalProductionChildRootFactories(
       const root = composeProductionPublicationApi014HttpHandler({ ...options.api014, postgreSqlPool: pool, runtimeEnvironment: "PRODUCTION", bootstrapContext: context, deferRuntimeActivation: true });
       return Object.freeze({ componentId: "API-014" as const, httpHandler: root.httpHandler, activateRuntime: () => root.activateRuntime(), close: () => root.close() });
     },
-    "API-015": (context, configuration, identities) => {
+    "API-015": (context, configuration, identities, pool) => {
       assertRootIdentity("API-015", context, configuration, identities);
       if (options.api015 === null) throw new Error("Production child root is unavailable.");
-      const root = composeProductionAdministrationApi015HttpHandler({ ...options.api015, runtimeEnvironment: "PRODUCTION", bootstrapContext: context, schemaMode: "REQUIRE_EXISTING" });
+      const root = composeProductionAdministrationApi015HttpHandler({ ...options.api015, postgreSqlPool: pool, runtimeEnvironment: "PRODUCTION", bootstrapContext: context });
       return Object.freeze({ componentId: "API-015" as const, httpHandler: root.httpHandler, activateRuntime: () => { /* no process-local host */ }, close: () => root.close() });
     },
     "API-018": (context, configuration, identities) => {
