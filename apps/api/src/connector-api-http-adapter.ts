@@ -2,7 +2,7 @@ import { createPublicationHttpRequest, createPublicationHttpResponse, type Publi
 import { parseConnectorApiRequest, type ConnectorApiRequestKind } from "../../../modules/source/src/connector-api-contracts.js";
 import type { ConnectorApplicationResult } from "../../../modules/source/src/connector-runtime-application.js";
 
-export interface ConnectorApi018Host { execute(kind: ConnectorApiRequestKind, request: unknown): ConnectorApplicationResult; }
+export interface ConnectorApi018Host { execute(kind: ConnectorApiRequestKind, request: unknown): Promise<ConnectorApplicationResult>; }
 export interface ConnectorApi018HttpRequestHandler { handle(input: unknown): Promise<PublicationHttpResponse>; }
 
 const COMMAND_PATH = "/api/connectors/commands";
@@ -11,10 +11,7 @@ const MAX_BODY_BYTES = 65_536;
 
 class InProcessConnectorApi018HttpAdapter implements ConnectorApi018HttpRequestHandler {
   public constructor(private readonly host: ConnectorApi018Host) {}
-  public handle(input: unknown): Promise<PublicationHttpResponse> {
-    return Promise.resolve(this.handleSynchronous(input));
-  }
-  private handleSynchronous(input: unknown): PublicationHttpResponse {
+  public async handle(input: unknown): Promise<PublicationHttpResponse> {
     let requestId = "unavailable";
     try {
       const request = createPublicationHttpRequest(input); requestId = request.requestId;
@@ -29,9 +26,9 @@ class InProcessConnectorApi018HttpAdapter implements ConnectorApi018HttpRequestH
       const canonical = parseConnectorApiRequest(kind, Object.freeze({ ...body, sessionId }));
       const applicationKind = request.path === COMMAND_PATH ? "COMMAND" as const : "QUERY" as const;
       let result: ConnectorApplicationResult;
-      try { result = this.host.execute(applicationKind, canonical); }
+      try { result = await this.host.execute(applicationKind, canonical); }
       catch { return response(requestId, 500, { success: false, error: { code: "INTERNAL_ERROR", message: "Connector operation could not be completed." } }); }
-      if (result.ok) return response(requestId, 200, { success: true, operation: result.operation, data: result.data });
+      if (result.ok === true) return response(requestId, 200, { success: true, operation: result.operation, data: result.data });
       return response(requestId, statusFor(result.error.code), { success: false, error: { code: result.error.code, message: safeMessage(result.error.code) } });
     } catch {
       return response(requestId, 400, { success: false, error: { code: "VALIDATION_FAILED", message: "Request validation failed." } });

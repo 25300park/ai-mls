@@ -8,6 +8,7 @@ import test from "node:test";
 import type { SessionContext } from "../../identity/src/session-service.js";
 import { DurableRecoveryOrchestrationStore } from "../../recovery/src/recovery-durable-persistence.js";
 import { RecoveryStoreError, type RecoveryExecutionRecord } from "../../recovery/src/recovery-orchestration-contracts.js";
+import { adaptSynchronousConnectorPersistence } from "./connector-async-persistence.js";
 import { DurableConnectorExecutionUnitOfWork, type ConnectorExecutionScope } from "./connector-durable-persistence.js";
 import { ConnectorExecutionCoordinator, type ConnectorExecutionInput } from "./connector-execution-coordinator.js";
 import type { ConnectorInvocationPort, ConnectorInvocationRequest, ConnectorInvocationResponse } from "./connector-invocation-port.js";
@@ -159,6 +160,7 @@ type HarnessOptions = Readonly<{
 function harness(options: HarnessOptions = {}) {
   const directory = mkdtempSync(join(tmpdir(), "ai-mls-f19-d-handoff-"));
   const persistence = new DurableConnectorExecutionUnitOfWork({ databasePath: join(directory, "connector.sqlite") });
+  const asyncPersistence = adaptSynchronousConnectorPersistence(persistence);
   const contracts = new DurableExternalIntegrationStore({ databasePath: join(directory, "external.sqlite") });
   const connector = new CountingConnector();
   const recoveryLookups: unknown[] = [];
@@ -180,11 +182,11 @@ function harness(options: HarnessOptions = {}) {
     }
   }
 
-  const coordinator = new ConnectorExecutionCoordinator({ persistence, connector, admission: admissionGate(admissionAuthorizationLookups) });
+  const coordinator = new ConnectorExecutionCoordinator({ persistence: asyncPersistence, connector, admission: admissionGate(admissionAuthorizationLookups) });
   const recoveryExecutionStore = options.recoveryExecutionStore === undefined ? new TestRecoveryExecutionStore() : options.recoveryExecutionStore ?? undefined;
   const handoff = new ConnectorRecoveryExecutionHandoff({
     authorizations: options.authorizations ?? { findAuthorizedConnectorRecovery: (input) => { recoveryLookups.push(input); return options.recovery === null ? undefined : options.recovery ?? authorized(); } },
-    planner: new ConnectorRecoveryExecutionPlanner(), persistence, coordinator: { execute: (input) => { coordinatorCalls += 1; return coordinator.execute(input); } },
+    planner: new ConnectorRecoveryExecutionPlanner(), persistence: asyncPersistence, coordinator: { execute: (input) => { coordinatorCalls += 1; return coordinator.execute(input); } },
     contextResolver: { resolve: () => options.context === null ? undefined : options.context ?? context },
     authorizer: { authorize: (input) => { runtimeAuthorizationLookups.push(input); return options.runtimeAuthorized ?? true; } },
     clock: () => serverNow,
@@ -214,13 +216,13 @@ function mutationSnapshot(value: ReturnType<typeof harness>) {
   });
 }
 
-function withHarness(options: HarnessOptions, run: (value: ReturnType<typeof harness>) => void): void {
+async function withHarness(options: HarnessOptions, run: (value: ReturnType<typeof harness>) => Promise<void>): Promise<void> {
   const value = harness(options);
-  try { run(value); } finally { value.close(); }
+  try { await run(value); } finally { value.close(); }
 }
 
-test("F19-D hands the authorized identity to the actual coordinator and exact replay makes zero Connector calls or mutations", () => withHarness({}, (value) => {
-  const first = value.handoff.execute(request());
+test("F19-D hands the authorized identity to the actual coordinator and exact replay makes zero Connector calls or mutations", async () => withHarness({}, async (value) => {
+  const first = await value.handoff.execute(request());
   assert.deepEqual(first, { status: "SUCCEEDED", reasonCode: "CONFIRMED", invocationId: recoveryInvocationId, resultId: `${recoveryInvocationId}:result` });
   assert.equal(value.connector.invocationCount, 1);
   assert.equal(value.persistence.findCheckpoint(scope)?.checkpointReference, "checkpoint:recovery:1");
@@ -234,13 +236,13 @@ test("F19-D hands the authorized identity to the actual coordinator and exact re
 
   const beforeReplay = mutationSnapshot(value);
   const callsBeforeReplay = value.connector.invocationCount;
-  assert.deepEqual(value.handoff.execute(request()), first);
+  assert.deepEqual(await value.handoff.execute(request()), first);
   assert.equal(value.connector.invocationCount - callsBeforeReplay, 0);
   assert.equal(value.coordinatorCalls(), 1);
   assert.deepEqual(mutationSnapshot(value), beforeReplay);
 }));
 
-test("F19-H durable Connector authorization separates both finding resolver and recovery authorizer from executor", () => {
+test("F19-H durable Connector authorization separates both finding resolver and recovery authorizer from executor", async () => {
   const directory = mkdtempSync(join(tmpdir(), "ai-mls-f19-h-connector-sod-"));
   const recovery = new DurableRecoveryOrchestrationStore({ databasePath: join(directory, "recovery.sqlite") });
   try {
@@ -253,17 +255,17 @@ test("F19-H durable Connector authorization separates both finding resolver and 
     const authorizations = new ConnectorRecoveryAuthorizationAdapter(recovery);
     const recoveryRequest = request({ recoveryId: expectedRecoveryId });
 
-    withHarness({ authorizations }, (value) => {
+    await withHarness({ authorizations }, async (value) => {
       const before = structuredClone({ checkpoint: value.persistence.findCheckpoint(scope), evidence: value.persistence.listEvidence(scope), invocation: value.persistence.findInvocation(scope, plannedInvocationId), idempotency: value.persistence.findIdempotency(scope, `connector-recovery:${expectedRecoveryId}`) });
-      assert.deepEqual(value.handoff.execute(recoveryRequest), { status: "BLOCKED", reasonCode: "ADMISSION_DENIED" });
+      assert.deepEqual(await value.handoff.execute(recoveryRequest), { status: "BLOCKED", reasonCode: "ADMISSION_DENIED" });
       assert.equal(value.coordinatorCalls(), 0);
       assert.equal(value.connector.invocationCount, 0);
       assert.deepEqual(structuredClone({ checkpoint: value.persistence.findCheckpoint(scope), evidence: value.persistence.listEvidence(scope), invocation: value.persistence.findInvocation(scope, plannedInvocationId), idempotency: value.persistence.findIdempotency(scope, `connector-recovery:${expectedRecoveryId}`) }), before);
     });
 
     const independentContext = Object.freeze({ ...context, session: Object.freeze({ ...session, principalId: "connector-executor-independent-f19-h" }) });
-    withHarness({ authorizations, context: independentContext }, (value) => {
-      assert.equal(value.handoff.execute(recoveryRequest).status, "SUCCEEDED");
+    await withHarness({ authorizations, context: independentContext }, async (value) => {
+      assert.equal((await value.handoff.execute(recoveryRequest)).status, "SUCCEEDED");
       assert.equal(value.coordinatorCalls(), 1);
       assert.equal(value.connector.invocationCount, 1);
     });
@@ -273,35 +275,35 @@ test("F19-H durable Connector authorization separates both finding resolver and 
   }
 });
 
-test("F19-F Connector recovery has no process-local execution authority when the durable execution store is missing", () => withHarness({ recoveryExecutionStore: null }, (value) => {
+test("F19-F Connector recovery has no process-local execution authority when the durable execution store is missing", async () => withHarness({ recoveryExecutionStore: null }, async (value) => {
   const before = mutationSnapshot(value);
-  assert.deepEqual(value.handoff.execute(request()), { status: "BLOCKED", reasonCode: "ADMISSION_DENIED" });
+  assert.deepEqual(await value.handoff.execute(request()), { status: "BLOCKED", reasonCode: "ADMISSION_DENIED" });
   assert.equal(value.coordinatorCalls(), 0);
   assert.equal(value.connector.invocationCount, 0);
   assert.deepEqual(mutationSnapshot(value), before);
 }));
 
-test("F19-F Connector retry after F19 result persistence failure relies on existing F18 idempotency without a duplicate Connector call", () => {
+test("F19-F Connector retry after F19 result persistence failure relies on existing F18 idempotency without a duplicate Connector call", async () => {
   const executionStore = new TestRecoveryExecutionStore(1);
-  withHarness({ recoveryExecutionStore: executionStore }, (value) => {
-    assert.throws(() => value.handoff.execute(request()), /injected F19 execution result persistence failure/i);
+  await withHarness({ recoveryExecutionStore: executionStore }, async (value) => {
+    await assert.rejects(value.handoff.execute(request()), /injected F19 execution result persistence failure/i);
     assert.equal(value.connector.invocationCount, 1);
     assert.equal(value.coordinatorCalls(), 1);
     const committed = mutationSnapshot(value);
 
-    const retry = value.handoff.execute(request());
+    const retry = await value.handoff.execute(request());
 
     assert.deepEqual(retry, { status: "SUCCEEDED", reasonCode: "CONFIRMED", invocationId: recoveryInvocationId, resultId: `${recoveryInvocationId}:result` });
     assert.equal(value.connector.invocationCount, 1);
     assert.equal(value.coordinatorCalls(), 2);
     assert.deepEqual(mutationSnapshot(value), committed);
-    assert.deepEqual(value.handoff.execute(request()), retry);
+    assert.deepEqual(await value.handoff.execute(request()), retry);
     assert.equal(value.connector.invocationCount, 1);
     assert.equal(value.coordinatorCalls(), 2);
   });
 });
 
-test("F19-D rejects expired, revoked, inactive, assurance-inconsistent, and wrong-team trusted context before handoff", () => {
+test("F19-D rejects expired, revoked, inactive, assurance-inconsistent, and wrong-team trusted context before handoff", async () => {
   const cases: readonly Readonly<{ name: string; current: ConnectorTrustedRuntimeContext }>[] = [
     { name: "expired", current: Object.freeze({ ...context, session: Object.freeze({ ...session, expiresAt: "2026-09-03T00:10:00.000Z" }) }) },
     { name: "revoked", current: Object.freeze({ ...context, session: Object.freeze({ ...session, state: "REVOKED" }) }) },
@@ -309,20 +311,20 @@ test("F19-D rejects expired, revoked, inactive, assurance-inconsistent, and wron
     { name: "assurance-inconsistent", current: Object.freeze({ ...context, session: Object.freeze({ ...session, isMfaVerified: true }) }) },
     { name: "wrong-team", current: Object.freeze({ ...context, session: Object.freeze({ ...session, teamId: "team-other" }) }) },
   ];
-  for (const item of cases) withHarness({ context: item.current }, (value) => {
+  for (const item of cases) await withHarness({ context: item.current }, async (value) => {
     const before = mutationSnapshot(value);
-    assert.deepEqual(value.handoff.execute(request()), { status: "BLOCKED", reasonCode: "ADMISSION_DENIED" }, item.name);
+    assert.deepEqual(await value.handoff.execute(request()), { status: "BLOCKED", reasonCode: "ADMISSION_DENIED" }, item.name);
     assert.equal(value.connector.invocationCount, 0, item.name);
     assert.equal(value.runtimeAuthorizationLookups.length, 0, item.name);
     assert.deepEqual(mutationSnapshot(value), before, item.name);
   });
 });
 
-test("F19-D rejects an expired Session against server time even when request startedAt is forged earlier", () => {
+test("F19-D rejects an expired Session against server time even when request startedAt is forged earlier", async () => {
   const expired = Object.freeze({ ...context, session: Object.freeze({ ...session, expiresAt: "2026-09-03T00:05:00.000Z" }) });
-  withHarness({ context: expired }, (value) => {
+  await withHarness({ context: expired }, async (value) => {
     const before = mutationSnapshot(value);
-    assert.deepEqual(value.handoff.execute(request({ startedAt: "2026-09-03T00:04:00.000Z" })), { status: "BLOCKED", reasonCode: "ADMISSION_DENIED" });
+    assert.deepEqual(await value.handoff.execute(request({ startedAt: "2026-09-03T00:04:00.000Z" })), { status: "BLOCKED", reasonCode: "ADMISSION_DENIED" });
     assert.equal(value.runtimeAuthorizationLookups.length, 0);
     assert.equal(value.coordinatorCalls(), 0);
     assert.equal(value.connector.invocationCount, 0);
@@ -331,9 +333,9 @@ test("F19-D rejects an expired Session against server time even when request sta
   });
 });
 
-test("F19-D runtime authorizer denial preserves exact trusted tenant, scope, and team lookup arguments with zero execution", () => withHarness({ runtimeAuthorized: false }, (value) => {
+test("F19-D runtime authorizer denial preserves exact trusted tenant, scope, and team lookup arguments with zero execution", async () => withHarness({ runtimeAuthorized: false }, async (value) => {
   const before = mutationSnapshot(value);
-  assert.deepEqual(value.handoff.execute(request()), { status: "BLOCKED", reasonCode: "ADMISSION_DENIED" });
+  assert.deepEqual(await value.handoff.execute(request()), { status: "BLOCKED", reasonCode: "ADMISSION_DENIED" });
   assert.deepEqual(value.recoveryLookups, [{ recoveryId, tenantId: scope.tenantId, scopeRef: `team:${scope.scopeId}` }]);
   assert.deepEqual(value.runtimeAuthorizationLookups, [{ context, operation: "SubmitCaptureBatch", resourceId: originalInvocationId }]);
   assert.equal(value.contractLookups.length, 0);
@@ -341,21 +343,21 @@ test("F19-D runtime authorizer denial preserves exact trusted tenant, scope, and
   assert.deepEqual(mutationSnapshot(value), before);
 }));
 
-test("F19-D rejects suspended, mismatched, and missing current Integration Contract before execution", () => {
+test("F19-D rejects suspended, mismatched, and missing current Integration Contract before execution", async () => {
   const cases: readonly Readonly<{ name: string; options: HarnessOptions; input?: ConnectorRecoveryExecutionRequest }>[] = [
     { name: "suspended", options: { contractState: "SUSPENDED" }, input: request({ expectedIntegrationContractVersion: 2 }) },
     { name: "mismatched", options: { contractOverride: { scopeId: "team-other" } } },
     { name: "missing", options: { contractState: "MISSING" } },
   ];
-  for (const item of cases) withHarness(item.options, (value) => {
+  for (const item of cases) await withHarness(item.options, async (value) => {
     const before = mutationSnapshot(value);
-    assert.deepEqual(value.handoff.execute(item.input ?? request()), { status: "BLOCKED", reasonCode: "ADMISSION_DENIED" }, item.name);
+    assert.deepEqual(await value.handoff.execute(item.input ?? request()), { status: "BLOCKED", reasonCode: "ADMISSION_DENIED" }, item.name);
     assert.equal(value.connector.invocationCount, 0, item.name);
     assert.deepEqual(mutationSnapshot(value), before, item.name);
   });
 });
 
-test("F19-D rejects non-terminal recovery and conflicting planned identity with zero execution", () => {
+test("F19-D rejects non-terminal recovery and conflicting planned identity with zero execution", async () => {
   const cases: readonly Readonly<{ name: string; recovery: AuthorizedConnectorRecovery | null; input?: ConnectorRecoveryExecutionRequest }>[] = [
     { name: "missing", recovery: null },
     { name: "unresolved", recovery: authorized({ status: "OPEN", finding: "UNRESOLVED" }) },
@@ -366,26 +368,26 @@ test("F19-D rejects non-terminal recovery and conflicting planned identity with 
     { name: "conflicting-planned-identity", recovery: authorized({ recoveryExecutionIdentity: Object.freeze({ invocationId: "connector-recovery:other" }) }) },
     { name: "missing-executor", recovery: authorized(), input: request({ sessionId: "" }) },
   ];
-  for (const item of cases) withHarness({ recovery: item.recovery }, (value) => {
+  for (const item of cases) await withHarness({ recovery: item.recovery }, async (value) => {
     const before = mutationSnapshot(value);
-    assert.deepEqual(value.handoff.execute(item.input ?? request()), { status: "BLOCKED", reasonCode: "ADMISSION_DENIED" }, item.name);
+    assert.deepEqual(await value.handoff.execute(item.input ?? request()), { status: "BLOCKED", reasonCode: "ADMISSION_DENIED" }, item.name);
     assert.equal(value.connector.invocationCount, 0, item.name);
     assert.deepEqual(mutationSnapshot(value), before, item.name);
   });
 });
 
-test("F19-D authoritative recovery input and contract changes conflict before Connector call or durable mutation", () => {
+test("F19-D authoritative recovery input and contract changes conflict before Connector call or durable mutation", async () => {
   const cases: readonly Readonly<{ name: string; changed: ConnectorRecoveryExecutionRequest }>[] = [
     { name: "inputReference", changed: request({ inputReference: "evidence:changed-input" }) },
     { name: "inputVersion", changed: request({ inputVersion: 2 }) },
     { name: "checkpoint", changed: request({ expectedCheckpointVersion: 1 }) },
     { name: "contract", changed: request({ integrationContractId: "contract-f19-d-other" }) },
   ];
-  for (const item of cases) withHarness({}, (value) => {
-    assert.equal(value.handoff.execute(request()).status, "SUCCEEDED", item.name);
+  for (const item of cases) await withHarness({}, async (value) => {
+    assert.equal((await value.handoff.execute(request())).status, "SUCCEEDED", item.name);
     const beforeConflict = mutationSnapshot(value);
     const callsBeforeConflict = value.connector.invocationCount;
-    assert.throws(() => value.handoff.execute(item.changed), { code: "IDEMPOTENCY_CONFLICT" }, item.name);
+    await assert.rejects(value.handoff.execute(item.changed), { code: "IDEMPOTENCY_CONFLICT" }, item.name);
     assert.equal(value.connector.invocationCount - callsBeforeConflict, 0, item.name);
     assert.deepEqual(mutationSnapshot(value), beforeConflict, item.name);
   });
@@ -424,16 +426,17 @@ test("F19-D ambiguity writer treats durable DUPLICATE_ORIGIN as idempotent and a
   } finally { store.close(); rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
 });
 
-test("F19-D actual coordinator links one durable ambiguity case and exact replay leaves checkpoint unchanged with call zero", () => {
+test("F19-D actual coordinator links one durable ambiguity case and exact replay leaves checkpoint unchanged with call zero", async () => {
   const directory = mkdtempSync(join(tmpdir(), "ai-mls-f19-d-ambiguity-"));
   const persistence = new DurableConnectorExecutionUnitOfWork({ databasePath: join(directory, "connector.sqlite") });
+  const asyncPersistence = adaptSynchronousConnectorPersistence(persistence);
   const recovery = new DurableRecoveryOrchestrationStore({ databasePath: join(directory, "recovery.sqlite") });
   const connector = new CountingConnector("THROW");
   let linked: ReturnType<DurableRecoveryOrchestrationStore["createCase"]> | undefined;
   const writer = new ConnectorAmbiguityRecoveryCaseWriterAdapter({ createCase(input) { const record = recovery.createCase(input); linked = record; return record; } });
-  const coordinator = new ConnectorExecutionCoordinator({ persistence, connector, admission: admissionGate(), ambiguityCaseWriter: writer });
+  const coordinator = new ConnectorExecutionCoordinator({ persistence: asyncPersistence, connector, admission: admissionGate(), ambiguityCaseWriter: writer });
   try {
-    assert.deepEqual(coordinator.execute(originalExecutionInput()), { status: "AMBIGUOUS", reasonCode: "RECONCILIATION_REQUIRED", invocationId: originalInvocationId });
+    assert.deepEqual(await coordinator.execute(originalExecutionInput()), { status: "AMBIGUOUS", reasonCode: "RECONCILIATION_REQUIRED", invocationId: originalInvocationId });
     assert.ok(linked);
     assert.equal(connector.invocationCount, 1);
     assert.equal(persistence.findCheckpoint(scope), undefined);
@@ -441,7 +444,7 @@ test("F19-D actual coordinator links one durable ambiguity case and exact replay
     const caseBeforeReplay = recovery.findCase(linked.recoveryCaseId);
 
     const callsBeforeReplay = connector.invocationCount;
-    assert.deepEqual(coordinator.execute(originalExecutionInput({ expectedScopeRevision: 1 })), { status: "AMBIGUOUS", reasonCode: "RECONCILIATION_REQUIRED", invocationId: originalInvocationId });
+    assert.deepEqual(await coordinator.execute(originalExecutionInput({ expectedScopeRevision: 1 })), { status: "AMBIGUOUS", reasonCode: "RECONCILIATION_REQUIRED", invocationId: originalInvocationId });
     assert.equal(connector.invocationCount - callsBeforeReplay, 0);
     assert.equal(persistence.findCheckpoint(scope), undefined);
     assert.deepEqual(persistence.listEvidence(scope), evidenceBeforeReplay);
@@ -451,12 +454,13 @@ test("F19-D actual coordinator links one durable ambiguity case and exact replay
   }
 });
 
-test("F19-F ambiguous Connector recovery creates one independently open RC2 from authorized X2 and preserves the full lineage after restart", () => {
+test("F19-F ambiguous Connector recovery creates one independently open RC2 from authorized X2 and preserves the full lineage after restart", async () => {
   const directory = mkdtempSync(join(tmpdir(), "ai-mls-f19-f-connector-nested-"));
   const connectorPath = join(directory, "connector.sqlite");
   const recoveryPath = join(directory, "recovery.sqlite");
   const externalPath = join(directory, "external.sqlite");
   const persistence = new DurableConnectorExecutionUnitOfWork({ databasePath: connectorPath });
+  const asyncPersistence = adaptSynchronousConnectorPersistence(persistence);
   const recovery = new DurableRecoveryOrchestrationStore({ databasePath: recoveryPath });
   const contracts = new DurableExternalIntegrationStore({ databasePath: externalPath });
   const connector = new CountingConnector("THROW");
@@ -498,17 +502,17 @@ test("F19-F ambiguous Connector recovery creates one independently open RC2 from
         return Object.freeze({ ...record, recoveryEvidenceRefs: Object.freeze(["evidence:f19-f:connector:attempted-overwrite"]) });
       },
     });
-    const coordinator = new ConnectorExecutionCoordinator({ persistence, connector, admission: admissionGate(), ambiguityCaseWriter: writer });
+    const coordinator = new ConnectorExecutionCoordinator({ persistence: asyncPersistence, connector, admission: admissionGate(), ambiguityCaseWriter: writer });
     const handoff = new ConnectorRecoveryExecutionHandoff({
       authorizations,
-      planner: new ConnectorRecoveryExecutionPlanner(), persistence, coordinator,
+      planner: new ConnectorRecoveryExecutionPlanner(), persistence: asyncPersistence, coordinator,
       contextResolver: { resolve: () => context }, authorizer: { authorize: () => true }, clock: () => serverNow,
       integrationContracts: contracts,
       recoveryExecutionStore: recovery,
     });
     const recoveryRequest = request({ recoveryId: expectedRecoveryId, leaseId: "lease-recovery-f19-f", expectedScopeRevision: 2 });
 
-    assert.throws(() => handoff.execute(recoveryRequest), /injected RC2 ambiguity writer crash/u);
+    await assert.rejects(handoff.execute(recoveryRequest), /injected RC2 ambiguity writer crash/u);
     const immutableX2 = structuredClone(persistence.findInvocation(scope, plannedInvocationId));
     assert.ok(immutableX2);
     assert.equal(connector.invocationCount, 1);
@@ -517,7 +521,7 @@ test("F19-F ambiguous Connector recovery creates one independently open RC2 from
     assert.equal(persistence.findCheckpoint(scope), undefined);
     assert.deepEqual(recovery.findCase(root.recoveryCaseId), immutableRc1);
 
-    const result = handoff.execute(recoveryRequest);
+    const result = await handoff.execute(recoveryRequest);
     assert.deepEqual(result, { status: "AMBIGUOUS", reasonCode: "RECONCILIATION_REQUIRED", invocationId: plannedInvocationId });
     assert.equal(connector.invocationCount, 1);
     assert.equal(writerCalls, 2);
@@ -533,7 +537,7 @@ test("F19-F ambiguous Connector recovery creates one independently open RC2 from
     assert.deepEqual(persistence.findInvocation(scope, plannedInvocationId), immutableX2);
     const immutableRc2 = structuredClone(childRecord);
 
-    assert.deepEqual(handoff.execute(recoveryRequest), result);
+    assert.deepEqual(await handoff.execute(recoveryRequest), result);
     assert.equal(connector.invocationCount, 1);
     assert.equal(writerCalls, 2);
     assert.equal(persistence.findCheckpoint(scope), undefined);
@@ -543,7 +547,7 @@ test("F19-F ambiguous Connector recovery creates one independently open RC2 from
     const immutableEvidence = structuredClone(persistence.listEvidence(scope));
 
     overwriteAuthorizationEvidence = true;
-    assert.throws(() => handoff.execute(recoveryRequest), (error: unknown) => error instanceof RecoveryStoreError && error.code === "IDEMPOTENCY_CONFLICT");
+    await assert.rejects(handoff.execute(recoveryRequest), (error: unknown) => error instanceof RecoveryStoreError && error.code === "IDEMPOTENCY_CONFLICT");
     assert.equal(connector.invocationCount, 1);
     assert.equal(writerCalls, 2);
     assert.equal(persistence.findCheckpoint(scope), undefined);
@@ -559,12 +563,12 @@ test("F19-F ambiguous Connector recovery creates one independently open RC2 from
       assert.deepEqual(reopened.findCase(childRecord.recoveryCaseId), immutableRc2);
       const reopenedHandoff = new ConnectorRecoveryExecutionHandoff({
         authorizations: new ConnectorRecoveryAuthorizationAdapter(reopened),
-        planner: new ConnectorRecoveryExecutionPlanner(), persistence, coordinator,
+        planner: new ConnectorRecoveryExecutionPlanner(), persistence: asyncPersistence, coordinator,
         contextResolver: { resolve: () => context }, authorizer: { authorize: () => true }, clock: () => serverNow,
         integrationContracts: contracts,
         recoveryExecutionStore: reopened,
       });
-      assert.deepEqual(reopenedHandoff.execute(recoveryRequest), result);
+      assert.deepEqual(await reopenedHandoff.execute(recoveryRequest), result);
       assert.equal(connector.invocationCount, 1);
       assert.equal(writerCalls, 2);
       assert.deepEqual(reopened.findCase(root.recoveryCaseId), immutableRc1);

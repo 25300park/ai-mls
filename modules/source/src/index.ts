@@ -1,5 +1,7 @@
 export * from "./raw-source-store.js";
 export * from "./connector-durable-persistence.js";
+export * from "./connector-async-persistence.js";
+export * from "./connector-postgresql-persistence.js";
 export * from "./connector-execution-coordinator.js";
 export * from "./connector-recovery-handoff.js";
 export * from "./connector-invocation-port.js";

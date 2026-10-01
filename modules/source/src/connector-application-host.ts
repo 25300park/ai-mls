@@ -16,6 +16,6 @@ export class ConnectorApplicationHost {
     try { this.#runtime = this.runtimeFactory(); this.#runtime.start(); this.#status = "READY"; return this.status; }
     catch { this.#runtime = undefined; throw new ConnectorHostError("HOST_STARTUP_FAILED", "Connector Host startup failed."); }
   }
-  public execute(kind: ConnectorApiRequestKind, request: unknown): ConnectorApplicationResult { if (this.#status !== "READY" || this.#runtime === undefined) throw new ConnectorHostError("HOST_NOT_READY", "Connector Host is not ready."); return this.#runtime.execute(kind, request); }
+  public execute(kind: ConnectorApiRequestKind, request: unknown): Promise<ConnectorApplicationResult> { if (this.#status !== "READY" || this.#runtime === undefined) return Promise.reject(new ConnectorHostError("HOST_NOT_READY", "Connector Host is not ready.")); return this.#runtime.execute(kind, request); }
   public stop(): Readonly<{ readonly status: "CREATED" | "READY" | "STOPPED" }> { if (this.#status !== "READY" || this.#runtime === undefined) throw new ConnectorHostError("HOST_LIFECYCLE_INVALID", "Connector Host lifecycle is invalid."); this.#runtime.stop(); this.#status = "STOPPED"; return this.status; }
 }

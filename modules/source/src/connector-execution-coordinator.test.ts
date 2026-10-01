@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import { adaptSynchronousConnectorPersistence } from "./connector-async-persistence.js";
 import { DurableConnectorExecutionUnitOfWork } from "./connector-durable-persistence.js";
 import { ConnectorExecutionCoordinator } from "./connector-execution-coordinator.js";
 import type { ConnectorInvocationPort, ConnectorInvocationRequest, ConnectorInvocationResponse } from "./connector-invocation-port.js";
@@ -57,13 +58,13 @@ function input(overrides: Readonly<Record<string, unknown>> = {}) {
   });
 }
 
-function withStore(run: (store: DurableConnectorExecutionUnitOfWork, databasePath: string) => void): void {
+async function withStore(run: (store: DurableConnectorExecutionUnitOfWork, databasePath: string) => Promise<void>): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), "ai-mls-f18-c-coordinator-"));
   const databasePath = join(directory, "connector.sqlite");
   let failure: unknown;
   try {
     const store = new DurableConnectorExecutionUnitOfWork({ databasePath });
-    run(store, databasePath);
+    await run(store, databasePath);
   } catch (error) { failure = error; }
   try { rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
   catch (cleanupError) { if (failure === undefined) throw cleanupError; }
@@ -100,14 +101,14 @@ function coordinator(
   decision: SourceIngestionAdmissionDecision = eligible,
   ambiguityCaseWriter?: Readonly<{ linkAmbiguousInvocation(input: Readonly<{ invocationId: string; tenantId: string; scopeRef: string; sourceId: string; connectorId: string; evidenceRefs: readonly string[]; createdBy: string; createdAt: string }>): void }>,
 ): ConnectorExecutionCoordinator {
-  return new ConnectorExecutionCoordinator({ persistence: store, connector, admission: { evaluate: () => decision }, ambiguityCaseWriter: ambiguityCaseWriter ?? { linkAmbiguousInvocation(): void { void 0; } } });
+  return new ConnectorExecutionCoordinator({ persistence: adaptSynchronousConnectorPersistence(store), connector, admission: { evaluate: () => decision }, ambiguityCaseWriter: ambiguityCaseWriter ?? { linkAmbiguousInvocation(): void { void 0; } } });
 }
 
-test("F18-C blocked admission creates zero lease, invocation, checkpoint, evidence, and connector call", () => withStore((store) => {
+test("F18-C blocked admission creates zero lease, invocation, checkpoint, evidence, and connector call", async () => withStore(async (store) => {
   const adapter = new DeterministicConnectorTestAdapter({ outcome: "SUCCEEDED", safeEvidenceReference: "safe-evidence", checkpointReference: "checkpoint-1" });
   const execution = coordinator(store, adapter, blocked);
 
-  assert.deepEqual(execution.execute(input()), { status: "BLOCKED", reasonCode: "ADMISSION_DENIED" });
+  assert.deepEqual(await execution.execute(input()), { status: "BLOCKED", reasonCode: "ADMISSION_DENIED" });
   assert.equal(adapter.invocationCount, 0);
   assert.equal(store.findLease(scope), undefined);
   assert.equal(store.findInvocation(scope, "invocation-f18-c-coordinator"), undefined);
@@ -116,19 +117,19 @@ test("F18-C blocked admission creates zero lease, invocation, checkpoint, eviden
   store.close();
 }));
 
-test("F19-D links exactly one immutable Connector-origin recovery case for an ambiguous original invocation", () => withStore((store) => {
+test("F19-D links exactly one immutable Connector-origin recovery case for an ambiguous original invocation", async () => withStore(async (store) => {
   const linked: unknown[] = [];
   const writer = { linkAmbiguousInvocation(input: unknown) { linked.push(input); } };
   const adapter = new DeterministicConnectorTestAdapter({ outcome: "THROW", safeEvidenceReference: "unused" });
   const execution = coordinator(store, adapter, eligible, writer);
-  assert.equal(execution.execute(input()).status, "AMBIGUOUS");
-  assert.equal(execution.execute(input({ expectedScopeRevision: 1 })).status, "AMBIGUOUS");
+  assert.equal((await execution.execute(input())).status, "AMBIGUOUS");
+  assert.equal((await execution.execute(input({ expectedScopeRevision: 1 }))).status, "AMBIGUOUS");
   assert.equal(adapter.invocationCount, 1);
   assert.deepEqual(linked, [Object.freeze({ invocationId: "invocation-f18-c-coordinator", tenantId: "tenant-f18-c", scopeRef: "team:team-f18-c", sourceId: "source-f18-c", connectorId: "connector-f18-c", evidenceRefs: Object.freeze(["connector-invocation:invocation-f18-c-coordinator:ambiguous"]), createdBy: "worker-f18-c", createdAt: "2026-09-01T00:00:03.000Z" })]);
   store.close();
 }));
 
-test("F18-C commits intent and EXECUTION_STARTED before invoking the connector with exact bindings", () => withStore((store) => {
+test("F18-C commits intent and EXECUTION_STARTED before invoking the connector with exact bindings", async () => withStore(async (store) => {
   const adapter = new DeterministicConnectorTestAdapter({
     outcome: "SUCCEEDED",
     safeEvidenceReference: "safe-evidence",
@@ -146,15 +147,15 @@ test("F18-C commits intent and EXECUTION_STARTED before invoking the connector w
       });
     },
   });
-  const result = coordinator(store, adapter).execute(input());
+  const result = await coordinator(store, adapter).execute(input());
   assert.equal(result.status, "SUCCEEDED");
   assert.equal(adapter.invocationCount, 1);
   store.close();
 }));
 
-test("F18-C authoritative success atomically records result, idempotency, evidence, and checkpoint", () => withStore((store) => {
+test("F18-C authoritative success atomically records result, idempotency, evidence, and checkpoint", async () => withStore(async (store) => {
   const adapter = new DeterministicConnectorTestAdapter({ outcome: "SUCCEEDED", safeEvidenceReference: "safe-evidence", checkpointReference: "checkpoint-1" });
-  const result = coordinator(store, adapter).execute(input());
+  const result = await coordinator(store, adapter).execute(input());
   assert.equal(result.status, "SUCCEEDED");
   assert.equal(store.findCheckpoint(scope)?.checkpointReference, "checkpoint-1");
   assert.equal(store.findIdempotency(scope, "test-1")?.resultId, result.resultId);
@@ -162,28 +163,28 @@ test("F18-C authoritative success atomically records result, idempotency, eviden
   store.close();
 }));
 
-test("F18-C failure is durable but cannot advance checkpoint", () => withStore((store) => {
+test("F18-C failure is durable but cannot advance checkpoint", async () => withStore(async (store) => {
   const adapter = new DeterministicConnectorTestAdapter({ outcome: "FAILED", safeEvidenceReference: "safe-failure-evidence", reasonCode: "TECHNICAL_FAILURE" });
-  const result = coordinator(store, adapter).execute(input());
+  const result = await coordinator(store, adapter).execute(input());
   assert.equal(result.status, "FAILED");
   assert.equal(store.findInvocation(scope, "invocation-f18-c-coordinator")?.state, "FAILED");
   assert.equal(store.findCheckpoint(scope), undefined);
   store.close();
 }));
 
-test("F18-C UNKNOWN or thrown result remains AMBIGUOUS and never advances checkpoint", () => {
-  for (const behavior of ["UNKNOWN", "THROW"] as const) withStore((store) => {
+test("F18-C UNKNOWN or thrown result remains AMBIGUOUS and never advances checkpoint", async () => {
+  for (const behavior of ["UNKNOWN", "THROW"] as const) await withStore(async (store) => {
     const adapter = new DeterministicConnectorTestAdapter({ outcome: behavior, safeEvidenceReference: "safe-unknown-evidence" });
-    const result = coordinator(store, adapter).execute(input());
+    const result = await coordinator(store, adapter).execute(input());
     assert.equal(result.status, "AMBIGUOUS", behavior);
     assert.equal(store.findCheckpoint(scope), undefined, behavior);
     store.close();
   });
 });
 
-test("F18-C reconstructs unsafe connector evidence as bounded UNKNOWN without raw leakage", () => withStore((store) => {
+test("F18-C reconstructs unsafe connector evidence as bounded UNKNOWN without raw leakage", async () => withStore(async (store) => {
   const adapter = new DeterministicConnectorTestAdapter({ outcome: "SUCCEEDED", safeEvidenceReference: "Bearer unsafe-token", checkpointReference: "checkpoint-1" });
-  const result = coordinator(store, adapter).execute(input());
+  const result = await coordinator(store, adapter).execute(input());
   const serialized = JSON.stringify(store.findInvocation(scope, "invocation-f18-c-coordinator"));
   assert.equal(result.status, "AMBIGUOUS");
   assert.equal(serialized.includes("unsafe-token"), false);
@@ -192,25 +193,25 @@ test("F18-C reconstructs unsafe connector evidence as bounded UNKNOWN without ra
   store.close();
 }));
 
-test("F18-C exact idempotent replay returns the durable prior result with zero duplicate call", () => withStore((store) => {
+test("F18-C exact idempotent replay returns the durable prior result with zero duplicate call", async () => withStore(async (store) => {
   const firstAdapter = new DeterministicConnectorTestAdapter({ outcome: "SUCCEEDED", safeEvidenceReference: "safe-evidence", checkpointReference: "checkpoint-1" });
-  const first = coordinator(store, firstAdapter).execute(input());
+  const first = await coordinator(store, firstAdapter).execute(input());
   const replayAdapter = new DeterministicConnectorTestAdapter({ outcome: "FAILED", safeEvidenceReference: "must-not-run" });
-  const replay = coordinator(store, replayAdapter).execute(input({ expectedScopeRevision: 1 }));
+  const replay = await coordinator(store, replayAdapter).execute(input({ expectedScopeRevision: 1 }));
   assert.deepEqual(replay, first);
   assert.equal(replayAdapter.invocationCount, 0);
   store.close();
 }));
 
-test("F18-F completed exact replay bypasses blocked execution admission without new effects", () => withStore((store, databasePath) => {
+test("F18-F completed exact replay bypasses blocked execution admission without new effects", async () => withStore(async (store, databasePath) => {
   const firstAdapter = new DeterministicConnectorTestAdapter({ outcome: "SUCCEEDED", safeEvidenceReference: "safe-evidence", checkpointReference: "checkpoint-1" });
-  const first = coordinator(store, firstAdapter).execute(input());
+  const first = await coordinator(store, firstAdapter).execute(input());
   const originalLease = store.findLease(scope);
   store.close();
 
   const reopened = new DurableConnectorExecutionUnitOfWork({ databasePath });
   const replayAdapter = new DeterministicConnectorTestAdapter({ outcome: "FAILED", safeEvidenceReference: "must-not-run" });
-  const replay = coordinator(reopened, replayAdapter, blocked).execute(input({ expectedScopeRevision: 1 }));
+  const replay = await coordinator(reopened, replayAdapter, blocked).execute(input({ expectedScopeRevision: 1 }));
   assert.deepEqual(replay, first);
   assert.equal(replayAdapter.invocationCount, 0);
   assert.equal(reopened.findCheckpoint(scope)?.version, 1);
@@ -218,7 +219,7 @@ test("F18-F completed exact replay bypasses blocked execution admission without 
   reopened.close();
 }));
 
-test("F18-F ambiguous exact replay bypasses blocked execution admission without blind rerun", () => withStore((store, databasePath) => {
+test("F18-F ambiguous exact replay bypasses blocked execution admission without blind rerun", async () => withStore(async (store, databasePath) => {
   store.acquireLease({ ...scope, leaseId: "lease-f18-c-coordinator", ownerId: "worker-f18-c", acquiredAt: "2026-09-01T00:00:00.000Z", expiresAt: "2026-09-01T00:05:00.000Z", expectedScopeRevision: 0 });
   store.prepareInvocation({ ...scope, invocationId: "invocation-f18-c-coordinator", leaseId: "lease-f18-c-coordinator", idempotencyKey: "test-1", inputFingerprint: "fingerprint-f18-c-coordinator", inputReference: "safe-input-reference-f18-c", inputVersion: 4, sourcePolicyVersion: 3, connectorVersion: 5, expectedCheckpointVersion: 0, preparedAt: "2026-09-01T00:00:01.000Z" });
   store.markExecutionStarted(scope, "invocation-f18-c-coordinator", "2026-09-01T00:00:02.000Z");
@@ -226,23 +227,23 @@ test("F18-F ambiguous exact replay bypasses blocked execution admission without 
 
   const reopened = new DurableConnectorExecutionUnitOfWork({ databasePath });
   const replayAdapter = new DeterministicConnectorTestAdapter({ outcome: "SUCCEEDED", safeEvidenceReference: "must-not-run", checkpointReference: "must-not-run" });
-  const replay = coordinator(reopened, replayAdapter, blocked).execute(input({ expectedScopeRevision: 1 }));
+  const replay = await coordinator(reopened, replayAdapter, blocked).execute(input({ expectedScopeRevision: 1 }));
   assert.deepEqual(replay, { status: "AMBIGUOUS", reasonCode: "RECONCILIATION_REQUIRED", invocationId: "invocation-f18-c-coordinator" });
   assert.equal(replayAdapter.invocationCount, 0);
   assert.equal(reopened.findCheckpoint(scope), undefined);
   reopened.close();
 }));
 
-test("F18-F conflicting replay fingerprint fails before admission and mutation", () => withStore((store) => {
+test("F18-F conflicting replay fingerprint fails before admission and mutation", async () => withStore(async (store) => {
   const firstAdapter = new DeterministicConnectorTestAdapter({ outcome: "SUCCEEDED", safeEvidenceReference: "safe-evidence", checkpointReference: "checkpoint-1" });
-  coordinator(store, firstAdapter).execute(input());
+  await coordinator(store, firstAdapter).execute(input());
   const evidenceBefore = store.listEvidence(scope);
   const leaseBefore = store.findLease(scope);
   const checkpointBefore = store.findCheckpoint(scope);
   const replayAdapter = new DeterministicConnectorTestAdapter({ outcome: "FAILED", safeEvidenceReference: "must-not-run" });
 
-  assert.throws(
-    () => coordinator(store, replayAdapter, blocked).execute(input({ expectedScopeRevision: 1, inputFingerprint: "conflicting-fingerprint" })),
+  await assert.rejects(
+    coordinator(store, replayAdapter, blocked).execute(input({ expectedScopeRevision: 1, inputFingerprint: "conflicting-fingerprint" })),
     { code: "IDEMPOTENCY_CONFLICT" },
   );
   assert.equal(replayAdapter.invocationCount, 0);
@@ -252,16 +253,16 @@ test("F18-F conflicting replay fingerprint fails before admission and mutation",
   store.close();
 }));
 
-test("F18-F same invocation with a different idempotency key conflicts before admission and mutation", () => withStore((store) => {
+test("F18-F same invocation with a different idempotency key conflicts before admission and mutation", async () => withStore(async (store) => {
   const firstAdapter = new DeterministicConnectorTestAdapter({ outcome: "SUCCEEDED", safeEvidenceReference: "safe-evidence", checkpointReference: "checkpoint-1" });
-  coordinator(store, firstAdapter).execute(input());
+  await coordinator(store, firstAdapter).execute(input());
   const evidenceBefore = store.listEvidence(scope);
   const leaseBefore = store.findLease(scope);
   const checkpointBefore = store.findCheckpoint(scope);
   const replayAdapter = new DeterministicConnectorTestAdapter({ outcome: "FAILED", safeEvidenceReference: "must-not-run" });
 
-  assert.throws(
-    () => coordinator(store, replayAdapter, blocked).execute(input({ expectedScopeRevision: 1, idempotencyKey: "test-2" })),
+  await assert.rejects(
+    coordinator(store, replayAdapter, blocked).execute(input({ expectedScopeRevision: 1, idempotencyKey: "test-2" })),
     { code: "IDEMPOTENCY_CONFLICT" },
   );
   assert.equal(replayAdapter.invocationCount, 0);
@@ -271,7 +272,7 @@ test("F18-F same invocation with a different idempotency key conflicts before ad
   store.close();
 }));
 
-test("F18-F crash after connector response but before local completion reopens ambiguous with zero blind rerun", () => withStore((store, databasePath) => {
+test("F18-F crash after connector response but before local completion reopens ambiguous with zero blind rerun", async () => withStore(async (store, databasePath) => {
   const persistence = new Proxy<DurableConnectorExecutionUnitOfWork>(store, {
     get(target, property): unknown {
       if (property === "completeInvocation") return () => { throw new Error("simulated local completion failure"); };
@@ -282,21 +283,21 @@ test("F18-F crash after connector response but before local completion reopens a
   const firstAdapter = new DeterministicConnectorTestAdapter({ outcome: "SUCCEEDED", safeEvidenceReference: "provider-confirmed", checkpointReference: "checkpoint-1" });
   const linked: unknown[] = [];
   const writer = { linkAmbiguousInvocation(input: unknown) { linked.push(input); } };
-  assert.throws(() => coordinator(persistence, firstAdapter, eligible, writer).execute(input()), /simulated local completion failure/);
+  await assert.rejects(coordinator(persistence, firstAdapter, eligible, writer).execute(input()), /simulated local completion failure/);
   assert.equal(firstAdapter.invocationCount, 1);
   assert.equal(linked.length, 1);
   store.close();
 
   const reopened = new DurableConnectorExecutionUnitOfWork({ databasePath });
   const replayAdapter = new DeterministicConnectorTestAdapter({ outcome: "SUCCEEDED", safeEvidenceReference: "must-not-run", checkpointReference: "must-not-run" });
-  const replay = coordinator(reopened, replayAdapter, blocked).execute(input({ expectedScopeRevision: 1 }));
+  const replay = await coordinator(reopened, replayAdapter, blocked).execute(input({ expectedScopeRevision: 1 }));
   assert.deepEqual(replay, { status: "AMBIGUOUS", reasonCode: "RECONCILIATION_REQUIRED", invocationId: "invocation-f18-c-coordinator" });
   assert.equal(replayAdapter.invocationCount, 0);
   assert.equal(reopened.findCheckpoint(scope), undefined);
   reopened.close();
 }));
 
-test("F18-C restart after EXECUTION_STARTED has zero blind resend and conflicting payload fails closed", () => withStore((store, databasePath) => {
+test("F18-C restart after EXECUTION_STARTED has zero blind resend and conflicting payload fails closed", async () => withStore(async (store, databasePath) => {
   store.acquireLease({ ...scope, leaseId: "lease-f18-c-coordinator", ownerId: "worker-f18-c", acquiredAt: "2026-09-01T00:00:00.000Z", expiresAt: "2026-09-01T00:05:00.000Z", expectedScopeRevision: 0 });
   store.prepareInvocation({ ...scope, invocationId: "invocation-f18-c-coordinator", leaseId: "lease-f18-c-coordinator", idempotencyKey: "test-1", inputFingerprint: "fingerprint-f18-c-coordinator", inputReference: "safe-input-reference-f18-c", inputVersion: 4, sourcePolicyVersion: 3, connectorVersion: 5, expectedCheckpointVersion: 0, preparedAt: "2026-09-01T00:00:01.000Z" });
   store.markExecutionStarted(scope, "invocation-f18-c-coordinator", "2026-09-01T00:00:02.000Z");
@@ -305,9 +306,9 @@ test("F18-C restart after EXECUTION_STARTED has zero blind resend and conflictin
   const reopened = new DurableConnectorExecutionUnitOfWork({ databasePath });
   const adapter = new DeterministicConnectorTestAdapter({ outcome: "SUCCEEDED", safeEvidenceReference: "must-not-run", checkpointReference: "must-not-run" });
   const execution = coordinator(reopened, adapter);
-  assert.deepEqual(execution.execute(input({ expectedScopeRevision: 1 })), { status: "AMBIGUOUS", reasonCode: "RECONCILIATION_REQUIRED", invocationId: "invocation-f18-c-coordinator" });
+  assert.deepEqual(await execution.execute(input({ expectedScopeRevision: 1 })), { status: "AMBIGUOUS", reasonCode: "RECONCILIATION_REQUIRED", invocationId: "invocation-f18-c-coordinator" });
   assert.equal(adapter.invocationCount, 0);
-  assert.throws(() => execution.execute(input({ expectedScopeRevision: 1, inputFingerprint: "conflicting-fingerprint" })), { code: "IDEMPOTENCY_CONFLICT" });
+  await assert.rejects(execution.execute(input({ expectedScopeRevision: 1, inputFingerprint: "conflicting-fingerprint" })), { code: "IDEMPOTENCY_CONFLICT" });
   assert.equal(adapter.invocationCount, 0);
   reopened.close();
 }));

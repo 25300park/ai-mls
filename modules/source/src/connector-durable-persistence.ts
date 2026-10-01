@@ -127,7 +127,7 @@ export interface DurableConnectorExecutionUnitOfWorkOptions {
   readonly schemaMode?: "INITIALIZE" | "REQUIRE_EXISTING";
 }
 
-type LeaseInput = ConnectorExecutionScope & Readonly<{
+export type ConnectorLeaseInput = ConnectorExecutionScope & Readonly<{
   readonly leaseId: string;
   readonly ownerId: string;
   readonly acquiredAt: string;
@@ -135,7 +135,7 @@ type LeaseInput = ConnectorExecutionScope & Readonly<{
   readonly expectedScopeRevision: number;
 }>;
 
-type IntentInput = ConnectorExecutionScope & Readonly<{
+export type ConnectorInvocationIntentInput = ConnectorExecutionScope & Readonly<{
   readonly invocationId: string;
   readonly leaseId: string;
   readonly idempotencyKey: string;
@@ -148,7 +148,7 @@ type IntentInput = ConnectorExecutionScope & Readonly<{
   readonly preparedAt: string;
 }>;
 
-type CompletionInput = ConnectorExecutionScope & Readonly<{
+export type ConnectorInvocationCompletionInput = ConnectorExecutionScope & Readonly<{
   readonly invocationId: string;
   readonly resultId: string;
   readonly outcome: "SUCCEEDED" | "FAILED" | "UNKNOWN";
@@ -189,7 +189,7 @@ export class DurableConnectorExecutionUnitOfWork {
     }
   }
 
-  public acquireLease(input: LeaseInput): ConnectorLease {
+  public acquireLease(input: ConnectorLeaseInput): ConnectorLease {
     validateScope(input);
     validateText(input.leaseId, input.ownerId, input.acquiredAt, input.expiresAt);
     if (!Number.isInteger(input.expectedScopeRevision) || input.expectedScopeRevision < 0 || Date.parse(input.expiresAt) <= Date.parse(input.acquiredAt)) {
@@ -246,7 +246,7 @@ export class DurableConnectorExecutionUnitOfWork {
     return row === undefined ? undefined : freeze(parse<ConnectorLease>(text(row["payload_json"])));
   }
 
-  public prepareInvocation(input: IntentInput): ConnectorInvocation {
+  public prepareInvocation(input: ConnectorInvocationIntentInput): ConnectorInvocation {
     validateScope(input); validateText(input.invocationId, input.leaseId, input.idempotencyKey, input.inputFingerprint, input.preparedAt); validateReference(input.inputReference);
     if (![input.inputVersion, input.sourcePolicyVersion, input.connectorVersion].every((value) => Number.isInteger(value) && value > 0) || !Number.isInteger(input.expectedCheckpointVersion) || input.expectedCheckpointVersion < 0) {
       throw failure("PERSISTENCE_INPUT_INVALID", "Connector invocation input is invalid.");
@@ -288,7 +288,7 @@ export class DurableConnectorExecutionUnitOfWork {
     });
   }
 
-  public completeInvocation(input: CompletionInput): ConnectorInvocation {
+  public completeInvocation(input: ConnectorInvocationCompletionInput): ConnectorInvocation {
     validateScope(input); validateText(input.invocationId, input.resultId, input.reasonCode, input.completedAt); validateReference(input.safeEvidenceReference);
     return this.transaction(() => {
       const raw = this.rawInvocation(input, input.invocationId);

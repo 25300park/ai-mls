@@ -2,8 +2,8 @@ import {
   ConnectorPersistenceError,
   type ConnectorExecutionScope,
   type ConnectorInvocation,
-  type DurableConnectorExecutionUnitOfWork,
 } from "./connector-durable-persistence.js";
+import type { AsyncConnectorExecutionPersistence } from "./connector-async-persistence.js";
 import type { ConnectorInvocationPort, ConnectorInvocationRequest } from "./connector-invocation-port.js";
 import type { SourceIngestionAdmissionGate, SourceIngestionAdmissionInput } from "./source-ingestion-admission.js";
 
@@ -47,25 +47,25 @@ export interface ConnectorAmbiguityCaseWriter {
 
 export class ConnectorExecutionCoordinator {
   public constructor(private readonly dependencies: Readonly<{
-    readonly persistence: DurableConnectorExecutionUnitOfWork;
+    readonly persistence: AsyncConnectorExecutionPersistence;
     readonly connector: ConnectorInvocationPort;
     readonly admission: Pick<SourceIngestionAdmissionGate, "evaluate">;
     readonly ambiguityCaseWriter?: ConnectorAmbiguityCaseWriter;
   }>) {}
 
-  public execute(input: ConnectorExecutionInput): ConnectorExecutionResult {
+  public async execute(input: ConnectorExecutionInput): Promise<ConnectorExecutionResult> {
     const replayScope = scopeFromAdmissionInput(input.admissionInput);
-    const priorIdempotency = this.dependencies.persistence.findIdempotency(replayScope, input.idempotencyKey);
+    const priorIdempotency = await this.dependencies.persistence.findIdempotency(replayScope, input.idempotencyKey);
     if (priorIdempotency !== undefined) {
       if (priorIdempotency.invocationId !== input.invocationId || priorIdempotency.inputFingerprint !== input.inputFingerprint) {
         throw new ConnectorPersistenceError("IDEMPOTENCY_CONFLICT", "Connector idempotency identity conflicts.");
       }
-      const prior = this.dependencies.persistence.findInvocation(replayScope, input.invocationId);
+      const prior = await this.dependencies.persistence.findInvocation(replayScope, input.invocationId);
       if (prior === undefined) throw new ConnectorPersistenceError("PERSISTENCE_UNAVAILABLE", "Connector invocation linkage is invalid.");
       const result = resultFrom(prior);
       return result.status === "AMBIGUOUS" && input.parentRecoveryCaseId !== undefined ? this.#ambiguous(prior.invocationId, replayScope, input) : result;
     }
-    if (this.dependencies.persistence.findInvocation(replayScope, input.invocationId) !== undefined) {
+    if (await this.dependencies.persistence.findInvocation(replayScope, input.invocationId) !== undefined) {
       throw new ConnectorPersistenceError("IDEMPOTENCY_CONFLICT", "Connector invocation identity conflicts.");
     }
 
@@ -79,7 +79,7 @@ export class ConnectorExecutionCoordinator {
       connectorId: admission.connectorId,
     });
 
-    this.dependencies.persistence.acquireLease({
+    await this.dependencies.persistence.acquireLease({
       ...scope,
       leaseId: input.leaseId,
       ownerId: input.leaseOwnerId,
@@ -87,7 +87,7 @@ export class ConnectorExecutionCoordinator {
       expiresAt: input.leaseExpiresAt,
       expectedScopeRevision: input.expectedScopeRevision,
     });
-    const intent = this.dependencies.persistence.prepareInvocation({
+    const intent = await this.dependencies.persistence.prepareInvocation({
       ...scope,
       invocationId: input.invocationId,
       leaseId: input.leaseId,
@@ -100,7 +100,7 @@ export class ConnectorExecutionCoordinator {
       expectedCheckpointVersion: input.expectedCheckpointVersion,
       preparedAt: input.preparedAt,
     });
-    const claim = this.dependencies.persistence.markExecutionStarted(scope, input.invocationId, input.startedAt);
+    const claim = await this.dependencies.persistence.markExecutionStarted(scope, input.invocationId, input.startedAt);
     if (!claim.claimed) return resultFrom(claim.invocation);
 
     const connectorRequest: ConnectorInvocationRequest = Object.freeze({
@@ -119,7 +119,7 @@ export class ConnectorExecutionCoordinator {
     const normalized = normalizeResponse(response, intent.invocationId);
     let completed: ConnectorInvocation;
     try {
-      completed = this.dependencies.persistence.completeInvocation({
+      completed = await this.dependencies.persistence.completeInvocation({
         ...scope,
         invocationId: intent.invocationId,
         resultId,

@@ -5,13 +5,17 @@ import { join } from "node:path";
 import test from "node:test";
 
 import type { SessionContext } from "../../../modules/identity/src/session-service.js";
+import type { PostgreSqlPoolPort } from "../../../modules/identity/src/postgresql-pool.js";
 import { ConnectorApplicationHost } from "../../../modules/source/src/connector-application-host.js";
 import { CONNECTOR_API_HTTP_OPERATIONS, type ConnectorApiRequestKind } from "../../../modules/source/src/connector-api-contracts.js";
+import { adaptSynchronousConnectorPersistence } from "../../../modules/source/src/connector-async-persistence.js";
 import { DurableConnectorExecutionUnitOfWork } from "../../../modules/source/src/connector-durable-persistence.js";
 import { ConnectorExecutionCoordinator } from "../../../modules/source/src/connector-execution-coordinator.js";
 import type { ConnectorInvocationPort } from "../../../modules/source/src/connector-invocation-port.js";
 import { ConnectorRuntimeApplication, type ConnectorTrustedRuntimeContext } from "../../../modules/source/src/connector-runtime-application.js";
 import { ConnectorRuntime } from "../../../modules/source/src/connector-runtime.js";
+import { PostgreSqlConnectorExecutionUnitOfWork } from "../../../modules/source/src/connector-postgresql-persistence.js";
+import { issueProductionBootstrapContext } from "../../../packages/security-contracts/src/production-bootstrap-proof.js";
 import { createConnectorApi018HttpRequestHandler } from "./connector-api-http-adapter.js";
 import { createProductionConnectorApi018Composition } from "./connector-production-composition.js";
 
@@ -34,9 +38,10 @@ function restartableComposition(databasePath: string, connector: ConnectorInvoca
   const session: SessionContext = Object.freeze({ id: "session-trusted", principalId: "service-1", principalType: "SERVICE", roles: Object.freeze(["SVC"] as const), teamId: "team-1", state: "ACTIVE", assurance: "WORKLOAD", isMfaVerified: false, authenticatedAt: now, expiresAt: "2026-09-01T01:00:00.000Z", absoluteExpiresAt: "2026-09-01T02:00:00.000Z", familyId: "family-1", refreshReference: "non-sensitive-reference" });
   const context: ConnectorTrustedRuntimeContext = Object.freeze({ session, tenantId: "tenant-1", scope: Object.freeze({ scopeType: "TEAM", scopeId: "team-1" }), sourceId: "source-1", connectorId: "connector-1", purpose: "LISTING_DISCOVERY", sourcePolicyVersion: 3, connectorVersion: 5, correlationId: "correlation-1" });
   const persistence = new DurableConnectorExecutionUnitOfWork({ databasePath });
+  const asyncPersistence = adaptSynchronousConnectorPersistence(persistence);
   const admission = { evaluate: () => admissionStatus === "BLOCKED" ? Object.freeze({ status: "BLOCKED" as const, reasonCode: "ADMISSION_DENIED" as const }) : Object.freeze({ status: "ELIGIBLE" as const, tenantId: context.tenantId, scope: context.scope, sourceId: context.sourceId, sourcePolicyVersion: context.sourcePolicyVersion, connectorId: context.connectorId, connectorVersion: context.connectorVersion, method: "CONNECTOR", purpose: context.purpose }) };
-  const coordinator = new ConnectorExecutionCoordinator({ persistence, connector, admission });
-  const application = new ConnectorRuntimeApplication({ persistence, contextResolver: { resolve: () => context }, authorizer: { authorize: () => true }, coordinator, clock: () => now, externalObservationSink: { submit: () => Object.freeze({ ok: true as const, operation: "SubmitProviderObservation" as const, data: Object.freeze({ evidenceRef: "evidence:observation:1", mappingState: "ACTIVE" }) }) } });
+  const coordinator = new ConnectorExecutionCoordinator({ persistence: asyncPersistence, connector, admission });
+  const application = new ConnectorRuntimeApplication({ persistence: asyncPersistence, contextResolver: { resolve: () => context }, authorizer: { authorize: () => true }, coordinator, clock: () => now, externalObservationSink: { submit: () => Object.freeze({ ok: true as const, operation: "SubmitProviderObservation" as const, data: Object.freeze({ evidenceRef: "evidence:observation:1", mappingState: "ACTIVE" }) }) } });
   const host = new ConnectorApplicationHost(() => new ConnectorRuntime(application));
   host.start();
   return Object.freeze({ http: createConnectorApi018HttpRequestHandler(host), persistence, close: () => { host.stop(); persistence.close(); } });
@@ -44,7 +49,7 @@ function restartableComposition(databasePath: string, connector: ConnectorInvoca
 
 test("F18-D HTTP exposes exactly seven closed operations and derives Session from the header", async () => {
   const seen: unknown[] = [];
-  const handler = createConnectorApi018HttpRequestHandler({ execute: (kind: ConnectorApiRequestKind, request: unknown) => { seen.push({ kind, request }); return Object.freeze({ ok: true as const, operation: (request as { operation: typeof CONNECTOR_API_HTTP_OPERATIONS[number] }).operation, data: Object.freeze({ status: "ACCEPTED" }) }); } });
+  const handler = createConnectorApi018HttpRequestHandler({ execute: (kind: ConnectorApiRequestKind, request: unknown) => { seen.push({ kind, request }); return Promise.resolve(Object.freeze({ ok: true as const, operation: (request as { operation: typeof CONNECTOR_API_HTTP_OPERATIONS[number] }).operation, data: Object.freeze({ status: "ACCEPTED" }) })); } });
   for (const operation of CONNECTOR_API_HTTP_OPERATIONS) {
     const path = operation === "ReadBatchStatus" ? "/api/connectors/queries" : "/api/connectors/commands";
     const response = await handler.handle(http({ ...validBodies[operation], sessionId: "body-session" }, path));
@@ -56,7 +61,7 @@ test("F18-D HTTP exposes exactly seven closed operations and derives Session fro
 
 test("F18-D HTTP rejects AdvanceCheckpoint, missing Session, authority fields, unknown fields, and oversized bodies", async () => {
   let calls = 0;
-  const handler = createConnectorApi018HttpRequestHandler({ execute: () => { calls += 1; return Object.freeze({ ok: true as const, operation: "ReportHealth", data: Object.freeze({}) }); } });
+  const handler = createConnectorApi018HttpRequestHandler({ execute: () => { calls += 1; return Promise.resolve(Object.freeze({ ok: true as const, operation: "ReportHealth", data: Object.freeze({}) })); } });
   const advance = { operation: "AdvanceCheckpoint", connectorId: "connector-1", sourceId: "source-1", invocationId: "invocation-1", priorCheckpointVersion: 0, checkpointCandidate: "checkpoint:1", evidenceReference: "evidence:checkpoint:1" };
   assert.equal((await handler.handle(http(advance))).statusCode, 400);
   assert.equal((await handler.handle(http(validBodies["ReportHealth"], "/api/connectors/commands", ""))).statusCode, 401);
@@ -68,7 +73,7 @@ test("F18-D HTTP rejects AdvanceCheckpoint, missing Session, authority fields, u
 
 test("F18-D HTTP reconstructs safe errors without stack, path, secret, or raw evidence leakage", async () => {
   const unsafe = "Bearer unsafe-value C:\\private\\source.ts raw-provider-response";
-  const handler = createConnectorApi018HttpRequestHandler({ execute: () => Object.freeze({ ok: false as const, error: Object.freeze({ code: "INTERNAL_ERROR" as const, message: unsafe }) }) });
+  const handler = createConnectorApi018HttpRequestHandler({ execute: () => Promise.resolve(Object.freeze({ ok: false as const, error: Object.freeze({ code: "INTERNAL_ERROR" as const, message: unsafe }) })) });
   const response = await handler.handle(http(validBodies["ReportHealth"]));
   assert.equal(response.statusCode, 500);
   assert.doesNotMatch(JSON.stringify(response.body), /Bearer|private|source\.ts|raw-provider/iu);
@@ -87,9 +92,47 @@ test("F18-D production composition requires durable configuration, rejects conne
     const composition = createProductionConnectorApi018Composition(configured);
     const response = await composition.http.handle(http(validBodies["SubmitCaptureBatch"]));
     assert.equal(response.statusCode, 503);
-    assert.equal(composition.persistence.findTechnicalState({ tenantId: "tenant-1", scopeType: "TEAM", scopeId: "team-1", sourceId: "source-1", connectorId: "connector-1" }, "CAPTURE_BATCH", "batch-1"), undefined);
-    composition.close();
+    assert.equal(await composition.persistence.findTechnicalState({ tenantId: "tenant-1", scopeType: "TEAM", scopeId: "team-1", sourceId: "source-1", connectorId: "connector-1" }, "CAPTURE_BATCH", "batch-1"), undefined);
+    await composition.close();
   } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test("R3-B4 Production composition selects the bootstrap PostgreSQL pool and rejects SQLite fallback", async () => {
+  const postgreSqlPool: PostgreSqlPoolPort = Object.freeze({
+    connect: () => Promise.reject(new Error("not used")),
+    close: () => Promise.reject(new Error("bootstrap owns the pool")),
+  });
+  const configured = {
+    runtimeEnvironment: "PRODUCTION" as const,
+    bootstrapContext: issueProductionBootstrapContext({ validationFingerprint: "sha256:r3b4", configurationReference: "config:production:r3b4" }),
+    contextResolver: { resolve: (): never => { throw new Error("not used"); } },
+    authorizer: { authorize: (): false => false },
+    admission: { evaluate: (): never => { throw new Error("not used"); } },
+    clock: () => now,
+    externalObservationSink: { submit: (): never => { throw new Error("not used"); } },
+    ambiguityCaseWriter: { linkAmbiguousInvocation(): void { void 0; } },
+    deferRuntimeActivation: true as const,
+  };
+
+  assert.throws(() => createProductionConnectorApi018Composition({ ...configured, databasePath: "connector.sqlite" }), /PostgreSQL persistence is required/u);
+  const composition = createProductionConnectorApi018Composition({ ...configured, postgreSqlPool });
+  assert.equal(composition.persistence instanceof PostgreSqlConnectorExecutionUnitOfWork, true);
+  await composition.close();
+});
+
+test("R3-B4 Staging API-018 rejects SQLite persistence", () => {
+  const configured = {
+    runtimeEnvironment: "STAGING" as const,
+    databasePath: "connector.sqlite",
+    contextResolver: { resolve: () => undefined },
+    authorizer: { authorize: () => false },
+    admission: { evaluate: () => Object.freeze({ status: "BLOCKED" as const, reasonCode: "ADMISSION_DENIED" as const }) },
+    clock: () => now,
+    externalObservationSink: { submit: (): never => { throw new Error("not used"); } },
+    ambiguityCaseWriter: { linkAmbiguousInvocation(): void { void 0; } },
+    deferRuntimeActivation: true as const,
+  };
+  assert.throws(() => createProductionConnectorApi018Composition(configured), /PostgreSQL persistence is required/u);
 });
 
 test("F18-F API-018 exact replay survives restart before blocked live admission and rejects conflicting input", async () => {

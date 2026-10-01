@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 
 import { isAuthenticationAssuranceConsistent, type SessionContext } from "../../identity/src/session-service.js";
 import { parseConnectorApiRequest, type ConnectorApiOperation, type ConnectorApiRequest, type ConnectorApiRequestKind } from "./connector-api-contracts.js";
-import { ConnectorPersistenceError, type ConnectorExecutionScope, type ConnectorTechnicalRecordType, type DurableConnectorExecutionUnitOfWork } from "./connector-durable-persistence.js";
+import { ConnectorPersistenceError, type ConnectorExecutionScope, type ConnectorTechnicalRecordType } from "./connector-durable-persistence.js";
+import type { AsyncConnectorExecutionPersistence } from "./connector-async-persistence.js";
 import type { ConnectorExecutionCoordinator, ConnectorExecutionInput } from "./connector-execution-coordinator.js";
 import type { SourceIngestionScope } from "./source-ingestion-admission.js";
 import type { ExternalIntegrationApplicationResult } from "./external-integration-application.js";
@@ -33,7 +34,7 @@ export type ConnectorApplicationResult = Readonly<{ readonly ok: true; readonly 
 
 export class ConnectorRuntimeApplication {
   public constructor(private readonly dependencies: Readonly<{
-    readonly persistence: DurableConnectorExecutionUnitOfWork;
+    readonly persistence: AsyncConnectorExecutionPersistence;
     readonly contextResolver: ConnectorRuntimeContextResolver;
     readonly authorizer: ConnectorRuntimeAuthorizer;
     readonly coordinator: Pick<ConnectorExecutionCoordinator, "execute">;
@@ -42,7 +43,7 @@ export class ConnectorRuntimeApplication {
     readonly externalObservationSink?: Readonly<{ submit(input: unknown, sessionId: string): ExternalIntegrationApplicationResult }>;
   }>) {}
 
-  public execute(kind: ConnectorApiRequestKind, input: unknown): ConnectorApplicationResult {
+  public async execute(kind: ConnectorApiRequestKind, input: unknown): Promise<ConnectorApplicationResult> {
     let request: ConnectorApiRequest;
     try { request = parseConnectorApiRequest(kind, input); }
     catch { return error("VALIDATION_FAILED", "Connector request is invalid."); }
@@ -59,11 +60,11 @@ export class ConnectorRuntimeApplication {
       if (!this.dependencies.authorizer.authorize({ context, operation: request.operation, resourceId })) return error("FORBIDDEN", "Connector operation is not permitted.");
     } catch { return error("FORBIDDEN", "Connector operation is not permitted."); }
     const scope: ConnectorExecutionScope = Object.freeze({ tenantId: context.tenantId, scopeType: context.scope.scopeType, scopeId: context.scope.scopeId, sourceId: context.sourceId, connectorId: context.connectorId });
-    try { return this.dispatch(request, context, scope, now); }
+    try { return await this.dispatch(request, context, scope, now); }
     catch (caught) { return mapFailure(caught); }
   }
 
-  private dispatch(request: ConnectorApiRequest, context: ConnectorTrustedRuntimeContext, scope: ConnectorExecutionScope, now: string): ConnectorApplicationResult {
+  private async dispatch(request: ConnectorApiRequest, context: ConnectorTrustedRuntimeContext, scope: ConnectorExecutionScope, now: string): Promise<ConnectorApplicationResult> {
     switch (request.operation) {
       case "SubmitCaptureBatch": return this.submitCaptureBatch(request, context, scope, now);
       case "ReadBatchStatus": return this.readBatch(request, scope);
@@ -76,7 +77,7 @@ export class ConnectorRuntimeApplication {
     }
   }
 
-  private submitExternalObservation(request: ConnectorApiRequest, scope: ConnectorExecutionScope, context: ConnectorTrustedRuntimeContext): ConnectorApplicationResult {
+  private async submitExternalObservation(request: ConnectorApiRequest, scope: ConnectorExecutionScope, context: ConnectorTrustedRuntimeContext): Promise<ConnectorApplicationResult> {
     if (this.dependencies.externalObservationSink === undefined) return error("INTERNAL_ERROR", "Connector operation could not be completed.");
     const result = this.dependencies.externalObservationSink.submit({
       operation: "SubmitProviderObservation", integrationContractId: stringField(request, "integrationContractId"),
@@ -86,11 +87,11 @@ export class ConnectorRuntimeApplication {
       observedAt: stringField(request, "observedAt"), idempotencyKey: stringField(request, "idempotencyKey"),
       expectedMappingVersion: numberField(request, "expectedVersion"),
     }, context.session.id);
-    if (!result.ok) return error(result.error.code, result.error.message);
-    return this.record(request, scope, "EXTERNAL_OBSERVATION", stringField(request, "observationId"), "OBSERVED", String(result.data["evidenceRef"]), stringField(request, "observedAt"), { observationId: stringField(request, "observationId"), mappingState: result.data["mappingState"] });
+    if (result.ok === false) return error(result.error.code, result.error.message);
+    return await this.record(request, scope, "EXTERNAL_OBSERVATION", stringField(request, "observationId"), "OBSERVED", String(result.data["evidenceRef"]), stringField(request, "observedAt"), { observationId: stringField(request, "observationId"), mappingState: result.data["mappingState"] });
   }
 
-  private submitCaptureBatch(request: ConnectorApiRequest, context: ConnectorTrustedRuntimeContext, scope: ConnectorExecutionScope, now: string): ConnectorApplicationResult {
+  private async submitCaptureBatch(request: ConnectorApiRequest, context: ConnectorTrustedRuntimeContext, scope: ConnectorExecutionScope, now: string): Promise<ConnectorApplicationResult> {
     if (this.dependencies.executionAvailable === false) return error("CONNECTOR_UNAVAILABLE", "Connector execution is unavailable.");
     const invocationId = stringField(request, "invocationId");
     const expectedVersion = numberField(request, "expectedVersion");
@@ -102,32 +103,32 @@ export class ConnectorRuntimeApplication {
       inputReference: arrayField(request, "captureItemEvidenceRefs")[0]!, inputVersion: expectedVersion + 1,
       expectedCheckpointVersion: expectedVersion, preparedAt: now, startedAt: now, completedAt: now,
     });
-    const execution = this.dependencies.coordinator.execute(executionInput);
+    const execution = await this.dependencies.coordinator.execute(executionInput);
     if (execution.status === "BLOCKED") return error("FORBIDDEN", "Connector operation is not permitted.");
-    const state = this.dependencies.persistence.recordTechnicalState({ ...scope, recordType: "CAPTURE_BATCH", recordId: stringField(request, "batchId"), status: execution.status, expectedVersion, idempotencyKey: stringField(request, "idempotencyKey"), inputFingerprint: fingerprint(request), safeEvidenceReference: `evidence:capture-batch:${stringField(request, "batchId")}`, recordedAt: now, bindingReference: invocationId });
+    const state = await this.dependencies.persistence.recordTechnicalState({ ...scope, recordType: "CAPTURE_BATCH", recordId: stringField(request, "batchId"), status: execution.status, expectedVersion, idempotencyKey: stringField(request, "idempotencyKey"), inputFingerprint: fingerprint(request), safeEvidenceReference: `evidence:capture-batch:${stringField(request, "batchId")}`, recordedAt: now, bindingReference: invocationId });
     return success(request.operation, { batchId: state.recordId, invocationId, technicalStatus: state.status, currentVersion: state.version, evidenceRef: state.safeEvidenceReference, reasonCode: execution.reasonCode });
   }
 
-  private readBatch(request: ConnectorApiRequest, scope: ConnectorExecutionScope): ConnectorApplicationResult {
+  private async readBatch(request: ConnectorApiRequest, scope: ConnectorExecutionScope): Promise<ConnectorApplicationResult> {
     const batchId = stringField(request, "batchId");
-    const state = this.dependencies.persistence.findTechnicalState(scope, "CAPTURE_BATCH", batchId);
+    const state = await this.dependencies.persistence.findTechnicalState(scope, "CAPTURE_BATCH", batchId);
     if (state === undefined) return error("NOT_FOUND", "Connector resource is unavailable.");
-    const invocation = state.bindingReference === undefined ? undefined : this.dependencies.persistence.findInvocation(scope, state.bindingReference);
-    const checkpoint = this.dependencies.persistence.findCheckpoint(scope);
+    const invocation = state.bindingReference === undefined ? undefined : await this.dependencies.persistence.findInvocation(scope, state.bindingReference);
+    const checkpoint = await this.dependencies.persistence.findCheckpoint(scope);
     return success(request.operation, { batchId, ...(state.bindingReference === undefined ? {} : { invocationId: state.bindingReference }), technicalStatus: state.status, normalizedOutcome: invocation?.result?.outcome ?? state.status, currentVersion: state.version, evidenceRef: state.safeEvidenceReference, updatedAt: state.recordedAt, ...(checkpoint === undefined ? {} : { checkpointReference: checkpoint.checkpointReference, checkpointVersion: checkpoint.version }) });
   }
 
-  private readCommittedCheckpoint(request: ConnectorApiRequest, scope: ConnectorExecutionScope): ConnectorApplicationResult {
-    const invocation = this.dependencies.persistence.findInvocation(scope, stringField(request, "invocationId"));
-    const checkpoint = this.dependencies.persistence.findCheckpoint(scope);
+  private async readCommittedCheckpoint(request: ConnectorApiRequest, scope: ConnectorExecutionScope): Promise<ConnectorApplicationResult> {
+    const invocation = await this.dependencies.persistence.findInvocation(scope, stringField(request, "invocationId"));
+    const checkpoint = await this.dependencies.persistence.findCheckpoint(scope);
     if (invocation?.state !== "SUCCEEDED" || checkpoint?.version !== numberField(request, "priorCheckpointVersion") + 1 || checkpoint?.checkpointReference !== stringField(request, "checkpointCandidate")) {
       return error("CHECKPOINT_CONFLICT", "Connector checkpoint is unavailable.");
     }
     return success(request.operation, { invocationId: invocation.invocationId, checkpointReference: checkpoint.checkpointReference, checkpointVersion: checkpoint.version, evidenceRef: checkpoint.safeEvidenceReference });
   }
 
-  private record(request: ConnectorApiRequest, scope: ConnectorExecutionScope, recordType: ConnectorTechnicalRecordType, recordId: string, status: string, evidence: string, recordedAt: string, additions: Readonly<Record<string, unknown>> = {}): ConnectorApplicationResult {
-    const state = this.dependencies.persistence.recordTechnicalState({ ...scope, recordType, recordId, status, expectedVersion: numberField(request, "expectedVersion"), idempotencyKey: stringField(request, "idempotencyKey"), inputFingerprint: fingerprint(request), safeEvidenceReference: evidence, recordedAt });
+  private async record(request: ConnectorApiRequest, scope: ConnectorExecutionScope, recordType: ConnectorTechnicalRecordType, recordId: string, status: string, evidence: string, recordedAt: string, additions: Readonly<Record<string, unknown>> = {}): Promise<ConnectorApplicationResult> {
+    const state = await this.dependencies.persistence.recordTechnicalState({ ...scope, recordType, recordId, status, expectedVersion: numberField(request, "expectedVersion"), idempotencyKey: stringField(request, "idempotencyKey"), inputFingerprint: fingerprint(request), safeEvidenceReference: evidence, recordedAt });
     return success(request.operation, { connectorId: scope.connectorId, status: state.status, version: state.version, evidenceRef: state.safeEvidenceReference, updatedAt: state.recordedAt, ...additions });
   }
 }

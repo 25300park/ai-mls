@@ -1,4 +1,4 @@
-import type { DurableConnectorExecutionUnitOfWork } from "./connector-durable-persistence.js";
+import type { AsyncConnectorExecutionPersistence } from "./connector-async-persistence.js";
 import type { ConnectorExecutionCoordinator, ConnectorExecutionInput, ConnectorExecutionResult } from "./connector-execution-coordinator.js";
 import type { SourceIngestionAdmissionInput } from "./source-ingestion-admission.js";
 import { isValidConnectorTrustedRuntimeContext, type ConnectorRuntimeAuthorizer, type ConnectorRuntimeContextResolver, type ConnectorTrustedRuntimeContext } from "./connector-runtime-application.js";
@@ -185,7 +185,7 @@ export class ConnectorRecoveryExecutionHandoff {
   public constructor(private readonly dependencies: Readonly<{
     readonly authorizations: ConnectorRecoveryAuthorizationReader;
     readonly planner: Pick<ConnectorRecoveryExecutionPlanner, "plan">;
-    readonly persistence: Pick<DurableConnectorExecutionUnitOfWork, "findInvocation">;
+    readonly persistence: Pick<AsyncConnectorExecutionPersistence, "findInvocation">;
     readonly coordinator: Pick<ConnectorExecutionCoordinator, "execute">;
     readonly contextResolver: ConnectorRuntimeContextResolver;
     readonly authorizer: ConnectorRuntimeAuthorizer;
@@ -194,7 +194,7 @@ export class ConnectorRecoveryExecutionHandoff {
     readonly recoveryExecutionStore?: ConnectorRecoveryExecutionStore;
   }>) {}
 
-  public execute(request: ConnectorRecoveryExecutionRequest): ConnectorExecutionResult {
+  public async execute(request: ConnectorRecoveryExecutionRequest): Promise<ConnectorExecutionResult> {
     if (!nonBlank(request.recoveryId) || !nonBlank(request.sessionId) || !nonBlank(request.integrationContractId) || !Number.isInteger(request.expectedIntegrationContractVersion)) return blocked();
     const context = this.dependencies.contextResolver.resolve(request.sessionId);
     if (!isValidConnectorTrustedRuntimeContext(context, this.dependencies.clock())) return blocked();
@@ -215,7 +215,7 @@ export class ConnectorRecoveryExecutionHandoff {
     catch { return blocked(); }
     if (planned.invocationId === recovery.originIdentity.invocationId || planned.invocationId !== recovery.recoveryExecutionIdentity.invocationId) return blocked();
     const scope = { tenantId: admission.tenantId, scopeType: admission.scope.scopeType, scopeId: admission.scope.scopeId, sourceId: admission.sourceId, connectorId: admission.connectorId } as const;
-    if (this.dependencies.persistence.findInvocation(scope, recovery.originIdentity.invocationId) === undefined) return blocked();
+    if (await this.dependencies.persistence.findInvocation(scope, recovery.originIdentity.invocationId) === undefined) return blocked();
     const recoveryExecutionStore = this.dependencies.recoveryExecutionStore;
     if (recoveryExecutionStore === undefined) return blocked();
     const executionFingerprint = fingerprint([
@@ -258,7 +258,7 @@ export class ConnectorRecoveryExecutionHandoff {
       completedAt: request.completedAt,
       parentRecoveryCaseId: recovery.recoveryCaseId,
     });
-    const result = this.dependencies.coordinator.execute(input);
+    const result = await this.dependencies.coordinator.execute(input);
     const completed = recoveryExecutionStore.completeRecoveryExecution({ recoveryId: recovery.recoveryId, fingerprint: executionFingerprint, resultJson: JSON.stringify(result) });
     return decodeConnectorExecutionResult(completed.record.resultJson ?? JSON.stringify(result));
   }

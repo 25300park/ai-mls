@@ -21,6 +21,6 @@ export class ConnectorRuntime {
   public get status(): Readonly<{ readonly status: ConnectorRuntimeStatus }> { return Object.freeze({ status: this.#status }); }
   public get operations(): readonly string[] { return CONNECTOR_API_OPERATIONS; }
   public start(): Readonly<{ readonly status: ConnectorRuntimeStatus }> { if (this.#status !== "CREATED") throw new ConnectorRuntimeError("RUNTIME_LIFECYCLE_INVALID", "Connector Runtime lifecycle is invalid."); this.#status = "READY"; return this.status; }
-  public execute(kind: ConnectorApiRequestKind, request: unknown): ConnectorApplicationResult { if (this.#status !== "READY") throw new ConnectorRuntimeError("RUNTIME_NOT_READY", "Connector Runtime is not ready."); return this.#application.execute(kind, request); }
+  public execute(kind: ConnectorApiRequestKind, request: unknown): Promise<ConnectorApplicationResult> { if (this.#status !== "READY") return Promise.reject(new ConnectorRuntimeError("RUNTIME_NOT_READY", "Connector Runtime is not ready.")); return this.#application.execute(kind, request); }
   public stop(): Readonly<{ readonly status: ConnectorRuntimeStatus }> { if (this.#status !== "READY") throw new ConnectorRuntimeError("RUNTIME_LIFECYCLE_INVALID", "Connector Runtime lifecycle is invalid."); this.#status = "STOPPED"; return this.status; }
 }

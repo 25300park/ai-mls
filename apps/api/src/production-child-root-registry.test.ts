@@ -29,7 +29,7 @@ test("API-014 and API-015 cannot create an independent listener in Production", 
   } as never), /Independent Production listener is unavailable/u);
 });
 
-test("registry binds API-014 and API-015 to the bootstrap pool without adding roots", () => {
+test("registry binds API-014, API-015, and API-018 to the bootstrap pool without adding roots", () => {
   const source = readFileSync(new URL("./production-child-root-registry.js", import.meta.url), "utf8");
   for (const factory of [
     "composeProductionPublicationApi014HttpHandler", "composeProductionAdministrationApi015HttpHandler",
@@ -38,15 +38,18 @@ test("registry binds API-014 and API-015 to the bootstrap pool without adding ro
   assert.equal((source.match(/schemaMode: "REQUIRE_EXISTING"/gu) ?? []).length, 3);
   assert.match(source, /api014[\s\S]*postgreSqlPool: pool[\s\S]*runtimeEnvironment: "PRODUCTION"/u);
   assert.match(source, /api015[\s\S]*postgreSqlPool: pool[\s\S]*runtimeEnvironment: "PRODUCTION"/u);
+  assert.match(source, /api018[\s\S]*postgreSqlPool: pool[\s\S]*runtimeEnvironment: "PRODUCTION"/u);
   assert.doesNotMatch(source, /API-017|API-001|API-002/u);
 });
 
-test("R3-B3 prepares API-015 PostgreSQL composition while the remaining three child roots stay explicit fail-closed", () => {
+test("R3-B4 prepares API-018 PostgreSQL composition while API-019 and FEAT-022 stay explicit fail-closed", () => {
   const main = readFileSync(new URL("./production-main.js", import.meta.url), "utf8");
   assert.match(main, /api014:\s*Object\.freeze\(\{ runtimeEnvironment: "PRODUCTION" \}\)/u);
-  for (const root of ["api018", "api019", "feat022"] as const) assert.match(main, new RegExp(`${root}: null`, "u"));
+  assert.doesNotMatch(main, /api018: null/u);
+  for (const root of ["api019", "feat022"] as const) assert.match(main, new RegExp(`${root}: null`, "u"));
   assert.match(main, /assertR3B1PublicationSchemaReady\(pool\)/u);
   assert.match(main, /assertR3B1AdministrationSchemaReady\(pool\)/u);
+  assert.match(main, /assertR3B1ConnectorSchemaReady\(pool\)/u);
   assert.doesNotMatch(main, /assertR3B1ChildRootSchemasReady\(pool\)/u);
 });
 

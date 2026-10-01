@@ -23,7 +23,7 @@ import {
   type ProductionReadinessState,
   type ProductionRuntimeHttpListenerFactory,
 } from "./production-readiness-http.js";
-import { assertR3B1AdministrationSchemaReady, assertR3B1PublicationSchemaReady } from "./child-root-postgresql-readiness.js";
+import { assertR3B1AdministrationSchemaReady, assertR3B1ConnectorSchemaReady, assertR3B1PublicationSchemaReady } from "./child-root-postgresql-readiness.js";
 import {
   parseRailwayProductionRuntimeConfiguration,
   type RailwayProductionRuntimeConfiguration,
@@ -202,6 +202,7 @@ export function createRailwayProductionDependencies(
     assertComponentSchemasReady: async (_configuration: ProductionRuntimeConfiguration, pool: PostgreSqlPoolPort): Promise<void> => {
       await assertR3B1PublicationSchemaReady(pool);
       await assertR3B1AdministrationSchemaReady(pool);
+      await assertR3B1ConnectorSchemaReady(pool);
     },
     childRootOptions: Object.freeze({
       api014: Object.freeze({ runtimeEnvironment: "PRODUCTION" as const }),
@@ -213,7 +214,15 @@ export function createRailwayProductionDependencies(
         idFactory: randomUUID,
         sessionResolver: Object.freeze({ resolve: (): Promise<never> => unavailablePromise() }),
       }),
-      api018: null,
+      api018: Object.freeze({
+        runtimeEnvironment: "PRODUCTION" as const,
+        contextResolver: Object.freeze({ resolve: unreachable }),
+        authorizer: Object.freeze({ authorize: unreachable }),
+        admission: Object.freeze({ evaluate: unreachable }),
+        clock: () => new Date().toISOString(),
+        externalObservationSink: Object.freeze({ submit: unreachable }),
+        ambiguityCaseWriter: Object.freeze({ linkAmbiguousInvocation: unreachable }),
+      }),
       api019: null,
       feat022: null,
     }),
