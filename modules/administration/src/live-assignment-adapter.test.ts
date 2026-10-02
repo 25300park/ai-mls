@@ -168,3 +168,13 @@ test("F16-PHASE-7R revoked assignments never revive historical approval authorit
   })).resolveCurrentAssignments(context);
   assert.deepEqual(resolved, []);
 });
+import { createAsyncAdministrationBackedAuthorizationService } from "./live-assignment-adapter.js";
+import { AuditLog } from "../../audit/src/audit-log.js";
+test("R3-C2 async workload authorization reuses canonical assignment proposal/decision verification",async()=>{
+ const record=assignment({subjectPrincipalType:"SERVICE",resourceTypes:["Administration"],purposes:["STARTUP"],teamIds:["other",scope.scopeId]});let available=true;
+ const asyncReads={roleAssignments:{find:()=>Promise.resolve(record),listByScope:()=>Promise.resolve([record]),listBySubject:()=>Promise.resolve(available?[record]:[])},roles:{find:()=>Promise.resolve(role({roleCode:"SVC"})),listByScope:()=>Promise.resolve([])},proposals:{findById:()=>Promise.resolve(proposal()),listPending:()=>Promise.resolve([]),listByScope:()=>Promise.resolve([])},decisions:{findById:()=>Promise.resolve(decision()),list:()=>Promise.resolve([decision()]),listByScope:()=>Promise.resolve([])}};
+ const service=createAsyncAdministrationBackedAuthorizationService({...asyncReads,auditSink:new AuditLog({clock:()=>new Date("2026-08-15T00:00:00.000Z"),idFactory:()=>"audit-startup"}),clock:()=>new Date("2026-08-15T00:00:00.000Z"),policyVersion:"existing-policy"});
+ const method=(service as unknown as {evaluateWorkload:(request:unknown)=>Promise<{effect:string}>}).evaluateWorkload;
+ const request={subject:{registrationId:"registration",registrationVersion:1,tenantId,principalId:record.subjectPrincipalId,principalType:"SERVICE",assurance:"WORKLOAD",identityEvidenceRef:"proof",auditEvidenceRef:"audit"},action:"scope.use",resource:{type:"Administration",id:`Administration:TEAM_SCOPE:${scope.scopeId}`,tenantId,version:1,teamId:scope.scopeId},purpose:"STARTUP",correlationId:"startup"};
+ assert.equal((await method(request)).effect,"ALLOW");available=false;assert.equal((await method(request)).effect,"DENY");
+});

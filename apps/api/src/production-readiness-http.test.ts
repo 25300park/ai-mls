@@ -113,7 +113,8 @@ test("one listener owns readiness plus the closed API-014 and API-015 route tabl
 test("listener composition binds the exact parsed Railway PORT and rejects missing, duplicate, or child-owned routes", async () => {
   const configuration = parseRailwayProductionRuntimeConfiguration({
     RUNTIME_ENVIRONMENT: "PRODUCTION", CONFIGURATION_REFERENCE: "config:production:v1",
-    REQUIRED_SERVICE_REGISTRATIONS: "registration-api-014", PROVIDER_EXECUTION_AUTHORIZED: "false",
+    REQUIRED_SERVICE_REGISTRATIONS: "registration-api-014",
+    REQUIRED_SERVICE_WORKLOAD_PINS: '[{"registrationId":"registration-api-014","registrationVersion":1}]', STARTUP_WORKLOAD_PURPOSE: "startup", STARTUP_WORKLOAD_AUDIENCE: "api", PROVIDER_EXECUTION_AUTHORIZED: "false",
     IDENTITY_PERSISTENCE_ENGINE: "POSTGRESQL", IDENTITY_DATABASE_CONNECTION_MODE: "DIRECT",
     IDENTITY_DATABASE_HOST: "db.mfonujjeokvpsfucfxuq.supabase.co", IDENTITY_DATABASE_PORT: "5432",
     IDENTITY_DATABASE_NAME: "postgres", IDENTITY_DATABASE_USER: "ai_mls_production_runtime",

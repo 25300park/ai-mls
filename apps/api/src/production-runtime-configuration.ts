@@ -1,3 +1,4 @@
+import type { ProductionPinnedServiceIdentityReference } from "./production-service-identity-resolver.js";
 import { X509Certificate } from "node:crypto";
 
 import type { PgConnectionPoolOptions } from "../../../modules/identity/src/index.js";
@@ -9,6 +10,8 @@ const exactConnectionReference = "railway-sealed-env:AI_MLS_PRODUCTION_IDENTITY_
 const exactCaCertificateReference = "railway-sealed-env:AI_MLS_PRODUCTION_IDENTITY_DATABASE_CA_CERT_V1";
 
 export interface RailwayProductionRuntimeConfiguration extends ProductionRuntimeConfiguration {
+  readonly requiredServiceWorkloadPins: readonly ProductionPinnedServiceIdentityReference[];
+  readonly startupWorkloadPurpose: string; readonly startupWorkloadAudience: string;
   readonly port: number;
   readonly identityDatabase: Readonly<{
     connectionMode: "DIRECT";
@@ -47,6 +50,9 @@ export function parseRailwayProductionRuntimeConfiguration(raw: unknown): Railwa
   const runtimeEnvironment = exact(source, "RUNTIME_ENVIRONMENT", "PRODUCTION");
   const configurationReference = reference(source, "CONFIGURATION_REFERENCE");
   const requiredServiceRegistrations = registrations(required(source, "REQUIRED_SERVICE_REGISTRATIONS"));
+  const requiredServiceWorkloadPins = workloadPins(required(source,"REQUIRED_SERVICE_WORKLOAD_PINS"),requiredServiceRegistrations);
+  const startupWorkloadPurpose = required(source,"STARTUP_WORKLOAD_PURPOSE");
+  const startupWorkloadAudience = required(source,"STARTUP_WORKLOAD_AUDIENCE");
   exact(source, "PROVIDER_EXECUTION_AUTHORIZED", "false");
   const providerExecutionAuthorized = false as const;
   const identityPersistenceEngine = exact(source, "IDENTITY_PERSISTENCE_ENGINE", "POSTGRESQL");
@@ -72,7 +78,7 @@ export function parseRailwayProductionRuntimeConfiguration(raw: unknown): Railwa
   return Object.freeze({
     runtimeEnvironment,
     configurationReference,
-    requiredServiceRegistrations,
+    requiredServiceRegistrations, requiredServiceWorkloadPins, startupWorkloadPurpose, startupWorkloadAudience,
     providerExecutionAuthorized,
     identityPersistenceEngine,
     identityDatabase,
@@ -165,4 +171,19 @@ function safeCertificate(value: unknown): value is string {
 
 function unavailable(): ProductionRuntimeConfigurationError {
   return new ProductionRuntimeConfigurationError();
+}
+function workloadPins(text:string,registrations:readonly string[]):readonly ProductionPinnedServiceIdentityReference[] {
+ try {
+  const value:unknown=JSON.parse(text);
+  if(!Array.isArray(value)||value.length!==registrations.length)throw unavailable();
+  const pins:ProductionPinnedServiceIdentityReference[]=[];
+  for(const item of value as unknown[]){
+   if(typeof item!=="object"||item===null||Object.keys(item).length!==2)throw unavailable();
+   const row=item as Record<string,unknown>;
+   if(!safeValue(row["registrationId"],128)||typeof row["registrationVersion"]!=="number"||!Number.isSafeInteger(row["registrationVersion"])||row["registrationVersion"]<1)throw unavailable();
+   pins.push(Object.freeze({registrationId:row["registrationId"],registrationVersion:row["registrationVersion"]}));
+  }
+  if(new Set(pins.map(p=>p.registrationId)).size!==pins.length||pins.some(p=>!registrations.includes(p.registrationId)))throw unavailable();
+  return Object.freeze(pins);
+ }catch{throw unavailable();}
 }

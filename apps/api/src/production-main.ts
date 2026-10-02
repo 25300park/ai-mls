@@ -23,7 +23,8 @@ import {
   type ProductionReadinessState,
   type ProductionRuntimeHttpListenerFactory,
 } from "./production-readiness-http.js";
-import { assertR3B1ChildRootSchemasReady } from "./child-root-postgresql-readiness.js";
+import { assertR3C2AggregateSchemasReady } from "./r3c2-aggregate-readiness.js";
+import {createProductionStartupPreparation,type ProductionStartupPreparation} from "./production-startup-preparation.js";
 import {
   parseRailwayProductionRuntimeConfiguration,
   type RailwayProductionRuntimeConfiguration,
@@ -41,13 +42,13 @@ export type RailwayProductionDependencyClassification =
   | "NEW_IMPLEMENTATION_REQUIRED";
 
 export const RAILWAY_PRODUCTION_DEPENDENCY_CLASSIFICATION = Object.freeze({
-  openIdentityAuthorityReadOnly: "EXISTING_BUT_NOT_PRODUCTION_COMPOSABLE",
+  openIdentityAuthorityReadOnly: "EXISTING_APPROVED_ADAPTER",
   validateHumanIdentityAuthority: "NEW_IMPLEMENTATION_REQUIRED",
-  resolveRequiredServiceIdentities: "EXISTING_BUT_NOT_PRODUCTION_COMPOSABLE",
+  resolveRequiredServiceIdentities: "EXISTING_APPROVED_ADAPTER",
   resolveRequiredSecrets: "EXTERNAL_PREREQUISITE",
-  validateStartupGate: "NEW_IMPLEMENTATION_REQUIRED",
+  validateStartupGate: "EXISTING_APPROVED_ADAPTER",
   createSessionUnitOfWork: "EXISTING_APPROVED_ADAPTER",
-  assertComponentSchemasReady: "REQUIRES_R3_B_CHILD_ROOT_POSTGRES",
+  assertComponentSchemasReady: "EXISTING_APPROVED_ADAPTER",
   childRootOptions: "REQUIRES_R3_B_CHILD_ROOT_POSTGRES",
   startListeners: "EXISTING_APPROVED_ADAPTER",
   startWorkers: "NEW_IMPLEMENTATION_REQUIRED",
@@ -181,8 +182,13 @@ export function createRailwayProductionDependencies(
   const unavailablePromise = <Value>(): Promise<Value> => Promise.reject(new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE"));
   const clock = (): Date => new Date();
   const auditSink = new AuditLog({ clock, idFactory: randomUUID });
+  let startupConfiguration:RailwayProductionRuntimeConfiguration|undefined;
+  let preparation:ProductionStartupPreparation|undefined;
   return Object.freeze({
-    parseConfiguration: parseRailwayProductionRuntimeConfiguration,
+    parseConfiguration: (raw:unknown):RailwayProductionRuntimeConfiguration=>{
+      if(preparation!==undefined)throw new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE");
+      startupConfiguration=parseRailwayProductionRuntimeConfiguration(raw);return startupConfiguration;
+    },
     validateConfiguration: () => undefined,
     validateMandatorySecretReferences: () => undefined,
     openPostgreSqlPool: (configuration: ProductionRuntimeConfiguration): Promise<PostgreSqlPoolPort> =>
@@ -192,15 +198,23 @@ export function createRailwayProductionDependencies(
           environment,
           "PG_PRODUCTION_POOL",
         )),
-    openIdentityAuthorityReadOnly: (): Promise<AsyncRegisteredServiceWorkloadAuthorityLease> => unavailablePromise(),
+    openIdentityAuthorityReadOnly: (pool:PostgreSqlPoolPort): Promise<AsyncRegisteredServiceWorkloadAuthorityLease> => {
+      if(startupConfiguration===undefined||preparation!==undefined)return unavailablePromise();
+      preparation=createProductionStartupPreparation(pool,startupConfiguration,clock);return Promise.resolve(preparation.authority);
+    },
     validateHumanIdentityAuthority: unreachable,
-    resolveRequiredServiceIdentities: (): Promise<readonly ProductionServiceIdentityBinding[]> => unavailablePromise(),
+    resolveRequiredServiceIdentities: (authority:AsyncRegisteredServiceWorkloadAuthorityLease,configuration:ProductionRuntimeConfiguration): Promise<readonly ProductionServiceIdentityBinding[]> => {
+      if(authority!==preparation?.authority||configuration!==startupConfiguration)return unavailablePromise();
+      return preparation.resolveRequired();
+    },
     resolveRequiredSecrets: (): Promise<void> => unavailablePromise(),
-    validateStartupGate: unreachable,
+    validateStartupGate: (configuration:ProductionRuntimeConfiguration,identities:readonly ProductionServiceIdentityBinding[]):string=>{
+      if(preparation===undefined||configuration!==startupConfiguration)return unreachable();return preparation.validateStartupGate(identities);
+    },
     createSessionUnitOfWork: (pool: PostgreSqlPoolPort): Promise<ProductionAsyncClosableResource> =>
       Promise.resolve(new PostgreSqlSessionUnitOfWork(pool)),
     assertComponentSchemasReady: async (_configuration: ProductionRuntimeConfiguration, pool: PostgreSqlPoolPort): Promise<void> => {
-      await assertR3B1ChildRootSchemasReady(pool);
+      await assertR3C2AggregateSchemasReady(pool);
     },
     childRootOptions: Object.freeze({
       api014: Object.freeze({ runtimeEnvironment: "PRODUCTION" as const }),

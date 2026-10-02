@@ -88,6 +88,7 @@ interface AsyncLiveAuthorizationCompositionDependencies {
 }
 
 export interface AsyncLiveAdministrationAuthorizationService {
+  evaluateWorkload(request: WorkloadAuthorizationRequest): Promise<AuthorizationDecision>;
   evaluate(request: AuthorizationRequest): Promise<AuthorizationDecision>;
 }
 
@@ -95,33 +96,23 @@ export interface AsyncLiveAdministrationAuthorizationService {
 export function createAsyncAdministrationBackedAuthorizationService(
   dependencies: AsyncLiveAuthorizationCompositionDependencies,
 ): AsyncLiveAdministrationAuthorizationService {
+  const resolveService = async (context: LiveAssignmentResolutionContext): Promise<AuthorizationService> => {
+    const records = await dependencies.roleAssignments.listBySubject(context.tenantId,context.subjectPrincipalId);
+    const assignments: LiveRoleAssignment[]=[];
+    for(const record of records){const mapped=await mapCurrentAssignmentAsync(record,context,dependencies);if(mapped!==undefined)assignments.push(mapped);}
+    return new AuthorizationService({liveAssignmentResolver:{resolveCurrentAssignments:()=>Object.freeze(assignments)},auditSink:dependencies.auditSink,clock:dependencies.clock,policyVersion:dependencies.policyVersion});
+  };
   return Object.freeze({
     evaluate: async (request: AuthorizationRequest): Promise<AuthorizationDecision> => {
-      const context: LiveAssignmentResolutionContext = {
-        tenantId: request.resource.tenantId ?? "",
-        subjectPrincipalId: request.session.principalId,
-        subjectPrincipalType: request.session.principalType,
-        resourceType: request.resource.type,
-        purpose: request.purpose,
-        ...(request.session.teamId === undefined ? {} : { teamId: request.session.teamId }),
-      };
-      const records = await dependencies.roleAssignments.listBySubject(context.tenantId, context.subjectPrincipalId);
-      const assignments: LiveRoleAssignment[] = [];
-      for (const record of records) {
-        const mapped = await mapCurrentAssignmentAsync(record, context, dependencies);
-        if (mapped !== undefined) assignments.push(mapped);
-      }
-      const service = new AuthorizationService({
-        liveAssignmentResolver: { resolveCurrentAssignments: (): readonly LiveRoleAssignment[] => Object.freeze(assignments) },
-        auditSink: dependencies.auditSink,
-        clock: dependencies.clock,
-        policyVersion: dependencies.policyVersion,
-      });
-      return service.evaluate(request);
+      const context:LiveAssignmentResolutionContext={tenantId:request.resource.tenantId??"",subjectPrincipalId:request.session.principalId,subjectPrincipalType:request.session.principalType,resourceType:request.resource.type,purpose:request.purpose,...(request.session.teamId===undefined?{}:{teamId:request.session.teamId})};
+      return (await resolveService(context)).evaluate(request);
+    },
+    evaluateWorkload: async (request: WorkloadAuthorizationRequest): Promise<AuthorizationDecision> => {
+      const context:LiveAssignmentResolutionContext={tenantId:request.resource.tenantId??"",subjectPrincipalId:request.subject.principalId,subjectPrincipalType:request.subject.principalType,resourceType:request.resource.type,purpose:request.purpose,...(request.resource.teamId===undefined?{}:{teamId:request.resource.teamId})};
+      return (await resolveService(context)).evaluateWorkload(request);
     },
   });
 }
-
 async function mapCurrentAssignmentAsync(
   record: RoleAssignmentPersistenceRecord,
   context: LiveAssignmentResolutionContext,

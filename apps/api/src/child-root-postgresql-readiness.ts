@@ -50,7 +50,7 @@ interface ReadinessRow extends Record<string, unknown> {
   readonly unexpected_role_membership: boolean;
 }
 
-const READINESS_QUERY = `
+export const READINESS_QUERY = `
 WITH expected(schema_name) AS (
   VALUES ('app_publication'), ('app_administration'), ('app_connector'),
          ('app_external_integration'), ('app_advisory')
@@ -135,7 +135,7 @@ async function assertContractsReady(pool: PostgreSqlPoolPort, contracts: readonl
   if (evidence.status !== "READY") throw new ChildRootSchemaReadinessError(evidence);
 }
 
-async function evaluateContracts(pool: PostgreSqlPoolPort, contracts: readonly R3B1ChildRootSchemaContract[]): Promise<ChildRootSchemaReadinessEvidence> {
+export async function evaluateContracts(pool: PostgreSqlPoolPort, contracts: readonly R3B1ChildRootSchemaContract[]): Promise<ChildRootSchemaReadinessEvidence> {
   let client: Awaited<ReturnType<PostgreSqlPoolPort["connect"]>> | undefined;
   let evidence: ChildRootSchemaReadinessEvidence;
   try {

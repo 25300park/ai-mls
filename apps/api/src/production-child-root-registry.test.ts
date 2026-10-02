@@ -48,7 +48,7 @@ test("R3-B6 prepares all five shared-pool persistence boundaries while deploymen
   assert.doesNotMatch(main, /api018: null/u);
   assert.doesNotMatch(main, /api019: null/u);
   assert.doesNotMatch(main, /feat022: null/u);
-  assert.match(main, /assertR3B1ChildRootSchemasReady\(pool\)/u);
+  assert.match(main, /assertR3C2AggregateSchemasReady\(pool\)/u);
 });
 
 test("only the canonical bootstrap imports the internal context issuer", () => {

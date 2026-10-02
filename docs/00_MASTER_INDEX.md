@@ -1535,3 +1535,10 @@
 |---|---|---|
 | DOC-DEV-393 | R3-C2C Implementation Plan | [Implementation Plan](implementation/REL002_R3C2C_IMPLEMENTATION_PLAN.md) |
 | DOC-REVIEW-267 | R3-C2C Completion | [Completion Report](reviews/REL002_R3C2C_COMPLETION.md) |
+
+## REL-002 R3-C2 — pinned durable workload startup gate
+
+| Document ID | 문서 | 링크 |
+|---|---|---|
+| DOC-DEV-392 | R3-C2 Implementation Plan | [Implementation Plan](implementation/REL002_R3C2_IMPLEMENTATION_PLAN.md) |
+| DOC-REVIEW-268 | R3-C2 Completion | [Completion Report](reviews/REL002_R3C2_COMPLETION.md) |

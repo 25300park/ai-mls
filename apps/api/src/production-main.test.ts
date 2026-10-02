@@ -23,6 +23,7 @@ function productionEnvironment(): Readonly<Record<string, string>> {
     RUNTIME_ENVIRONMENT: "PRODUCTION",
     CONFIGURATION_REFERENCE: "config:production:v1",
     REQUIRED_SERVICE_REGISTRATIONS: "registration-api-014",
+    REQUIRED_SERVICE_WORKLOAD_PINS: '[{"registrationId":"registration-api-014","registrationVersion":1}]', STARTUP_WORKLOAD_PURPOSE: "startup", STARTUP_WORKLOAD_AUDIENCE: "api",
     PROVIDER_EXECUTION_AUTHORIZED: "false",
     IDENTITY_PERSISTENCE_ENGINE: "POSTGRESQL",
     IDENTITY_DATABASE_CONNECTION_MODE: "DIRECT",
@@ -75,13 +76,13 @@ test("the executable composition fails closed before PostgreSQL when sealed runt
 
 test("the Railway factory classifies every R3-A dependency without selecting test or development composition", () => {
   assert.deepEqual(RAILWAY_PRODUCTION_DEPENDENCY_CLASSIFICATION, {
-    openIdentityAuthorityReadOnly: "EXISTING_BUT_NOT_PRODUCTION_COMPOSABLE",
+    openIdentityAuthorityReadOnly: "EXISTING_APPROVED_ADAPTER",
     validateHumanIdentityAuthority: "NEW_IMPLEMENTATION_REQUIRED",
-    resolveRequiredServiceIdentities: "EXISTING_BUT_NOT_PRODUCTION_COMPOSABLE",
+    resolveRequiredServiceIdentities: "EXISTING_APPROVED_ADAPTER",
     resolveRequiredSecrets: "EXTERNAL_PREREQUISITE",
-    validateStartupGate: "NEW_IMPLEMENTATION_REQUIRED",
+    validateStartupGate: "EXISTING_APPROVED_ADAPTER",
     createSessionUnitOfWork: "EXISTING_APPROVED_ADAPTER",
-    assertComponentSchemasReady: "REQUIRES_R3_B_CHILD_ROOT_POSTGRES",
+    assertComponentSchemasReady: "EXISTING_APPROVED_ADAPTER",
     childRootOptions: "REQUIRES_R3_B_CHILD_ROOT_POSTGRES",
     startListeners: "EXISTING_APPROVED_ADAPTER",
     startWorkers: "NEW_IMPLEMENTATION_REQUIRED",

@@ -1,5 +1,4 @@
 import type {
-  RegisteredServiceWorkloadEvidenceVerifier,
   RegisteredServiceWorkloadRecord,
 } from "./registered-service-workload.js";
 import { RegisteredServiceWorkloadError } from "./registered-service-workload.js";
@@ -20,7 +19,7 @@ export class PostgreSqlRegisteredServiceWorkloadStore implements AsyncRegistered
 
   public constructor(
     private readonly pool: PostgreSqlPoolPort,
-    private readonly evidenceVerifier: RegisteredServiceWorkloadEvidenceVerifier,
+    private readonly evidenceVerifier: { assertRegisteredWorkloadEvidence(record: RegisteredServiceWorkloadRecord): void | Promise<void> },
   ) {
     if (typeof pool?.connect !== "function" || typeof evidenceVerifier?.assertRegisteredWorkloadEvidence !== "function") {
       throw unavailable();
@@ -37,21 +36,22 @@ export class PostgreSqlRegisteredServiceWorkloadStore implements AsyncRegistered
   public async findByRegistrationId(registrationId: string): Promise<Readonly<RegisteredServiceWorkloadRecord> | undefined> {
     this.assertOpen();
     if (!safeText(registrationId)) return undefined;
-    const client = await this.connect();
     try {
+      const client = await this.connect();
+      let record: RegisteredServiceWorkloadRecord;
+      try {
       const result = await client.query(`SELECT registration_id, tenant_id, principal_id, principal_type,
         assurance, environment, status, workload_purpose, audience, registration_version,
         identity_evidence_ref, audit_evidence_ref, created_at, updated_at
         FROM app_identity.identity_registered_service_workloads WHERE registration_id = $1`, [registrationId]);
       if (result.rowCount === 0) return undefined;
-      const record = decodeRecord(result.rows[0]);
-      this.evidenceVerifier.assertRegisteredWorkloadEvidence(record);
+      record = decodeRecord(result.rows[0]);
+      } finally { client.release(); }
+      // Durable evidence may use the same max=1 pool: never retain this client while awaiting it.
+      await this.evidenceVerifier.assertRegisteredWorkloadEvidence(record);
+      this.assertOpen();
       return Object.freeze(record);
-    } catch {
-      throw unavailable();
-    } finally {
-      client.release();
-    }
+    } catch { throw unavailable(); }
   }
 
   public close(): Promise<void> {

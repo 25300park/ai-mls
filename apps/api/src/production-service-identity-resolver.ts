@@ -1,3 +1,4 @@
+import type { AsyncRegisteredServiceWorkloadAuthorityLease } from "../../../modules/identity/src/registered-service-workload-postgresql.js";
 import type {
   RegisteredServiceWorkloadAuthorityLease,
   RegisteredServiceWorkloadRecord,
@@ -105,4 +106,41 @@ function safeText(value: unknown): value is string {
 
 function unavailable(): ProductionServiceIdentityError {
   return new ProductionServiceIdentityError("PRODUCTION_SERVICE_IDENTITY_UNAVAILABLE");
+}
+
+export interface ProductionPinnedServiceIdentityReference {
+  readonly registrationId: string;
+  readonly registrationVersion: number;
+}
+export interface AsyncProductionServiceIdentityResolverDependencies {
+  readonly authority: AsyncRegisteredServiceWorkloadAuthorityLease;
+  readonly expectedWorkloadPurpose: string;
+  readonly expectedAudience: string;
+}
+export class AsyncProductionServiceIdentityResolver {
+  public constructor(private readonly dependencies: AsyncProductionServiceIdentityResolverDependencies) {
+    if (!safeText(dependencies.expectedWorkloadPurpose) || !safeText(dependencies.expectedAudience) || typeof dependencies.authority?.findByRegistrationId !== "function") throw unavailable();
+  }
+  public async resolve(reference: ProductionPinnedServiceIdentityReference): Promise<Readonly<ProductionServiceIdentityBinding>> {
+    if (!exactPinnedReference(reference)) throw unavailable();
+    const pin = { ...reference };
+    try {
+      const record = await this.dependencies.authority.findByRegistrationId(pin.registrationId);
+      if (record?.registrationId !== pin.registrationId || record.registrationVersion !== pin.registrationVersion
+        || !validActiveRecord(record, this.dependencies.expectedWorkloadPurpose, this.dependencies.expectedAudience)) throw unavailable();
+      return binding(record);
+    } catch { throw unavailable(); }
+  }
+  public async assertStillActive(prior: ProductionServiceIdentityBinding): Promise<void> {
+    if (!exactBinding(prior)) throw unavailable();
+    const captured = { ...prior };
+    const current = await this.resolve({ registrationId: captured.registrationId, registrationVersion: captured.registrationVersion });
+    for (const key of Object.keys(captured) as (keyof ProductionServiceIdentityBinding)[]) if (captured[key] !== current[key]) throw unavailable();
+  }
+}
+function exactPinnedReference(value: unknown): value is ProductionPinnedServiceIdentityReference {
+  if (typeof value !== "object" || value === null || Object.keys(value).length !== 2) return false;
+  const record = value as Record<string, unknown>;
+  return Object.hasOwn(record, "registrationId") && Object.hasOwn(record, "registrationVersion") && safeText(record["registrationId"])
+    && typeof record["registrationVersion"] === "number" && Number.isSafeInteger(record["registrationVersion"]) && record["registrationVersion"] > 0;
 }

@@ -14,6 +14,7 @@ function environment(): Readonly<Record<string, string>> {
     RUNTIME_ENVIRONMENT: "PRODUCTION",
     CONFIGURATION_REFERENCE: "config:production:v1",
     REQUIRED_SERVICE_REGISTRATIONS: "registration-api-014,registration-api-015",
+    REQUIRED_SERVICE_WORKLOAD_PINS: '[{"registrationId":"registration-api-014","registrationVersion":1},{"registrationId":"registration-api-015","registrationVersion":1}]', STARTUP_WORKLOAD_PURPOSE: "startup", STARTUP_WORKLOAD_AUDIENCE: "api",
     PROVIDER_EXECUTION_AUTHORIZED: "false",
     IDENTITY_PERSISTENCE_ENGINE: "POSTGRESQL",
     IDENTITY_DATABASE_CONNECTION_MODE: "DIRECT",
@@ -101,4 +102,10 @@ test("maps exact approved timeout, pool, and VERIFY_FULL TLS values without logg
     connectionString: options.connectionString,
     caCertificate: "-----BEGIN CERTIFICATE-----\nVEVTVC1DQQ==\n-----END CERTIFICATE-----",
   }), /configuration is unavailable/u);
+});
+test("R3-C2 Production config requires exact explicit registration/version pins",()=>{
+ const configured={...environment(),REQUIRED_SERVICE_WORKLOAD_PINS:JSON.stringify([{registrationId:"registration-api-014",registrationVersion:2},{registrationId:"registration-api-015",registrationVersion:3}]),STARTUP_WORKLOAD_PURPOSE:"startup",STARTUP_WORKLOAD_AUDIENCE:"api"};
+ const result=parseRailwayProductionRuntimeConfiguration(configured) as unknown as {requiredServiceWorkloadPins:unknown};
+ assert.deepEqual(result.requiredServiceWorkloadPins,[{registrationId:"registration-api-014",registrationVersion:2},{registrationId:"registration-api-015",registrationVersion:3}]);
+ for(const value of [undefined,"[]","latest",JSON.stringify([{registrationId:"registration-api-014",registrationVersion:0}]),JSON.stringify([{registrationId:"registration-api-014",registrationVersion:2,latest:true}])])assert.throws(()=>parseRailwayProductionRuntimeConfiguration({...configured,REQUIRED_SERVICE_WORKLOAD_PINS:value}));
 });
