@@ -8,7 +8,7 @@ import type {
 import type { BoundedJobHandler, CanonicalJobHandlerId, JobExecutionContext, JobExecutionFailureMapper } from "./job-execution-runtime.js";
 import type { DurableJobType, NormalizedJobFailure } from "./job-durable-persistence.js";
 
-type CapabilityApplicationPort = Readonly<{ execute(input: AdvisoryApplicationExecutionInput): AdvisoryApplicationResult }>;
+type CapabilityApplicationPort = Readonly<{ execute(input: AdvisoryApplicationExecutionInput ): Promise<AdvisoryApplicationResult> }>;
 
 export class Ai001ListingParseJobHandler implements BoundedJobHandler {
   public readonly handlerId = "AI-001" as const;
@@ -38,14 +38,14 @@ class AdvisoryJobHandlerDelegate {
     private readonly port: CapabilityApplicationPort,
   ) {}
 
-  public execute(context: JobExecutionContext): ReturnType<BoundedJobHandler["execute"]> {
+  public async execute(context: JobExecutionContext): Promise<Awaited<ReturnType<BoundedJobHandler["execute"]>>> {
     if (context.jobType !== this.jobType || context.inputReferences.length !== 1) throw new Error("JOB_RESULT_INVALID");
     const reference = context.inputReferences[0];
     const principalEvidenceRef = context.initiatingPrincipalProvenance.kind === "IMMUTABLE_REFERENCE"
       ? context.initiatingPrincipalProvenance.evidenceRef
       : context.originatingAuthorityEvidenceRefs[0];
     if (reference === undefined || !nonempty(principalEvidenceRef)) throw new Error("JOB_RESULT_INVALID");
-    const accepted = this.port.execute(Object.freeze({
+    const accepted = await this.port.execute(Object.freeze({
       tenantId: context.tenantId,
       scopeRef: context.scopeRef,
       inputReference: Object.freeze({ entityType: reference.type, entityId: reference.id, version: String(reference.version) }),

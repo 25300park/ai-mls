@@ -143,3 +143,7 @@ async function assertContractsReady(pool: PostgreSqlPoolPort, contracts: readonl
 function notReady(): Error {
   return new Error("R3B1_CHILD_ROOT_SCHEMA_NOT_READY");
 }
+
+export async function assertR3B1AdvisorySchemaReady(pool: PostgreSqlPoolPort): Promise<void> {
+  await assertContractsReady(pool, R3B1_CHILD_ROOT_SCHEMA_CONTRACTS.filter((contract) => contract.schemaName === "app_advisory"));
+}

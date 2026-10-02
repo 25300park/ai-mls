@@ -94,8 +94,8 @@ test("Phase 3D registry accepts an approved application handler implemented as a
   class ApplicationHandler implements BoundedJobHandler {
     readonly handlerId = "AI-001" as const;
 
-    execute(): ReturnType<BoundedJobHandler["execute"]> {
-      return handler.execute({} as never);
+    async execute(): Promise<Awaited<ReturnType<BoundedJobHandler["execute"]>>> {
+      return (await handler.execute({} as never));
     }
   }
 
@@ -135,17 +135,17 @@ test("Phase 3D registry rejects a handler whose declared canonical identity is s
   );
 });
 
-test("Phase 3D blocked live admission leaves the durable queued Job unchanged and invokes no handler", () => {
+test("Phase 3D blocked live admission leaves the durable queued Job unchanged and invokes no handler", async () => {
   const f = fixture();
   try {
     const store = new DurableJobStore({ databasePath: f.databasePath, idFactory: sequence("job-a"), clock: clockSequence("2026-09-15T00:00:00.000Z") });
     store.submitJob(submission());
     let handlerCalls = 0;
-    const blockedHandler: BoundedJobHandler = Object.freeze({ handlerId: "AI-001", execute: () => { handlerCalls += 1; return handler.execute({} as never); } });
+    const blockedHandler: BoundedJobHandler = Object.freeze({ handlerId: "AI-001", execute: async () => { handlerCalls += 1; return (await handler.execute({} as never)); } });
     const admission: JobExecutionAdmissionPort = Object.freeze({ evaluate: () => Object.freeze({ status: "BLOCKED" as const }) });
     const runtime = new JobExecutionRuntime({ store, registry: new JobExecutionRegistry({ AI_LISTING_PARSE: blockedHandler, AI_REQUIREMENT_PARSE: requirementHandler, AI_MATCHING: matchingHandler }), admission, failureMapper: rejectingFailureMapper });
 
-    const result = runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" });
+    const result = (await runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" }));
 
     assert.equal(result.status, "BLOCKED");
     assert.equal(handlerCalls, 0);
@@ -157,7 +157,7 @@ test("Phase 3D blocked live admission leaves the durable queued Job unchanged an
   }
 });
 
-test("Phase 3D one-shot execution passes only durable canonical context and persists success", () => {
+test("Phase 3D one-shot execution passes only durable canonical context and persists success", async () => {
   const f = fixture();
   try {
     const store = new DurableJobStore({ databasePath: f.databasePath, idFactory: sequence("job-a"), clock: clockSequence("2026-09-15T00:00:00.000Z", "2026-09-15T00:01:00.000Z", "2026-09-15T00:02:00.000Z") });
@@ -189,7 +189,7 @@ test("Phase 3D one-shot execution passes only durable canonical context and pers
     });
     const runtime = new JobExecutionRuntime({ store, registry: new JobExecutionRegistry({ AI_LISTING_PARSE: executingHandler, AI_REQUIREMENT_PARSE: requirementHandler, AI_MATCHING: matchingHandler }), admission, failureMapper: rejectingFailureMapper });
 
-    const result = runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" });
+    const result = (await runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" }));
 
     assert.equal(result.status, "SUCCEEDED");
     assert.equal(result.handlerId, "AI-001");
@@ -215,7 +215,7 @@ test("Phase 3D one-shot execution passes only durable canonical context and pers
   }
 });
 
-test("Phase 3D concealment and terminal replay prevent duplicate handler execution", () => {
+test("Phase 3D concealment and terminal replay prevent duplicate handler execution", async () => {
   const f = fixture();
   try {
     const store = new DurableJobStore({ databasePath: f.databasePath, idFactory: sequence("job-a"), clock: clockSequence("2026-09-15T00:00:00.000Z", "2026-09-15T00:01:00.000Z", "2026-09-15T00:02:00.000Z") });
@@ -225,13 +225,13 @@ test("Phase 3D concealment and terminal replay prevent duplicate handler executi
     const admission: JobExecutionAdmissionPort = Object.freeze({ evaluate: () => Object.freeze({ status: "ALLOWED" as const, evidenceRefs: Object.freeze(["evidence:execution-admission-a"]) }) });
     const runtime = new JobExecutionRuntime({ store, registry: new JobExecutionRegistry({ AI_LISTING_PARSE: executingHandler, AI_REQUIREMENT_PARSE: requirementHandler, AI_MATCHING: matchingHandler }), admission, failureMapper: rejectingFailureMapper });
 
-    assert.throws(
-      () => runtime.execute({ jobId: "job-a", tenantId: "tenant-b", scopeRef: "team:team-a", correlationId: "correlation-wrong-tenant" }),
+    await assert.rejects(
+      async () => (await runtime.execute({ jobId: "job-a", tenantId: "tenant-b", scopeRef: "team:team-a", correlationId: "correlation-wrong-tenant" })),
       (error: unknown) => error instanceof DurableJobStoreError && error.code === "JOB_NOT_FOUND",
     );
     assert.equal(handlerCalls, 0);
-    assert.equal(runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" }).status, "SUCCEEDED");
-    const replay = runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-replay-a" });
+    assert.equal((await runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" })).status, "SUCCEEDED");
+    const replay = (await runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-replay-a" }));
     assert.equal(replay.status, "REPLAYED");
     assert.equal(replay.job.status, "SUCCEEDED");
     assert.equal(handlerCalls, 1);
@@ -241,7 +241,7 @@ test("Phase 3D concealment and terminal replay prevent duplicate handler executi
   }
 });
 
-test("Production commit revalidation denial leaves the durable running result uncommitted without a false failure mutation", () => {
+test("Production commit revalidation denial leaves the durable running result uncommitted without a false failure mutation", async () => {
   const f = fixture();
   try {
     const store = new DurableJobStore({ databasePath: f.databasePath, idFactory: sequence("job-a"), clock: clockSequence("2026-09-15T00:00:00.000Z", "2026-09-15T00:01:00.000Z") });
@@ -254,8 +254,8 @@ test("Production commit revalidation denial leaves the durable running result un
         : Object.freeze({ status: "BLOCKED" as const });
     } });
     const runtime = new JobExecutionRuntime({ store, registry: new JobExecutionRegistry({ AI_LISTING_PARSE: handler, AI_REQUIREMENT_PARSE: requirementHandler, AI_MATCHING: matchingHandler }), admission, failureMapper: rejectingFailureMapper });
-    assert.throws(
-      () => runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" }),
+    await assert.rejects(
+      async () => (await runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" })),
       (error: unknown) => error instanceof JobExecutionRuntimeError && error.code === "JOB_NOT_EXECUTABLE",
     );
     assert.equal(admissionCalls, 2);
@@ -266,15 +266,15 @@ test("Production commit revalidation denial leaves the durable running result un
   }
 });
 
-test("Phase 3D runtime fails closed before mutation when the registry is incomplete", () => {
+test("Phase 3D runtime fails closed before mutation when the registry is incomplete", async () => {
   const f = fixture();
   try {
     const store = new DurableJobStore({ databasePath: f.databasePath, idFactory: sequence("job-a"), clock: clockSequence("2026-09-15T00:00:00.000Z") });
     store.submitJob(submission());
     const runtime = new JobExecutionRuntime({ store, registry: new JobExecutionRegistry({ AI_LISTING_PARSE: handler }), admission: Object.freeze({ evaluate: () => Object.freeze({ status: "ALLOWED" as const, evidenceRefs: Object.freeze(["evidence:admission-a"]) }) }), failureMapper: rejectingFailureMapper });
 
-    assert.throws(
-      () => runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" }),
+    await assert.rejects(
+      async () => (await runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" })),
       (error: unknown) => error instanceof JobExecutionRuntimeError && error.code === "RUNTIME_NOT_READY",
     );
     assert.equal(store.readJob({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a" }).status, "QUEUED");
@@ -284,7 +284,7 @@ test("Phase 3D runtime fails closed before mutation when the registry is incompl
   }
 });
 
-test("Phase 3D trusted failure mapper persists only the canonical normalized failure", () => {
+test("Phase 3D trusted failure mapper persists only the canonical normalized failure", async () => {
   const f = fixture();
   let store: DurableJobStore | undefined;
   try {
@@ -307,7 +307,7 @@ test("Phase 3D trusted failure mapper persists only the canonical normalized fai
       failureMapper,
     });
 
-    const result = runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" });
+    const result = (await runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" }));
 
     assert.equal(result.status, "FAILED");
     assert.equal(result.handlerId, "AI-001");
@@ -322,7 +322,7 @@ test("Phase 3D trusted failure mapper persists only the canonical normalized fai
   }
 });
 
-test("Phase 3D unmapped raw handler exceptions fail closed without persisting diagnostics", () => {
+test("Phase 3D unmapped raw handler exceptions fail closed without persisting diagnostics", async () => {
   const f = fixture();
   try {
     const store = new DurableJobStore({ databasePath: f.databasePath, idFactory: sequence("job-a"), clock: clockSequence("2026-09-15T00:00:00.000Z", "2026-09-15T00:01:00.000Z") });
@@ -336,8 +336,8 @@ test("Phase 3D unmapped raw handler exceptions fail closed without persisting di
       failureMapper: rejectingFailureMapper,
     });
 
-    assert.throws(
-      () => runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" }),
+    await assert.rejects(
+      async () => (await runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" })),
       (error: unknown) => error instanceof JobExecutionRuntimeError && error.code === "FAILURE_UNMAPPED" && !error.message.includes(unsafe),
     );
     const durable = store.readJob({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a" });
@@ -350,7 +350,7 @@ test("Phase 3D unmapped raw handler exceptions fail closed without persisting di
   }
 });
 
-test("Phase 3D malformed handler success is normalized as JOB_RESULT_INVALID without unsafe fields", () => {
+test("Phase 3D malformed handler success is normalized as JOB_RESULT_INVALID without unsafe fields", async () => {
   const f = fixture();
   let store: DurableJobStore | undefined;
   try {
@@ -370,7 +370,7 @@ test("Phase 3D malformed handler success is normalized as JOB_RESULT_INVALID wit
       failureMapper,
     });
 
-    const result = runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" });
+    const result = (await runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" }));
 
     assert.equal(result.status, "FAILED");
     assert.equal(result.job.failureCode, "JOB_RESULT_INVALID");
@@ -382,7 +382,7 @@ test("Phase 3D malformed handler success is normalized as JOB_RESULT_INVALID wit
   }
 });
 
-test("Phase 3D shape-valid unsafe success is mapped and durably failed instead of stranded RUNNING", () => {
+test("Phase 3D shape-valid unsafe success is mapped and durably failed instead of stranded RUNNING", async () => {
   const f = fixture();
   let store: DurableJobStore | undefined;
   try {
@@ -404,7 +404,7 @@ test("Phase 3D shape-valid unsafe success is mapped and durably failed instead o
       failureMapper,
     });
 
-    const result = runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" });
+    const result = (await runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" }));
 
     assert.equal(result.status, "FAILED");
     assert.equal(result.job.status, "FAILED");
@@ -415,7 +415,7 @@ test("Phase 3D shape-valid unsafe success is mapped and durably failed instead o
   }
 });
 
-test("Phase 3D unsafe handler evidence is mapped and durably failed instead of stranded RUNNING", () => {
+test("Phase 3D unsafe handler evidence is mapped and durably failed instead of stranded RUNNING", async () => {
   const f = fixture();
   let store: DurableJobStore | undefined;
   try {
@@ -437,7 +437,7 @@ test("Phase 3D unsafe handler evidence is mapped and durably failed instead of s
       failureMapper,
     });
 
-    const result = runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" });
+    const result = (await runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" }));
 
     assert.equal(result.status, "FAILED");
     assert.equal(result.job.status, "FAILED");
@@ -448,7 +448,7 @@ test("Phase 3D unsafe handler evidence is mapped and durably failed instead of s
   }
 });
 
-test("Phase 3D concurrent invocation cannot overwrite the running CAS path", () => {
+test("Phase 3D concurrent invocation cannot overwrite the running CAS path", async () => {
   const f = fixture();
   try {
     const store = new DurableJobStore({ databasePath: f.databasePath, idFactory: sequence("job-a"), clock: clockSequence("2026-09-15T00:00:00.000Z", "2026-09-15T00:01:00.000Z", "2026-09-15T00:02:00.000Z") });
@@ -456,9 +456,9 @@ test("Phase 3D concurrent invocation cannot overwrite the running CAS path", () 
     let nestedError: unknown;
     const executingHandler: BoundedJobHandler = Object.freeze({
       handlerId: "AI-001",
-      execute: () => {
+      execute: async () => {
         try {
-          runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-concurrent-a" });
+          (await runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-concurrent-a" }));
         } catch (error) {
           nestedError = error;
         }
@@ -472,7 +472,7 @@ test("Phase 3D concurrent invocation cannot overwrite the running CAS path", () 
       failureMapper: rejectingFailureMapper,
     });
 
-    const result = runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" });
+    const result = (await runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" }));
 
     assert.equal(result.status, "SUCCEEDED");
     assert.equal(nestedError instanceof JobExecutionRuntimeError && nestedError.code === "JOB_NOT_EXECUTABLE", true);
@@ -483,20 +483,20 @@ test("Phase 3D concurrent invocation cannot overwrite the running CAS path", () 
   }
 });
 
-test("Phase 3D malformed admission authority fails before start or handler invocation", () => {
+test("Phase 3D malformed admission authority fails before start or handler invocation", async () => {
   const f = fixture();
   try {
     const store = new DurableJobStore({ databasePath: f.databasePath, idFactory: sequence("job-a"), clock: clockSequence("2026-09-15T00:00:00.000Z") });
     store.submitJob(submission());
     let handlerCalls = 0;
-    const guardedHandler: BoundedJobHandler = Object.freeze({ handlerId: "AI-001", execute: () => { handlerCalls += 1; return handler.execute({} as never); } });
+    const guardedHandler: BoundedJobHandler = Object.freeze({ handlerId: "AI-001", execute: async () => { handlerCalls += 1; return (await handler.execute({} as never)); } });
     const malformedAdmission: JobExecutionAdmissionPort = Object.freeze({
       evaluate: () => ({ status: "ALLOWED", evidenceRefs: ["evidence:execution-admission-a"], actorRole: "SYSTEM_ADMIN" }) as never,
     });
     const runtime = new JobExecutionRuntime({ store, registry: new JobExecutionRegistry({ AI_LISTING_PARSE: guardedHandler, AI_REQUIREMENT_PARSE: requirementHandler, AI_MATCHING: matchingHandler }), admission: malformedAdmission, failureMapper: rejectingFailureMapper });
 
-    assert.throws(
-      () => runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" }),
+    await assert.rejects(
+      async () => (await runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" })),
       (error: unknown) => error instanceof JobExecutionRuntimeError && error.code === "ADMISSION_INVALID",
     );
     assert.equal(handlerCalls, 0);

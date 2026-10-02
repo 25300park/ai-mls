@@ -1,17 +1,18 @@
 import { createHash } from "node:crypto";
+import type { AsyncAdvisoryPersistence } from "./advisory-async-persistence.js";
 
 import { canonicalAiSchemaId, validateAdvisoryResult, type AdvisoryResultEnvelope, type EntityReference } from "./advisory-ai-service.js";
-import { AdvisoryRuntimeError, isSafeAdvisoryEvidenceRef, isSafeAdvisoryPrincipalProvenance, isSafeAdvisoryText, type AcceptedAdvisoryRecord, type AdvisoryAdapter, type AdvisoryAdapterIntent, type AdvisoryExecutionRequest, type AdvisoryPersistence, type AdvisorySnapshotResolver, type TrustedAdvisorySnapshot } from "./advisory-runtime-contracts.js";
+import { AdvisoryRuntimeError, isSafeAdvisoryEvidenceRef, isSafeAdvisoryPrincipalProvenance, isSafeAdvisoryText, type AcceptedAdvisoryRecord, type AdvisoryAdapter, type AdvisoryAdapterIntent, type AdvisoryExecutionRequest, type AdvisorySnapshotResolver, type TrustedAdvisorySnapshot } from "./advisory-runtime-contracts.js";
 
 interface AdvisoryRuntimeDependencies {
-  readonly persistence: AdvisoryPersistence;
+  readonly persistence: AsyncAdvisoryPersistence;
   readonly snapshotResolver: AdvisorySnapshotResolver;
   readonly adapter: AdvisoryAdapter;
   readonly clock: () => Date;
 }
 
 export class AdvisoryRuntime {
-  readonly #persistence: AdvisoryPersistence;
+  readonly #persistence: AsyncAdvisoryPersistence;
   readonly #snapshotResolver: AdvisorySnapshotResolver;
   readonly #adapter: AdvisoryAdapter;
   readonly #clock: () => Date;
@@ -23,16 +24,18 @@ export class AdvisoryRuntime {
     this.#clock = dependencies.clock;
   }
 
-  public execute(request: AdvisoryExecutionRequest): AcceptedAdvisoryRecord {
+  public async execute(request: AdvisoryExecutionRequest): Promise<AcceptedAdvisoryRecord> {
     validateRequest(request);
+    request = immutable(request);
     if (request.schemaId !== canonicalAiSchemaId(request.capabilityId)) throw runtimeFailure("SCHEMA_CAPABILITY_MISMATCH", "Capability and schema do not match.");
-    const snapshot = this.#snapshotResolver.resolve({ tenantId: request.tenantId, scopeRef: request.scopeRef, capabilityId: request.capabilityId, inputReference: request.inputReference });
-    if (snapshot === undefined || !matchesSnapshot(request, snapshot)) throw runtimeFailure("ADVISORY_INPUT_UNAVAILABLE", "Trusted Advisory input is unavailable.");
-    const prompt = this.#persistence.findPrompt(request.promptId, request.promptVersion);
+    const resolvedSnapshot = this.#snapshotResolver.resolve({ tenantId: request.tenantId, scopeRef: request.scopeRef, capabilityId: request.capabilityId, inputReference: request.inputReference });
+    if (resolvedSnapshot === undefined || !matchesSnapshot(request, resolvedSnapshot)) throw runtimeFailure("ADVISORY_INPUT_UNAVAILABLE", "Trusted Advisory input is unavailable.");
+    const snapshot = immutable(resolvedSnapshot);
+    const prompt = await this.#persistence.findPrompt(request.promptId, request.promptVersion);
     if (prompt?.status !== "ACTIVE") throw runtimeFailure("PROMPT_NOT_ACTIVE", "An active prompt identity is required.");
     if (prompt.capabilityId !== request.capabilityId || prompt.schemaId !== request.schemaId) throw runtimeFailure("SCHEMA_CAPABILITY_MISMATCH", "Prompt capability and schema do not match.");
     const executionFingerprint = digest({ adapterVersion: this.#adapter.adapterVersion, capabilityId: request.capabilityId, evidenceFingerprint: snapshot.evidenceFingerprint, inputFingerprint: snapshot.inputFingerprint, promptId: prompt.promptId, promptVersion: prompt.promptVersion, promptFingerprint: prompt.contentFingerprint, schemaId: request.schemaId, ...(request.capabilityVersion === undefined ? {} : { capabilityVersion: request.capabilityVersion }), ...(request.initiatingPrincipalEvidenceRef === undefined ? {} : { initiatingPrincipalEvidenceRef: request.initiatingPrincipalEvidenceRef }), ...(request.initiatingPrincipalProvenance === undefined ? {} : { initiatingPrincipalProvenance: request.initiatingPrincipalProvenance }) });
-    const replay = this.#persistence.findReplay(request.tenantId, request.scopeRef, request.idempotencyKey, executionFingerprint);
+    const replay = await this.#persistence.findReplay(request.tenantId, request.scopeRef, request.idempotencyKey, executionFingerprint);
     if (replay !== undefined) return replay;
     const intent = immutable<AdvisoryAdapterIntent>({ capabilityId: request.capabilityId, ...(request.capabilityVersion === undefined ? {} : { capabilityVersion: request.capabilityVersion }), ...(request.correlationId === undefined ? {} : { correlationId: request.correlationId }), schemaId: request.schemaId, subjectRef: snapshot.subjectRef, provenance: snapshot.provenance, classification: mostRestrictive(snapshot), inputFingerprint: snapshot.inputFingerprint, evidenceFingerprint: snapshot.evidenceFingerprint, promptId: prompt.promptId, promptVersion: prompt.promptVersion, promptFingerprint: prompt.contentFingerprint, executionFingerprint });
     let candidate: unknown;
@@ -52,15 +55,15 @@ export class AdvisoryRuntime {
     return this.#persistence.recordAccepted(record, request.idempotencyKey);
   }
 
-  public read(tenantId: string, scopeRef: string, advisoryId: string): AcceptedAdvisoryRecord | undefined {
+  public async read(tenantId: string, scopeRef: string, advisoryId: string): Promise<AcceptedAdvisoryRecord | undefined> {
     if (![tenantId, scopeRef, advisoryId].every(nonempty)) return undefined;
     return this.#persistence.findAdvisory(tenantId, scopeRef, advisoryId);
   }
 
-  public hasExecutableBinding(binding: Readonly<{ readonly adapter: AdvisoryAdapter; readonly capabilityId: AdvisoryExecutionRequest["capabilityId"]; readonly schemaId: AdvisoryExecutionRequest["schemaId"]; readonly promptId: string; readonly promptVersion: string }>): boolean {
+  public async hasExecutableBinding(binding: Readonly<{ readonly adapter: AdvisoryAdapter; readonly capabilityId: AdvisoryExecutionRequest["capabilityId"]; readonly schemaId: AdvisoryExecutionRequest["schemaId"]; readonly promptId: string; readonly promptVersion: string }>): Promise<boolean> {
     if (binding.adapter !== this.#adapter || typeof this.#snapshotResolver?.resolve !== "function") return false;
     try {
-      const prompt = this.#persistence.findPrompt(binding.promptId, binding.promptVersion);
+      const prompt = await this.#persistence.findPrompt(binding.promptId, binding.promptVersion);
       return prompt?.status === "ACTIVE" && prompt.capabilityId === binding.capabilityId && prompt.schemaId === binding.schemaId;
     } catch { return false; }
   }

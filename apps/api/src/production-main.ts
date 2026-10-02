@@ -23,7 +23,7 @@ import {
   type ProductionReadinessState,
   type ProductionRuntimeHttpListenerFactory,
 } from "./production-readiness-http.js";
-import { assertR3B1AdministrationSchemaReady, assertR3B1ConnectorSchemaReady, assertR3B1ExternalIntegrationSchemaReady, assertR3B1PublicationSchemaReady } from "./child-root-postgresql-readiness.js";
+import { assertR3B1AdvisorySchemaReady, assertR3B1AdministrationSchemaReady, assertR3B1ConnectorSchemaReady, assertR3B1ExternalIntegrationSchemaReady, assertR3B1PublicationSchemaReady } from "./child-root-postgresql-readiness.js";
 import {
   parseRailwayProductionRuntimeConfiguration,
   type RailwayProductionRuntimeConfiguration,
@@ -204,6 +204,7 @@ export function createRailwayProductionDependencies(
       await assertR3B1AdministrationSchemaReady(pool);
       await assertR3B1ConnectorSchemaReady(pool);
       await assertR3B1ExternalIntegrationSchemaReady(pool);
+      await assertR3B1AdvisorySchemaReady(pool);
     },
     childRootOptions: Object.freeze({
       api014: Object.freeze({ runtimeEnvironment: "PRODUCTION" as const }),
@@ -232,7 +233,7 @@ export function createRailwayProductionDependencies(
         clock: () => new Date().toISOString(),
         unresolvedConflictCaseWriter: Object.freeze({ linkUnresolvedConflict: unreachable }),
       }),
-      feat022: null,
+      feat022: Object.freeze({ runtimeEnvironment: "PRODUCTION" as const, snapshotResolver: Object.freeze({ resolve: unreachable }) }),
     }),
     startListeners: (context: ProductionBootstrapContextView, roots: readonly ProductionChildRoot[]) => createProductionRuntimeListenerStarter(
       parseRailwayProductionRuntimeConfiguration(environment),

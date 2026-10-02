@@ -18,7 +18,7 @@ export interface CanonicalProductionChildRootOptions {
   readonly feat022: ProductionAdvisoryRuntimeOptions | null;
 }
 
-/** R3-B5 permits API-014, API-015, API-018, and API-019 to receive the same bootstrap-owned PostgreSQL pool. */
+/** R3-B6 permits API-014, API-015, API-018, API-019, and FEAT-022 to receive the same bootstrap-owned PostgreSQL pool. */
 export function assertCanonicalProductionChildRootsPostgreSqlReady(
   options: CanonicalProductionChildRootOptions,
 ): void {
@@ -33,7 +33,7 @@ export function assertCanonicalProductionChildRootsPostgreSqlReady(
   }
   if (options.api019 !== null && (options.api019.databasePath !== undefined || options.api019.postgreSqlPool !== undefined)) throw new Error("Production child-root persistence is unavailable.");
   for (const child of [options.feat022]) {
-    if (child !== null && Object.prototype.hasOwnProperty.call(child, "databasePath")) throw new Error("Production child-root persistence is unavailable.");
+    if (child !== null && (child.databasePath !== undefined || child.postgreSqlPool !== undefined)) throw new Error("Production child-root persistence is unavailable.");
   }
 }
 
@@ -64,10 +64,10 @@ export function createCanonicalProductionChildRootFactories(
       const root = createProductionExternalIntegrationComposition({ ...options.api019, postgreSqlPool: pool, runtimeEnvironment: "PRODUCTION", bootstrapContext: context, schemaMode: "REQUIRE_EXISTING", deferRuntimeActivation: true });
       return Object.freeze({ componentId: "API-019" as const, activateRuntime: () => root.activateRuntime(), close: () => root.close() });
     },
-    "FEAT-022": (context, configuration, identities) => {
+    "FEAT-022": (context, configuration, identities, pool) => {
       assertRootIdentity("FEAT-022", context, configuration, identities);
       if (options.feat022 === null) throw new Error("Production child root is unavailable.");
-      const root = createProductionAdvisoryRuntime({ ...options.feat022, runtimeEnvironment: "PRODUCTION", bootstrapContext: context, schemaMode: "REQUIRE_EXISTING" });
+      const root = createProductionAdvisoryRuntime({ ...options.feat022, postgreSqlPool: pool, runtimeEnvironment: "PRODUCTION", bootstrapContext: context, schemaMode: "REQUIRE_EXISTING" });
       return Object.freeze({ componentId: "FEAT-022" as const, activateRuntime: () => { /* provider remains held */ }, close: () => root.close() });
     },
   });

@@ -1,3 +1,4 @@
+import { adaptSynchronousAdvisoryPersistence } from "./advisory-async-persistence.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -17,56 +18,56 @@ const snapshot = Object.freeze<TrustedAdvisorySnapshot>({ tenantId: "tenant-a", 
 const envelope = Object.freeze({ schemaVersion: "1.0" as const, schemaId: prompt.schemaId, capabilityId: "AI-001" as const, subjectRef: subject, provenance: [subject], classification: "CONFIDENTIAL_BUSINESS" as const, output: { capabilityId: "AI-001" as const, inputRef: subject, fields: [{ fieldName: "propertyName", valueState: "PRESENT" as const, normalizedValue: "Example Tower", evidenceRefs: [{ sourceRef: subject, evidenceLocator: "field:propertyName" }], confidence }], warnings: [], overallConfidence: confidence } });
 const request = Object.freeze<AdvisoryExecutionRequest>({ tenantId: "tenant-a", scopeRef: "team:team-a", capabilityId: "AI-001", schemaId: prompt.schemaId, inputReference: subject, promptId: prompt.promptId, promptVersion: prompt.promptVersion, idempotencyKey: "idem-runtime-001" });
 
-function fixture(run: (context: { store: DurableAdvisoryStore; runtime: AdvisoryRuntime; adapter: DeterministicNoNetworkAdvisoryAdapter }) => void, options: { prompt?: AdvisoryPromptRecord; snapshot?: TrustedAdvisorySnapshot; result?: unknown; behavior?: "ERROR" | "TIMEOUT" | "MALFORMED" } = {}): void {
+async function fixture(run: (context: { store: DurableAdvisoryStore; runtime: AdvisoryRuntime; adapter: DeterministicNoNetworkAdvisoryAdapter }) => void | Promise<void>, options: { prompt?: AdvisoryPromptRecord; snapshot?: TrustedAdvisorySnapshot; result?: unknown; behavior?: "ERROR" | "TIMEOUT" | "MALFORMED" } = {}): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), "feat-022-c-runtime-"));
   const store = new DurableAdvisoryStore({ databasePath: join(directory, "advisory.sqlite") });
   const adapter = new DeterministicNoNetworkAdvisoryAdapter({ ...(options.result === undefined ? { result: envelope } : { result: options.result }), ...(options.behavior === undefined ? {} : { behavior: options.behavior }) });
-  const runtime = new AdvisoryRuntime({ persistence: store, snapshotResolver: { resolve: () => options.snapshot ?? snapshot }, adapter, clock: () => new Date("2026-09-09T01:01:00.000Z") });
+  const runtime = new AdvisoryRuntime({ persistence: adaptSynchronousAdvisoryPersistence(store), snapshotResolver: { resolve: () => options.snapshot ?? snapshot }, adapter, clock: () => new Date("2026-09-09T01:01:00.000Z") });
   try {
     if (options.prompt !== undefined) store.registerPrompt(options.prompt);
     else store.registerPrompt(prompt);
-    run({ store, runtime, adapter });
+    await run({ store, runtime, adapter });
   } finally {
     store.close();
     rmSync(directory, { recursive: true, force: true });
   }
 }
 
-function expectCode(run: () => unknown, code: string): void { assert.throws(run, (error: unknown) => error instanceof Error && "code" in error && error.code === code); }
+async function expectCode(run: () => Promise<unknown>, code: string): Promise<void> { await assert.rejects(run, (error: unknown) => error instanceof Error && "code" in error && error.code === code); }
 
-test("FEAT-022-C missing trusted snapshot fails before adapter", () => fixture(({ store, adapter }) => {
-  const missing = new AdvisoryRuntime({ persistence: store, snapshotResolver: { resolve: () => undefined }, adapter, clock: () => new Date("2026-09-09T01:01:00.000Z") });
-  expectCode(() => missing.execute(request), "ADVISORY_INPUT_UNAVAILABLE"); assert.equal(adapter.invocationCount, 0);
-}));
+test("FEAT-022-C missing trusted snapshot fails before adapter", async () => (await fixture(async ({ store, adapter }) => {
+  const missing = new AdvisoryRuntime({ persistence: adaptSynchronousAdvisoryPersistence(store), snapshotResolver: { resolve: () => undefined }, adapter, clock: () => new Date("2026-09-09T01:01:00.000Z") });
+  (await expectCode(async () => (await missing.execute(request)), "ADVISORY_INPUT_UNAVAILABLE")); assert.equal(adapter.invocationCount, 0);
+})));
 
-test("FEAT-022-C missing prompt fails closed", () => fixture(({ store, runtime, adapter }) => {
-  expectCode(() => runtime.execute({ ...request, promptId: "PRM-MISSING" }), "PROMPT_NOT_ACTIVE"); assert.equal(adapter.invocationCount, 0); assert.equal(store.findAdvisory("tenant-a", "team:team-a", "none"), undefined);
-}));
+test("FEAT-022-C missing prompt fails closed", async () => (await fixture(async ({ store, runtime, adapter }) => {
+  (await expectCode(async () => (await runtime.execute({ ...request, promptId: "PRM-MISSING" })), "PROMPT_NOT_ACTIVE")); assert.equal(adapter.invocationCount, 0); assert.equal(store.findAdvisory("tenant-a", "team:team-a", "none"), undefined);
+})));
 
-test("FEAT-022-C retired prompt cannot execute", () => fixture(({ runtime, adapter }) => {
-  expectCode(() => runtime.execute({ ...request, promptVersion: "v0.9" }), "PROMPT_NOT_ACTIVE"); assert.equal(adapter.invocationCount, 0);
-}, { prompt: { ...prompt, promptVersion: "v0.9", status: "RETIRED" } }));
+test("FEAT-022-C retired prompt cannot execute", async () => (await fixture(async ({ runtime, adapter }) => {
+  (await expectCode(async () => (await runtime.execute({ ...request, promptVersion: "v0.9" })), "PROMPT_NOT_ACTIVE")); assert.equal(adapter.invocationCount, 0);
+}, { prompt: { ...prompt, promptVersion: "v0.9", status: "RETIRED" } })));
 
-test("FEAT-022-C capability schema mismatch fails before adapter", () => fixture(({ runtime, adapter }) => {
-  expectCode(() => runtime.execute({ ...request, schemaId: "urn:ai-mls:schema:property-normalization-output:v0.1" }), "SCHEMA_CAPABILITY_MISMATCH"); assert.equal(adapter.invocationCount, 0);
-}));
+test("FEAT-022-C capability schema mismatch fails before adapter", async () => (await fixture(async ({ runtime, adapter }) => {
+  (await expectCode(async () => (await runtime.execute({ ...request, schemaId: "urn:ai-mls:schema:property-normalization-output:v0.1" })), "SCHEMA_CAPABILITY_MISMATCH")); assert.equal(adapter.invocationCount, 0);
+})));
 
-test("FEAT-022-C wrong tenant snapshot is concealed before adapter", () => fixture(({ runtime, adapter }) => {
-  expectCode(() => runtime.execute(request), "ADVISORY_INPUT_UNAVAILABLE"); assert.equal(adapter.invocationCount, 0);
-}, { snapshot: { ...snapshot, tenantId: "tenant-b" } }));
+test("FEAT-022-C wrong tenant snapshot is concealed before adapter", async () => (await fixture(async ({ runtime, adapter }) => {
+  (await expectCode(async () => (await runtime.execute(request)), "ADVISORY_INPUT_UNAVAILABLE")); assert.equal(adapter.invocationCount, 0);
+}, { snapshot: { ...snapshot, tenantId: "tenant-b" } })));
 
-test("FEAT-022-C exact replay returns one durable advisory without reinvocation", () => fixture(({ runtime, adapter }) => {
-  const first = runtime.execute(request); const replay = runtime.execute(request); assert.deepEqual(replay, first); assert.equal(adapter.invocationCount, 1);
-}));
+test("FEAT-022-C exact replay returns one durable advisory without reinvocation", async () => (await fixture(async ({ runtime, adapter }) => {
+  const first = (await runtime.execute(request)); const replay = (await runtime.execute(request)); assert.deepEqual(replay, first); assert.equal(adapter.invocationCount, 1);
+})));
 
-test("Phase 4C preserves the legacy execution fingerprint when optional provenance fields are absent", () => fixture(({ store }) => {
+test("Phase 4C preserves the legacy execution fingerprint when optional provenance fields are absent", async () => (await fixture(async ({ store }) => {
   let captured = "";
   const adapter = {
     adapterVersion: "legacy-compatible-adapter-v1",
     generate: (intent: { executionFingerprint: string }) => { captured = intent.executionFingerprint; return envelope; },
   };
-  const runtime = new AdvisoryRuntime({ persistence: store, snapshotResolver: { resolve: () => snapshot }, adapter, clock: () => new Date("2026-09-09T01:01:00.000Z") });
-  runtime.execute(request);
+  const runtime = new AdvisoryRuntime({ persistence: adaptSynchronousAdvisoryPersistence(store), snapshotResolver: { resolve: () => snapshot }, adapter, clock: () => new Date("2026-09-09T01:01:00.000Z") });
+  (await runtime.execute(request));
   const canonical = JSON.stringify({
     adapterVersion: adapter.adapterVersion,
     capabilityId: request.capabilityId,
@@ -78,43 +79,43 @@ test("Phase 4C preserves the legacy execution fingerprint when optional provenan
     schemaId: request.schemaId,
   });
   assert.equal(captured, `sha256:${createHash("sha256").update(canonical).digest("hex")}`);
-}));
+})));
 
-test("FEAT-022-C same idempotency identity with different trusted input conflicts", () => fixture(({ store, runtime, adapter }) => {
-  runtime.execute(request);
-  const changed = new AdvisoryRuntime({ persistence: store, snapshotResolver: { resolve: () => ({ ...snapshot, inputFingerprint: "sha256:input-002" }) }, adapter, clock: () => new Date("2026-09-09T01:01:00.000Z") });
-  expectCode(() => changed.execute(request), "IDEMPOTENCY_CONFLICT"); assert.equal(adapter.invocationCount, 1);
-}));
+test("FEAT-022-C same idempotency identity with different trusted input conflicts", async () => (await fixture(async ({ store, runtime, adapter }) => {
+  (await runtime.execute(request));
+  const changed = new AdvisoryRuntime({ persistence: adaptSynchronousAdvisoryPersistence(store), snapshotResolver: { resolve: () => ({ ...snapshot, inputFingerprint: "sha256:input-002" }) }, adapter, clock: () => new Date("2026-09-09T01:01:00.000Z") });
+  (await expectCode(async () => (await changed.execute(request)), "IDEMPOTENCY_CONFLICT")); assert.equal(adapter.invocationCount, 1);
+})));
 
-test("FEAT-022-C malformed adapter output persists no accepted advisory", () => fixture(({ runtime, adapter }) => {
-  expectCode(() => runtime.execute(request), "ADVISORY_OUTPUT_REJECTED"); assert.equal(adapter.invocationCount, 1);
-}, { behavior: "MALFORMED" }));
+test("FEAT-022-C malformed adapter output persists no accepted advisory", async () => (await fixture(async ({ runtime, adapter }) => {
+  (await expectCode(async () => (await runtime.execute(request)), "ADVISORY_OUTPUT_REJECTED")); assert.equal(adapter.invocationCount, 1);
+}, { behavior: "MALFORMED" })));
 
-test("FEAT-022-C raw provider response field is rejected", () => fixture(({ runtime }) => {
-  expectCode(() => runtime.execute(request), "ADVISORY_OUTPUT_REJECTED");
-}, { result: { ...envelope, rawProviderResponse: { token: "not-a-secret-fixture" } } }));
+test("FEAT-022-C raw provider response field is rejected", async () => (await fixture(async ({ runtime }) => {
+  (await expectCode(async () => (await runtime.execute(request)), "ADVISORY_OUTPUT_REJECTED"));
+}, { result: { ...envelope, rawProviderResponse: { token: "not-a-secret-fixture" } } })));
 
-test("FEAT-022-C hidden reasoning field is rejected", () => fixture(({ runtime }) => {
-  expectCode(() => runtime.execute(request), "ADVISORY_OUTPUT_REJECTED");
-}, { result: { ...envelope, chainOfThought: "not-stored" } }));
+test("FEAT-022-C hidden reasoning field is rejected", async () => (await fixture(async ({ runtime }) => {
+  (await expectCode(async () => (await runtime.execute(request)), "ADVISORY_OUTPUT_REJECTED"));
+}, { result: { ...envelope, chainOfThought: "not-stored" } })));
 
-test("FEAT-022-C fabricated evidence reference is rejected", () => fixture(({ runtime }) => {
-  expectCode(() => runtime.execute(request), "ADVISORY_OUTPUT_REJECTED");
-}, { result: { ...envelope, output: { ...envelope.output, inputRef: { ...subject, entityId: "fabricated" } } } }));
+test("FEAT-022-C fabricated evidence reference is rejected", async () => (await fixture(async ({ runtime }) => {
+  (await expectCode(async () => (await runtime.execute(request)), "ADVISORY_OUTPUT_REJECTED"));
+}, { result: { ...envelope, output: { ...envelope.output, inputRef: { ...subject, entityId: "fabricated" } } } })));
 
-test("FEAT-022-C adapter error and timeout persist no accepted advisory", () => {
-  for (const behavior of ["ERROR", "TIMEOUT"] as const) fixture(({ runtime, adapter }) => { expectCode(() => runtime.execute(request), "ADVISORY_UNAVAILABLE"); assert.equal(adapter.invocationCount, 1); }, { behavior });
+test("FEAT-022-C adapter error and timeout persist no accepted advisory", async () => {
+  for (const behavior of ["ERROR", "TIMEOUT"] as const) (await fixture(async ({ runtime, adapter }) => { (await expectCode(async () => (await runtime.execute(request)), "ADVISORY_UNAVAILABLE")); assert.equal(adapter.invocationCount, 1); }, { behavior }));
 });
 
-test("FEAT-022-C LOW confidence is persisted only as review-required advisory", () => {
+test("FEAT-022-C LOW confidence is persisted only as review-required advisory", async () => {
   const low = { band: "LOW" as const, reasonCodes: ["LOW_CONFIDENCE"], policyVersion: "ai-policy-v1" };
-  fixture(({ runtime }) => { const result = runtime.execute(request); assert.equal(result.reviewRequired, true); assert.equal(result.validationResult.route, "MANUAL_CORRECTION_REQUIRED"); assert.equal(result.authority, "ADVISORY"); }, { result: { ...envelope, output: { ...envelope.output, fields: envelope.output.fields.map((field) => ({ ...field, confidence: low })), overallConfidence: low } } });
+  (await fixture(async ({ runtime }) => { const result = (await runtime.execute(request)); assert.equal(result.reviewRequired, true); assert.equal(result.validationResult.route, "MANUAL_CORRECTION_REQUIRED"); assert.equal(result.authority, "ADVISORY"); }, { result: { ...envelope, output: { ...envelope.output, fields: envelope.output.fields.map((field) => ({ ...field, confidence: low })), overallConfidence: low } } }));
 });
 
-test("FEAT-022-C read conceals tenant and scope while returning immutable safe evidence", () => fixture(({ runtime }) => {
-  const saved = runtime.execute(request); assert.deepEqual(runtime.read("tenant-a", "team:team-a", saved.advisoryId), saved); assert.equal(runtime.read("tenant-b", "team:team-a", saved.advisoryId), undefined); assert.equal(Object.isFrozen(saved.envelope), true);
-}));
+test("FEAT-022-C read conceals tenant and scope while returning immutable safe evidence", async () => (await fixture(async ({ runtime }) => {
+  const saved = (await runtime.execute(request)); assert.deepEqual((await runtime.read("tenant-a", "team:team-a", saved.advisoryId)), saved); assert.equal((await runtime.read("tenant-b", "team:team-a", saved.advisoryId)), undefined); assert.equal(Object.isFrozen(saved.envelope), true);
+})));
 
-test("FEAT-022-C runtime exposes no domain command or business mutation surface", () => fixture(({ runtime }) => {
-  runtime.execute(request); for (const name of ["approve", "publish", "recover", "retry", "mutate"]) assert.equal(name in runtime, false);
-}));
+test("FEAT-022-C runtime exposes no domain command or business mutation surface", async () => (await fixture(async ({ runtime }) => {
+  (await runtime.execute(request)); for (const name of ["approve", "publish", "recover", "retry", "mutate"]) assert.equal(name in runtime, false);
+})));

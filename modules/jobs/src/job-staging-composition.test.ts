@@ -145,7 +145,7 @@ test("Phase 3D Staging composition becomes unavailable after its durable store i
   }
 });
 
-test("Phase 3D incomplete handler composition remains NOT_READY and cannot execute", () => {
+test("Phase 3D incomplete handler composition remains NOT_READY and cannot execute", async () => {
   const f = fixture();
   try {
     const submitter = new DurableJobStore({ databasePath: f.databasePath, idFactory: sequence("job-a"), clock: clockSequence("2026-09-15T00:00:00.000Z") });
@@ -163,8 +163,8 @@ test("Phase 3D incomplete handler composition remains NOT_READY and cannot execu
 
     assert.equal(composition.status().health, "HEALTHY");
     assert.equal(composition.status().readiness, "NOT_READY");
-    assert.throws(
-      () => composition.runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" }),
+    await assert.rejects(
+      async () => (await composition.runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" })),
       (error: unknown) => error instanceof JobExecutionRuntimeError && error.code === "RUNTIME_NOT_READY",
     );
     composition.close();
@@ -173,14 +173,14 @@ test("Phase 3D incomplete handler composition remains NOT_READY and cannot execu
   }
 });
 
-test("Phase 3D Staging composition executes one queued Job without starting background work", () => {
+test("Phase 3D Staging composition executes one queued Job without starting background work", async () => {
   const f = fixture();
   try {
     const submitter = new DurableJobStore({ databasePath: f.databasePath, idFactory: sequence("job-a"), clock: clockSequence("2026-09-15T00:00:00.000Z") });
     submitter.submitJob(submission());
     submitter.close();
     let handlerCalls = 0;
-    const oneShotHandler: BoundedJobHandler = Object.freeze({ handlerId: "AI-001", execute: () => { handlerCalls += 1; return handler.execute({} as never); } });
+    const oneShotHandler: BoundedJobHandler = Object.freeze({ handlerId: "AI-001", execute: async () => { handlerCalls += 1; return (await handler.execute({} as never)); } });
     const composition = createStagingJobExecutionRuntime({
       environment: "Staging",
       databasePath: f.databasePath,
@@ -191,11 +191,11 @@ test("Phase 3D Staging composition executes one queued Job without starting back
       failureMapper,
     });
 
-    const result = composition.runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" });
+    const result = (await composition.runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" }));
 
     assert.equal(result.status, "SUCCEEDED");
     assert.equal(handlerCalls, 1);
-    assert.equal(composition.runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-replay-a" }).status, "REPLAYED");
+    assert.equal((await composition.runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-replay-a" })).status, "REPLAYED");
     assert.equal(handlerCalls, 1);
     composition.close();
   } finally {
@@ -223,20 +223,20 @@ test("Phase 3D composition rejects non-Staging and non-durable configuration", (
   }
 });
 
-test("Phase 3D terminal replay survives restart and invokes no handler again", () => {
+test("Phase 3D terminal replay survives restart and invokes no handler again", async () => {
   const f = fixture();
   try {
     const submitter = new DurableJobStore({ databasePath: f.databasePath, idFactory: sequence("job-a"), clock: clockSequence("2026-09-15T00:00:00.000Z") });
     submitter.submitJob(submission());
     submitter.close();
     let handlerCalls = 0;
-    const executingHandler: BoundedJobHandler = Object.freeze({ handlerId: "AI-001", execute: () => { handlerCalls += 1; return handler.execute({} as never); } });
+    const executingHandler: BoundedJobHandler = Object.freeze({ handlerId: "AI-001", execute: async () => { handlerCalls += 1; return (await handler.execute({} as never)); } });
     let composition = createStagingJobExecutionRuntime({ environment: "Staging", databasePath: f.databasePath, idFactory: sequence("unused"), clock: clockSequence("2026-09-15T00:01:00.000Z", "2026-09-15T00:02:00.000Z"), handlers: { AI_LISTING_PARSE: executingHandler, AI_REQUIREMENT_PARSE: requirementHandler, AI_MATCHING: matchingHandler }, admission, failureMapper });
-    assert.equal(composition.runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" }).status, "SUCCEEDED");
+    assert.equal((await composition.runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" })).status, "SUCCEEDED");
     composition.close();
 
     composition = createStagingJobExecutionRuntime({ environment: "Staging", databasePath: f.databasePath, idFactory: sequence("unused"), clock: clockSequence("2026-09-15T00:03:00.000Z"), handlers: { AI_LISTING_PARSE: executingHandler, AI_REQUIREMENT_PARSE: requirementHandler, AI_MATCHING: matchingHandler }, admission, failureMapper });
-    assert.equal(composition.runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-replay-a" }).status, "REPLAYED");
+    assert.equal((await composition.runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-replay-a" })).status, "REPLAYED");
     assert.equal(handlerCalls, 1);
     composition.close();
   } finally {
@@ -244,7 +244,7 @@ test("Phase 3D terminal replay survives restart and invokes no handler again", (
   }
 });
 
-test("Phase 3D restart never re-executes a durable RUNNING Job without terminal evidence", () => {
+test("Phase 3D restart never re-executes a durable RUNNING Job without terminal evidence", async () => {
   const f = fixture();
   try {
     const store = new DurableJobStore({ databasePath: f.databasePath, idFactory: sequence("job-a"), clock: clockSequence("2026-09-15T00:00:00.000Z", "2026-09-15T00:01:00.000Z") });
@@ -252,11 +252,11 @@ test("Phase 3D restart never re-executes a durable RUNNING Job without terminal 
     store.startJob({ jobId: "job-a", expectedVersion: 1, correlationId: "correlation-start-a", evidenceRefs: ["evidence:execution-admission-a"] });
     store.close();
     let handlerCalls = 0;
-    const guardedHandler: BoundedJobHandler = Object.freeze({ handlerId: "AI-001", execute: () => { handlerCalls += 1; return handler.execute({} as never); } });
+    const guardedHandler: BoundedJobHandler = Object.freeze({ handlerId: "AI-001", execute: async () => { handlerCalls += 1; return (await handler.execute({} as never)); } });
     const composition = createStagingJobExecutionRuntime({ environment: "Staging", databasePath: f.databasePath, idFactory: sequence("unused"), clock: clockSequence("2026-09-15T00:02:00.000Z"), handlers: { AI_LISTING_PARSE: guardedHandler, AI_REQUIREMENT_PARSE: requirementHandler, AI_MATCHING: matchingHandler }, admission, failureMapper });
 
-    assert.throws(
-      () => composition.runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-restart-a" }),
+    await assert.rejects(
+      async () => (await composition.runtime.execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-restart-a" })),
       (error: unknown) => error instanceof JobExecutionRuntimeError && error.code === "JOB_NOT_EXECUTABLE",
     );
     assert.equal(handlerCalls, 0);

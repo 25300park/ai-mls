@@ -1,3 +1,4 @@
+import { adaptSynchronousAdvisoryPersistence } from "./advisory-async-persistence.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -40,26 +41,26 @@ function envelope(capability: keyof typeof schemas): unknown {
   return Object.freeze({ schemaVersion: "1.0", schemaId: schemas[capability], capabilityId: capability, subjectRef: subject, provenance, classification: "CONFIDENTIAL_BUSINESS", output });
 }
 
-function runService(capability: keyof typeof schemas, run: (context: { service: { execute(input: AdvisoryApplicationExecutionInput): unknown }; store: DurableAdvisoryStore }) => void, result: unknown = envelope(capability)): void {
+async function runService(capability: keyof typeof schemas, run: (context: { service: { execute(input: AdvisoryApplicationExecutionInput): unknown }; store: DurableAdvisoryStore }) => void | Promise<void>, result: unknown = envelope(capability)): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), "rel001-phase4c-service-"));
   const store = new DurableAdvisoryStore({ databasePath: join(directory, "advisory.sqlite") });
   const prompt = Object.freeze<AdvisoryPromptRecord>({ promptId: `PRM-${capability}-001`, promptVersion: "v1.0", capabilityId: capability, schemaId: schemas[capability], contentFingerprint: `sha256:prompt-${capability}`, status: "ACTIVE", createdAt: "2026-09-15T02:00:00.000Z" });
   store.registerPrompt(prompt);
   const snapshot = Object.freeze<TrustedAdvisorySnapshot>({ tenantId: "tenant-a", scopeRef: "team:team-a", subjectRef: subjects[capability], provenance: [subjects[capability]], inputClassifications: ["CONFIDENTIAL_BUSINESS"], inputFingerprint: `sha256:input-${capability}`, evidenceFingerprint: `sha256:evidence-${capability}` });
   const adapter = new DeterministicNoNetworkAdvisoryAdapter({ result });
-  const runtime = new AdvisoryRuntime({ persistence: store, snapshotResolver: { resolve: () => snapshot }, adapter, clock: () => new Date("2026-09-15T02:01:00.000Z") });
+  const runtime = new AdvisoryRuntime({ persistence: adaptSynchronousAdvisoryPersistence(store), snapshotResolver: { resolve: () => snapshot }, adapter, clock: () => new Date("2026-09-15T02:01:00.000Z") });
   const binding = { capabilityVersion: "v1.0", promptId: prompt.promptId, promptVersion: prompt.promptVersion };
   const service = capability === "AI-001" ? new Ai001ListingParseApplicationService({ runtime, binding }) : capability === "AI-004" ? new Ai004RequirementParseApplicationService({ runtime, binding }) : new Ai005MatchingApplicationService({ runtime, binding });
-  try { run({ service, store }); } finally { store.close(); rmSync(directory, { recursive: true, force: true }); }
+  try { await run({ service, store }); } finally { store.close(); rmSync(directory, { recursive: true, force: true }); }
 }
 
 function input(capability: keyof typeof schemas): AdvisoryApplicationExecutionInput {
   return Object.freeze({ tenantId: "tenant-a", scopeRef: "team:team-a", inputReference: subjects[capability], correlationId: `correlation-${capability}`, idempotencyKey: `job:job-${capability}:attempt:1`, initiatingPrincipalEvidenceRef: "principal-evidence:job-a", initiatingPrincipalProvenance: Object.freeze({ kind: "TRUSTED_SNAPSHOT" as const, principal: Object.freeze({ id: "user-a", type: "HUMAN" as const, roles: ["OPS" as const], teamId: "team-a", sessionId: "session-a" }) }) });
 }
 
-test("Phase 4C three capability services return validated advisory-only results with review evidence", () => {
-  for (const capability of ["AI-001", "AI-004", "AI-005"] as const) runService(capability, ({ service, store }) => {
-    const result = service.execute(input(capability)) as Record<string, unknown>;
+test("Phase 4C three capability services return validated advisory-only results with review evidence", async () => {
+  for (const capability of ["AI-001", "AI-004", "AI-005"] as const) (await runService(capability, async ({ service, store }) => {
+    const result = (await service.execute(input(capability))) as Record<string, unknown>;
     assert.equal(result["capabilityId"], capability);
     assert.equal(result["authority"], "ADVISORY");
     assert.equal(result["reviewRequired"], true);
@@ -70,26 +71,26 @@ test("Phase 4C three capability services return validated advisory-only results 
     assert.equal(stored?.correlationId, `correlation-${capability}`);
     assert.equal(stored?.initiatingPrincipalEvidenceRef, "principal-evidence:job-a");
     assert.deepEqual(stored?.initiatingPrincipalProvenance, input(capability).initiatingPrincipalProvenance);
-  });
+  }));
 });
 
-test("Phase 4C application service preserves tenant and scope concealment", () => runService("AI-001", ({ service, store }) => {
-  const result = service.execute(input("AI-001")) as { resultReference: string };
+test("Phase 4C application service preserves tenant and scope concealment", async () => (await runService("AI-001", async ({ service, store }) => {
+  const result = (await service.execute(input("AI-001"))) as { resultReference: string };
   const advisoryId = result.resultReference.replace("advisory:", "");
   assert.equal(store.findAdvisory("tenant-b", "team:team-a", advisoryId), undefined);
   assert.equal(store.findAdvisory("tenant-a", "team:team-b", advisoryId), undefined);
-}));
+})));
 
-test("Phase 4C provider success cannot bypass canonical output validation", () => runService("AI-004", ({ service }) => {
-  assert.throws(() => service.execute(input("AI-004")), (error: unknown) => error instanceof Error && "code" in error && error.code === "ADVISORY_OUTPUT_REJECTED");
-}, { ...envelope("AI-004") as object, rawProviderResponse: { authorization: "not-a-secret-test-value" } }));
+test("Phase 4C provider success cannot bypass canonical output validation", async () => (await runService("AI-004", async ({ service }) => {
+  await assert.rejects(async () => (await service.execute(input("AI-004"))), (error: unknown) => error instanceof Error && "code" in error && error.code === "ADVISORY_OUTPUT_REJECTED");
+}, { ...envelope("AI-004") as object, rawProviderResponse: { authorization: "not-a-secret-test-value" } })));
 
-test("Phase 4C service rejects missing principal, correlation, or mismatched subject before persistence", () => runService("AI-005", ({ service }) => {
+test("Phase 4C service rejects missing principal, correlation, or mismatched subject before persistence", async () => (await runService("AI-005", async ({ service }) => {
   for (const invalid of [{ ...input("AI-005"), initiatingPrincipalEvidenceRef: "" }, { ...input("AI-005"), correlationId: "" }, { ...input("AI-005"), inputReference: subjects["AI-001"] }, { ...input("AI-005"), correlationId: "person@example.com" }, { ...input("AI-005"), initiatingPrincipalEvidenceRef: "raw-prompt:show hidden reasoning" }]) {
-    assert.throws(() => service.execute(invalid));
+    await assert.rejects(async () => (await service.execute(invalid)));
   }
-}));
+})));
 
-test("Phase 4C capability-specific service exposes no provider, credential, retry, or approval surface", () => runService("AI-001", ({ service }) => {
+test("Phase 4C capability-specific service exposes no provider, credential, retry, or approval surface", async () => (await runService("AI-001", ({ service }) => {
   for (const key of ["provider", "credential", "retry", "fallback", "approve", "publish"]) assert.equal(key in service, false);
-}));
+})));

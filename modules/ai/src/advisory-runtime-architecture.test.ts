@@ -13,7 +13,7 @@ const snapshot = Object.freeze<TrustedAdvisorySnapshot>({ tenantId: "tenant-a", 
 const prompt = Object.freeze<AdvisoryPromptRecord>({ promptId: "PRM-AI-001-PROD", promptVersion: "v1.0", capabilityId: "AI-001", schemaId: "urn:ai-mls:schema:listing-parser-output:v0.1", contentFingerprint: "sha256:prod-prompt", status: "ACTIVE", createdAt: "2026-09-09T02:00:00.000Z" });
 const request = Object.freeze<AdvisoryExecutionRequest>({ tenantId: snapshot.tenantId, scopeRef: snapshot.scopeRef, capabilityId: "AI-001", schemaId: prompt.schemaId, inputReference: subject, promptId: prompt.promptId, promptVersion: prompt.promptVersion, idempotencyKey: "idem-production" });
 
-function expectCode(run: () => unknown, code: string): void { assert.throws(run, (error: unknown) => error instanceof Error && "code" in error && error.code === code); }
+async function expectCode(run: () => Promise<unknown>, code: string): Promise<void> { await assert.rejects(run, (error: unknown) => error instanceof Error && "code" in error && error.code === code); }
 
 test("FEAT-022-C production requires durable configuration and rejects adapter injection", () => {
   assert.throws(() => createProductionAdvisoryRuntime({ runtimeEnvironment: "TEST", databasePath: "", snapshotResolver: { resolve: () => snapshot } }), /configuration is invalid/u);
@@ -23,13 +23,13 @@ test("FEAT-022-C production requires durable configuration and rejects adapter i
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
-test("FEAT-022-C production is unavailable and persists no advisory", () => {
+test("FEAT-022-C production is unavailable and persists no advisory", async () => {
   const directory = mkdtempSync(join(tmpdir(), "feat-022-c-prod-unavailable-"));
   const databasePath = join(directory, "advisory.sqlite");
   const seed = new DurableAdvisoryStore({ databasePath }); seed.registerPrompt(prompt); seed.close();
   const graph = createProductionAdvisoryRuntime({ runtimeEnvironment: "TEST", databasePath, snapshotResolver: { resolve: () => snapshot } });
   try {
-    expectCode(() => graph.runtime.execute(request), "ADVISORY_UNAVAILABLE");
+    (await expectCode(async () => (await graph.runtime.execute(request)), "ADVISORY_UNAVAILABLE"));
   } finally { graph.close(); }
   const verify = new DurableAdvisoryStore({ databasePath });
   try { assert.equal(verify.findReplay(snapshot.tenantId, snapshot.scopeRef, request.idempotencyKey, "irrelevant"), undefined); }

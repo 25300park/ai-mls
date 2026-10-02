@@ -65,6 +65,12 @@ function expectSafeStoreFailure(run: () => unknown, code = "PERSISTENCE_UNAVAILA
     && !/sqlite|database|\\|\/|stack|token/iu.test(error.message));
 }
 
+async function expectAsyncSafeStoreFailure(run: () => Promise<unknown>, code = "PERSISTENCE_UNAVAILABLE"): Promise<void> {
+  await assert.rejects(run, (error: unknown) => error instanceof DurableJobStoreError
+    && error.code === code
+    && !/sqlite|database|\\|\/|stack|token/iu.test(error.message));
+}
+
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
   if (value !== null && typeof value === "object") {
@@ -117,7 +123,7 @@ async function concurrentWorkerOperations(input: Readonly<{ databasePath: string
     const readinessDeadline = Date.now() + 10_000;
     while (Atomics.load(state, 0) < workers.length) {
       if (Date.now() >= readinessDeadline) {
-        await Promise.allSettled(workers.map(async (active) => active.terminate()));
+        await Promise.allSettled(workers.map((active) => active.terminate()));
         throw new Error("WORKER_READINESS_TIMEOUT");
       }
       await new Promise((resolve) => setTimeout(resolve, 5));
@@ -414,7 +420,7 @@ test("Phase 3E concurrent worker threads have exactly one durable start winner",
   }
 });
 
-test("Phase 3E a stale handler success cannot overwrite a concurrent cancellation", () => {
+test("Phase 3E a stale handler success cannot overwrite a concurrent cancellation", async () => {
   const f = fixture();
   let store: DurableJobStore | undefined;
   try {
@@ -428,7 +434,7 @@ test("Phase 3E a stale handler success cannot overwrite a concurrent cancellatio
       },
     });
 
-    expectSafeStoreFailure(() => runtime(store!, cancellingHandler).execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" }), "VERSION_CONFLICT");
+    await expectAsyncSafeStoreFailure(() => runtime(store!, cancellingHandler).execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" }), "VERSION_CONFLICT");
     assert.equal(store.readJob({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a" }).status, "CANCELLED");
     assert.deepEqual(store.listAuditIntents({ tenantId: "tenant-a", scopeRef: "team:team-a" }).map((intent) => intent.eventType), ["JOB_SUBMITTED", "JOB_STARTED", "JOB_CANCELLED"]);
     store.close();
@@ -438,7 +444,7 @@ test("Phase 3E a stale handler success cannot overwrite a concurrent cancellatio
   }
 });
 
-test("Phase 3E a stale mapped failure cannot overwrite a concurrently committed success", () => {
+test("Phase 3E a stale mapped failure cannot overwrite a concurrently committed success", async () => {
   const f = fixture();
   try {
     const store = new DurableJobStore({ databasePath: f.databasePath, idFactory: sequence("job-a"), clock: clockSequence("2026-09-15T00:00:00.000Z", "2026-09-15T00:01:00.000Z", "2026-09-15T00:02:00.000Z") });
@@ -451,7 +457,7 @@ test("Phase 3E a stale mapped failure cannot overwrite a concurrently committed 
       },
     });
 
-    expectSafeStoreFailure(() => runtime(store, throwingHandler, mapper).execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" }), "VERSION_CONFLICT");
+    await expectAsyncSafeStoreFailure(() => runtime(store, throwingHandler, mapper).execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" }), "VERSION_CONFLICT");
     const current = store.readJob({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a" });
     assert.equal(current.status, "SUCCEEDED");
     assert.equal(current.resultReference, "advisory:concurrent-result");
@@ -462,7 +468,7 @@ test("Phase 3E a stale mapped failure cannot overwrite a concurrently committed 
   }
 });
 
-test("Phase 3E interrupted final persistence remains RUNNING after restart and is never blindly re-executed", () => {
+test("Phase 3E interrupted final persistence remains RUNNING after restart and is never blindly re-executed", async () => {
   const f = fixture();
   let store: DurableJobStore | undefined;
   try {
@@ -474,13 +480,13 @@ test("Phase 3E interrupted final persistence remains RUNNING after restart and i
       beforeAuditIntentWrite: () => { auditWrites += 1; if (auditWrites === 3) throw new Error("unsafe storage detail"); },
     });
     store.submitJob(submission());
-    expectSafeStoreFailure(() => runtime(store!).execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" }));
+    await expectAsyncSafeStoreFailure(() => runtime(store!).execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" }));
     store.close();
 
     let handlerCalls = 0;
     const countingHandler: BoundedJobHandler = Object.freeze({ handlerId: "AI-001", execute: (context: JobExecutionContext) => { handlerCalls += 1; return successHandler.execute(context); } });
     store = new DurableJobStore({ databasePath: f.databasePath, idFactory: sequence("unused"), clock: clockSequence("2026-09-15T00:03:00.000Z") });
-    assert.throws(
+    await assert.rejects(
       () => runtime(store!, countingHandler).execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-restart-a" }),
       (error: unknown) => error instanceof JobExecutionRuntimeError && error.code === "JOB_NOT_EXECUTABLE",
     );
@@ -495,19 +501,19 @@ test("Phase 3E interrupted final persistence remains RUNNING after restart and i
   }
 });
 
-test("Phase 3E terminal replay after restart returns one authoritative result without new evidence", () => {
+test("Phase 3E terminal replay after restart returns one authoritative result without new evidence", async () => {
   const f = fixture();
   let store: DurableJobStore | undefined;
   try {
     store = new DurableJobStore({ databasePath: f.databasePath, idFactory: sequence("job-a"), clock: clockSequence("2026-09-15T00:00:00.000Z", "2026-09-15T00:01:00.000Z", "2026-09-15T00:02:00.000Z") });
     store.submitJob(submission());
-    assert.equal(runtime(store).execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" }).status, "SUCCEEDED");
+    assert.equal((await runtime(store).execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-execute-a" })).status, "SUCCEEDED");
     store.close();
 
     let handlerCalls = 0;
     const countingHandler: BoundedJobHandler = Object.freeze({ handlerId: "AI-001", execute: (context: JobExecutionContext) => { handlerCalls += 1; return successHandler.execute(context); } });
     store = new DurableJobStore({ databasePath: f.databasePath, idFactory: sequence("unused"), clock: clockSequence("2026-09-15T00:03:00.000Z") });
-    const replay = runtime(store, countingHandler).execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-replay-a" });
+    const replay = await runtime(store, countingHandler).execute({ jobId: "job-a", tenantId: "tenant-a", scopeRef: "team:team-a", correlationId: "correlation-replay-a" });
     assert.equal(replay.status, "REPLAYED");
     assert.equal(replay.job.status, "SUCCEEDED");
     assert.equal(handlerCalls, 0);

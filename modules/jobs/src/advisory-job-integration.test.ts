@@ -1,3 +1,4 @@
+import { adaptSynchronousAdvisoryPersistence } from "../../ai/src/advisory-async-persistence.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -18,11 +19,11 @@ const specs = Object.freeze({
   "AI-005": Object.freeze({ jobType: "AI_MATCHING" as const, schemaId: "urn:ai-mls:schema:matching-result:v0.1" as const, subject: Object.freeze({ entityType: "MatchCohort", entityId: "cohort-a", version: "1" }) }),
 });
 
-test("Phase 4C provider-independent handler to canonical validator path is executable for AI-001, AI-004, and AI-005", () => {
-  for (const capabilityId of Object.keys(specs) as ExecutableAdvisoryCapabilityId[]) verifyPath(capabilityId);
+test("Phase 4C provider-independent handler to canonical validator path is executable for AI-001, AI-004, and AI-005", async () => {
+  for (const capabilityId of Object.keys(specs) as ExecutableAdvisoryCapabilityId[]) await verifyPath(capabilityId);
 });
 
-function verifyPath(capabilityId: ExecutableAdvisoryCapabilityId): void {
+async function verifyPath(capabilityId: ExecutableAdvisoryCapabilityId): Promise<void> {
   const spec = specs[capabilityId];
   const directory = mkdtempSync(join(tmpdir(), "rel001-phase4c-path-"));
   const store = new DurableAdvisoryStore({ databasePath: join(directory, "advisory.sqlite") });
@@ -33,7 +34,7 @@ function verifyPath(capabilityId: ExecutableAdvisoryCapabilityId): void {
     const snapshot = Object.freeze<TrustedAdvisorySnapshot>({ tenantId: "tenant-a", scopeRef: "team:team-a", subjectRef: spec.subject, provenance: provenance(capabilityId, spec.subject), inputClassifications: ["CONFIDENTIAL_BUSINESS"], inputFingerprint: `sha256:input-${capabilityId}`, evidenceFingerprint: `sha256:evidence-${capabilityId}` });
     const configuration: AdvisoryCapabilityConfiguration = Object.freeze({ environment: "Staging", capabilityId, capabilityVersion: "v1.0", providerRef: `provider:test-${capabilityId}`, modelRef: `model:test-${capabilityId}`, timeoutMs: 1000, credentialRef: `vault-ref:${capabilityId}`, promptId: prompt.promptId, promptVersion: prompt.promptVersion });
     const adapter = new ConfiguredAdvisoryProviderAdapter({ configuration, networkAuthorized: false, credentialResolver: { isAvailable: () => true, resolve: () => "test-boundary-value" }, executor: { testOnly: true, execute: () => { providerCalls += 1; return envelope(capabilityId, spec.subject); } }, telemetrySink: { append: () => undefined }, clock: () => new Date("2026-09-15T03:01:00.000Z") });
-    const runtime = new AdvisoryRuntime({ persistence: store, snapshotResolver: { resolve: () => snapshot }, adapter, clock: () => new Date("2026-09-15T03:02:00.000Z") });
+    const runtime = new AdvisoryRuntime({ persistence: adaptSynchronousAdvisoryPersistence(store), snapshotResolver: { resolve: () => snapshot }, adapter, clock: () => new Date("2026-09-15T03:02:00.000Z") });
     const binding = Object.freeze({ capabilityVersion: "v1.0", promptId: prompt.promptId, promptVersion: prompt.promptVersion });
     const handler: BoundedJobHandler = capabilityId === "AI-001"
       ? new Ai001ListingParseJobHandler(new Ai001ListingParseApplicationService({ runtime, binding }))
@@ -41,8 +42,8 @@ function verifyPath(capabilityId: ExecutableAdvisoryCapabilityId): void {
         ? new Ai004RequirementParseJobHandler(new Ai004RequirementParseApplicationService({ runtime, binding }))
         : new Ai005MatchingJobHandler(new Ai005MatchingApplicationService({ runtime, binding }));
     const context = jobContext(spec.jobType, spec.subject.entityType, spec.subject.entityId);
-    const first = handler.execute(context);
-    const replay = handler.execute(context);
+    const first = (await handler.execute(context));
+    const replay = (await handler.execute(context));
     assert.equal(first.resultReference, replay.resultReference);
     assert.equal(first.evidenceRefs.some((reference) => reference.includes("review-required")), true);
     assert.equal(providerCalls, 1);

@@ -22,18 +22,18 @@ export interface AdvisoryProviderReadinessComposition {
   readonly stagingExecutionReady: number;
 }
 
-export function composeAdvisoryProviderReadiness(input: AdvisoryProviderReadinessCompositionInput): AdvisoryProviderReadinessComposition {
-  const items = capabilities.map((capabilityId): AdvisoryCapabilityReadiness => {
+export async function composeAdvisoryProviderReadiness(input: AdvisoryProviderReadinessCompositionInput): Promise<AdvisoryProviderReadinessComposition> {
+  const items = await Promise.all(capabilities.map(async (capabilityId): Promise<AdvisoryCapabilityReadiness> => {
     const adapter = input.adapters[capabilityId];
     const port = input.applicationPorts[capabilityId];
     const structurallyComposed = adapter instanceof ConfiguredAdvisoryProviderAdapter
       && adapter.capabilityId === capabilityId
       && matchesApplicationPort(capabilityId, port)
-      && port.isProviderIndependentReady(adapter)
+      && await port.isProviderIndependentReady(adapter)
       && input.failureMapper instanceof AdvisoryJobFailureMapper;
     const decision = structurallyComposed ? adapter.readiness() : { providerIndependent: "NOT_READY" as const, stagingExecution: "NOT_READY" as const };
     return immutable({ capabilityId, ...decision });
-  });
+  }));
   return immutable({
     capabilities: items,
     providerIndependentReady: items.filter((item) => item.providerIndependent === "READY").length,

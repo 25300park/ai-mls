@@ -228,3 +228,5 @@ CREATE TABLE IF NOT EXISTS advisory_idempotency (
 CREATE TRIGGER IF NOT EXISTS advisory_idempotency_no_update BEFORE UPDATE ON advisory_idempotency BEGIN SELECT RAISE(ABORT, 'append-only'); END;
 CREATE TRIGGER IF NOT EXISTS advisory_idempotency_no_delete BEFORE DELETE ON advisory_idempotency BEGIN SELECT RAISE(ABORT, 'append-only'); END;
 `;
+
+export { validatePrompt as validateAdvisoryPromptRecord, validateAcceptedRecord as validateAcceptedAdvisoryRecord, canonicalJson as canonicalAdvisoryJson, immutable as immutableAdvisoryRecord };

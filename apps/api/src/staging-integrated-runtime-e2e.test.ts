@@ -1,3 +1,4 @@
+import { adaptSynchronousAdvisoryPersistence } from "../../../modules/ai/src/advisory-async-persistence.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -107,7 +108,7 @@ const advisoryConfigurations = Object.fromEntries(advisoryCapabilities.map((capa
   promptId: `PRM-${capabilityId}-001`, promptVersion: "v1.0",
 })])) as Record<ExecutableAdvisoryCapabilityId, AdvisoryCapabilityConfiguration>;
 
-function createAdvisoryReadiness(directory: string, onExecute: () => void) {
+async function createAdvisoryReadiness(directory: string, onExecute: () => void) {
   const stores: DurableAdvisoryStore[] = [];
   const adapters = Object.fromEntries(advisoryCapabilities.map((capabilityId) => [capabilityId, new ConfiguredAdvisoryProviderAdapter({
     configuration: advisoryConfigurations[capabilityId], networkAuthorized: false,
@@ -126,14 +127,15 @@ function createAdvisoryReadiness(directory: string, onExecute: () => void) {
           : "urn:ai-mls:schema:matching-result:v0.1",
       contentFingerprint: `sha256:prompt-${capabilityId}`, status: "ACTIVE", createdAt: now.toISOString(),
     });
-    const runtime = new AdvisoryRuntime({ persistence: store, snapshotResolver: { resolve: () => undefined }, adapter: adapters[capabilityId], clock: () => new Date(now) });
+    const runtime = new AdvisoryRuntime({ persistence: adaptSynchronousAdvisoryPersistence(store), snapshotResolver: { resolve: () => undefined }, adapter: adapters[capabilityId], clock: () => new Date(now) });
     const binding = { capabilityVersion: configuration.capabilityVersion, promptId: configuration.promptId, promptVersion: configuration.promptVersion };
     const service = capabilityId === "AI-001" ? new Ai001ListingParseApplicationService({ runtime, binding })
       : capabilityId === "AI-004" ? new Ai004RequirementParseApplicationService({ runtime, binding })
         : new Ai005MatchingApplicationService({ runtime, binding });
     return [capabilityId, service];
   })) as { "AI-001": Ai001ListingParseApplicationService; "AI-004": Ai004RequirementParseApplicationService; "AI-005": Ai005MatchingApplicationService };
-  const status = () => composeAdvisoryProviderReadiness({ adapters, applicationPorts, failureMapper: new AdvisoryJobFailureMapper() });
+  const ready = await composeAdvisoryProviderReadiness({ adapters, applicationPorts, failureMapper: new AdvisoryJobFailureMapper() });
+  const status = () => ready;
   return Object.freeze({ status, close: () => stores.forEach((store) => store.close()) });
 }
 
@@ -180,7 +182,7 @@ test("REL001-PHASE6 concrete compositions become ready, perform no execution, an
     handlers: countedHandlers, admission, failureMapper,
   });
   let providerCalls = 0;
-  let advisory = createAdvisoryReadiness(directory, () => { providerCalls += 1; });
+  let advisory = await createAdvisoryReadiness(directory, () => { providerCalls += 1; });
   const createdSession = session.sessionService.createSession({
     evidence: { credentialReference: "phase6-test-reference", requestedScope: "tenant-staging" },
     correlationId: "correlation-phase6-session",
@@ -259,7 +261,7 @@ test("REL001-PHASE6 concrete compositions become ready, perform no execution, an
       environment: "Staging", databasePath: jobsPath, idFactory: () => "unused", clock: () => new Date(now),
       handlers: countedHandlers, admission, failureMapper,
     });
-    advisory = createAdvisoryReadiness(directory, () => { providerCalls += 1; });
+    advisory = await createAdvisoryReadiness(directory, () => { providerCalls += 1; });
     connected = await startConnected();
     assert.equal(integrated().status().classification, "NOT_READY");
     await prime();

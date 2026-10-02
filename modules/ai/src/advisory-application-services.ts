@@ -30,29 +30,29 @@ export interface AdvisoryApplicationResult {
   readonly authority: "ADVISORY";
 }
 
-export interface Ai001ListingParseApplicationPort { execute(input: AdvisoryApplicationExecutionInput): AdvisoryApplicationResult; }
-export interface Ai004RequirementParseApplicationPort { execute(input: AdvisoryApplicationExecutionInput): AdvisoryApplicationResult; }
-export interface Ai005MatchingApplicationPort { execute(input: AdvisoryApplicationExecutionInput): AdvisoryApplicationResult; }
+export interface Ai001ListingParseApplicationPort { execute(input: AdvisoryApplicationExecutionInput): Promise<AdvisoryApplicationResult>; }
+export interface Ai004RequirementParseApplicationPort { execute(input: AdvisoryApplicationExecutionInput): Promise<AdvisoryApplicationResult>; }
+export interface Ai005MatchingApplicationPort { execute(input: AdvisoryApplicationExecutionInput): Promise<AdvisoryApplicationResult>; }
 
 export class Ai001ListingParseApplicationService implements Ai001ListingParseApplicationPort {
   readonly #service: CapabilityApplicationService;
   public constructor(dependencies: ServiceDependencies) { this.#service = new CapabilityApplicationService("AI-001", dependencies); }
-  public execute(input: AdvisoryApplicationExecutionInput): AdvisoryApplicationResult { return this.#service.execute(input); }
-  public isProviderIndependentReady(adapter: ConfiguredAdvisoryProviderAdapter): boolean { return this.#service.isProviderIndependentReady(adapter); }
+  public execute(input: AdvisoryApplicationExecutionInput): Promise<AdvisoryApplicationResult> { return this.#service.execute(input); }
+  public isProviderIndependentReady(adapter: ConfiguredAdvisoryProviderAdapter): Promise<boolean> { return this.#service.isProviderIndependentReady(adapter); }
 }
 
 export class Ai004RequirementParseApplicationService implements Ai004RequirementParseApplicationPort {
   readonly #service: CapabilityApplicationService;
   public constructor(dependencies: ServiceDependencies) { this.#service = new CapabilityApplicationService("AI-004", dependencies); }
-  public execute(input: AdvisoryApplicationExecutionInput): AdvisoryApplicationResult { return this.#service.execute(input); }
-  public isProviderIndependentReady(adapter: ConfiguredAdvisoryProviderAdapter): boolean { return this.#service.isProviderIndependentReady(adapter); }
+  public execute(input: AdvisoryApplicationExecutionInput): Promise<AdvisoryApplicationResult> { return this.#service.execute(input); }
+  public isProviderIndependentReady(adapter: ConfiguredAdvisoryProviderAdapter): Promise<boolean> { return this.#service.isProviderIndependentReady(adapter); }
 }
 
 export class Ai005MatchingApplicationService implements Ai005MatchingApplicationPort {
   readonly #service: CapabilityApplicationService;
   public constructor(dependencies: ServiceDependencies) { this.#service = new CapabilityApplicationService("AI-005", dependencies); }
-  public execute(input: AdvisoryApplicationExecutionInput): AdvisoryApplicationResult { return this.#service.execute(input); }
-  public isProviderIndependentReady(adapter: ConfiguredAdvisoryProviderAdapter): boolean { return this.#service.isProviderIndependentReady(adapter); }
+  public execute(input: AdvisoryApplicationExecutionInput): Promise<AdvisoryApplicationResult> { return this.#service.execute(input); }
+  public isProviderIndependentReady(adapter: ConfiguredAdvisoryProviderAdapter): Promise<boolean> { return this.#service.isProviderIndependentReady(adapter); }
 }
 
 interface ServiceDependencies {
@@ -72,9 +72,10 @@ class CapabilityApplicationService {
     this.#binding = immutable(dependencies.binding);
   }
 
-  public execute(input: AdvisoryApplicationExecutionInput): AdvisoryApplicationResult {
+  public async execute(input: AdvisoryApplicationExecutionInput): Promise<AdvisoryApplicationResult> {
     if (!validInput(input)) throw invalidInput();
-    const accepted = this.#runtime.execute({
+    input = immutable(input);
+    const accepted = await this.#runtime.execute({
       tenantId: input.tenantId,
       scopeRef: input.scopeRef,
       capabilityId: this.#capabilityId,
@@ -98,9 +99,9 @@ class CapabilityApplicationService {
     });
   }
 
-  public isProviderIndependentReady(adapter: ConfiguredAdvisoryProviderAdapter): boolean {
+  public async isProviderIndependentReady(adapter: ConfiguredAdvisoryProviderAdapter): Promise<boolean> {
     return adapter.matchesExecutionBinding({ capabilityId: this.#capabilityId, capabilityVersion: this.#binding.capabilityVersion, promptId: this.#binding.promptId, promptVersion: this.#binding.promptVersion })
-      && this.#runtime.hasExecutableBinding({ adapter, capabilityId: this.#capabilityId, schemaId: canonicalAiSchemaId(this.#capabilityId), promptId: this.#binding.promptId, promptVersion: this.#binding.promptVersion });
+      && await this.#runtime.hasExecutableBinding({ adapter, capabilityId: this.#capabilityId, schemaId: canonicalAiSchemaId(this.#capabilityId), promptId: this.#binding.promptId, promptVersion: this.#binding.promptVersion });
   }
 }
 

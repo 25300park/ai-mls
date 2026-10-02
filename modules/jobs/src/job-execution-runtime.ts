@@ -48,12 +48,14 @@ export interface JobExecutionFailureMapper {
 
 export interface BoundedJobHandler {
   readonly handlerId: CanonicalJobHandlerId;
-  execute(context: JobExecutionContext): Readonly<{
+  execute(context: JobExecutionContext): JobHandlerResult | Promise<JobHandlerResult>;
+}
+
+export type JobHandlerResult = Readonly<{
     readonly resultReference: string;
     readonly resultChecksum: string;
     readonly evidenceRefs: readonly string[];
   }>;
-}
 
 interface HandlerRegistration {
   readonly handlerId: CanonicalJobHandlerId;
@@ -133,7 +135,7 @@ export class JobExecutionRuntime {
     this.#failureMapper = dependencies.failureMapper;
   }
 
-  public execute(input: Readonly<{ readonly jobId: string; readonly tenantId: string; readonly scopeRef: string; readonly correlationId: string }>): JobExecutionResult {
+  public async execute(input: Readonly<{ readonly jobId: string; readonly tenantId: string; readonly scopeRef: string; readonly correlationId: string }>): Promise<JobExecutionResult> {
     if (this.#registry.readiness() !== "READY") throw runtimeFailure("RUNTIME_NOT_READY");
     const job = this.#store.readJob(input);
     if (job.status === "SUCCEEDED" || job.status === "FAILED" || job.status === "CANCELLED" || job.status === "EXPIRED") {
@@ -172,9 +174,9 @@ export class JobExecutionRuntime {
       initiatingPrincipalProvenance: running.principalProvenance,
       correlationId: input.correlationId,
     });
-    let outcome: ReturnType<BoundedJobHandler["execute"]>;
+    let outcome: Awaited<ReturnType<BoundedJobHandler["execute"]>>;
     try {
-      outcome = registration.handler.execute(executionContext);
+      outcome = await registration.handler.execute(executionContext);
       if (!validSuccess(outcome)) throw runtimeFailure("HANDLER_RESULT_INVALID");
     } catch (error) {
       return this.#persistFailure(error, executionContext, running, input.correlationId, registration.handlerId);
@@ -229,7 +231,7 @@ function validAdmission(value: unknown): value is ReturnType<JobExecutionAdmissi
   return value["status"] === "ALLOWED" && Object.keys(value).every((key) => key === "status" || key === "evidenceRefs") && Array.isArray(value["evidenceRefs"]);
 }
 
-function validSuccess(value: unknown): value is ReturnType<BoundedJobHandler["execute"]> {
+function validSuccess(value: unknown): value is Awaited<ReturnType<BoundedJobHandler["execute"]>> {
   return plain(value) && Object.keys(value).every((key) => ["resultReference", "resultChecksum", "evidenceRefs"].includes(key))
     && safeReference(value["resultReference"]) && safeReference(value["resultChecksum"]) && safeReferences(value["evidenceRefs"]);
 }
