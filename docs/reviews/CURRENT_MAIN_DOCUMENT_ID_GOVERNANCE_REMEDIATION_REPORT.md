@@ -34,7 +34,7 @@ Current main exact-HEAD integrated validation을 차단한 Document ID 형식·�
 - [Decision Register](../00_DECISION_REGISTER.md) — `DEC-115`
 - [Decision Trace Matrix](../00_DECISION_TRACE_MATRIX.md) — `DT-115`
 - [Architecture v1.1 Baseline Manifest](../freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md)
-- [MAOS Architecture Index](../maos/architecture/README.md)
+- MAOS Architecture Index — historical artifact: commit `97c3bb5b432235cbb8dcc3969961c7c155f20f53`, path `docs/maos/architecture/README.md` (현재 tree에서 회수됨)
 
 ## 4. Blocking validation result
 
@@ -186,3 +186,16 @@ Review는 invalid 33건 분류, historical evidence 보존, `DOC-DEV-018–020` 
 ## 18. Next brief prerequisites
 
 다음 단계는 새 Feature가 아니라 이 remediation commit을 exact source HEAD로 사용하는 `CURRENT MAIN EXACT-HEAD FRESH INTEGRATED VALIDATION — RETRY`다. 본 보고서 제출과 단일 local commit 후 중단한다.
+
+## Forward-only recovery addendum — 2026-10-02
+
+Human provenance와 Git 기록으로 `97c3bb5b432235cbb8dcc3969961c7c155f20f53`이 MAOS Phase 1.3 brief의 네 artifact를 canonical target `D:/10. MAOS` 대신 AI-MLS repository에 도입한 `CONFIRMED_WRONG_PROJECT` commit임을 확인했다. 이 문서의 당시 metadata 정규화 결과, count, 상태와 recommendation은 historical evidence로 그대로 보존한다.
+
+별도 승인된 forward-only recovery로 아래 네 artifact를 현재 AI-MLS tree에서 제거했다. 과거 내용은 introduction commit의 해당 path에서 확인할 수 있으며 아래 경로는 현재 파일 링크가 아닌 historical 식별자다.
+
+- `docs/maos/architecture/MAOS-FRZ-001-architecture-freeze-v1.0.md`
+- `docs/maos/architecture/MAOS-NRM-001-normalization.md`
+- `docs/maos/architecture/MAOS-P13-001-repository-bootstrap-design.md`
+- `docs/maos/architecture/README.md`
+
+`e69e3cd8255fc62bf8f35b1662682bba93bdb0ff`의 관련 변경은 `NORMALIZATION_ONLY`이며 전체 commit을 revert하지 않았다. 위 5.2절 및 MAOS 관련 과거 기술은 당시 수행 사실을 설명하며 현재 repository ownership 또는 live dependency를 승인하지 않는다. Legitimate AI-MLS 문서 ID 교정, Phase 14/15/16, REL-002, freeze registry, Decision/CR 및 기존 미커밋 작업은 보존했다. History rewrite, runtime/schema/test 변경과 Production/Railway/Supabase 접근 또는 mutation은 수행하지 않았다.
