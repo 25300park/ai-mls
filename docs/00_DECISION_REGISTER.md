@@ -320,3 +320,9 @@ Phase 15 validation은 모든 marker가 위 path/content rule 중 하나에 속�
 5. release 전 [Release Policy](00_RELEASE_POLICY.md)의 checklist에서 신규·변경 decision의 반영을 확인한다.
 
 DEC-001–007의 approval evidence는 founding mandate, Phase 14 recommendation과 Phase 15 user authorization으로 backfill했다. Named assignee 지정은 `OD-ROLE`로 D0 entry까지 유지한다.
+
+## REL-002 R3-C0 — AO Wave 3 final canonicalization review
+
+| ID | Source | Title | Decision / Proposal | Type | Owner | Decision Date | Status | Affected Documents | Affected Phase | Superseded By | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| DEC-199 | [R3-C0 Contract](implementation/REL002_R3C0_WORKLOAD_BINDING_CONTRACT.md) | Exact Workload Startup Domain Binding | AO Wave 3 grants Organization Data Steward OrganizationGovernanceRecord, Administration Project governance, Identity immutable binding, typed existing scope-owner dispatch, owner record/version proofs and Model A selection; no Scope/Evidence/selection entity. | Architecture / Security / Database | Architecture Owner / Identity / Administration / Organization Data Steward / Audit Owner | 2026-10-02 | APPROVED | DOC-DEV-381–384, DOC-REVIEW-263 | REL-002 R3-C0 / R3-C | None | FINAL_CANONICALIZATION_DECISIONS_GRANTED; unresolved 0; final document closeout APPROVED; schema/migration/runtime implementation still NOT_AUTHORIZED; ADR/physical implementation separately gated. |
