@@ -84,8 +84,8 @@ test("executes the exact canonical order and constructs Session only after gate 
   assert.equal(runtime.identitySchemaReadinessProvenance, "HISTORICAL_MIGRATION_ATTESTATION_VERIFIED");
   assert.deepEqual(events, [
     "parse", "validate-config", "validate-secret-refs", "pool-open", "identity-open", "identity-schema-ready",
-    "human-identity", "service-identities", "resolve-secrets", "gate-pass", "session-create",
-    "component-schemas", "root-014-create", "root-015-create", "root-018-create", "root-019-create",
+    "human-identity", "service-identities", "resolve-secrets", "gate-pass", "component-schemas",
+    "session-create", "root-014-create", "root-015-create", "root-018-create", "root-019-create",
     "root-022-create", "listeners-start", "root-014-activate", "root-015-activate", "root-018-activate",
     "root-019-activate", "root-022-activate", "workers-start",
   ]);
@@ -209,4 +209,30 @@ test("R3-B7 concurrent bootstrap close waits for the same owned resource shutdow
  const runtime=await executeProductionBootstrap({}, {...dependencies,startListeners:()=>({close:async()=>{events.push("listeners-close");await drain;}})});
  let firstDone=false;let secondDone=false;const first=runtime.close().then(()=>{firstDone=true;});const second=runtime.close().then(()=>{secondDone=true;});
  await Promise.resolve();await Promise.resolve();assert.equal(firstDone,false);assert.equal(secondDone,false);release();await Promise.all([first,second]);assert.equal(events.filter(e=>e==="pool-close").length,1);
+});
+
+test("R3-B8 aggregate failure prevents all downstream construction and exhaustively closes prerequisites",async()=>{
+ const {events,dependencies}=harness("component-schemas");
+ await assert.rejects(()=>executeProductionBootstrap({},dependencies),ProductionBootstrapError);
+ assert.equal(events.includes("session-create"),false); assert.equal(events.some(e=>e.startsWith("root-")),false);
+ assert.equal(events.includes("listeners-start"),false); assert.equal(events.includes("workers-start"),false);
+ assert.deepEqual(events.slice(-2),["identity-close","pool-close"]);
+});
+
+test("R3-B8 bootstrap preserves safe aggregate evidence while closing prerequisites", async () => {
+  const {events,dependencies}=harness();
+  const readiness = await import("./child-root-postgresql-readiness.js");
+  const pool = { connect: () => Promise.reject(new Error("unsafe-driver private-host stack")), close: () => Promise.resolve() };
+  await assert.rejects(() => executeProductionBootstrap({}, {
+    ...dependencies, assertComponentSchemasReady: () => readiness.assertR3B1ChildRootSchemasReady(pool),
+  }), (error: unknown) => {
+    assert.ok(error instanceof ProductionBootstrapError);
+    const evidence = error.schemaReadiness;
+    assert.ok(evidence); assert.equal(evidence.status,"NOT_READY"); assert.equal(evidence.children.length,5); assert.equal(evidence.failingSchemas.length,5);
+    assert.ok(evidence.children.every(c=>c.reason==="READINESS_UNAVAILABLE"));
+    assert.doesNotMatch(JSON.stringify(error),/unsafe-driver|private-host|stack/u);
+    return true;
+  });
+  assert.equal(events.includes("session-create"),false);
+  assert.deepEqual(events.slice(-2),["identity-close","pool-close"]);
 });

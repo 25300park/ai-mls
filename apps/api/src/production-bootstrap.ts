@@ -1,3 +1,4 @@
+import type { ChildRootSchemaReadinessEvidence } from "./child-root-postgresql-readiness.js";
 import type {
   AsyncRegisteredServiceWorkloadAuthorityLease,
   PostgreSqlPoolPort,
@@ -90,7 +91,7 @@ export interface ProductionRuntimeHandle {
 export type ProductionBootstrapErrorCode = "PRODUCTION_STARTUP_UNAVAILABLE";
 
 export class ProductionBootstrapError extends Error {
-  public constructor(public readonly code: ProductionBootstrapErrorCode) {
+  public constructor(public readonly code: ProductionBootstrapErrorCode, public readonly schemaReadiness?: ChildRootSchemaReadinessEvidence) {
     super("Production runtime startup is unavailable.");
     this.name = "ProductionBootstrapError";
   }

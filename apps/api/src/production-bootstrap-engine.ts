@@ -1,3 +1,4 @@
+import { ChildRootSchemaReadinessError } from "./child-root-postgresql-readiness.js";
 import { issueProductionBootstrapContext } from "../../../packages/security-contracts/src/production-bootstrap-proof.js";
 import {
   ProductionBootstrapError,
@@ -46,9 +47,9 @@ export async function executeProductionBootstrap(rawConfiguration: unknown, depe
     const validationFingerprint = dependencies.validateStartupGate(configuration, identities);
     if (!safeReference(validationFingerprint)) throw unavailable();
     const context = issueProductionBootstrapContext({ validationFingerprint, configurationReference: configuration.configurationReference });
+    await dependencies.assertComponentSchemasReady(configuration, pool);
     const session = await dependencies.createSessionUnitOfWork(pool);
     cleanup.push(() => session.close());
-    await dependencies.assertComponentSchemasReady(configuration, pool);
 
     const roots: ProductionChildRoot[] = [];
     for (const componentId of ["API-014", "API-015", "API-018", "API-019", "FEAT-022"] as const) {
@@ -73,9 +74,9 @@ export async function executeProductionBootstrap(rawConfiguration: unknown, depe
         await (closing ??= shutdown());
       },
     });
-  } catch {
+  } catch (error) {
     try { await shutdown(); } catch { /* startup remains unavailable after exhaustive cleanup */ }
-    throw unavailable();
+    throw new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE", error instanceof ChildRootSchemaReadinessError ? error.evidence : undefined);
   }
 }
 

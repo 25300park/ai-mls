@@ -112,15 +112,52 @@ export async function assertR3B1ExternalIntegrationSchemaReady(pool: PostgreSqlP
   await assertContractsReady(pool, R3B1_CHILD_ROOT_SCHEMA_CONTRACTS.filter((contract) => contract.schemaName === "app_external_integration"));
 }
 
+export interface ChildRootSchemaReadinessEvidence {
+  readonly status: "READY" | "NOT_READY";
+  readonly children: readonly Readonly<{ schemaName: string; status: "PASS" | "FAIL"; reason: "SCHEMA_CONTRACT_MISMATCH" | "READINESS_UNAVAILABLE" | null }>[];
+  readonly failingSchemas: readonly string[];
+}
+
+export class ChildRootSchemaReadinessError extends Error {
+  constructor(readonly evidence: ChildRootSchemaReadinessEvidence) {
+    super("R3B1_CHILD_ROOT_SCHEMA_NOT_READY");
+    this.name = "ChildRootSchemaReadinessError";
+  }
+}
+
+/** One read-only catalog snapshot; every child result is collected before deciding aggregate readiness. */
+export async function evaluateR3B1ChildRootSchemas(pool: PostgreSqlPoolPort): Promise<ChildRootSchemaReadinessEvidence> {
+  return evaluateContracts(pool, R3B1_CHILD_ROOT_SCHEMA_CONTRACTS);
+}
+
 async function assertContractsReady(pool: PostgreSqlPoolPort, contracts: readonly R3B1ChildRootSchemaContract[]): Promise<void> {
-  const client = await pool.connect();
+  const evidence = await evaluateContracts(pool, contracts);
+  if (evidence.status !== "READY") throw new ChildRootSchemaReadinessError(evidence);
+}
+
+async function evaluateContracts(pool: PostgreSqlPoolPort, contracts: readonly R3B1ChildRootSchemaContract[]): Promise<ChildRootSchemaReadinessEvidence> {
+  let client: Awaited<ReturnType<PostgreSqlPoolPort["connect"]>> | undefined;
+  let evidence: ChildRootSchemaReadinessEvidence;
   try {
+    client = await pool.connect();
     const result = await client.query<ReadinessRow>(READINESS_QUERY);
-    if (result.rowCount < contracts.length) throw notReady();
-    const bySchema = new Map(result.rows.map((row) => [row.schema_name, row]));
-    for (const contract of contracts) {
-      const row = bySchema.get(contract.schemaName);
-      if (row?.artifact_sha256 !== contract.artifactSha256 || row.table_count !== contract.tableCount || row.schema_comment !== contract.schemaComment
+    const malformed = result.rowCount !== result.rows.length || result.rowCount < contracts.length
+      || (contracts.length === R3B1_CHILD_ROOT_SCHEMA_CONTRACTS.length && result.rowCount !== contracts.length);
+    evidence = summarize(contracts.map(contract => {
+      const rows = result.rows.filter(row => row.schema_name === contract.schemaName);
+      const row = rows[0];
+      const failed = malformed || rows.length !== 1 || schemaMismatch(row, contract);
+      return Object.freeze({ schemaName: contract.schemaName, status: failed ? "FAIL" as const : "PASS" as const, reason: failed ? "SCHEMA_CONTRACT_MISMATCH" as const : null });
+    }));
+  } catch {
+    evidence = unavailableEvidence(contracts);
+  }
+  try { client?.release(); } catch { evidence = unavailableEvidence(contracts); }
+  return evidence;
+}
+
+function schemaMismatch(row: ReadinessRow | undefined, contract: R3B1ChildRootSchemaContract): boolean {
+  return row?.artifact_sha256 !== contract.artifactSha256 || row.table_count !== contract.tableCount || row.schema_comment !== contract.schemaComment
         || row.runtime_usage !== true || row.runtime_create !== false || row.public_acl_count !== 0
         || row.runtime_grant_option_count !== 0 || row.columns_hash !== contract.columnsHash
         || row.constraints_hash !== contract.constraintsHash || row.indexes_hash !== contract.indexesHash
@@ -131,18 +168,18 @@ async function assertContractsReady(pool: PostgreSqlPoolPort, contracts: readonl
         || row.unexpected_runtime_membership_count !== 0
         || row.public_schema_acl_count !== 0 || row.schema_grant_option_count !== 0
         || row.function_acl_violation_count !== 0 || row.sequence_count !== 0
-        || row.unexpected_role_membership !== false) throw notReady();
-    }
-  } catch {
-    throw notReady();
-  } finally {
-    client.release();
-  }
+        || row.unexpected_role_membership !== false;
 }
 
-function notReady(): Error {
-  return new Error("R3B1_CHILD_ROOT_SCHEMA_NOT_READY");
+function summarize(children: ChildRootSchemaReadinessEvidence["children"]): ChildRootSchemaReadinessEvidence {
+  const failingSchemas = Object.freeze(children.filter(child => child.status === "FAIL").map(child => child.schemaName));
+  return Object.freeze({ status: failingSchemas.length === 0 ? "READY" : "NOT_READY", children: Object.freeze(children), failingSchemas });
 }
+
+function unavailableEvidence(contracts: readonly R3B1ChildRootSchemaContract[]): ChildRootSchemaReadinessEvidence {
+  return summarize(contracts.map(contract => Object.freeze({ schemaName: contract.schemaName, status: "FAIL" as const, reason: "READINESS_UNAVAILABLE" as const })));
+}
+
 
 export async function assertR3B1AdvisorySchemaReady(pool: PostgreSqlPoolPort): Promise<void> {
   await assertContractsReady(pool, R3B1_CHILD_ROOT_SCHEMA_CONTRACTS.filter((contract) => contract.schemaName === "app_advisory"));

@@ -23,7 +23,7 @@ import {
   type ProductionReadinessState,
   type ProductionRuntimeHttpListenerFactory,
 } from "./production-readiness-http.js";
-import { assertR3B1AdvisorySchemaReady, assertR3B1AdministrationSchemaReady, assertR3B1ConnectorSchemaReady, assertR3B1ExternalIntegrationSchemaReady, assertR3B1PublicationSchemaReady } from "./child-root-postgresql-readiness.js";
+import { assertR3B1ChildRootSchemasReady } from "./child-root-postgresql-readiness.js";
 import {
   parseRailwayProductionRuntimeConfiguration,
   type RailwayProductionRuntimeConfiguration,
@@ -200,11 +200,7 @@ export function createRailwayProductionDependencies(
     createSessionUnitOfWork: (pool: PostgreSqlPoolPort): Promise<ProductionAsyncClosableResource> =>
       Promise.resolve(new PostgreSqlSessionUnitOfWork(pool)),
     assertComponentSchemasReady: async (_configuration: ProductionRuntimeConfiguration, pool: PostgreSqlPoolPort): Promise<void> => {
-      await assertR3B1PublicationSchemaReady(pool);
-      await assertR3B1AdministrationSchemaReady(pool);
-      await assertR3B1ConnectorSchemaReady(pool);
-      await assertR3B1ExternalIntegrationSchemaReady(pool);
-      await assertR3B1AdvisorySchemaReady(pool);
+      await assertR3B1ChildRootSchemasReady(pool);
     },
     childRootOptions: Object.freeze({
       api014: Object.freeze({ runtimeEnvironment: "PRODUCTION" as const }),

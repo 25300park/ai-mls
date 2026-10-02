@@ -129,3 +129,12 @@ test("non-Railway, wrong-service, PR, and non-Production runtime environments ca
     );
   }
 });
+for (const consumer of ["PG_PRODUCTION_POOL", "PG_IDENTITY_POOL"] as const) test("R3-B8 " + consumer + " resolves the same approved secret boundary once with one lifecycle", async () => {
+  const reads: string[] = []; let physicalPools = 0; let closed = 0;
+  const source = new Proxy(environment(), { get: (target, key: string) => { if(key === connectionKey || key === certificateKey) reads.push(key); return target[key]; } });
+  const pool = createRailwaySealedProductionPostgreSqlPool(configuration(), source, consumer, () => {
+    physicalPools++; return { connect: () => Promise.reject(new Error("unused")), end: () => { closed++; return Promise.resolve(); } };
+  });
+  assert.equal(physicalPools, 1); assert.deepEqual(reads, [connectionKey, certificateKey]);
+  await pool.close(); await pool.close(); assert.equal(closed, 1);
+});
