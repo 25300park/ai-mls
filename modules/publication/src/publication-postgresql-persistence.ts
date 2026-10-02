@@ -21,6 +21,9 @@ export class PostgreSqlPublicationUnitOfWork implements PublicationUnitOfWork {
   readonly #pool: PostgreSqlPoolPort;
   #closed = false;
   #quarantined = false;
+  #active = 0;
+  #closing: Promise<void> | undefined;
+  #drained: (() => void) | undefined;
 
   public readonly repository: PublicationRepository;
   public readonly idempotency: PublicationIdempotencyStore;
@@ -81,12 +84,15 @@ export class PostgreSqlPublicationUnitOfWork implements PublicationUnitOfWork {
 
   public async begin(identity: PublicationIdentity): Promise<PublicationTransaction> {
     this.#assertOpen();
+    this.#active++;
+    identity = Object.freeze({ ...identity });
     let client: PostgreSqlClientPort | undefined;
     let transactionOpen = false;
     let completed = false;
     let discard = false;
     try {
       client = await this.#pool.connect();
+      this.#assertNotQuarantined();
       await query(client, "BEGIN");
       transactionOpen = true;
       const baseline = await loadScope(client, identity, true);
@@ -96,14 +102,17 @@ export class PostgreSqlPublicationUnitOfWork implements PublicationUnitOfWork {
       };
       const finish = async (commit: boolean): Promise<void> => {
         ensureActive();
+        completed = true;
         let commitStarted = false;
         try {
           if (commit) {
+            this.#assertNotQuarantined();
             const baselineRevision = baseline.scopeRevision(identity.tenantScopeId, identity.publicationId);
             if (staged.scopeRevision(identity.tenantScopeId, identity.publicationId) !== baselineRevision) {
               await persistScope(client!, identity, baselineRevision, staged);
               await persistAppendOnly(client!, identity, baseline, staged);
             }
+            this.#assertNotQuarantined();
             commitStarted = true;
             await query(client!, "COMMIT");
           } else {
@@ -116,13 +125,15 @@ export class PostgreSqlPublicationUnitOfWork implements PublicationUnitOfWork {
             // PostgreSQL may have committed before the client observed a transport failure.
             // Quarantine the UoW so no contradictory failure evidence can be appended.
             this.#quarantined = true;
-          } else if (transactionOpen) {
-            try { await query(client!, "ROLLBACK"); transactionOpen = false; } catch { /* release destroys the uncertain connection */ }
+          } else if (commit && transactionOpen) {
+            try { await query(client!, "ROLLBACK"); transactionOpen = false; } catch { this.#quarantined = true; }
+          } else {
+            this.#quarantined = true;
           }
           throw mapError(error);
         } finally {
           completed = true;
-          client!.release(discard);
+          try { client!.release(discard); } finally { this.#releaseOperation(); }
         }
       };
       return Object.freeze({
@@ -135,37 +146,47 @@ export class PostgreSqlPublicationUnitOfWork implements PublicationUnitOfWork {
         rollback: () => finish(false),
       });
     } catch (error) {
-      if (transactionOpen && client !== undefined) try { await query(client, "ROLLBACK"); } catch { discard = true; }
-      client?.release(discard);
+      if (transactionOpen && client !== undefined) try { await query(client, "ROLLBACK"); } catch { discard = true; this.#quarantined = true; }
+      try { client?.release(discard); } finally { this.#releaseOperation(); }
       throw mapError(error);
     }
   }
 
-  public close(): Promise<void> {
+  public async close(): Promise<void> {
     this.#closed = true;
-    return Promise.resolve();
+    if (this.#active === 0) return;
+    await (this.#closing ??= new Promise<void>((resolve) => { this.#drained = resolve; }));
   }
+
+  #releaseOperation(): void { this.#active--; if (this.#active === 0) this.#drained?.(); }
+  #assertNotQuarantined(): void { if (this.#quarantined) throw persistenceError("PERSISTENCE_WRITE_FAILED", "PostgreSQL Publication persistence is unavailable."); }
 
   async #read<Result>(identity: PublicationIdentity, operation: (state: InMemoryPersistenceState) => Promise<Result>): Promise<Result> {
     this.#assertOpen();
-    const client = await this.#pool.connect();
+    this.#active++;
+    let client: PostgreSqlClientPort | undefined;
     let discard = false;
-    try { return await operation(await loadScope(client, identity, false)); }
+    try { client = await this.#pool.connect(); this.#assertNotQuarantined(); const state = await loadScope(client, identity, false); this.#assertNotQuarantined(); return await operation(state); }
     catch (error) { discard = true; throw mapError(error); }
-    finally { client.release(discard); }
+    finally { try { client?.release(discard); } finally { this.#releaseOperation(); } }
   }
 
   async #readEventScope<Result>(tenantId: string, eventId: string, operation: (state: InMemoryPersistenceState) => Promise<Result>): Promise<Result> {
     this.#assertOpen();
-    const client = await this.#pool.connect();
+    this.#active++;
+    let client: PostgreSqlClientPort | undefined;
     let discard = false;
     try {
+      client = await this.#pool.connect(); this.#assertNotQuarantined();
       const found = await query<Row>(client, "SELECT publication_id FROM app_publication.publication_events WHERE tenant_scope_id=$1 AND event_id=$2", [tenantId, eventId]);
+      this.#assertNotQuarantined();
       const publicationId = text(found.rows[0]?.["publication_id"]);
       if (publicationId === undefined) return await operation(new InMemoryPersistenceState());
-      return await operation(await loadScope(client, { tenantScopeId: tenantId, publicationId }, false));
+      const state = await loadScope(client, { tenantScopeId: tenantId, publicationId }, false);
+      this.#assertNotQuarantined();
+      return await operation(state);
     } catch (error) { discard = true; throw mapError(error); }
-    finally { client.release(discard); }
+    finally { try { client?.release(discard); } finally { this.#releaseOperation(); } }
   }
 
   async #inTransaction<Result>(identity: PublicationIdentity, operation: (transaction: PublicationTransaction) => Promise<Result>): Promise<Result> {

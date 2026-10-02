@@ -1456,6 +1456,8 @@
 | DOC-REVIEW-259 | REL-002 R3-B5 API-019 External Integration PostgreSQL Persistence Completion Report | [REL002_R3B5_COMPLETION_REPORT.md](reviews/REL002_R3B5_COMPLETION_REPORT.md) |
 | DOC-DEV-378 | REL-002 R3-B6 FEAT-022 Advisory PostgreSQL Persistence Traceability Matrix | [REL002_R3B6_TRACEABILITY_MATRIX.md](implementation/REL002_R3B6_TRACEABILITY_MATRIX.md) |
 | DOC-REVIEW-260 | REL-002 R3-B6 FEAT-022 Advisory PostgreSQL Persistence Completion Report | [REL002_R3B6_COMPLETION_REPORT.md](reviews/REL002_R3B6_COMPLETION_REPORT.md) |
+| DOC-DEV-379 | REL-002 R3-B7 Cross-Domain Async / Unit-of-Work Hardening Traceability Matrix | [REL002_R3B7_TRACEABILITY_MATRIX.md](implementation/REL002_R3B7_TRACEABILITY_MATRIX.md) |
+| DOC-REVIEW-261 | REL-002 R3-B7 Cross-Domain Async / Unit-of-Work Hardening Completion Report | [REL002_R3B7_COMPLETION_REPORT.md](reviews/REL002_R3B7_COMPLETION_REPORT.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books

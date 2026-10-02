@@ -203,3 +203,10 @@ test("a Production process cannot call a governed root without an issued bootstr
   `], { encoding: "utf8", env: { ...process.env, NODE_TEST_CONTEXT: "" } });
   assert.equal(result.status, 0, `${result.stdout}${result.stderr}`);
 });
+
+test("R3-B7 concurrent bootstrap close waits for the same owned resource shutdown", async () => {
+ const { dependencies, events } = harness();let release!:()=>void;const drain=new Promise<void>(r=>{release=r;});
+ const runtime=await executeProductionBootstrap({}, {...dependencies,startListeners:()=>({close:async()=>{events.push("listeners-close");await drain;}})});
+ let firstDone=false;let secondDone=false;const first=runtime.close().then(()=>{firstDone=true;});const second=runtime.close().then(()=>{secondDone=true;});
+ await Promise.resolve();await Promise.resolve();assert.equal(firstDone,false);assert.equal(secondDone,false);release();await Promise.all([first,second]);assert.equal(events.filter(e=>e==="pool-close").length,1);
+});

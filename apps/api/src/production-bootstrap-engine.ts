@@ -63,16 +63,14 @@ export async function executeProductionBootstrap(rawConfiguration: unknown, depe
     workers = dependencies.startWorkers(context, roots);
 
     let state: "READY" | "NOT_READY" = "READY";
-    let closed = false;
+    let closing: Promise<void> | undefined;
     return Object.freeze({
       validationFingerprint,
       identitySchemaReadinessProvenance,
       readiness: () => state,
       close: async () => {
-        if (closed) return;
-        closed = true;
         state = "NOT_READY";
-        await shutdown();
+        await (closing ??= shutdown());
       },
     });
   } catch {

@@ -28,6 +28,9 @@ const SCOPE_WHERE = "tenant_id=$1 AND scope_type=$2 AND scope_id=$3 AND source_i
 export class PostgreSqlConnectorExecutionUnitOfWork implements AsyncConnectorExecutionPersistence {
   #closed = false;
   #quarantined = false;
+  #active = 0;
+  #closing: Promise<void> | undefined;
+  #drained: (() => void) | undefined;
 
   public constructor(private readonly pool: PostgreSqlPoolPort) {}
 
@@ -207,26 +210,35 @@ export class PostgreSqlConnectorExecutionUnitOfWork implements AsyncConnectorExe
 
   public findTechnicalState(scope: ConnectorExecutionScope, recordType: ConnectorTechnicalRecordType, recordId: string): Promise<ConnectorTechnicalState | undefined> { validateScope(scope); validateText(recordType, recordId); return this.read((client) => findPayload(client, "connector_technical_records", scope, "record_type=$6 AND record_id=$7", [recordType, recordId])); }
   public listTechnicalEvidence(scope: ConnectorExecutionScope, recordType: ConnectorTechnicalRecordType, recordId: string): Promise<readonly ConnectorTechnicalEvidence[]> { validateScope(scope); validateText(recordType, recordId); return this.read(async (client) => Object.freeze((await query<Row>(client, `SELECT payload_json FROM app_connector.connector_technical_evidence WHERE ${SCOPE_WHERE} AND record_type=$6 AND record_id=$7 ORDER BY sequence`, [...scopeValues(scope), recordType, recordId])).rows.map((row) => freeze(payload<ConnectorTechnicalEvidence>(row))))); }
-  public close(): Promise<void> { this.#closed = true; return Promise.resolve(); }
+  public async close(): Promise<void> {
+    this.#closed = true;
+    if (this.#active === 0) return;
+    await (this.#closing ??= new Promise<void>((resolve) => { this.#drained = resolve; }));
+  }
+
+  #releaseOperation(): void { this.#active--; if (this.#active === 0) this.#drained?.(); }
+  #assertNotQuarantined(): void { if (this.#quarantined) throw failure("PERSISTENCE_UNAVAILABLE", "PostgreSQL Connector persistence is unavailable."); }
 
   private async read<Result>(operation: (client: PostgreSqlClientPort) => Promise<Result>): Promise<Result> {
-    this.assertOpen(); const client = await this.pool.connect(); let discard = false;
-    try { return await operation(client); } catch (error) { discard = true; throw mapError(error); } finally { client.release(discard); }
+    this.assertOpen(); this.#active++; let client: PostgreSqlClientPort | undefined; let discard = false;
+    try { client = await this.pool.connect(); this.#assertNotQuarantined(); const result = await operation(client); this.#assertNotQuarantined(); return result; } catch (error) { discard = true; throw mapError(error); } finally { try { client?.release(discard); } finally { this.#releaseOperation(); } }
   }
 
   private async transaction<Result>(operation: (client: PostgreSqlClientPort) => Promise<Result>): Promise<Result> {
-    this.assertOpen(); const client = await this.pool.connect(); let open = false; let commitStarted = false; let discard = false;
+    this.assertOpen(); this.#active++; let client: PostgreSqlClientPort | undefined; let open = false; let commitStarted = false; let discard = false;
     try {
+      client = await this.pool.connect(); this.#assertNotQuarantined();
       await query(client, "BEGIN"); open = true;
       const result = await operation(client);
+      this.#assertNotQuarantined();
       commitStarted = true; await query(client, "COMMIT"); open = false;
       return result;
     } catch (error) {
       discard = true;
-      if (open && !commitStarted) { try { await query(client, "ROLLBACK"); open = false; } catch { this.#quarantined = true; } }
+      if (open && !commitStarted && client !== undefined) { try { await query(client, "ROLLBACK"); open = false; } catch { this.#quarantined = true; } }
       else if (commitStarted) this.#quarantined = true;
       throw mapError(error);
-    } finally { client.release(discard); }
+    } finally { try { client?.release(discard); } finally { this.#releaseOperation(); } }
   }
 
   private assertOpen(): void { if (this.#closed || this.#quarantined) throw failure("PERSISTENCE_UNAVAILABLE", "PostgreSQL Connector persistence is unavailable."); }

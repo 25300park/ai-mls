@@ -43,7 +43,9 @@ type Row = Record<string, unknown>;
 /** PostgreSQL API-015 persistence. The pool is owned by ProductionBootstrap. */
 export class PostgreSqlAdministrationUnitOfWork implements AsyncAdministrationUnitOfWork {
   readonly #pool: PostgreSqlPoolPort;
-  #activeTransactions = 0;
+  #active = 0;
+  #closing: Promise<void> | undefined;
+  #drained: (() => void) | undefined;
   #closed = false;
   #quarantined = false;
 
@@ -84,12 +86,13 @@ export class PostgreSqlAdministrationUnitOfWork implements AsyncAdministrationUn
 
   public async begin(identity: AdministrationTransactionIdentity): Promise<AsyncAdministrationTransaction> {
     this.#assertOpen();
-    this.#activeTransactions += 1;
+    this.#active += 1;
     let client: PostgreSqlClientPort | undefined;
     let transactionOpen = false;
     let discard = false;
     try {
       client = await this.#pool.connect();
+      this.#assertNotQuarantined();
       await query(client, "BEGIN");
       transactionOpen = true;
       const state = await loadState(client, true, identity);
@@ -102,9 +105,11 @@ export class PostgreSqlAdministrationUnitOfWork implements AsyncAdministrationUn
         commit: async ({ tracker }) => {
           let commitStarted = false;
           try {
+            this.#assertNotQuarantined();
             await ensureRevision(client!, identity, revision);
             await persistTrackedChanges(client!, tracker);
             await compareAndSwapRevision(client!, identity, revision);
+            this.#assertNotQuarantined();
             commitStarted = true;
             await query(client!, "COMMIT");
             transactionOpen = false;
@@ -112,7 +117,7 @@ export class PostgreSqlAdministrationUnitOfWork implements AsyncAdministrationUn
             discard = true;
             if (commitStarted) this.#quarantined = true;
             else if (transactionOpen) {
-              try { await query(client!, "ROLLBACK"); transactionOpen = false; } catch { /* discard uncertain client */ }
+              try { await query(client!, "ROLLBACK"); transactionOpen = false; } catch { this.#quarantined = true; }
             }
             throw mapError(error);
           } finally {
@@ -121,32 +126,38 @@ export class PostgreSqlAdministrationUnitOfWork implements AsyncAdministrationUn
         },
         rollback: async () => {
           try { if (transactionOpen) await query(client!, "ROLLBACK"); transactionOpen = false; }
-          catch (error) { discard = true; throw mapError(error); }
+          catch (error) { discard = true; this.#quarantined = true; throw mapError(error); }
           finally { client!.release(discard); }
         },
-        release: () => { this.#activeTransactions -= 1; },
+        release: () => { this.#releaseOperation(); },
       });
     } catch (error) {
-      this.#activeTransactions -= 1;
-      if (transactionOpen && client !== undefined) try { await query(client, "ROLLBACK"); } catch { discard = true; }
-      client?.release(discard);
+      try {
+        if (transactionOpen && client !== undefined) try { await query(client, "ROLLBACK"); } catch { discard = true; this.#quarantined = true; }
+      } finally {
+        try { client?.release(discard); } finally { this.#releaseOperation(); }
+      }
       throw mapError(error);
     }
   }
 
-  public close(): Promise<void> {
-    if (this.#activeTransactions > 0) throw failure("TRANSACTION_ALREADY_ACTIVE");
+  public async close(): Promise<void> {
     this.#closed = true;
-    return Promise.resolve();
+    if (this.#active === 0) return;
+    await (this.#closing ??= new Promise<void>((resolve) => { this.#drained = resolve; }));
   }
+
+  #releaseOperation(): void { this.#active--; if (this.#active === 0) this.#drained?.(); }
+  #assertNotQuarantined(): void { if (this.#quarantined) throw failure("PERSISTENCE_WRITE_FAILED"); }
 
   async #read<Result>(operation: (repositories: ReturnType<typeof createAdministrationReadRepositories>) => Result): Promise<Result> {
     this.#assertOpen();
-    const client = await this.#pool.connect();
+    this.#active++;
+    let client: PostgreSqlClientPort | undefined;
     let discard = false;
-    try { return operation(createAdministrationReadRepositories(await loadState(client, false))); }
+    try { client = await this.#pool.connect(); this.#assertNotQuarantined(); const state = await loadState(client, false); this.#assertNotQuarantined(); return operation(createAdministrationReadRepositories(state)); }
     catch (error) { discard = true; throw mapError(error); }
-    finally { client.release(discard); }
+    finally { try { client?.release(discard); } finally { this.#releaseOperation(); } }
   }
 
   #assertOpen(): void {
@@ -160,6 +171,14 @@ async function loadState(client: PostgreSqlClientPort, lock: boolean, identity?:
   const values = identity === undefined ? undefined : [identity.tenantId, identity.resourceType, identity.resourceId];
   const revisions = await query<Row>(client, `SELECT tenant_id,resource_type,resource_id,revision FROM app_administration.administration_revisions${suffix}`, suffix === "" ? undefined : values);
   for (const row of revisions.rows) state.revisions.set(identityKey(rowIdentity(row)), integer(row["revision"], true));
+  if (lock && identity !== undefined) {
+    // Only the target revision is write-locked; global read-only linkage needs the same revision inventory as the hydrated records.
+    const linkedRevisions = await query<Row>(client, "SELECT tenant_id,resource_type,resource_id,revision FROM app_administration.administration_revisions");
+    for (const row of linkedRevisions.rows) {
+      const key = identityKey(rowIdentity(row));
+      if (!state.revisions.has(key)) state.revisions.set(key, integer(row["revision"], true));
+    }
+  }
   for (const row of (await query<Row>(client, "SELECT tenant_id,resource_type,resource_id,version,scope_type,scope_id,payload_json FROM app_administration.administration_resources")).rows) {
     const recordIdentity = rowIdentity(row);
     const payload = json<Record<string, unknown>>(row["payload_json"]);

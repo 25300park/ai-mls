@@ -244,11 +244,14 @@ export function createAsyncAdministrationTransaction(input: {
   };
   const finish = async (commit: boolean): Promise<void> => {
     ensureActive();
+    active = false;
+    let commitEntered = false;
     try {
       if (commit) {
         if (tracker.rollbackOnly) throw persistenceError("TRANSACTION_ROLLBACK_ONLY");
         validateAtomicBundle(tracker, input.identity);
         input.failures.check("COMMIT");
+        commitEntered = true;
         await input.commit({
           identity: input.identity,
           initialRevision: input.initialRevision,
@@ -256,6 +259,9 @@ export function createAsyncAdministrationTransaction(input: {
           tracker: immutableTracker(tracker),
         });
       } else await input.rollback();
+    } catch (error) {
+      if (commit && !commitEntered) await input.rollback();
+      throw error;
     } finally {
       active = false;
       input.release();
