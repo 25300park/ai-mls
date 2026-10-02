@@ -1512,6 +1512,13 @@
 | DOC-DEV-385 | R3-C1 Implementation Plan | [Implementation Plan](implementation/REL002_R3C1_IMPLEMENTATION_PLAN.md) |
 | DOC-REVIEW-264 | R3-C1 Completion | [Completion Report](reviews/REL002_R3C1_COMPLETION.md) |
 
+## REL-002 R3-C2B — durable evidence persistence review
+
+| Document ID | Title | Path |
+|---|---|---|
+| DOC-DEV-391 | R3-C2B Implementation Plan | [Implementation Plan](implementation/REL002_R3C2B_IMPLEMENTATION_PLAN.md) |
+| DOC-REVIEW-266 | R3-C2B Completion | [Completion Report](reviews/REL002_R3C2B_COMPLETION.md) |
+
 ## Completion reports
 
 모든 Brief는 `docs/reviews/<BRIEF>_COMPLETION.md`를 남긴다. Phase 14/15는 legacy `R1`/`R2`, Phase 16은 legacy `F1`의 canonical replacement다. D0는 `docs/phases/PHASE_0_COMPLETION.md`로 관리한다. 현재 완료 보고서는 [A0 Completion](reviews/A0_COMPLETION.md)부터 [Phase 16 Completion](reviews/PHASE16_COMPLETION.md)까지 canonical registry에 등록한다.

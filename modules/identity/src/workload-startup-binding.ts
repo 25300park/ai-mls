@@ -1,3 +1,4 @@
+import type { AuditEvidenceReadRecord, BindingAuditEvidencePair } from "../../audit/src/audit-evidence-read-postgresql.js";
 import type { WorkloadBindingScopeType } from "../../administration/src/project-governance.js";
 import { assertChronology, plainRecord, requireValue, safeText, safeVersion } from "../../organization/src/governance-persistence-support.js";
 export interface WorkloadStartupBindingRecord {
@@ -30,7 +31,7 @@ export interface AsyncWorkloadStartupBindingPersistenceContract {
   findVersion(bindingId: string, bindingVersion: number, tenantId: string): Promise<WorkloadStartupBindingRecord | undefined>;
   findActive(registrationId: string, registrationVersion: number, tenantId: string, principalId: string): Promise<WorkloadStartupBindingRecord | undefined>;
   createProposed(record: WorkloadStartupBindingRecord): Promise<WorkloadStartupBindingRecord>;
-  transition(expected: WorkloadStartupBindingRecord, next: WorkloadStartupBindingRecord): Promise<WorkloadStartupBindingRecord>;
-  replaceActive(expected: WorkloadStartupBindingRecord, proposed: WorkloadStartupBindingRecord, auditEvidenceRef: string, updatedAt: string): Promise<WorkloadStartupBindingRecord>;
+  transition(expected: WorkloadStartupBindingRecord, next: WorkloadStartupBindingRecord, evidence?: AuditEvidenceReadRecord): Promise<WorkloadStartupBindingRecord>;
+  replaceActive(expected: WorkloadStartupBindingRecord, proposed: WorkloadStartupBindingRecord, auditEvidenceRef: string | BindingAuditEvidencePair, updatedAt: string): Promise<WorkloadStartupBindingRecord>;
   close(): Promise<void>;
 }

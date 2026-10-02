@@ -1,3 +1,4 @@
+import { assertAuditEvidence, assertBindingAuditEvidence, type AuditEvidenceReadRecord, type AuditEvidenceTransactionParticipant, type BindingAuditEvidencePair } from "../../audit/src/audit-evidence-read-postgresql.js";
 import type { PostgreSqlClientPort, PostgreSqlPoolPort } from "./postgresql-pool.js";
 import { assertWorkloadStartupBindingRecord, type AsyncWorkloadStartupBindingPersistenceContract, type WorkloadBindingReferenceVerifier, type WorkloadStartupBindingRecord } from "./workload-startup-binding.js";
 import { assertFrozenMatch, canonicalJson, closeLease, decodeColumns, GovernancePersistenceError, lockKeys, newLeaseState, operate, readBoundary, requireValue, safeText, safeVersion } from "../../organization/src/governance-persistence-support.js";
@@ -6,7 +7,7 @@ const columns = Object.values(mapping).join(",");
 const mutable = ["status","auditEvidenceRef","updatedAt"];
 export class PostgreSqlWorkloadStartupBindingStore implements AsyncWorkloadStartupBindingPersistenceContract {
   readonly #state = newLeaseState();
-  public constructor(private readonly pool: PostgreSqlPoolPort, private readonly references: WorkloadBindingReferenceVerifier) { requireValue(typeof pool?.connect === "function" && typeof references?.assertBindingReferences === "function"); }
+  public constructor(private readonly pool: PostgreSqlPoolPort, private readonly references: WorkloadBindingReferenceVerifier, private readonly audit?: AuditEvidenceTransactionParticipant) { requireValue(typeof pool?.connect === "function" && typeof references?.assertBindingReferences === "function"); }
   public close(): Promise<void> { return closeLease(this.#state); }
   public async findVersion(bindingId: string, bindingVersion: number, tenantId: string): Promise<WorkloadStartupBindingRecord | undefined> {
     requireValue(safeText(bindingId) && safeVersion(bindingVersion) && safeText(tenantId));
@@ -35,41 +36,57 @@ export class PostgreSqlWorkloadStartupBindingStore implements AsyncWorkloadStart
       await this.insert(client,record); return record;
     });
   }
-  public async transition(expectedInput: WorkloadStartupBindingRecord, nextInput: WorkloadStartupBindingRecord): Promise<WorkloadStartupBindingRecord> {
+  public async transition(expectedInput: WorkloadStartupBindingRecord, nextInput: WorkloadStartupBindingRecord, evidence?: AuditEvidenceReadRecord): Promise<WorkloadStartupBindingRecord> {
     assertWorkloadStartupBindingRecord(expectedInput); assertWorkloadStartupBindingRecord(nextInput);
     const expected=structuredClone(expectedInput),next=structuredClone(nextInput); assertFrozenMatch(expected,next,mutable);
+    const event=evidence ? structuredClone(evidence) : undefined;
+    requireValue(this.audit && event); assertBindingAuditEvidence(event,{...next});
+    requireValue(!Object.hasOwn(event.payload,"replacementBindingId") && !Object.hasOwn(event.payload,"replacementBindingVersion"));
     const replay=await this.findVersion(expected.bindingId,expected.bindingVersion,expected.tenantId);
-    if (canonicalJson(replay) === canonicalJson(next)) return next;
-    if (!replay || canonicalJson(replay) !== canonicalJson(expected)) throw new GovernancePersistenceError("CONFLICT");
-    if (next.status === "ACTIVE") await readBoundary(() => this.references.assertBindingReferences(structuredClone(next)));
+    const isReplay=canonicalJson(replay) === canonicalJson(next);
+    if (!isReplay && (!replay || canonicalJson(replay) !== canonicalJson(expected))) throw new GovernancePersistenceError("CONFLICT");
+    if (!isReplay && next.status === "ACTIVE") await readBoundary(() => this.references.assertBindingReferences(structuredClone(next)));
     return operate(this.pool,this.#state,true,async client => {
-      await lockKeys(client,this.keys(expected));
+      await lockKeys(client,[...this.keys(expected),...(event ? [`audit-evidence:${event.auditEvidenceRef}`] : [])]);
       const current=await this.select(client,expected.bindingId,expected.bindingVersion,expected.tenantId,true);
-      if (canonicalJson(current) === canonicalJson(next)) return next;
-      if (!current || canonicalJson(current) !== canonicalJson(expected)) throw new GovernancePersistenceError("CONFLICT");
-      await this.update(client,expected,next); return next;
+      if (canonicalJson(current) !== canonicalJson(next)) {
+        if (!current || canonicalJson(current) !== canonicalJson(expected)) throw new GovernancePersistenceError("CONFLICT");
+        await this.update(client,expected,next);
+      }
+      if (event) await this.audit!.materializeOnClient(client,event);
+      return next;
     });
   }
-  public async replaceActive(expectedInput: WorkloadStartupBindingRecord, proposedInput: WorkloadStartupBindingRecord, auditEvidenceRef: string, updatedAt: string): Promise<WorkloadStartupBindingRecord> {
+  public async replaceActive(expectedInput: WorkloadStartupBindingRecord, proposedInput: WorkloadStartupBindingRecord, evidenceInput: string | BindingAuditEvidencePair, updatedAt: string): Promise<WorkloadStartupBindingRecord> {
     assertWorkloadStartupBindingRecord(expectedInput); assertWorkloadStartupBindingRecord(proposedInput);
+    requireValue(this.audit && typeof evidenceInput === "object" && evidenceInput !== null);
+    const evidence=structuredClone(evidenceInput);
+    requireValue(Object.keys(evidence).length === 2 && Object.hasOwn(evidence,"revocation") && Object.hasOwn(evidence,"activation"));
+    assertAuditEvidence(evidence.revocation); assertAuditEvidence(evidence.activation);
     const expected=structuredClone(expectedInput),proposed=structuredClone(proposedInput);
     requireValue(expected.status === "ACTIVE" && proposed.status === "PROPOSED" && proposed.bindingId === expected.bindingId && proposed.bindingVersion>expected.bindingVersion && proposed.registrationId === expected.registrationId && proposed.registrationVersion === expected.registrationVersion && proposed.tenantId === expected.tenantId && proposed.principalId === expected.principalId);
-    const revoked: WorkloadStartupBindingRecord={...expected,status:"REVOKED",auditEvidenceRef,updatedAt};
-    const activated: WorkloadStartupBindingRecord={...proposed,status:"ACTIVE",auditEvidenceRef,updatedAt};
+    const revoked: WorkloadStartupBindingRecord={...expected,status:"REVOKED",auditEvidenceRef:evidence.revocation.auditEvidenceRef,updatedAt};
+    const activated: WorkloadStartupBindingRecord={...proposed,status:"ACTIVE",auditEvidenceRef:evidence.activation.auditEvidenceRef,updatedAt};
     assertWorkloadStartupBindingRecord(revoked); assertWorkloadStartupBindingRecord(activated);
+    assertBindingAuditEvidence(evidence.revocation,{...revoked}); assertBindingAuditEvidence(evidence.activation,{...activated});
+    requireValue(revoked.auditEvidenceRef !== activated.auditEvidenceRef);
+    if (Object.hasOwn(evidence.revocation.payload,"replacementBindingId")) requireValue(evidence.revocation.payload["replacementBindingId"] === activated.bindingId && evidence.revocation.payload["replacementBindingVersion"] === activated.bindingVersion);
     const replayCurrent=await this.findVersion(expected.bindingId,expected.bindingVersion,expected.tenantId);
     const replayReplacement=await this.findVersion(proposed.bindingId,proposed.bindingVersion,proposed.tenantId);
-    if (canonicalJson(replayCurrent) === canonicalJson(revoked) && canonicalJson(replayReplacement) === canonicalJson(activated)) return activated;
-    if (canonicalJson(replayCurrent) !== canonicalJson(expected) || (replayReplacement && canonicalJson(replayReplacement) !== canonicalJson(proposed))) throw new GovernancePersistenceError("CONFLICT");
-    await readBoundary(() => this.references.assertBindingReferences(structuredClone(activated)));
+    const isReplay=canonicalJson(replayCurrent) === canonicalJson(revoked) && canonicalJson(replayReplacement) === canonicalJson(activated);
+    if (!isReplay && (canonicalJson(replayCurrent) !== canonicalJson(expected) || (replayReplacement && canonicalJson(replayReplacement) !== canonicalJson(proposed)))) throw new GovernancePersistenceError("CONFLICT");
+    if (!isReplay) await readBoundary(() => this.references.assertBindingReferences(structuredClone(activated)));
     return operate(this.pool,this.#state,true,async client => {
-      await lockKeys(client,[...this.keys(expected),...this.keys(proposed)]);
+      await lockKeys(client,[...this.keys(expected),...this.keys(proposed),`audit-evidence:${revoked.auditEvidenceRef}`,`audit-evidence:${activated.auditEvidenceRef}`]);
       const current=await this.select(client,expected.bindingId,expected.bindingVersion,expected.tenantId,true);
       const replacement=await this.select(client,proposed.bindingId,proposed.bindingVersion,proposed.tenantId,true);
-      if (canonicalJson(current) === canonicalJson(revoked) && canonicalJson(replacement) === canonicalJson(activated)) return activated;
-      if (canonicalJson(current) !== canonicalJson(expected) || (replacement && canonicalJson(replacement) !== canonicalJson(proposed))) throw new GovernancePersistenceError("CONFLICT");
-      if (!replacement) await this.insert(client,proposed);
-      await this.update(client,expected,revoked); await this.update(client,proposed,activated);
+      if (!(canonicalJson(current) === canonicalJson(revoked) && canonicalJson(replacement) === canonicalJson(activated))) {
+        if (canonicalJson(current) !== canonicalJson(expected) || (replacement && canonicalJson(replacement) !== canonicalJson(proposed))) throw new GovernancePersistenceError("CONFLICT");
+        if (!replacement) await this.insert(client,proposed);
+        await this.update(client,expected,revoked); await this.update(client,proposed,activated);
+      }
+      await this.audit!.materializeOnClient(client,evidence.revocation);
+      await this.audit!.materializeOnClient(client,evidence.activation);
       return activated;
     });
   }

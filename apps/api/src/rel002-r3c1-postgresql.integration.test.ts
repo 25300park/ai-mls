@@ -10,17 +10,19 @@ import type { ProjectGovernanceRecord } from "../../../modules/administration/sr
 import { PostgreSqlWorkloadStartupBindingStore } from "../../../modules/identity/src/workload-startup-binding-postgresql.js";
 import { decodeCanonicalReference, type WorkloadStartupBindingRecord } from "../../../modules/identity/src/workload-startup-binding.js";
 import { evaluateR3C1Persistence, assertR3C1PersistenceReady } from "./r3c1-postgresql-readiness.js";
-const enabled = process.env["REL002_TEST_POSTGRES_DISPOSABLE"] === "CONFIRMED" && process.env["REL002_TEST_POSTGRES_PORT"] === "55439";
+import { PostgreSqlAuditEvidenceStore, type AuditEvidenceReadRecord, type BindingAuditEvidencePair } from "../../../modules/audit/src/audit-evidence-read-postgresql.js";
+const port=Number(process.env["REL002_TEST_POSTGRES_PORT"]);
+const enabled = process.env["REL002_TEST_POSTGRES_DISPOSABLE"] === "CONFIRMED" && [55439,55441].includes(port);
 const roots = [
   ["modules/organization", "001_organization_governance_v1", "app_organization", "organization_governance_versions", "organization_id", "organization_version"],
   ["modules/administration", "003_project_governance_v1", "app_administration", "project_governance_versions", "project_id", "project_version"],
   ["modules/identity", "012_workload_startup_binding_v1", "app_identity", "workload_startup_binding_versions", "binding_id", "binding_version"],
 ] as const;
-const config = { host: "127.0.0.1", port: 55439, database: "postgres" };
+const config = { host: "127.0.0.1", port, database: "postgres" };
 test("R3-C1 durable contracts in isolated disposable PostgreSQL", { skip: !enabled, timeout: 60000 }, async t => {
   const admin = new Client({ ...config, user: "postgres" }); await admin.connect();
   const clean = async () => {
-    for (const schema of ["app_organization", "app_administration", "app_identity"]) await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+    for (const schema of ["app_audit", "app_organization", "app_administration", "app_identity"]) await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
     await admin.query("DROP ROLE IF EXISTS r3c1_unauthorized_migration_member");
     for (const role of ["ai_mls_production_runtime", "ai_mls_production_migration_operator"]) {
       if ((await admin.query("SELECT 1 FROM pg_roles WHERE rolname=$1", [role])).rowCount) {
@@ -114,7 +116,11 @@ test("R3-C1 durable contracts in isolated disposable PostgreSQL", { skip: !enabl
         // Trusted read-boundary fixture only. R3-C1 does not activate a scope/audit startup resolver.
         assert.equal(record.scopeId,"team-api"); assert.equal(record.scopeType,"TEAM"); assert.ok(record.auditEvidenceRef.startsWith("binding-audit"));
       }};
-      const bindings=new PostgreSqlWorkloadStartupBindingStore(pool,references);
+      await migration.query(await readFile("modules/audit/migrations/postgresql/production/001_audit_evidence_read_v1.up.sql","utf8"));
+      const audit=new PostgreSqlAuditEvidenceStore(pool);
+      const lifecycle=(record:WorkloadStartupBindingRecord):AuditEvidenceReadRecord=>({auditEvidenceRef:record.auditEvidenceRef,sourceDomain:"IDENTITY",aggregateType:"WORKLOAD_STARTUP_BINDING",aggregateId:record.bindingId,aggregateVersion:record.bindingVersion,eventType:`WORKLOAD_STARTUP_BINDING.${record.status==="ACTIVE"?"ACTIVATED":"REVOKED"}`,payloadSchemaVersion:1,final:true,tenantId:record.tenantId,scopeRef:record.scopeEvidenceRef,payload:{bindingId:record.bindingId,bindingVersion:record.bindingVersion,registrationId:record.registrationId,registrationVersion:record.registrationVersion,tenantId:record.tenantId,principalId:record.principalId,...(record.status==="ACTIVE"?{organizationId:record.organizationId,projectId:record.projectId,scopeType:record.scopeType,scopeId:record.scopeId}:{}),status:record.status},occurredAt:record.updatedAt,materializedAt:record.updatedAt});
+      const pair=(old:WorkloadStartupBindingRecord,next:WorkloadStartupBindingRecord,prefix:string,updatedAt:string):BindingAuditEvidencePair=>({revocation:lifecycle({...old,status:"REVOKED",auditEvidenceRef:`${prefix}:revoked:${old.bindingVersion}`,updatedAt}),activation:lifecycle({...next,status:"ACTIVE",auditEvidenceRef:`${prefix}:activated:${next.bindingVersion}`,updatedAt})});
+      const bindings=new PostgreSqlWorkloadStartupBindingStore(pool,references,audit);
       try {
         const instant="2026-10-02T00:00:00.000Z",later="2026-10-02T00:01:00.000Z";
         const org:OrganizationGovernanceRecord={organizationId:"org-api",organizationVersion:1,tenantId:"tenant-api",status:"PROPOSED",evidenceReferences:[{type:"AUDIT",id:"audit-api",version:1}],createdAt:instant,updatedAt:instant};
@@ -140,32 +146,32 @@ test("R3-C1 durable contracts in isolated disposable PostgreSQL", { skip: !enabl
         await bindings.createProposed(binding); assert.deepEqual(await bindings.createProposed(binding),binding);
         await assert.rejects(()=>bindings.createProposed({...binding,scopeEvidenceRef:"administration-scope:tenant-api:TEAM_SCOPE:team-api:2"}),{code:"CONFLICT"});
         const active:WorkloadStartupBindingRecord={...binding,status:"ACTIVE",updatedAt:later,auditEvidenceRef:"binding-audit-active"};
-        await bindings.transition(binding,active);
+        await bindings.transition(binding,active,lifecycle(active));
         referencesAvailable=false;
         assert.deepEqual(await bindings.createProposed(binding),active);
-        assert.deepEqual(await bindings.transition(binding,active),active);
+        assert.deepEqual(await bindings.transition(binding,active,lifecycle(active)),active);
         referencesAvailable=true;
         await assert.rejects(()=>bindings.findActive(binding.registrationId,1,binding.tenantId,"wrong"),{code:"CONFLICT"});
         assert.equal(await bindings.findActive(binding.registrationId,2,binding.tenantId,binding.principalId),undefined);
         const proposed2:WorkloadStartupBindingRecord={...binding,bindingVersion:2,createdAt:later,updatedAt:later};
-        const replacement=await bindings.replaceActive(active,proposed2,"binding-audit-replace","2026-10-02T00:02:00.000Z");
+        const replacement=await bindings.replaceActive(active,proposed2,pair(active,proposed2,"binding-audit-replace","2026-10-02T00:02:00.000Z"),"2026-10-02T00:02:00.000Z");
         referencesAvailable=false;
-        assert.deepEqual(await bindings.replaceActive(active,proposed2,"binding-audit-replace","2026-10-02T00:02:00.000Z"),replacement);
+        assert.deepEqual(await bindings.replaceActive(active,proposed2,pair(active,proposed2,"binding-audit-replace","2026-10-02T00:02:00.000Z"),"2026-10-02T00:02:00.000Z"),replacement);
         referencesAvailable=true;
         await migration.query(`CREATE FUNCTION app_identity.r3c1_test_abort() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.binding_version=3 AND NEW.status='ACTIVE' THEN RAISE EXCEPTION 'injected abort'; END IF; RETURN NEW; END $$; CREATE TRIGGER r3c1_test_abort BEFORE UPDATE ON app_identity.workload_startup_binding_versions FOR EACH ROW EXECUTE FUNCTION app_identity.r3c1_test_abort()`);
         try {
-          await assert.rejects(()=>bindings.replaceActive(replacement,{...proposed2,bindingVersion:3},"binding-audit-failed","2026-10-02T00:03:00.000Z"));
+          await assert.rejects(()=>bindings.replaceActive(replacement,{...proposed2,bindingVersion:3},pair(replacement,{...proposed2,bindingVersion:3},"binding-audit-failed","2026-10-02T00:03:00.000Z"),"2026-10-02T00:03:00.000Z"));
           assert.equal((await bindings.findActive(binding.registrationId,1,binding.tenantId,binding.principalId))?.bindingVersion,2);
           assert.equal(await bindings.findVersion(binding.bindingId,3,binding.tenantId),undefined);
         } finally { await migration.query("DROP TRIGGER r3c1_test_abort ON app_identity.workload_startup_binding_versions; DROP FUNCTION app_identity.r3c1_test_abort()"); }
-        const outcomes=await Promise.allSettled([4,5].map(version=>bindings.replaceActive(replacement,{...proposed2,bindingVersion:version},"binding-audit-race","2026-10-02T00:04:00.000Z")));
+        const outcomes=await Promise.allSettled([4,5].map(version=>bindings.replaceActive(replacement,{...proposed2,bindingVersion:version},pair(replacement,{...proposed2,bindingVersion:version},"binding-audit-race","2026-10-02T00:04:00.000Z"),"2026-10-02T00:04:00.000Z")));
         assert.equal(outcomes.filter(o=>o.status==="fulfilled").length,1);assert.equal(outcomes.filter(o=>o.status==="rejected").length,1);
         await bindings.close(); const restarted=new PostgreSqlWorkloadStartupBindingStore(pool,references);
         try { assert.ok([4,5].includes((await restarted.findActive(binding.registrationId,1,binding.tenantId,binding.principalId))!.bindingVersion)); } finally { await restarted.close(); }
         assert.equal((await organizations.findActive(org.organizationId,org.tenantId))?.organizationVersion,1);
         assert.equal((await evaluateR3C1Persistence(pool)).status,"READY");
         assert.equal(leases,releases);
-      } finally { await bindings.close();await projects.close();await organizations.close();await native.end(); }
+      } finally { await bindings.close();await projects.close();await organizations.close();await audit.close();await native.end(); }
     });
     await t.test("three-root exact readiness and replay-safe verifier reject structural, owner, ACL and role drift", async () => {
       const pool:PostgreSqlPoolPort={connect:async()=>await Promise.resolve({query:async <Row extends Record<string,unknown>>(sql:string,args?:readonly unknown[]):Promise<PostgreSqlQueryResult<Row>>=>await runtime.query(sql,args===undefined?undefined:[...args]) as unknown as PostgreSqlQueryResult<Row>,release:()=>undefined}),close:()=>Promise.resolve()};
