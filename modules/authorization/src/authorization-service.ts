@@ -261,6 +261,7 @@ const capabilities: Readonly<Record<RoleCode, readonly string[]>> = {
   ],
   RELEASE_OWNER: ["release.accept"],
   SVC: [
+    "scope.use",
     "service.execute",
     "publication.deliver",
     "source.read",

@@ -1,3 +1,5 @@
+import { assertStartupTeamEligibility, startupAuthorizationResource } from "../../../modules/identity/src/workload-startup-team-context.js";
+import { evaluateR3C2CTeamPersistence } from "./r3c2c-postgresql-readiness.js";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -85,13 +87,30 @@ test("R3-C2B durable evidence in dedicated disposable PostgreSQL", { skip: !enab
         assert.equal((await evaluateR3C2BEvidencePersistence(pool)).status, "READY", restore);
       }
     });
-    await t.test("Identity replacement atomically commits two distinct final refs and rolls back either mapping failure", async () => {
+    await t.test("Identity replacement atomically commits two distinct final refs and rolls back either mapping failure", async bindingTests => {
       await migration.query(await readFile("modules/identity/migrations/postgresql/production/012_workload_startup_binding_v1.up.sql", "utf8"));
+
       await migration.query("GRANT SELECT ON app_identity.identity_registered_service_workloads TO ai_mls_production_runtime");
       await migration.query("INSERT INTO app_identity.identity_registered_service_workloads VALUES ('registration','tenant','principal','SERVICE','WORKLOAD','PRODUCTION','ACTIVE','startup','api',1,'proof','registration-audit','2026-10-02T00:00:00Z','2026-10-02T00:00:00Z')");
-      const store = new PostgreSqlWorkloadStartupBindingStore(pool, { assertBindingReferences() { return Promise.resolve(); } }, audit);
-      const proposed: WorkloadStartupBindingRecord = { bindingId: "binding", bindingVersion: 1, registrationId: "registration", registrationVersion: 1, tenantId: "tenant", principalId: "principal", organizationId: "org", projectId: "project", scopeType: "TEAM", scopeId: "team", identityEvidenceRef: "proof", organizationEvidenceRef: "organization-governance:org:1", projectEvidenceRef: "project-governance:project:1", scopeEvidenceRef: "administration-scope:tenant:TEAM_SCOPE:team:1", status: "PROPOSED", auditEvidenceRef: "proposal", createdAt: event.occurredAt, updatedAt: event.occurredAt };
-      const lifecycle = (record: WorkloadStartupBindingRecord): AuditEvidenceReadRecord => ({ ...event, auditEvidenceRef: record.auditEvidenceRef, aggregateType: "WORKLOAD_STARTUP_BINDING", aggregateId: record.bindingId, aggregateVersion: record.bindingVersion, eventType: `WORKLOAD_STARTUP_BINDING.${record.status === "ACTIVE" ? "ACTIVATED" : "REVOKED"}`, payload: { bindingId: record.bindingId, bindingVersion: record.bindingVersion, registrationId: record.registrationId, registrationVersion: record.registrationVersion, tenantId: record.tenantId, principalId: record.principalId, ...(record.status === "ACTIVE" ? { organizationId: record.organizationId, projectId: record.projectId, scopeType: record.scopeType, scopeId: record.scopeId } : {}), status: record.status } });
+      await migration.query("INSERT INTO app_identity.identity_registered_service_workloads SELECT 'registration-legacy',tenant_id,'principal-legacy',principal_type,assurance,environment,status,workload_purpose,audience,registration_version,'proof-legacy',audit_evidence_ref,created_at,updated_at FROM app_identity.identity_registered_service_workloads WHERE registration_id='registration'");
+      await migration.query("INSERT INTO app_identity.workload_startup_binding_versions VALUES ('legacy',1,'registration-legacy',1,'tenant','principal-legacy','org','project','TEAM','team','proof-legacy','organization-governance:org:1','project-governance:project:1','administration-scope:tenant:TEAM_SCOPE:team:1','PROPOSED','legacy-audit','2026-10-02T00:00:00Z','2026-10-02T00:00:00Z')");
+      await migration.query("UPDATE app_identity.workload_startup_binding_versions SET status='ACTIVE' WHERE binding_id='legacy'");
+      const legacyPayload={bindingId:"legacy",bindingVersion:1,registrationId:"registration-legacy",registrationVersion:1,tenantId:"tenant",principalId:"principal-legacy",organizationId:"org",projectId:"project",scopeType:"TEAM",scopeId:"team",status:"ACTIVE"};
+      const legacyEvent:AuditEvidenceReadRecord={...event,auditEvidenceRef:"legacy-audit",aggregateType:"WORKLOAD_STARTUP_BINDING",aggregateId:"legacy",eventType:"WORKLOAD_STARTUP_BINDING.ACTIVATED",payload:legacyPayload};
+      await migration.query("INSERT INTO app_audit.audit_evidence_read_records VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",[legacyEvent.auditEvidenceRef,legacyEvent.sourceDomain,legacyEvent.aggregateType,legacyEvent.aggregateId,legacyEvent.aggregateVersion,legacyEvent.eventType,legacyEvent.payloadSchemaVersion,legacyEvent.final,legacyEvent.tenantId,legacyEvent.scopeRef,JSON.stringify(legacyEvent.payload),legacyEvent.occurredAt,legacyEvent.materializedAt]);
+      const historical=(await migration.query<{row:Record<string,unknown>}>("SELECT to_jsonb(b) AS row FROM app_identity.workload_startup_binding_versions b WHERE binding_id='legacy'")).rows[0]!.row;
+      await bindingTests.test("R3-C2C forward migration rollback, replay rejection and historical preservation",async()=>{
+        for(const file of ["modules/identity/migrations/postgresql/production/014_workload_startup_authorization_team_v1.up.sql","modules/audit/migrations/postgresql/production/002_binding_activation_team_v2.up.sql"]){
+          const sql=await readFile(file,"utf8");await assert.rejects(migration.query(sql.replace("COMMIT;","SELECT 1/0; COMMIT;")));await migration.query("ROLLBACK");await migration.query(sql);await assert.rejects(migration.query(sql));await migration.query("ROLLBACK");
+        }
+        assert.deepEqual((await migration.query<{row:Record<string,unknown>}>("SELECT to_jsonb(b)-'authorization_team_id' AS row FROM app_identity.workload_startup_binding_versions b WHERE binding_id='legacy'")).rows[0]!.row,historical);
+        const reader=new PostgreSqlWorkloadStartupBindingStore(pool,{assertBindingReferences:()=>Promise.resolve()});const legacy=await reader.findVersion("legacy",1,"tenant");assert.ok(legacy);assert.equal(legacy.authorizationTeamId,undefined);assert.throws(()=>startupAuthorizationResource({...legacy},1));await reader.close();
+        assert.deepEqual(await audit.findByEvidenceRef("legacy-audit"),legacyEvent);assert.deepEqual(await audit.materialize(legacyEvent),legacyEvent);
+        await assert.rejects(migration.query("INSERT INTO app_identity.workload_startup_binding_versions SELECT 'missing-team',binding_version,registration_id,registration_version,tenant_id,principal_id,organization_id,project_id,scope_type,scope_id,identity_evidence_ref,organization_evidence_ref,project_evidence_ref,scope_evidence_ref,'PROPOSED',audit_evidence_ref,created_at,updated_at,NULL FROM app_identity.workload_startup_binding_versions WHERE binding_id='legacy'"),{code:"23514"});
+      });
+      const store = new PostgreSqlWorkloadStartupBindingStore(pool, { assertBindingReferences() { return Promise.resolve(); } }, audit, {assertTeamEligibility:()=>Promise.resolve()});
+      const proposed: WorkloadStartupBindingRecord = { bindingId: "binding", bindingVersion: 1, registrationId: "registration", registrationVersion: 1, tenantId: "tenant", principalId: "principal", authorizationTeamId: "team", organizationId: "org", projectId: "project", scopeType: "TEAM", scopeId: "team", identityEvidenceRef: "proof", organizationEvidenceRef: "organization-governance:org:1", projectEvidenceRef: "project-governance:project:1", scopeEvidenceRef: "administration-scope:tenant:TEAM_SCOPE:team:1", status: "PROPOSED", auditEvidenceRef: "proposal", createdAt: event.occurredAt, updatedAt: event.occurredAt };
+      const lifecycle = (record: WorkloadStartupBindingRecord): AuditEvidenceReadRecord => ({ ...event, auditEvidenceRef: record.auditEvidenceRef, aggregateType: "WORKLOAD_STARTUP_BINDING", aggregateId: record.bindingId, aggregateVersion: record.bindingVersion, payloadSchemaVersion: record.status === "ACTIVE" ? 2 : 1, eventType: `WORKLOAD_STARTUP_BINDING.${record.status === "ACTIVE" ? "ACTIVATED" : "REVOKED"}`, payload: { bindingId: record.bindingId, bindingVersion: record.bindingVersion, registrationId: record.registrationId, registrationVersion: record.registrationVersion, tenantId: record.tenantId, principalId: record.principalId, ...(record.status === "ACTIVE" ? { authorizationTeamId: record.authorizationTeamId, organizationId: record.organizationId, projectId: record.projectId, scopeType: record.scopeType, scopeId: record.scopeId } : {}), status: record.status } });
       await store.createProposed(proposed);
       const active: WorkloadStartupBindingRecord = { ...proposed, status: "ACTIVE", auditEvidenceRef: "activation-1" };
       await assert.rejects(new PostgreSqlWorkloadStartupBindingStore(pool, { assertBindingReferences() { return Promise.resolve(); } }).transition(proposed, active), { code: "INPUT_INVALID" });
@@ -118,6 +137,33 @@ test("R3-C2B durable evidence in dedicated disposable PostgreSQL", { skip: !enab
       assert.deepEqual(await store.replaceActive(active, next, successPair, active.updatedAt), replacement);
       assert.equal((await audit.findByEvidenceRef("revocation-1"))?.aggregateVersion, 1);
       assert.equal((await audit.findByEvidenceRef("activation-2-success"))?.aggregateVersion, 2);
+      await bindingTests.test("R3-C2C explicit changed-team replacement, eligibility failure and immutable old team",async()=>{
+        let allowed=true;
+        const teams={assertTeamEligibility:(record:WorkloadStartupBindingRecord):Promise<void>=>{
+          assertStartupTeamEligibility({...record},{recordType:"TEAM_SCOPE",teamId:record.authorizationTeamId,tenantId:"tenant",organizationId:"org",status:"ACTIVE"},[{roleAssignmentId:"assignment",version:1,tenantId:"tenant",subjectPrincipalId:"principal",subjectPrincipalType:"SERVICE",status:"ACTIVE",teamIds:allowed?["team","other"]:["team"],effectiveFrom:"2026-01-01T00:00:00.000Z",effectiveUntil:"2027-01-01T00:00:00.000Z"}],new Date(event.occurredAt)); return Promise.resolve();
+        }};
+        const checked=new PostgreSqlWorkloadStartupBindingStore(pool,{assertBindingReferences:()=>Promise.resolve()},audit,teams);
+        const changed={...next,bindingVersion:3,authorizationTeamId:"other"};
+        const pair3={revocation:lifecycle({...replacement,status:"REVOKED",auditEvidenceRef:"revocation-2"}),activation:lifecycle({...changed,status:"ACTIVE",auditEvidenceRef:"activation-3"})};
+        allowed=false;await assert.rejects(checked.replaceActive(replacement,changed,pair3,replacement.updatedAt));
+        assert.equal(await checked.findVersion("binding",3,"tenant"),undefined);assert.equal(await audit.findByEvidenceRef("revocation-2"),undefined);
+        allowed=true;const active3=await checked.replaceActive(replacement,changed,pair3,replacement.updatedAt);
+        assert.equal(active3.authorizationTeamId,"other");assert.equal((await checked.findVersion("binding",2,"tenant"))?.authorizationTeamId,"team");
+        assert.equal((await audit.findByEvidenceRef("activation-3"))?.payload["authorizationTeamId"],"other");
+        assert.deepEqual(await checked.replaceActive(replacement,changed,pair3,replacement.updatedAt),active3);
+        const client=await native.connect();try{await assert.rejects(client.query("UPDATE app_identity.workload_startup_binding_versions SET authorization_team_id='mutated'"),{code:"42501"});}finally{client.release();}
+        await assert.rejects(migration.query("UPDATE app_identity.workload_startup_binding_versions SET authorization_team_id='mutated'"),{code:"55000"});
+        await checked.close();
+      });
+      await bindingTests.test("R3-C2C readiness detects team guard body and runtime privilege drift",async()=>{
+        assert.equal((await evaluateR3C2CTeamPersistence(pool)).status,"READY");
+        for(const file of ["modules/identity/migrations/postgresql/production/014_workload_startup_authorization_team_v1.verify.sql","modules/audit/migrations/postgresql/production/002_binding_activation_team_v2.verify.sql"]) for(let replay=0;replay<2;replay++)await migration.query(await readFile(file,"utf8"));
+        await migration.query("ALTER FUNCTION app_identity.workload_startup_binding_versions_authorization_team_guard() SECURITY DEFINER");
+        try{assert.equal((await evaluateR3C2CTeamPersistence(pool)).status,"NOT_READY");}finally{await migration.query("ALTER FUNCTION app_identity.workload_startup_binding_versions_authorization_team_guard() SECURITY INVOKER");}
+        await migration.query("GRANT UPDATE(authorization_team_id) ON app_identity.workload_startup_binding_versions TO ai_mls_production_runtime");
+        try{assert.equal((await evaluateR3C2CTeamPersistence(pool)).status,"NOT_READY");}finally{await migration.query("REVOKE UPDATE(authorization_team_id) ON app_identity.workload_startup_binding_versions FROM ai_mls_production_runtime");}
+        assert.equal((await evaluateR3C2CTeamPersistence(pool)).status,"READY");
+      });
       await store.close();
     });
     await audit.close();

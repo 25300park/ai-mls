@@ -88,7 +88,7 @@ test("C2B Audit participant close drains an already active Identity-owned operat
   const enteredPromise = new Promise<void>(resolve => { entered = resolve; });
   const blocked = new Promise<void>(resolve => { unblock = resolve; });
   const client: PostgreSqlClientPort = { ...original, async query<Row extends Record<string, unknown>>(sql: string, values?: readonly unknown[]) {
-    if (sql.startsWith("INSERT")) { entered(); await blocked; }
+    if (sql === "SELECT current_user AS role") { entered(); await blocked; }
     return original.query<Row>(sql, values);
   } };
   const store = new PostgreSqlAuditEvidenceStore(fake.pool);

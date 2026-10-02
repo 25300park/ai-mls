@@ -1528,3 +1528,10 @@
 `A0 → A0.5 → A0.6 → A1 → A2 → A3 → Phase 4 → Phase 5 → Phase 6 → Phase 7 → Phase 7.5 → Phase 8 → Phase 9 → Phase 10 → Phase 11 → Phase 12 → Phase 13 → Phase 14 → Phase 15 → Phase 16 → D0`
 
 사용자 review gate는 A1, Phase 4, Phase 6, Phase 7.5, Phase 9, Phase 13, Phase 14(`R1`), Phase 16(`F1`) 뒤에 적용한다. 현재 요청된 Brief가 끝나면 중단하고 다음 Brief를 자동 시작하지 않는다.
+
+## REL-002 R3-C2C — explicit startup authorization team context
+
+| Document ID | 문서 | 링크 |
+|---|---|---|
+| DOC-DEV-393 | R3-C2C Implementation Plan | [Implementation Plan](implementation/REL002_R3C2C_IMPLEMENTATION_PLAN.md) |
+| DOC-REVIEW-267 | R3-C2C Completion | [Completion Report](reviews/REL002_R3C2C_COMPLETION.md) |

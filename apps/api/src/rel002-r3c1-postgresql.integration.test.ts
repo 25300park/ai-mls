@@ -1,3 +1,4 @@
+import { evaluateR3C2CTeamPersistence } from "./r3c2c-postgresql-readiness.js";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -99,80 +100,6 @@ test("R3-C1 durable contracts in isolated disposable PostgreSQL", { skip: !enabl
       await runtime.query("COMMIT");
       await assert.rejects(() => runtime.query("UPDATE app_identity.workload_startup_binding_versions SET status='ACTIVE',updated_at=now() WHERE binding_id='binding-1' AND binding_version=1"));
     });
-    await t.test("async stores share one pool: durable replay, containment, CAS, atomic replacement and concurrency", async () => {
-      const native=new Pool({ ...config,user:"ai_mls_production_runtime",max:1 }); let leases=0,releases=0;
-      const pool: PostgreSqlPoolPort={connect:async()=>{leases++;const client=await native.connect();return {query:async <Row extends Record<string,unknown>>(sql:string,args?:readonly unknown[]):Promise<PostgreSqlQueryResult<Row>> => await client.query(sql,args===undefined?undefined:[...args]) as unknown as PostgreSqlQueryResult<Row>,release:destroy=>{releases++;client.release(destroy);}};},close:()=>native.end()};
-      const organizations=new PostgreSqlOrganizationGovernanceStore(pool);
-      const projects=new PostgreSqlProjectGovernanceStore(pool,organizations);
-      let referencesAvailable=true;
-      const references={assertBindingReferences:async(record:WorkloadStartupBindingRecord):Promise<void>=>{
-        if(!referencesAvailable)throw new Error("injected reference outage");
-        const orgVersion=decodeCanonicalReference(record.organizationEvidenceRef,"organization-governance",[record.organizationId]);
-        const projectVersion=decodeCanonicalReference(record.projectEvidenceRef,"project-governance",[record.projectId]);
-        const org=await organizations.findVersion(record.organizationId,orgVersion,record.tenantId);
-        const project=await projects.findVersion(record.projectId,projectVersion,record.tenantId);
-        assert.equal(org?.status,"ACTIVE"); assert.equal(project?.status,"ACTIVE"); assert.equal(project.organizationId,org.organizationId);
-        assert.ok(project.containedScopes.some(s=>s.scopeType===record.scopeType&&s.scopeId===record.scopeId));
-        // Trusted read-boundary fixture only. R3-C1 does not activate a scope/audit startup resolver.
-        assert.equal(record.scopeId,"team-api"); assert.equal(record.scopeType,"TEAM"); assert.ok(record.auditEvidenceRef.startsWith("binding-audit"));
-      }};
-      await migration.query(await readFile("modules/audit/migrations/postgresql/production/001_audit_evidence_read_v1.up.sql","utf8"));
-      const audit=new PostgreSqlAuditEvidenceStore(pool);
-      const lifecycle=(record:WorkloadStartupBindingRecord):AuditEvidenceReadRecord=>({auditEvidenceRef:record.auditEvidenceRef,sourceDomain:"IDENTITY",aggregateType:"WORKLOAD_STARTUP_BINDING",aggregateId:record.bindingId,aggregateVersion:record.bindingVersion,eventType:`WORKLOAD_STARTUP_BINDING.${record.status==="ACTIVE"?"ACTIVATED":"REVOKED"}`,payloadSchemaVersion:1,final:true,tenantId:record.tenantId,scopeRef:record.scopeEvidenceRef,payload:{bindingId:record.bindingId,bindingVersion:record.bindingVersion,registrationId:record.registrationId,registrationVersion:record.registrationVersion,tenantId:record.tenantId,principalId:record.principalId,...(record.status==="ACTIVE"?{organizationId:record.organizationId,projectId:record.projectId,scopeType:record.scopeType,scopeId:record.scopeId}:{}),status:record.status},occurredAt:record.updatedAt,materializedAt:record.updatedAt});
-      const pair=(old:WorkloadStartupBindingRecord,next:WorkloadStartupBindingRecord,prefix:string,updatedAt:string):BindingAuditEvidencePair=>({revocation:lifecycle({...old,status:"REVOKED",auditEvidenceRef:`${prefix}:revoked:${old.bindingVersion}`,updatedAt}),activation:lifecycle({...next,status:"ACTIVE",auditEvidenceRef:`${prefix}:activated:${next.bindingVersion}`,updatedAt})});
-      const bindings=new PostgreSqlWorkloadStartupBindingStore(pool,references,audit);
-      try {
-        const instant="2026-10-02T00:00:00.000Z",later="2026-10-02T00:01:00.000Z";
-        const org:OrganizationGovernanceRecord={organizationId:"org-api",organizationVersion:1,tenantId:"tenant-api",status:"PROPOSED",evidenceReferences:[{type:"AUDIT",id:"audit-api",version:1}],createdAt:instant,updatedAt:instant};
-        assert.deepEqual(await organizations.createProposed(org),org);
-        assert.deepEqual(await organizations.createProposed({...org,evidenceReferences:[{version:1,id:"audit-api",type:"AUDIT"}]}),org);
-        const activeOrg:OrganizationGovernanceRecord={...org,status:"ACTIVE",updatedAt:later};
-        await organizations.transition(org,activeOrg); assert.deepEqual(await organizations.transition(org,activeOrg),activeOrg);
-        assert.equal(await organizations.findVersion(org.organizationId,1,"wrong"),undefined);
-        await assert.rejects(()=>organizations.createProposed({...org,evidenceReferences:[{type:"AUDIT",id:"conflict",version:1}]}),{code:"CONFLICT"});
-        const project:ProjectGovernanceRecord={projectId:"project-api",projectVersion:1,organizationId:org.organizationId,tenantId:org.tenantId,status:"PROPOSED",containedScopes:[{scopeType:"TEAM",scopeId:"team-api"}],evidenceReferences:org.evidenceReferences,createdAt:instant,updatedAt:instant};
-        await assert.rejects(()=>projects.createProposed({...project,tenantId:"wrong"}),{code:"CONFLICT"});
-        await projects.createProposed(project); const activeProject:ProjectGovernanceRecord={...project,status:"ACTIVE",updatedAt:later};
-        await projects.transition(project,activeProject); assert.deepEqual(await projects.transition(project,activeProject),activeProject);
-        const suspendedOrg:OrganizationGovernanceRecord={...activeOrg,status:"SUSPENDED",updatedAt:"2026-10-02T00:01:30.000Z"};
-        await organizations.transition(activeOrg,suspendedOrg);
-        assert.deepEqual(await projects.createProposed(project),activeProject);
-        assert.deepEqual(await projects.transition(project,activeProject),activeProject);
-        await organizations.transition(suspendedOrg,{...activeOrg,updatedAt:"2026-10-02T00:01:45.000Z"});
-        await projects.createProposed({...project,projectVersion:2,containedScopes:[...project.containedScopes,{scopeType:"POLICY",scopeId:"policy-api"}]});
-        await assert.rejects(()=>projects.transition(project,{...activeProject,containedScopes:[{scopeType:"TEAM",scopeId:"different"}]}),{code:"CONFLICT"});
-        await migration.query(`INSERT INTO app_identity.identity_registered_service_workloads VALUES ('registration-api','tenant-api','principal-api','SERVICE','WORKLOAD','PRODUCTION','ACTIVE','purpose','audience',1,'identity-api','audit-api',now(),now())`);
-        const binding:WorkloadStartupBindingRecord={bindingId:"binding-api",bindingVersion:1,registrationId:"registration-api",registrationVersion:1,tenantId:org.tenantId,principalId:"principal-api",organizationId:org.organizationId,projectId:project.projectId,scopeType:"TEAM",scopeId:"team-api",identityEvidenceRef:"identity-api",organizationEvidenceRef:"organization-governance:org-api:1",projectEvidenceRef:"project-governance:project-api:1",scopeEvidenceRef:"administration-scope:tenant-api:TEAM_SCOPE:team-api:1",status:"PROPOSED",auditEvidenceRef:"binding-audit-create",createdAt:instant,updatedAt:instant};
-        await bindings.createProposed(binding); assert.deepEqual(await bindings.createProposed(binding),binding);
-        await assert.rejects(()=>bindings.createProposed({...binding,scopeEvidenceRef:"administration-scope:tenant-api:TEAM_SCOPE:team-api:2"}),{code:"CONFLICT"});
-        const active:WorkloadStartupBindingRecord={...binding,status:"ACTIVE",updatedAt:later,auditEvidenceRef:"binding-audit-active"};
-        await bindings.transition(binding,active,lifecycle(active));
-        referencesAvailable=false;
-        assert.deepEqual(await bindings.createProposed(binding),active);
-        assert.deepEqual(await bindings.transition(binding,active,lifecycle(active)),active);
-        referencesAvailable=true;
-        await assert.rejects(()=>bindings.findActive(binding.registrationId,1,binding.tenantId,"wrong"),{code:"CONFLICT"});
-        assert.equal(await bindings.findActive(binding.registrationId,2,binding.tenantId,binding.principalId),undefined);
-        const proposed2:WorkloadStartupBindingRecord={...binding,bindingVersion:2,createdAt:later,updatedAt:later};
-        const replacement=await bindings.replaceActive(active,proposed2,pair(active,proposed2,"binding-audit-replace","2026-10-02T00:02:00.000Z"),"2026-10-02T00:02:00.000Z");
-        referencesAvailable=false;
-        assert.deepEqual(await bindings.replaceActive(active,proposed2,pair(active,proposed2,"binding-audit-replace","2026-10-02T00:02:00.000Z"),"2026-10-02T00:02:00.000Z"),replacement);
-        referencesAvailable=true;
-        await migration.query(`CREATE FUNCTION app_identity.r3c1_test_abort() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.binding_version=3 AND NEW.status='ACTIVE' THEN RAISE EXCEPTION 'injected abort'; END IF; RETURN NEW; END $$; CREATE TRIGGER r3c1_test_abort BEFORE UPDATE ON app_identity.workload_startup_binding_versions FOR EACH ROW EXECUTE FUNCTION app_identity.r3c1_test_abort()`);
-        try {
-          await assert.rejects(()=>bindings.replaceActive(replacement,{...proposed2,bindingVersion:3},pair(replacement,{...proposed2,bindingVersion:3},"binding-audit-failed","2026-10-02T00:03:00.000Z"),"2026-10-02T00:03:00.000Z"));
-          assert.equal((await bindings.findActive(binding.registrationId,1,binding.tenantId,binding.principalId))?.bindingVersion,2);
-          assert.equal(await bindings.findVersion(binding.bindingId,3,binding.tenantId),undefined);
-        } finally { await migration.query("DROP TRIGGER r3c1_test_abort ON app_identity.workload_startup_binding_versions; DROP FUNCTION app_identity.r3c1_test_abort()"); }
-        const outcomes=await Promise.allSettled([4,5].map(version=>bindings.replaceActive(replacement,{...proposed2,bindingVersion:version},pair(replacement,{...proposed2,bindingVersion:version},"binding-audit-race","2026-10-02T00:04:00.000Z"),"2026-10-02T00:04:00.000Z")));
-        assert.equal(outcomes.filter(o=>o.status==="fulfilled").length,1);assert.equal(outcomes.filter(o=>o.status==="rejected").length,1);
-        await bindings.close(); const restarted=new PostgreSqlWorkloadStartupBindingStore(pool,references);
-        try { assert.ok([4,5].includes((await restarted.findActive(binding.registrationId,1,binding.tenantId,binding.principalId))!.bindingVersion)); } finally { await restarted.close(); }
-        assert.equal((await organizations.findActive(org.organizationId,org.tenantId))?.organizationVersion,1);
-        assert.equal((await evaluateR3C1Persistence(pool)).status,"READY");
-        assert.equal(leases,releases);
-      } finally { await bindings.close();await projects.close();await organizations.close();await audit.close();await native.end(); }
-    });
     await t.test("three-root exact readiness and replay-safe verifier reject structural, owner, ACL and role drift", async () => {
       const pool:PostgreSqlPoolPort={connect:async()=>await Promise.resolve({query:async <Row extends Record<string,unknown>>(sql:string,args?:readonly unknown[]):Promise<PostgreSqlQueryResult<Row>>=>await runtime.query(sql,args===undefined?undefined:[...args]) as unknown as PostgreSqlQueryResult<Row>,release:()=>undefined}),close:()=>Promise.resolve()};
       assert.equal((await evaluateR3C1Persistence(pool)).status,"READY");
@@ -218,6 +145,81 @@ test("R3-C1 durable contracts in isolated disposable PostgreSQL", { skip: !enabl
         await runtime.query(`GRANT SELECT ON ${schema}.${table} TO PUBLIC`);
         assert.equal((await admin.query<{count:number}>("SELECT count(*)::integer AS count FROM pg_class c CROSS JOIN LATERAL aclexplode(c.relacl) a WHERE c.oid=$1::regclass AND a.grantee=0", [`${schema}.${table}`])).rows[0]?.count, 0);
       }
+    });
+    await t.test("async stores share one pool: durable replay, containment, CAS, atomic replacement and concurrency", async () => {
+      const native=new Pool({ ...config,user:"ai_mls_production_runtime",max:1 }); let leases=0,releases=0;
+      const pool: PostgreSqlPoolPort={connect:async()=>{leases++;const client=await native.connect();return {query:async <Row extends Record<string,unknown>>(sql:string,args?:readonly unknown[]):Promise<PostgreSqlQueryResult<Row>> => await client.query(sql,args===undefined?undefined:[...args]) as unknown as PostgreSqlQueryResult<Row>,release:destroy=>{releases++;client.release(destroy);}};},close:()=>native.end()};
+      const organizations=new PostgreSqlOrganizationGovernanceStore(pool);
+      const projects=new PostgreSqlProjectGovernanceStore(pool,organizations);
+      let referencesAvailable=true;
+      const references={assertBindingReferences:async(record:WorkloadStartupBindingRecord):Promise<void>=>{
+        if(!referencesAvailable)throw new Error("injected reference outage");
+        const orgVersion=decodeCanonicalReference(record.organizationEvidenceRef,"organization-governance",[record.organizationId]);
+        const projectVersion=decodeCanonicalReference(record.projectEvidenceRef,"project-governance",[record.projectId]);
+        const org=await organizations.findVersion(record.organizationId,orgVersion,record.tenantId);
+        const project=await projects.findVersion(record.projectId,projectVersion,record.tenantId);
+        assert.equal(org?.status,"ACTIVE"); assert.equal(project?.status,"ACTIVE"); assert.equal(project.organizationId,org.organizationId);
+        assert.ok(project.containedScopes.some(s=>s.scopeType===record.scopeType&&s.scopeId===record.scopeId));
+        // Trusted read-boundary fixture only. R3-C1 does not activate a scope/audit startup resolver.
+        assert.equal(record.scopeId,"team-api"); assert.equal(record.scopeType,"TEAM"); assert.ok(record.auditEvidenceRef.startsWith("binding-audit"));
+      }};
+      await migration.query(await readFile("modules/audit/migrations/postgresql/production/001_audit_evidence_read_v1.up.sql","utf8"));
+      for(const file of ["modules/identity/migrations/postgresql/production/014_workload_startup_authorization_team_v1.up.sql","modules/audit/migrations/postgresql/production/002_binding_activation_team_v2.up.sql"]) await migration.query(await readFile(file,"utf8"));
+      const audit=new PostgreSqlAuditEvidenceStore(pool);
+      const lifecycle=(record:WorkloadStartupBindingRecord):AuditEvidenceReadRecord=>({auditEvidenceRef:record.auditEvidenceRef,sourceDomain:"IDENTITY",aggregateType:"WORKLOAD_STARTUP_BINDING",aggregateId:record.bindingId,aggregateVersion:record.bindingVersion,eventType:`WORKLOAD_STARTUP_BINDING.${record.status==="ACTIVE"?"ACTIVATED":"REVOKED"}`,payloadSchemaVersion:record.status==="ACTIVE"?2:1,final:true,tenantId:record.tenantId,scopeRef:record.scopeEvidenceRef,payload:{bindingId:record.bindingId,bindingVersion:record.bindingVersion,registrationId:record.registrationId,registrationVersion:record.registrationVersion,tenantId:record.tenantId,principalId:record.principalId,...(record.status==="ACTIVE"?{authorizationTeamId:record.authorizationTeamId,organizationId:record.organizationId,projectId:record.projectId,scopeType:record.scopeType,scopeId:record.scopeId}:{}),status:record.status},occurredAt:record.updatedAt,materializedAt:record.updatedAt});
+      const pair=(old:WorkloadStartupBindingRecord,next:WorkloadStartupBindingRecord,prefix:string,updatedAt:string):BindingAuditEvidencePair=>({revocation:lifecycle({...old,status:"REVOKED",auditEvidenceRef:`${prefix}:revoked:${old.bindingVersion}`,updatedAt}),activation:lifecycle({...next,status:"ACTIVE",auditEvidenceRef:`${prefix}:activated:${next.bindingVersion}`,updatedAt})});
+      const bindings=new PostgreSqlWorkloadStartupBindingStore(pool,references,audit,{assertTeamEligibility:()=>Promise.resolve()});
+      try {
+        const instant="2026-10-02T00:00:00.000Z",later="2026-10-02T00:01:00.000Z";
+        const org:OrganizationGovernanceRecord={organizationId:"org-api",organizationVersion:1,tenantId:"tenant-api",status:"PROPOSED",evidenceReferences:[{type:"AUDIT",id:"audit-api",version:1}],createdAt:instant,updatedAt:instant};
+        assert.deepEqual(await organizations.createProposed(org),org);
+        assert.deepEqual(await organizations.createProposed({...org,evidenceReferences:[{version:1,id:"audit-api",type:"AUDIT"}]}),org);
+        const activeOrg:OrganizationGovernanceRecord={...org,status:"ACTIVE",updatedAt:later};
+        await organizations.transition(org,activeOrg); assert.deepEqual(await organizations.transition(org,activeOrg),activeOrg);
+        assert.equal(await organizations.findVersion(org.organizationId,1,"wrong"),undefined);
+        await assert.rejects(()=>organizations.createProposed({...org,evidenceReferences:[{type:"AUDIT",id:"conflict",version:1}]}),{code:"CONFLICT"});
+        const project:ProjectGovernanceRecord={projectId:"project-api",projectVersion:1,organizationId:org.organizationId,tenantId:org.tenantId,status:"PROPOSED",containedScopes:[{scopeType:"TEAM",scopeId:"team-api"}],evidenceReferences:org.evidenceReferences,createdAt:instant,updatedAt:instant};
+        await assert.rejects(()=>projects.createProposed({...project,tenantId:"wrong"}),{code:"CONFLICT"});
+        await projects.createProposed(project); const activeProject:ProjectGovernanceRecord={...project,status:"ACTIVE",updatedAt:later};
+        await projects.transition(project,activeProject); assert.deepEqual(await projects.transition(project,activeProject),activeProject);
+        const suspendedOrg:OrganizationGovernanceRecord={...activeOrg,status:"SUSPENDED",updatedAt:"2026-10-02T00:01:30.000Z"};
+        await organizations.transition(activeOrg,suspendedOrg);
+        assert.deepEqual(await projects.createProposed(project),activeProject);
+        assert.deepEqual(await projects.transition(project,activeProject),activeProject);
+        await organizations.transition(suspendedOrg,{...activeOrg,updatedAt:"2026-10-02T00:01:45.000Z"});
+        await projects.createProposed({...project,projectVersion:2,containedScopes:[...project.containedScopes,{scopeType:"POLICY",scopeId:"policy-api"}]});
+        await assert.rejects(()=>projects.transition(project,{...activeProject,containedScopes:[{scopeType:"TEAM",scopeId:"different"}]}),{code:"CONFLICT"});
+        await migration.query(`INSERT INTO app_identity.identity_registered_service_workloads VALUES ('registration-api','tenant-api','principal-api','SERVICE','WORKLOAD','PRODUCTION','ACTIVE','purpose','audience',1,'identity-api','audit-api',now(),now())`);
+        const binding:WorkloadStartupBindingRecord={bindingId:"binding-api",bindingVersion:1,registrationId:"registration-api",registrationVersion:1,tenantId:org.tenantId,principalId:"principal-api",authorizationTeamId:"team-api",organizationId:org.organizationId,projectId:project.projectId,scopeType:"TEAM",scopeId:"team-api",identityEvidenceRef:"identity-api",organizationEvidenceRef:"organization-governance:org-api:1",projectEvidenceRef:"project-governance:project-api:1",scopeEvidenceRef:"administration-scope:tenant-api:TEAM_SCOPE:team-api:1",status:"PROPOSED",auditEvidenceRef:"binding-audit-create",createdAt:instant,updatedAt:instant};
+        await bindings.createProposed(binding); assert.deepEqual(await bindings.createProposed(binding),binding);
+        await assert.rejects(()=>bindings.createProposed({...binding,scopeEvidenceRef:"administration-scope:tenant-api:TEAM_SCOPE:team-api:2"}),{code:"CONFLICT"});
+        const active:WorkloadStartupBindingRecord={...binding,status:"ACTIVE",updatedAt:later,auditEvidenceRef:"binding-audit-active"};
+        await bindings.transition(binding,active,lifecycle(active));
+        referencesAvailable=false;
+        assert.deepEqual(await bindings.createProposed(binding),active);
+        assert.deepEqual(await bindings.transition(binding,active,lifecycle(active)),active);
+        referencesAvailable=true;
+        await assert.rejects(()=>bindings.findActive(binding.registrationId,1,binding.tenantId,"wrong"),{code:"CONFLICT"});
+        assert.equal(await bindings.findActive(binding.registrationId,2,binding.tenantId,binding.principalId),undefined);
+        const proposed2:WorkloadStartupBindingRecord={...binding,bindingVersion:2,createdAt:later,updatedAt:later};
+        const replacement=await bindings.replaceActive(active,proposed2,pair(active,proposed2,"binding-audit-replace","2026-10-02T00:02:00.000Z"),"2026-10-02T00:02:00.000Z");
+        referencesAvailable=false;
+        assert.deepEqual(await bindings.replaceActive(active,proposed2,pair(active,proposed2,"binding-audit-replace","2026-10-02T00:02:00.000Z"),"2026-10-02T00:02:00.000Z"),replacement);
+        referencesAvailable=true;
+        await migration.query(`CREATE FUNCTION app_identity.r3c1_test_abort() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.binding_version=3 AND NEW.status='ACTIVE' THEN RAISE EXCEPTION 'injected abort'; END IF; RETURN NEW; END $$; CREATE TRIGGER r3c1_test_abort BEFORE UPDATE ON app_identity.workload_startup_binding_versions FOR EACH ROW EXECUTE FUNCTION app_identity.r3c1_test_abort()`);
+        try {
+          await assert.rejects(()=>bindings.replaceActive(replacement,{...proposed2,bindingVersion:3},pair(replacement,{...proposed2,bindingVersion:3},"binding-audit-failed","2026-10-02T00:03:00.000Z"),"2026-10-02T00:03:00.000Z"));
+          assert.equal((await bindings.findActive(binding.registrationId,1,binding.tenantId,binding.principalId))?.bindingVersion,2);
+          assert.equal(await bindings.findVersion(binding.bindingId,3,binding.tenantId),undefined);
+        } finally { await migration.query("DROP TRIGGER r3c1_test_abort ON app_identity.workload_startup_binding_versions; DROP FUNCTION app_identity.r3c1_test_abort()"); }
+        const outcomes=await Promise.allSettled([4,5].map(version=>bindings.replaceActive(replacement,{...proposed2,bindingVersion:version},pair(replacement,{...proposed2,bindingVersion:version},"binding-audit-race","2026-10-02T00:04:00.000Z"),"2026-10-02T00:04:00.000Z")));
+        assert.equal(outcomes.filter(o=>o.status==="fulfilled").length,1);assert.equal(outcomes.filter(o=>o.status==="rejected").length,1);
+        await bindings.close(); const restarted=new PostgreSqlWorkloadStartupBindingStore(pool,references);
+        try { assert.ok([4,5].includes((await restarted.findActive(binding.registrationId,1,binding.tenantId,binding.principalId))!.bindingVersion)); } finally { await restarted.close(); }
+        assert.equal((await organizations.findActive(org.organizationId,org.tenantId))?.organizationVersion,1);
+        assert.equal((await evaluateR3C2CTeamPersistence(pool)).status,"READY");
+        assert.equal(leases,releases);
+      } finally { await bindings.close();await projects.close();await organizations.close();await audit.close();await native.end(); }
     });
   } finally {
     await runtime.end(); await migration.end(); await clean(); await admin.end();

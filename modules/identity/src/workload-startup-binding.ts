@@ -4,7 +4,8 @@ import { assertChronology, plainRecord, requireValue, safeText, safeVersion } fr
 export interface WorkloadStartupBindingRecord {
   readonly bindingId: string; readonly bindingVersion: number; readonly registrationId: string; readonly registrationVersion: number;
   readonly tenantId: string; readonly principalId: string; readonly organizationId: string; readonly projectId: string;
-  readonly scopeType: WorkloadBindingScopeType; readonly scopeId: string; readonly identityEvidenceRef: string;
+  // Historical records may omit the forward-only team binding; new writes require it.
+  readonly authorizationTeamId?: string; readonly scopeType: WorkloadBindingScopeType; readonly scopeId: string; readonly identityEvidenceRef: string;
   readonly organizationEvidenceRef: string; readonly projectEvidenceRef: string; readonly scopeEvidenceRef: string;
   readonly status: "PROPOSED" | "ACTIVE" | "REVOKED"; readonly auditEvidenceRef: string; readonly createdAt: string; readonly updatedAt: string;
 }
@@ -18,7 +19,9 @@ export function decodeCanonicalReference(reference: string, prefix: string, iden
 }
 export function assertWorkloadStartupBindingRecord(value: unknown): asserts value is WorkloadStartupBindingRecord {
   const textFields = ["bindingId","registrationId","tenantId","principalId","organizationId","projectId","scopeId","identityEvidenceRef","organizationEvidenceRef","projectEvidenceRef","scopeEvidenceRef","auditEvidenceRef"];
-  plainRecord(value,[...textFields,"bindingVersion","registrationVersion","scopeType","status","createdAt","updatedAt"]);
+  const teamFields = value !== null && typeof value === "object" && Object.hasOwn(value,"authorizationTeamId") ? ["authorizationTeamId"] : [];
+  plainRecord(value,[...teamFields,...textFields,"bindingVersion","registrationVersion","scopeType","status","createdAt","updatedAt"]);
+  requireValue(teamFields.every(field => safeText(value[field])));
   requireValue(textFields.every(field => safeText(value[field])) && safeVersion(value["bindingVersion"]) && safeVersion(value["registrationVersion"]) && ["PROPOSED","ACTIVE","REVOKED"].includes(String(value["status"])));
   const types: Readonly<Record<string,string>> = { TEAM: "TEAM_SCOPE", POLICY: "POLICY", SOURCE: "SOURCE_REGISTRY", TARGET: "PUBLICATION_TARGET" };
   requireValue(typeof value["scopeType"] === "string" && Object.hasOwn(types,value["scopeType"]));
