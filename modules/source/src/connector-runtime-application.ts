@@ -40,7 +40,7 @@ export class ConnectorRuntimeApplication {
     readonly coordinator: Pick<ConnectorExecutionCoordinator, "execute">;
     readonly clock: () => string;
     readonly executionAvailable?: boolean;
-    readonly externalObservationSink?: Readonly<{ submit(input: unknown, sessionId: string): ExternalIntegrationApplicationResult }>;
+    readonly externalObservationSink?: Readonly<{ submit(input: unknown, sessionId: string): ExternalIntegrationApplicationResult | Promise<ExternalIntegrationApplicationResult> }>;
   }>) {}
 
   public async execute(kind: ConnectorApiRequestKind, input: unknown): Promise<ConnectorApplicationResult> {
@@ -79,7 +79,7 @@ export class ConnectorRuntimeApplication {
 
   private async submitExternalObservation(request: ConnectorApiRequest, scope: ConnectorExecutionScope, context: ConnectorTrustedRuntimeContext): Promise<ConnectorApplicationResult> {
     if (this.dependencies.externalObservationSink === undefined) return error("INTERNAL_ERROR", "Connector operation could not be completed.");
-    const result = this.dependencies.externalObservationSink.submit({
+    const result = await this.dependencies.externalObservationSink.submit({
       operation: "SubmitProviderObservation", integrationContractId: stringField(request, "integrationContractId"),
       observationId: stringField(request, "observationId"), providerNamespace: stringField(request, "providerNamespace"),
       externalObjectId: stringField(request, "externalObjectId"), connectorId: scope.connectorId, sourceId: scope.sourceId,

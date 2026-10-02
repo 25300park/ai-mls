@@ -23,7 +23,7 @@ import {
   type ProductionReadinessState,
   type ProductionRuntimeHttpListenerFactory,
 } from "./production-readiness-http.js";
-import { assertR3B1AdministrationSchemaReady, assertR3B1ConnectorSchemaReady, assertR3B1PublicationSchemaReady } from "./child-root-postgresql-readiness.js";
+import { assertR3B1AdministrationSchemaReady, assertR3B1ConnectorSchemaReady, assertR3B1ExternalIntegrationSchemaReady, assertR3B1PublicationSchemaReady } from "./child-root-postgresql-readiness.js";
 import {
   parseRailwayProductionRuntimeConfiguration,
   type RailwayProductionRuntimeConfiguration,
@@ -203,6 +203,7 @@ export function createRailwayProductionDependencies(
       await assertR3B1PublicationSchemaReady(pool);
       await assertR3B1AdministrationSchemaReady(pool);
       await assertR3B1ConnectorSchemaReady(pool);
+      await assertR3B1ExternalIntegrationSchemaReady(pool);
     },
     childRootOptions: Object.freeze({
       api014: Object.freeze({ runtimeEnvironment: "PRODUCTION" as const }),
@@ -223,7 +224,14 @@ export function createRailwayProductionDependencies(
         externalObservationSink: Object.freeze({ submit: unreachable }),
         ambiguityCaseWriter: Object.freeze({ linkAmbiguousInvocation: unreachable }),
       }),
-      api019: null,
+      api019: Object.freeze({
+        runtimeEnvironment: "PRODUCTION" as const,
+        contextResolver: Object.freeze({ resolve: unreachable }),
+        authorizer: Object.freeze({ authorize: unreachable }),
+        bindingResolver: Object.freeze({ resolve: unreachable }),
+        clock: () => new Date().toISOString(),
+        unresolvedConflictCaseWriter: Object.freeze({ linkUnresolvedConflict: unreachable }),
+      }),
       feat022: null,
     }),
     startListeners: (context: ProductionBootstrapContextView, roots: readonly ProductionChildRoot[]) => createProductionRuntimeListenerStarter(

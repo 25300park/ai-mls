@@ -88,7 +88,7 @@ test("the Railway factory classifies every R3-A dependency without selecting tes
   });
 });
 
-test("the Railway factory wires Session and API-014/015/018 boundaries while later roots stay fail closed", async () => {
+test("the Railway factory wires Session and API-014/015/018/019 boundaries while FEAT-022 stays fail closed", async () => {
   const dependencies = r3aDependencies(productionEnvironment());
   const pool: PostgreSqlPoolPort = Object.freeze({
     connect: () => Promise.reject(new Error("unused")),
@@ -104,7 +104,7 @@ test("the Railway factory wires Session and API-014/015/018 boundaries while lat
   assert.equal(dependencies.childRootOptions?.api015?.policyVersion, "REL002-R3B3");
   assert.equal(dependencies.childRootOptions?.api018?.runtimeEnvironment, "PRODUCTION");
   assert.throws(() => dependencies.childRootOptions?.api018?.contextResolver.resolve("session-r3b4"), ProductionBootstrapError);
-  assert.equal(dependencies.childRootOptions?.api019, null);
+  assert.notEqual(dependencies.childRootOptions?.api019, null);
   assert.equal(dependencies.childRootOptions?.feat022, null);
   await assert.rejects(() => startProductionRuntime(productionEnvironment(), dependencies), ProductionBootstrapError);
   assert.throws(() => dependencies.startWorkers({} as never, []), ProductionBootstrapError);

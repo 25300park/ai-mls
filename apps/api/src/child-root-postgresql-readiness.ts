@@ -108,6 +108,10 @@ export async function assertR3B1ConnectorSchemaReady(pool: PostgreSqlPoolPort): 
   await assertContractsReady(pool, R3B1_CHILD_ROOT_SCHEMA_CONTRACTS.filter((contract) => contract.schemaName === "app_connector"));
 }
 
+export async function assertR3B1ExternalIntegrationSchemaReady(pool: PostgreSqlPoolPort): Promise<void> {
+  await assertContractsReady(pool, R3B1_CHILD_ROOT_SCHEMA_CONTRACTS.filter((contract) => contract.schemaName === "app_external_integration"));
+}
+
 async function assertContractsReady(pool: PostgreSqlPoolPort, contracts: readonly R3B1ChildRootSchemaContract[]): Promise<void> {
   const client = await pool.connect();
   try {

@@ -22,7 +22,7 @@ export interface ProductionConnectorApi018CompositionOptions {
   readonly authorizer: ConnectorRuntimeAuthorizer;
   readonly admission: Pick<SourceIngestionAdmissionGate, "evaluate">;
   readonly clock: () => string;
-  readonly externalObservationSink: Readonly<{ submit(input: unknown, sessionId: string): ExternalIntegrationApplicationResult }>;
+  readonly externalObservationSink: Readonly<{ submit(input: unknown, sessionId: string): ExternalIntegrationApplicationResult | Promise<ExternalIntegrationApplicationResult> }>;
   readonly ambiguityCaseWriter?: ConnectorAmbiguityCaseWriter;
 }
 

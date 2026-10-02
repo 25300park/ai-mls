@@ -18,7 +18,7 @@ export interface CanonicalProductionChildRootOptions {
   readonly feat022: ProductionAdvisoryRuntimeOptions | null;
 }
 
-/** R3-B4 permits API-014, API-015, and API-018 to receive the same bootstrap-owned PostgreSQL pool. */
+/** R3-B5 permits API-014, API-015, API-018, and API-019 to receive the same bootstrap-owned PostgreSQL pool. */
 export function assertCanonicalProductionChildRootsPostgreSqlReady(
   options: CanonicalProductionChildRootOptions,
 ): void {
@@ -31,7 +31,8 @@ export function assertCanonicalProductionChildRootsPostgreSqlReady(
   if (options.api018 !== null && (options.api018.databasePath !== undefined || options.api018.postgreSqlPool !== undefined)) {
     throw new Error("Production child-root persistence is unavailable.");
   }
-  for (const child of [options.api019, options.feat022]) {
+  if (options.api019 !== null && (options.api019.databasePath !== undefined || options.api019.postgreSqlPool !== undefined)) throw new Error("Production child-root persistence is unavailable.");
+  for (const child of [options.feat022]) {
     if (child !== null && Object.prototype.hasOwnProperty.call(child, "databasePath")) throw new Error("Production child-root persistence is unavailable.");
   }
 }
@@ -57,10 +58,10 @@ export function createCanonicalProductionChildRootFactories(
       const root = createProductionConnectorApi018Composition({ ...options.api018, postgreSqlPool: pool, runtimeEnvironment: "PRODUCTION", bootstrapContext: context, schemaMode: "REQUIRE_EXISTING", deferRuntimeActivation: true });
       return Object.freeze({ componentId: "API-018" as const, httpHandler: root.http, activateRuntime: () => root.activateRuntime(), close: () => root.close() });
     },
-    "API-019": (context, configuration, identities) => {
+    "API-019": (context, configuration, identities, pool) => {
       assertRootIdentity("API-019", context, configuration, identities);
       if (options.api019 === null) throw new Error("Production child root is unavailable.");
-      const root = createProductionExternalIntegrationComposition({ ...options.api019, runtimeEnvironment: "PRODUCTION", bootstrapContext: context, schemaMode: "REQUIRE_EXISTING", deferRuntimeActivation: true });
+      const root = createProductionExternalIntegrationComposition({ ...options.api019, postgreSqlPool: pool, runtimeEnvironment: "PRODUCTION", bootstrapContext: context, schemaMode: "REQUIRE_EXISTING", deferRuntimeActivation: true });
       return Object.freeze({ componentId: "API-019" as const, activateRuntime: () => root.activateRuntime(), close: () => root.close() });
     },
     "FEAT-022": (context, configuration, identities) => {

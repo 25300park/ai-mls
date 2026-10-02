@@ -1452,6 +1452,8 @@
 | DOC-REVIEW-257 | REL-002 R3-B3 API-015 Administration PostgreSQL Persistence Completion Report | [REL002_R3B3_COMPLETION_REPORT.md](reviews/REL002_R3B3_COMPLETION_REPORT.md) |
 | DOC-DEV-376 | REL-002 R3-B4 API-018 Connector PostgreSQL Persistence Traceability Matrix | [REL002_R3B4_TRACEABILITY_MATRIX.md](implementation/REL002_R3B4_TRACEABILITY_MATRIX.md) |
 | DOC-REVIEW-258 | REL-002 R3-B4 API-018 Connector PostgreSQL Persistence Completion Report | [REL002_R3B4_COMPLETION_REPORT.md](reviews/REL002_R3B4_COMPLETION_REPORT.md) |
+| DOC-DEV-377 | REL-002 R3-B5 API-019 External Integration PostgreSQL Persistence Traceability Matrix | [REL002_R3B5_TRACEABILITY_MATRIX.md](implementation/REL002_R3B5_TRACEABILITY_MATRIX.md) |
+| DOC-REVIEW-259 | REL-002 R3-B5 API-019 External Integration PostgreSQL Persistence Completion Report | [REL002_R3B5_COMPLETION_REPORT.md](reviews/REL002_R3B5_COMPLETION_REPORT.md) |
 | DOC-FREEZE-009 | Architecture v1.1 Baseline Manifest | [ARCHITECTURE_V1_1_BASELINE_MANIFEST.md](freeze/ARCHITECTURE_V1_1_BASELINE_MANIFEST.md) |
 
 ## 계획된 Books

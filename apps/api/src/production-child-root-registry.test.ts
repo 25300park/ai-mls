@@ -42,11 +42,12 @@ test("registry binds API-014, API-015, and API-018 to the bootstrap pool without
   assert.doesNotMatch(source, /API-017|API-001|API-002/u);
 });
 
-test("R3-B4 prepares API-018 PostgreSQL composition while API-019 and FEAT-022 stay explicit fail-closed", () => {
+test("R3-B5 prepares API-018 PostgreSQL composition and API-019 while FEAT-022 stays explicit fail-closed", () => {
   const main = readFileSync(new URL("./production-main.js", import.meta.url), "utf8");
   assert.match(main, /api014:\s*Object\.freeze\(\{ runtimeEnvironment: "PRODUCTION" \}\)/u);
   assert.doesNotMatch(main, /api018: null/u);
-  for (const root of ["api019", "feat022"] as const) assert.match(main, new RegExp(`${root}: null`, "u"));
+  assert.doesNotMatch(main, /api019: null/u);
+  for (const root of ["feat022"] as const) assert.match(main, new RegExp(`${root}: null`, "u"));
   assert.match(main, /assertR3B1PublicationSchemaReady\(pool\)/u);
   assert.match(main, /assertR3B1AdministrationSchemaReady\(pool\)/u);
   assert.match(main, /assertR3B1ConnectorSchemaReady\(pool\)/u);

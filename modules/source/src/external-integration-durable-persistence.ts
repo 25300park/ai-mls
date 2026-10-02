@@ -58,6 +58,7 @@ export class DurableExternalIntegrationStore {
     const result=this.transaction(()=>{
       this.requireActiveContract(input,input.integrationContractId,input.providerNamespace);
       const current=this.readMappingByExternal(input,input.providerNamespace,input.externalObjectId);
+      if(current!==undefined&&current.integrationContractId!==input.integrationContractId)throw failure("CONFLICT","Integration contract binding conflicts.");
       if(current!==undefined&&(current.internalResourceType!==input.internalResourceType||current.internalResourceId!==input.internalResourceId)){this.appendEvidence(input,input.integrationContractId,current.mappingId,"MAPPING_CONFLICT","EXTERNAL_IDENTITY_CONFLICT",[input.evidenceRef],input.recordedAt);return undefined;}
       if((current?.version??0)!==input.expectedVersion)throw failure("VERSION_CONFLICT","External mapping changed.");
       const mappingId=current?.mappingId??stableId("mapping",[input.tenantId,input.scopeId,input.providerNamespace,input.externalObjectId]);
@@ -78,6 +79,7 @@ export class DurableExternalIntegrationStore {
     if(existingRow!==undefined){if(String(existingRow["fingerprint"])!==input.inputFingerprint)throw failure("IDEMPOTENCY_CONFLICT","Observation identity conflicts.");return parse<ProviderObservation>(String(existingRow["payload_json"]));}
     return this.transaction(()=>{
       this.requireActiveContract(input,input.integrationContractId,input.providerNamespace); const mapping=this.readMappingByExternal(input,input.providerNamespace,input.externalObjectId);
+      if(mapping!==undefined&&mapping.integrationContractId!==input.integrationContractId)throw failure("CONFLICT","Integration contract binding conflicts.");
       if(input.expectedMappingVersion!==undefined&&(mapping?.version??0)!==input.expectedMappingVersion)throw failure("VERSION_CONFLICT","External mapping changed.");
       const evidenceRef="evidence:observation:"+input.observationId;
       const value:ProviderObservation=Object.freeze({...copyScope(input),integrationContractId:input.integrationContractId,observationId:input.observationId,providerNamespace:input.providerNamespace,externalObjectId:input.externalObjectId,observationType:input.observationType,normalizedFields:Object.freeze({...input.normalizedFields}),observedAt:input.observedAt,...(mapping===undefined?{}:{mappingId:mapping.mappingId,mappingState:mapping.state}),evidenceRef});
