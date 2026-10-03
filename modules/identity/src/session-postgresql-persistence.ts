@@ -171,6 +171,13 @@ function createRepository(
       assertValidDurableSessionRecord(record);
       if (record.sessionVersion !== 1) throw new SessionPersistenceError("SESSION_RECORD_INVALID");
       try {
+        if(record.tenantId!==undefined){
+          await safeQuery(client,`INSERT INTO app_identity.identity_sessions
+            (session_id,session_version,state,payload_json,created_at,updated_at,tenant_id,team_id,team_binding_origin)
+            VALUES($1,$2,$3,$4::jsonb,$5::timestamptz,$6::timestamptz,$7,$8,$9)`,
+          [record.id,record.sessionVersion,record.state,JSON.stringify(record),record.issuedAt,record.lastAccessedAt,record.tenantId,record.teamId,record.teamBindingOrigin]);
+          return;
+        }
         await safeQuery(client,
           `INSERT INTO app_identity.identity_sessions
            (session_id, session_version, state, payload_json, created_at, updated_at)

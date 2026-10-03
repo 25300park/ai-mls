@@ -31,11 +31,16 @@ interface LiveAuthorityReadDependencies {
   readonly proposals: AdministrationProposalReadRepository;
   readonly decisions: AdministrationDecisionReadRepository;
 }
+export type AssignmentBindingContext = Pick<LiveAssignmentResolutionContext, "tenantId" | "subjectPrincipalId" | "subjectPrincipalType" | "teamId">;
 
 export class AdministrationLiveAssignmentAdapter implements LiveAssignmentResolver {
   public constructor(private readonly dependencies: LiveAuthorityReadDependencies) {}
 
   public resolveCurrentAssignments(context: LiveAssignmentResolutionContext): readonly LiveRoleAssignment[] {
+    return this.resolveSubjectTeamAssignments(context);
+  }
+
+  public resolveSubjectTeamAssignments(context: AssignmentBindingContext): readonly LiveRoleAssignment[] {
     const records = this.dependencies.roleAssignments.listBySubject(context.tenantId, context.subjectPrincipalId);
     return Object.freeze(records
       .map((record) => mapCurrentAssignment(record, context, this.dependencies))
@@ -132,7 +137,7 @@ async function mapCurrentAssignmentAsync(
 
 function mapCurrentAssignment(
   record: RoleAssignmentPersistenceRecord,
-  context: LiveAssignmentResolutionContext,
+  context: AssignmentBindingContext,
   dependencies: LiveAuthorityReadDependencies,
 ): LiveRoleAssignment | undefined {
   assertCanonicalAssignment(record);
@@ -149,7 +154,7 @@ function mapCurrentAssignment(
 
 function mapVerifiedAssignment(
   record: RoleAssignmentPersistenceRecord,
-  context: LiveAssignmentResolutionContext,
+  context: AssignmentBindingContext,
   role: RolePersistenceRecord | undefined,
   proposal: ReturnType<AdministrationProposalReadRepository["findById"]>,
   decisionHistory: ReturnType<AdministrationDecisionReadRepository["list"]>,
@@ -220,7 +225,7 @@ function assertCanonicalAssignment(record: RoleAssignmentPersistenceRecord): voi
   ) throw new Error("authoritative assignment is invalid");
 }
 
-function assertCanonicalRole(role: RolePersistenceRecord, context: LiveAssignmentResolutionContext): void {
+function assertCanonicalRole(role: RolePersistenceRecord, context: AssignmentBindingContext): void {
   const applicableScope = (role.scope.scopeType === "TENANT" && role.scope.scopeId === context.tenantId)
     || (role.scope.scopeType === "TEAM" && role.scope.scopeId === context.teamId);
   if (role.recordType !== "ROLE" || role.roleId.trim().length === 0 || role.tenantId.trim().length === 0

@@ -9,6 +9,20 @@ export interface HumanCredentialCapture {
 export class PostgreSqlHumanCredentialReader {
   public constructor(private readonly pool: PostgreSqlPoolPort) {}
 
+  public async findPrincipal(principalId: string, existingClient?: PostgreSqlClientPort): Promise<IdentityHumanPrincipalRecord | null> {
+    if (!safeIdentifier(principalId)) return null;
+    let client = existingClient;
+    let discard = false;
+    try {
+      client ??= await this.pool.connect();
+      const result = await client.query("SELECT principal_id, user_id, tenant_id, login_identifier, status, created_at, updated_at FROM app_identity.identity_human_principals WHERE principal_id = $1", [principalId]);
+      if (result.rows.length !== 1) return null;
+      const principal = decodePrincipal(result.rows[0]!);
+      return principal?.principalId === principalId ? principal : null;
+    } catch { discard = true; throw new FirstPartyAuthenticationError(); }
+    finally { if (existingClient === undefined) { try { client?.release(discard); } catch { throw new FirstPartyAuthenticationError(); } } }
+  }
+
   public async capture(expectedTenantId: string, loginIdentifier: string, existingClient?: PostgreSqlClientPort): Promise<HumanCredentialCapture | null> {
     if (!safeIdentifier(expectedTenantId) || !validLoginIdentifier(loginIdentifier)) return null;
     let client = existingClient;

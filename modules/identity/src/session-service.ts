@@ -44,6 +44,8 @@ export interface SessionContext {
   readonly principalType: PrincipalType;
   readonly roles: readonly RoleCode[];
   readonly teamId?: string;
+  readonly tenantId?: string;
+  readonly teamBindingOrigin?: string;
   readonly state: "ACTIVE" | "REVOKED" | "EXPIRED";
   readonly assurance: AuthenticatedIdentity["assurance"];
   readonly isMfaVerified: boolean;
@@ -84,12 +86,23 @@ interface SessionServiceDependencies {
   readonly unitOfWork?: SessionUnitOfWork;
   readonly asyncCreationUnitOfWork?: AsyncSessionUnitOfWork;
   readonly tenantBindingOrigin?: string;
+  readonly postAuthenticationBinding?: PostAuthenticationBindingResolver;
+}
+export interface SessionIssuanceBinding {
+  readonly tenantId: string;
+  readonly teamId: string;
+  readonly tenantBindingOrigin: "AUTHENTICATED_PRINCIPAL_TENANT";
+  readonly teamBindingOrigin: "EXPLICIT_TEAM_SELECTION_VALIDATED";
+}
+export interface PostAuthenticationBindingResolver {
+  resolve(identity: AuthenticatedIdentity, requestedTeamId: string | undefined, client: PostgreSqlClientPort): Promise<SessionIssuanceBinding>;
 }
 
 interface CreateSessionRequest {
   readonly evidence: AuthenticationEvidence;
   readonly requestId?: string;
   readonly correlationId: string;
+  readonly requestedTeamId?: string;
 }
 
 interface RefreshSessionRequest {
@@ -133,6 +146,7 @@ export class SessionService {
   readonly #unitOfWork: SessionUnitOfWork | undefined;
   readonly #tenantBindingOrigin: string;
   readonly #asyncCreationUnitOfWork: AsyncSessionUnitOfWork | undefined;
+  readonly #postAuthenticationBinding: PostAuthenticationBindingResolver | undefined;
 
   public constructor(dependencies: SessionServiceDependencies) {
     this.#authenticationAdapter = dependencies.authenticationAdapter;
@@ -142,6 +156,8 @@ export class SessionService {
     this.#accessLifetimeMs = dependencies.accessLifetimeMs;
     this.#absoluteLifetimeMs = dependencies.absoluteLifetimeMs;
     this.#asyncCreationUnitOfWork = dependencies.asyncCreationUnitOfWork;
+    this.#postAuthenticationBinding = dependencies.postAuthenticationBinding;
+    if (this.#postAuthenticationBinding !== undefined && this.#asyncCreationUnitOfWork === undefined) throw new AuthenticationError("AUTHENTICATION_UNAVAILABLE", "Authentication unavailable.");
     if (dependencies.authenticationAdapter.revalidate !== undefined && this.#asyncCreationUnitOfWork === undefined) {
       throw new AuthenticationError("AUTHENTICATION_UNAVAILABLE", "Authentication unavailable.");
     }
@@ -196,7 +212,7 @@ export class SessionService {
         ...("requestedScope" in request.evidence ? { requestedScope: request.evidence.requestedScope } : {}),
       },
     });
-    const record = this.#createSessionSnapshot({
+    let record = this.#createSessionSnapshot({
       identity,
       familyId,
       sessionId,
@@ -209,7 +225,13 @@ export class SessionService {
     else await this.#asyncCreationUnitOfWork.transaction(
       { sessionId: record.id, expectedVersion: 0 },
       (sessions) => sessions.create(record),
-      (client) => this.#authenticationAdapter.revalidate!(identity, client),
+      async (client) => {
+        await this.#authenticationAdapter.revalidate!(identity, client);
+        if (this.#postAuthenticationBinding !== undefined) {
+          const binding = await this.#postAuthenticationBinding.resolve(identity, request.requestedTeamId, client);
+          record = { ...record, ...binding };
+        }
+      },
     );
     return this.#toSessionContext(record);
   }
@@ -301,6 +323,9 @@ export class SessionService {
       issuedAt: new Date(current.issuedAt),
       lastAccessedAt: now,
       auditEvidenceRef: auditEvent.id,
+      ...(current.tenantId === undefined || current.teamId === undefined || current.teamBindingOrigin !== "EXPLICIT_TEAM_SELECTION_VALIDATED" ? {} : { binding: {
+        tenantId: current.tenantId, teamId: current.teamId, tenantBindingOrigin: "AUTHENTICATED_PRINCIPAL_TENANT" as const, teamBindingOrigin: "EXPLICIT_TEAM_SELECTION_VALIDATED" as const,
+      } }),
       ...(current.lastMfaVerifiedAt === undefined
         ? {}
         : { lastMfaVerifiedAt: new Date(current.lastMfaVerifiedAt) }),
@@ -368,6 +393,7 @@ export class SessionService {
     readonly lastAccessedAt: Date;
     readonly lastMfaVerifiedAt?: Date;
     readonly auditEvidenceRef: string;
+    readonly binding?: SessionIssuanceBinding;
   }): DurableSessionRecord {
     const lastMfaVerifiedAt = input.lastMfaVerifiedAt
       ?? (input.identity.isMfaVerified ? input.lastAccessedAt : undefined);
@@ -384,6 +410,7 @@ export class SessionService {
       refreshReference: input.refreshReference,
       sessionVersion: 1,
       tenantBindingOrigin: this.#tenantBindingOrigin,
+      ...input.binding,
       issuedAt: input.issuedAt.toISOString(),
       auditEvidenceRef: input.auditEvidenceRef,
       lastAccessedAt: input.lastAccessedAt.toISOString(),

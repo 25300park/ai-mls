@@ -12,6 +12,8 @@ export interface DurableSessionRecord {
   readonly principalType: PrincipalType;
   readonly roles: readonly RoleCode[];
   readonly teamId?: string;
+  readonly tenantId?: string;
+  readonly teamBindingOrigin?: string;
   readonly state: "ACTIVE" | "REVOKED" | "EXPIRED";
   readonly assurance: "SINGLE_FACTOR" | "MFA" | "WORKLOAD";
   readonly isMfaVerified: boolean;
@@ -112,6 +114,8 @@ const requiredFields = [
 const allowedFields = new Set<string>([
   ...requiredFields,
   "teamId",
+  "tenantId",
+  "teamBindingOrigin",
   "revokedAt",
   "revocationEvidenceRef",
   "lastMfaVerifiedAt",
@@ -123,6 +127,8 @@ const immutableFields = [
   "principalType",
   "roles",
   "teamId",
+  "tenantId",
+  "teamBindingOrigin",
   "assurance",
   "isMfaVerified",
   "familyId",
@@ -177,6 +183,13 @@ export function assertValidDurableSessionRecord(
     || !isNonEmptyString(record["auditEvidenceRef"])
     || !isIsoInstant(record["lastAccessedAt"])
     || (record["teamId"] !== undefined && !isNonEmptyString(record["teamId"]))
+    || (record["tenantId"] !== undefined && !isNonEmptyString(record["tenantId"]))
+    || (record["teamBindingOrigin"] !== undefined && !isNonEmptyString(record["teamBindingOrigin"]))
+    || ((record["tenantId"] !== undefined || record["teamBindingOrigin"] !== undefined) && (
+      !isNonEmptyString(record["tenantId"]) || !isNonEmptyString(record["teamId"])
+      || record["tenantBindingOrigin"] !== "AUTHENTICATED_PRINCIPAL_TENANT"
+      || record["teamBindingOrigin"] !== "EXPLICIT_TEAM_SELECTION_VALIDATED"
+    ))
     || (record["lastMfaVerifiedAt"] !== undefined && !isIsoInstant(record["lastMfaVerifiedAt"]))
     || (record["revokedAt"] !== undefined && !isIsoInstant(record["revokedAt"]))
     || (record["revocationEvidenceRef"] !== undefined && !isNonEmptyString(record["revocationEvidenceRef"]))

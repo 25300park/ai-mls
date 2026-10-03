@@ -216,7 +216,7 @@ function hasFreshMfa(record: DurableSessionRecord, now: Date): boolean {
     && elapsed <= MFA_FRESHNESS_MILLISECONDS;
 }
 
-function assertAllowed(decision: AuthorizationDecision): void {
+export function assertAllowed(decision: AuthorizationDecision): void {
   if (decision.effect === "ALLOW") return;
   throw new AuthenticationError(decision.reasonCode, "Authorization failed.");
 }

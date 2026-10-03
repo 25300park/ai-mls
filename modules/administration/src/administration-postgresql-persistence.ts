@@ -220,6 +220,11 @@ async function loadState(client: PostgreSqlClientPort, lock: boolean, identity?:
   return state;
 }
 
+// Read authority participant only: caller owns BEGIN/COMMIT/release and its client.
+export async function readAdministrationOnClient(client: PostgreSqlClientPort): Promise<ReturnType<typeof createAdministrationReadRepositories>> {
+  return createAdministrationReadRepositories(await loadState(client, false));
+}
+
 async function persistTrackedChanges(client: PostgreSqlClientPort, tracker: AdministrationTransactionTrackerSnapshot): Promise<void> {
   if (tracker.governedSave !== undefined) await insertGoverned(client, tracker.governedSave);
   if (tracker.authoritativeUpdate !== undefined) await updateGoverned(client, tracker.authoritativeUpdate.initialVersion, tracker.authoritativeUpdate.record);
