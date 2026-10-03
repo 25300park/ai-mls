@@ -286,7 +286,11 @@ test("empty secret gate follows Identity gates and preserves cleanup at the acti
   validateRequiredSecretsManifest(CURRENT_PRODUCTION_REQUIRED_SECRETS_MANIFEST,CURRENT_PRODUCTION_REQUIRED_SECRET_COMPOSITION);
   events.push("empty-secrets-ready");
   return Promise.resolve();
- },startListeners:()=>{throw new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE");}}),ProductionBootstrapError);
+ },startListeners:()=>{throw new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE");}}),(error:unknown)=>{
+  assert.ok(error instanceof ProductionBootstrapError);
+  assert.equal(Reflect.get(error,"preListenerStartupChain"),"READY");
+  return true;
+ });
  assert.ok(events.indexOf("human-identity")<events.indexOf("empty-secrets-ready"));
  assert.ok(events.indexOf("empty-secrets-ready")<events.indexOf("component-schemas"));
  assert.equal(events.includes("listeners-start"),false);
@@ -295,4 +299,22 @@ test("empty secret gate follows Identity gates and preserves cleanup at the acti
  assert.equal(events.filter(event=>event==="pool-open").length,1);
  assert.equal(events.filter(event=>event==="pool-close").length,1);
  assert.deepEqual(events.slice(-8),["root-022-close","root-019-close","root-018-close","root-015-close","root-014-close","session-close","identity-close","pool-close"]);
+});
+
+test("each pre-listener gate failure exposes BLOCKED and never runs downstream gates", async () => {
+ for (const failAt of ["gate-pass", "human-identity", "resolve-secrets"]) {
+  const {events,dependencies}=harness(failAt);
+  await assert.rejects(executeProductionBootstrap({},dependencies),(error:unknown)=>{
+   assert.ok(error instanceof ProductionBootstrapError);
+   assert.equal(Reflect.get(error,"preListenerStartupChain"),"BLOCKED");
+   assert.equal(JSON.stringify(error).includes("private"),false);
+   return true;
+  });
+  if(failAt==="gate-pass")assert.equal(events.includes("human-identity"),false);
+  if(failAt!=="resolve-secrets")assert.equal(events.includes("resolve-secrets"),false);
+  assert.equal(events.includes("listeners-start"),false);
+  assert.equal(events.includes("workers-start"),false);
+  assert.equal(events.includes("session-create"),false);
+  assert.deepEqual(events.slice(-2),["identity-close","pool-close"]);
+ }
 });

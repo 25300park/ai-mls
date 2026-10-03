@@ -9,9 +9,38 @@ import {
   type ProductionRuntimeHandle,
 } from "./production-bootstrap.js";
 import type { ProductionServiceIdentityBinding } from "./production-service-identity-resolver.js";
+import type { AsyncRegisteredServiceWorkloadAuthorityLease } from "../../../modules/identity/src/index.js";
 
 export interface ProductionBootstrapEngineDependencies extends Omit<ProductionBootstrapDependencies, "childRootOptions"> {
   readonly childRootFactories: ProductionChildRootFactories;
+}
+
+export interface ProductionPreListenerStartupChainResult {
+  readonly status: "READY";
+  readonly validationFingerprint: string;
+  readonly identities: readonly ProductionServiceIdentityBinding[];
+}
+
+export type ProductionPreListenerGateDependencies = Pick<ProductionBootstrapDependencies,
+  "resolveRequiredServiceIdentities" | "validateStartupGate" | "validateHumanIdentityAuthority" | "resolveRequiredSecrets">;
+
+/** Internal readiness composition; borrows authority and grants no runtime activation. */
+export async function executeProductionPreListenerStartupChain(
+  configuration: ProductionRuntimeConfiguration,
+  authority: AsyncRegisteredServiceWorkloadAuthorityLease,
+  dependencies: ProductionPreListenerGateDependencies,
+): Promise<ProductionPreListenerStartupChainResult> {
+  try {
+    const identities = Object.freeze([...(await dependencies.resolveRequiredServiceIdentities(authority, configuration))]);
+    assertRequiredIdentities(configuration, identities);
+    const validationFingerprint = dependencies.validateStartupGate(configuration, identities);
+    if (!safeReference(validationFingerprint)) throw unavailable();
+    await dependencies.validateHumanIdentityAuthority(configuration);
+    await dependencies.resolveRequiredSecrets(configuration);
+    return Object.freeze({ status: "READY", validationFingerprint, identities });
+  } catch {
+    throw Object.assign(unavailable(), { preListenerStartupChain: "BLOCKED" as const });
+  }
 }
 
 /** Internal bootstrap engine. Production code must enter through startProductionRuntime(). */
@@ -19,6 +48,7 @@ export async function executeProductionBootstrap(rawConfiguration: unknown, depe
   const cleanup: (() => void | Promise<void>)[] = [];
   let listener: { close(): void | Promise<void> } | undefined;
   let workers: { close(): void | Promise<void> } | undefined;
+  let preListenerStartupChain: "READY" | "BLOCKED" = "BLOCKED";
   const shutdown = async (): Promise<void> => {
     let failed = false;
     if (listener !== undefined) {
@@ -40,12 +70,9 @@ export async function executeProductionBootstrap(rawConfiguration: unknown, depe
     const authority = await dependencies.openIdentityAuthorityReadOnly(pool);
     cleanup.push(() => authority.close());
     const identitySchemaReadinessProvenance = await authority.assertSchemaReady();
-    const identities = Object.freeze([...(await dependencies.resolveRequiredServiceIdentities(authority, configuration))]);
-    assertRequiredIdentities(configuration, identities);
-    const validationFingerprint = dependencies.validateStartupGate(configuration, identities);
-    if (!safeReference(validationFingerprint)) throw unavailable();
-    await dependencies.validateHumanIdentityAuthority(configuration);
-    await dependencies.resolveRequiredSecrets(configuration);
+    const chain = await executeProductionPreListenerStartupChain(configuration, authority, dependencies);
+    preListenerStartupChain = chain.status;
+    const { identities, validationFingerprint } = chain;
     const context = issueProductionBootstrapContext({ validationFingerprint, configurationReference: configuration.configurationReference });
     await dependencies.assertComponentSchemasReady(configuration, pool);
     const session = await dependencies.createSessionUnitOfWork(pool);
@@ -76,7 +103,10 @@ export async function executeProductionBootstrap(rawConfiguration: unknown, depe
     });
   } catch (error) {
     try { await shutdown(); } catch { /* startup remains unavailable after exhaustive cleanup */ }
-    throw new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE", error instanceof ChildRootSchemaReadinessError ? error.evidence : undefined);
+    throw Object.assign(
+      new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE", error instanceof ChildRootSchemaReadinessError ? error.evidence : undefined),
+      { preListenerStartupChain },
+    );
   }
 }
 
