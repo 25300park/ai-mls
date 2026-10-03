@@ -59,6 +59,7 @@ export interface AsyncSessionUnitOfWork {
   transaction<Result>(
     identity: SessionMutationIdentity,
     operation: (sessions: AsyncSessionRepository) => Promise<Result>,
+    beforeOperation?: (client: PostgreSqlClientPort) => Promise<void>,
   ): Promise<Result>;
   close(): Promise<void>;
 }
@@ -74,6 +75,7 @@ export class PostgreSqlSessionUnitOfWork implements AsyncSessionUnitOfWork {
   public async transaction<Result>(
     identity: SessionMutationIdentity,
     operation: (sessions: AsyncSessionRepository) => Promise<Result>,
+    beforeOperation?: (client: PostgreSqlClientPort) => Promise<void>,
   ): Promise<Result> {
     this.#assertOpen();
     if (!validIdentity(identity)) throw new SessionPersistenceError("SESSION_RECORD_INVALID");
@@ -85,6 +87,7 @@ export class PostgreSqlSessionUnitOfWork implements AsyncSessionUnitOfWork {
       await safeQuery(client, "BEGIN");
       transactionOpen = true;
       await assertExpectedVersion(client, identity);
+      await beforeOperation?.(client);
       const sessions = createRepository(client, identity);
       const result = await operation(sessions);
       await safeQuery(client, "COMMIT");

@@ -9,6 +9,7 @@ import type {
 } from "../../../modules/identity/src/session-service.js";
 import {
   executeBoundary,
+  executeBoundaryAsync,
   requireSessionId,
   type ApiResponse,
   type RequestContext,
@@ -37,8 +38,8 @@ export class IdentityApi {
 
   public createSession(
     input: CreateSessionInput,
-  ): ApiResponse<ReturnType<SessionService["createSession"]>> {
-    return executeBoundary(input.context, () =>
+  ): Promise<ApiResponse<Awaited<ReturnType<SessionService["createSession"]>>>> {
+    return executeBoundaryAsync(input.context, () =>
       this.dependencies.sessionService.createSession({
         evidence: input.evidence,
         ...(input.context.requestId === undefined

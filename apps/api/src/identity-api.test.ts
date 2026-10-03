@@ -17,8 +17,8 @@ import { IdentityApi } from "./identity-api.js";
 class StubAuthenticationAdapter implements AuthenticationAdapter {
   public constructor(private readonly identity: AuthenticatedIdentity | null) {}
 
-  public verify(_evidence: AuthenticationEvidence): AuthenticatedIdentity | null {
-    return this.identity;
+  public verify(_evidence: AuthenticationEvidence): Promise<AuthenticatedIdentity | null> {
+    return Promise.resolve(this.identity);
   }
 }
 
@@ -65,8 +65,8 @@ function fixture(identity: AuthenticatedIdentity | null = {
   });
 }
 
-test("TEST-026 API-001 returns a stable generic authentication error", () => {
-  const response = fixture(null).createSession({
+test("TEST-026 API-001 returns a stable generic authentication error", async () => {
+  const response = await fixture(null).createSession({
     context: { requestId: "request-api-1", correlationId: "correlation-api-1" },
     evidence: { credentialReference: "fixture-reference", requestedScope: "internal" },
   });
@@ -79,9 +79,9 @@ test("TEST-026 API-001 returns a stable generic authentication error", () => {
   assert.equal(JSON.stringify(response).includes("stack"), false);
 });
 
-test("TEST-009 API-002 derives the actor from the bounded session context", () => {
+test("TEST-009 API-002 derives the actor from the bounded session context", async () => {
   const api = fixture();
-  const created = api.createSession({
+  const created = await api.createSession({
     context: { requestId: "request-api-2", correlationId: "correlation-api-2" },
     evidence: { credentialReference: "fixture-reference", requestedScope: "internal" },
   });

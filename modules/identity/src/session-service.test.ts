@@ -18,8 +18,8 @@ import {
 class StubAuthenticationAdapter implements AuthenticationAdapter {
   public constructor(private readonly identity: AuthenticatedIdentity | null) {}
 
-  public verify(_evidence: AuthenticationEvidence): AuthenticatedIdentity | null {
-    return this.identity;
+  public verify(_evidence: AuthenticationEvidence): Promise<AuthenticatedIdentity | null> {
+    return Promise.resolve(this.identity);
   }
 }
 
@@ -66,10 +66,10 @@ const evidence: AuthenticationEvidence = {
   requestedScope: "internal",
 };
 
-test("TEST-026 returns a generic authentication failure", () => {
+test("TEST-026 returns a generic authentication failure", async () => {
   const { service } = createFixture(null);
 
-  assert.throws(
+  await assert.rejects(
     () =>
       service.createSession({
         evidence,
@@ -83,10 +83,10 @@ test("TEST-026 returns a generic authentication failure", () => {
   );
 });
 
-test("TEST-026 creates a bounded session without auditing credential evidence", () => {
+test("TEST-026 creates a bounded session without auditing credential evidence", async () => {
   const { service, auditLog } = createFixture();
 
-  const session = service.createSession({
+  const session = await service.createSession({
     evidence,
     requestId: "request-identity-2",
     correlationId: "correlation-identity-2",
@@ -111,7 +111,7 @@ test("TEST-026 creates a bounded session without auditing credential evidence", 
   assert.equal(events[0]?.outcome, "ACCEPTED");
 });
 
-test("persistence failure leaves no false completed Session audit evidence", () => {
+test("persistence failure leaves no false completed Session audit evidence", async () => {
   let sequence = 0;
   const clock = (): Date => new Date("2026-09-13T00:00:00.000Z");
   const auditLog = new AuditLog({
@@ -140,7 +140,7 @@ test("persistence failure leaves no false completed Session audit evidence", () 
     unitOfWork: failingUnit,
     tenantBindingOrigin: "assignment:atomic-failure-user:v1",
   });
-  assert.throws(
+  await assert.rejects(
     () => service.createSession({ evidence, correlationId: "correlation-session-atomic-failure" }),
     /SESSION_VERSION_CONFLICT/,
   );
@@ -148,7 +148,7 @@ test("persistence failure leaves no false completed Session audit evidence", () 
   assert.equal(events.some((event) => event.outcome === "COMPLETED"), false);
 });
 
-test("FCR-008 rejects contradictory authentication assurance before creating a Session", () => {
+test("FCR-008 rejects contradictory authentication assurance before creating a Session", async () => {
   const { service, auditLog } = createFixture({
     principalId: "user-agent-contradictory",
     principalType: "HUMAN",
@@ -159,7 +159,7 @@ test("FCR-008 rejects contradictory authentication assurance before creating a S
     status: "ACTIVE",
   });
 
-  assert.throws(
+  await assert.rejects(
     () => service.createSession({ evidence, correlationId: "correlation-fcr-008" }),
     (error: unknown) => error instanceof AuthenticationError
       && error.code === "INVALID_CREDENTIAL"
@@ -168,9 +168,9 @@ test("FCR-008 rejects contradictory authentication assurance before creating a S
   assert.equal(auditLog.query({ requesterId: "user-security-1", purpose: "TEST", correlationId: "correlation-fcr-008" }).some(({ decision }) => decision === "ALLOW"), false);
 });
 
-test("TEST-046 expires stale sessions fail closed", () => {
+test("TEST-046 expires stale sessions fail closed", async () => {
   const { service, advance } = createFixture();
-  const session = service.createSession({
+  const session = await service.createSession({
     evidence,
     correlationId: "correlation-identity-3",
   });
@@ -179,7 +179,7 @@ test("TEST-046 expires stale sessions fail closed", () => {
   assert.throws(() => service.readSession(session.id), /SESSION_EXPIRED/);
 });
 
-test("TEST-046 rejects human roles for a service principal", () => {
+test("TEST-046 rejects human roles for a service principal", async () => {
   const { service } = createFixture({
     principalId: "service-worker-1",
     principalType: "SERVICE",
@@ -189,7 +189,7 @@ test("TEST-046 rejects human roles for a service principal", () => {
     status: "ACTIVE",
   });
 
-  assert.throws(
+  await assert.rejects(
     () =>
       service.createSession({
         evidence,
@@ -199,9 +199,9 @@ test("TEST-046 rejects human roles for a service principal", () => {
   );
 });
 
-test("TEST-046 rotates refresh references and revokes the family on replay", () => {
+test("TEST-046 rotates refresh references and revokes the family on replay", async () => {
   const { service } = createFixture();
-  const original = service.createSession({
+  const original = await service.createSession({
     evidence,
     correlationId: "correlation-identity-5",
   });
@@ -256,10 +256,10 @@ function createPersistentService(
   });
 }
 
-test("Phase 1D persists a newly issued Session at version 1 for reconstruction", () => {
+test("Phase 1D persists a newly issued Session at version 1 for reconstruction", async () => {
   const unitOfWork = new InMemorySessionUnitOfWork();
   const first = createPersistentService(unitOfWork, "first");
-  const created = first.createSession({
+  const created = await first.createSession({
     evidence,
     correlationId: "correlation-phase1d-create",
   });
@@ -273,10 +273,10 @@ test("Phase 1D persists a newly issued Session at version 1 for reconstruction",
   assert.deepEqual(reconstructed.readSession(created.id), created);
 });
 
-test("Phase 1D persists irreversible revoke metadata and increments version once", () => {
+test("Phase 1D persists irreversible revoke metadata and increments version once", async () => {
   const unitOfWork = new InMemorySessionUnitOfWork();
   const service = createPersistentService(unitOfWork, "revoke");
-  const created = service.createSession({
+  const created = await service.createSession({
     evidence,
     correlationId: "correlation-phase1d-revoke-create",
   });
@@ -301,10 +301,10 @@ test("Phase 1D persists irreversible revoke metadata and increments version once
   assert.throws(() => reconstructed.readSession(created.id), /SESSION_REVOKED/);
 });
 
-test("Phase 1D refresh replay revokes the durable Session family after reconstruction", () => {
+test("Phase 1D refresh replay revokes the durable Session family after reconstruction", async () => {
   const unitOfWork = new InMemorySessionUnitOfWork();
   const first = createPersistentService(unitOfWork, "refresh-first");
-  const original = first.createSession({
+  const original = await first.createSession({
     evidence,
     correlationId: "correlation-phase1d-refresh-create",
   });

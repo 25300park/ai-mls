@@ -12,11 +12,15 @@ import {
   type DurableSessionRecord,
   type SessionUnitOfWork,
 } from "./session-persistence.js";
+import type { FirstPartyCredentialEvidenceV1 } from "./first-party-credential-contracts.js";
+import type { PostgreSqlClientPort } from "./postgresql-pool.js";
+import type { AsyncSessionUnitOfWork } from "./session-postgresql-persistence.js";
 
-export interface AuthenticationEvidence {
+export interface ReferenceAuthenticationEvidence {
   readonly credentialReference: string;
   readonly requestedScope: string;
 }
+export type AuthenticationEvidence = ReferenceAuthenticationEvidence | FirstPartyCredentialEvidenceV1;
 
 export interface AuthenticatedIdentity {
   readonly principalId: string;
@@ -29,8 +33,10 @@ export interface AuthenticatedIdentity {
 }
 
 export interface AuthenticationAdapter {
-  verify(evidence: AuthenticationEvidence): AuthenticatedIdentity | null;
+  verify(evidence: AuthenticationEvidence): Promise<AuthenticationResult>;
+  revalidate?(identity: AuthenticatedIdentity, client: PostgreSqlClientPort): Promise<void>;
 }
+export type AuthenticationResult = AuthenticatedIdentity | null;
 
 export interface SessionContext {
   readonly id: string;
@@ -76,6 +82,7 @@ interface SessionServiceDependencies {
   readonly accessLifetimeMs: number;
   readonly absoluteLifetimeMs: number;
   readonly unitOfWork?: SessionUnitOfWork;
+  readonly asyncCreationUnitOfWork?: AsyncSessionUnitOfWork;
   readonly tenantBindingOrigin?: string;
 }
 
@@ -123,8 +130,9 @@ export class SessionService {
   readonly #idFactory: IdFactory;
   readonly #accessLifetimeMs: number;
   readonly #absoluteLifetimeMs: number;
-  readonly #unitOfWork: SessionUnitOfWork;
+  readonly #unitOfWork: SessionUnitOfWork | undefined;
   readonly #tenantBindingOrigin: string;
+  readonly #asyncCreationUnitOfWork: AsyncSessionUnitOfWork | undefined;
 
   public constructor(dependencies: SessionServiceDependencies) {
     this.#authenticationAdapter = dependencies.authenticationAdapter;
@@ -133,13 +141,20 @@ export class SessionService {
     this.#idFactory = dependencies.idFactory;
     this.#accessLifetimeMs = dependencies.accessLifetimeMs;
     this.#absoluteLifetimeMs = dependencies.absoluteLifetimeMs;
-    this.#unitOfWork = dependencies.unitOfWork ?? new InMemorySessionUnitOfWork();
+    this.#asyncCreationUnitOfWork = dependencies.asyncCreationUnitOfWork;
+    if (dependencies.authenticationAdapter.revalidate !== undefined && this.#asyncCreationUnitOfWork === undefined) {
+      throw new AuthenticationError("AUTHENTICATION_UNAVAILABLE", "Authentication unavailable.");
+    }
+    if (this.#asyncCreationUnitOfWork !== undefined && dependencies.authenticationAdapter.revalidate === undefined) {
+      throw new AuthenticationError("AUTHENTICATION_UNAVAILABLE", "Authentication unavailable.");
+    }
+    this.#unitOfWork = dependencies.unitOfWork ?? (this.#asyncCreationUnitOfWork === undefined ? new InMemorySessionUnitOfWork() : undefined);
     this.#tenantBindingOrigin = dependencies.tenantBindingOrigin
       ?? "authentication-adapter:test-development-compatibility";
   }
 
-  public createSession(request: CreateSessionRequest): SessionContext {
-    const identity = this.#authenticationAdapter.verify(request.evidence);
+  public async createSession(request: CreateSessionRequest): Promise<SessionContext> {
+    const identity = await this.#authenticationAdapter.verify(request.evidence);
     if (identity?.status !== "ACTIVE" || !isAuthenticationAssuranceConsistent(identity)) {
       this.#auditSink.append({
         eventType: "LOGIN",
@@ -178,7 +193,7 @@ export class SessionService {
       details: {
         assurance: identity.assurance,
         isMfaVerified: identity.isMfaVerified,
-        requestedScope: request.evidence.requestedScope,
+        ...("requestedScope" in request.evidence ? { requestedScope: request.evidence.requestedScope } : {}),
       },
     });
     const record = this.#createSessionSnapshot({
@@ -190,8 +205,18 @@ export class SessionService {
       lastAccessedAt: now,
       auditEvidenceRef: auditEvent.id,
     });
-    this.#storeSession(record);
+    if (this.#asyncCreationUnitOfWork === undefined) this.#storeSession(record);
+    else await this.#asyncCreationUnitOfWork.transaction(
+      { sessionId: record.id, expectedVersion: 0 },
+      (sessions) => sessions.create(record),
+      (client) => this.#authenticationAdapter.revalidate!(identity, client),
+    );
     return this.#toSessionContext(record);
+  }
+
+  get #syncUnitOfWork(): SessionUnitOfWork {
+    if (this.#unitOfWork === undefined) throw new AuthenticationError("AUTHENTICATION_UNAVAILABLE", "Authentication unavailable.");
+    return this.#unitOfWork;
   }
 
   public readSession(sessionId: string): SessionContext {
@@ -205,9 +230,9 @@ export class SessionService {
       this.#clock().getTime() >= new Date(projected.expiresAt).getTime() ||
       this.#clock().getTime() >= new Date(projected.absoluteExpiresAt).getTime()
     ) {
-      this.#unitOfWork.transaction(
+      this.#syncUnitOfWork.transaction(
         { sessionId: session.id, expectedVersion: session.sessionVersion },
-        () => this.#unitOfWork.sessions.update(session.sessionVersion, {
+        () => this.#syncUnitOfWork.sessions.update(session.sessionVersion, {
           ...session,
           state: "EXPIRED",
           sessionVersion: session.sessionVersion + 1,
@@ -259,9 +284,9 @@ export class SessionService {
       correlationId: request.correlationId,
       details: { predecessorSessionRef: sessionEvidenceReference(current.id) },
     });
-    this.#unitOfWork.transaction(
+    this.#syncUnitOfWork.transaction(
       { sessionId: current.id, expectedVersion: current.sessionVersion },
-      () => this.#unitOfWork.sessions.appendRevocation(current.sessionVersion, {
+      () => this.#syncUnitOfWork.sessions.appendRevocation(current.sessionVersion, {
         sessionId: current.id,
         revokedAt: now.toISOString(),
         revocationEvidenceRef: auditEvent.id,
@@ -304,9 +329,9 @@ export class SessionService {
       ...(request.requestId === undefined ? {} : { requestId: request.requestId }),
       correlationId: request.correlationId,
     });
-    this.#unitOfWork.transaction(
+    this.#syncUnitOfWork.transaction(
       { sessionId: session.id, expectedVersion: session.sessionVersion },
-      () => this.#unitOfWork.sessions.appendRevocation(session.sessionVersion, {
+      () => this.#syncUnitOfWork.sessions.appendRevocation(session.sessionVersion, {
         sessionId: session.id,
         revokedAt,
         revocationEvidenceRef: auditEvent.id,
@@ -387,14 +412,14 @@ export class SessionService {
   }
 
   #storeSession(session: DurableSessionRecord): void {
-    this.#unitOfWork.transaction(
+    this.#syncUnitOfWork.transaction(
       { sessionId: session.id, expectedVersion: 0 },
-      () => this.#unitOfWork.sessions.create(session),
+      () => this.#syncUnitOfWork.sessions.create(session),
     );
   }
 
   #requireSession(sessionId: string): DurableSessionRecord {
-    const session = this.#unitOfWork.sessions.find(sessionId);
+    const session = this.#syncUnitOfWork.sessions.find(sessionId);
     if (session === undefined) {
       throw new AuthenticationError("SESSION_REVOKED", "Session is not active.");
     }
@@ -402,11 +427,11 @@ export class SessionService {
   }
 
   #revokeFamily(familyId: string, revokedAt: string, evidenceRef: string): void {
-    for (const session of this.#unitOfWork.sessions.listByFamily(familyId)) {
+    for (const session of this.#syncUnitOfWork.sessions.listByFamily(familyId)) {
       if (session.state !== "ACTIVE") continue;
-      this.#unitOfWork.transaction(
+      this.#syncUnitOfWork.transaction(
         { sessionId: session.id, expectedVersion: session.sessionVersion },
-        () => this.#unitOfWork.sessions.appendRevocation(session.sessionVersion, {
+        () => this.#syncUnitOfWork.sessions.appendRevocation(session.sessionVersion, {
           sessionId: session.id,
           revokedAt,
           revocationEvidenceRef: evidenceRef,

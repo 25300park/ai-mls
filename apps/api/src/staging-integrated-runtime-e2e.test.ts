@@ -39,11 +39,11 @@ const liveAssignments: readonly LiveRoleAssignment[] = [{
 }];
 
 class AuthenticationStub implements AuthenticationAdapter {
-  public verify(_evidence: AuthenticationEvidence): AuthenticatedIdentity {
-    return {
+  public verify(_evidence: AuthenticationEvidence): Promise<AuthenticatedIdentity> {
+    return Promise.resolve({
       principalId: "phase6-actor", principalType: "HUMAN", roles: ["SEC"], teamId: "team-staging",
       assurance: "MFA", isMfaVerified: true, status: "ACTIVE",
-    };
+    });
   }
 }
 
@@ -183,7 +183,7 @@ test("REL001-PHASE6 concrete compositions become ready, perform no execution, an
   });
   let providerCalls = 0;
   let advisory = await createAdvisoryReadiness(directory, () => { providerCalls += 1; });
-  const createdSession = session.sessionService.createSession({
+  const createdSession = await session.sessionService.createSession({
     evidence: { credentialReference: "phase6-test-reference", requestedScope: "tenant-staging" },
     correlationId: "correlation-phase6-session",
   });

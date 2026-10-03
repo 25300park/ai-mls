@@ -3,7 +3,7 @@ import type { AuthenticationAdapter } from "../../../modules/identity/src/sessio
 export interface ProductionAuthenticationBinding {
   readonly adapterId: string;
   readonly adapterKind: string;
-  readonly configurationRef: string;
+  readonly configurationRef: unknown;
 }
 
 // Approved composition supplies registrations; B1 creates no Production entry.
@@ -12,7 +12,7 @@ export interface AuthenticationAdapterRegistration {
   readonly adapterKind: string;
   readonly environment: "PRODUCTION" | "STAGING";
   readonly adapter: AuthenticationAdapter;
-  validateConfigurationReference(reference: string): void;
+  validateConfigurationReference(reference: unknown): void;
 }
 
 export function validateConfigurationReference(value: unknown): string {
@@ -36,7 +36,8 @@ export function resolveProductionAuthenticationBinding(
   if (registration.environment !== "PRODUCTION" || registration.adapterKind !== binding.adapterKind
     || typeof registration.adapter?.verify !== "function"
     || typeof registration.validateConfigurationReference !== "function") throw new Error("BINDING_INVALID");
-  registration.validateConfigurationReference(validateConfigurationReference(binding.configurationRef));
+  const reference = typeof binding.configurationRef === "string" ? validateConfigurationReference(binding.configurationRef) : binding.configurationRef;
+  registration.validateConfigurationReference(reference);
   return registration;
 }
 

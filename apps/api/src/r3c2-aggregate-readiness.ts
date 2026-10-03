@@ -5,11 +5,14 @@ import { R3C1_CATALOG_QUERY, R3C1_PERSISTENCE_CONTRACTS } from "./r3c1-postgresq
 import { R3C2B_EVIDENCE_CATALOG_QUERY, R3C2B_EVIDENCE_CONTRACTS } from "./r3c2b-postgresql-readiness.js";
 import { assertR3C2CTeamPersistenceReady } from "./r3c2c-postgresql-readiness.js";
 import { evaluateContracts, R3B1_CHILD_ROOT_SCHEMA_CONTRACTS } from "./child-root-postgresql-readiness.js";
-// Root projection preserves the frozen Identity base verifier. Only the two separately verified canonical extension tables are excluded from its metadata inventory.
+import { assertFirstPartyCredentialPersistenceReady } from "./first-party-authentication-readiness.js";
+// Root projection preserves the frozen Identity base verifier. Only separately verified canonical extension tables are excluded from its metadata inventory.
 export async function assertR3C2IdentityBaseReady(pool:PostgreSqlPoolPort):Promise<NonNullable<Awaited<ReturnType<typeof inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence>>["provenance"]>>{
- const extensions=new Set(["workload_startup_binding_versions","identity_workload_evidence"]);
- const projection:PostgreSqlPoolPort={connect:async()=>{const client=await pool.connect();return {query:async<R extends Record<string,unknown>>(sql:string,values?:readonly unknown[]):Promise<PostgreSqlQueryResult<R>>=>{const result=await client.query<R>(sql,values);if(!sql.includes("pg_catalog")||!sql.includes("app_identity"))return result;const rows=result.rows.filter(row=>!extensions.has(String(row["relation_name"]??row["table_name"])));const normalized=sql.includes("con.contype AS kind")?normalizeIdentityConstraintCatalog(rows):rows;return {...result,rows:normalized,rowCount:normalized.length};},release:destroy=>client.release(destroy)};},close:()=>Promise.reject(new GovernancePersistenceError("UNAVAILABLE"))};
- const result=await inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence(projection);if(result.readiness!=="READY"||result.provenance===null)throw new GovernancePersistenceError("UNAVAILABLE");return result.provenance;
+ const humanExtensions=new Set(["identity_human_principals","identity_human_credentials"]);
+ let humanExtensionObserved=false;
+ const extensions=new Set(["workload_startup_binding_versions","identity_workload_evidence",...humanExtensions]);
+ const projection:PostgreSqlPoolPort={connect:async()=>{const client=await pool.connect();return {query:async<R extends Record<string,unknown>>(sql:string,values?:readonly unknown[]):Promise<PostgreSqlQueryResult<R>>=>{const result=await client.query<R>(sql,values);if(!sql.includes("pg_catalog")||!sql.includes("app_identity"))return result;if(result.rows.some(row=>humanExtensions.has(String(row["relation_name"]??row["table_name"]))))humanExtensionObserved=true;const rows=result.rows.filter(row=>!extensions.has(String(row["relation_name"]??row["table_name"])));const normalized=sql.includes("con.contype AS kind")?normalizeIdentityConstraintCatalog(rows):rows;return {...result,rows:normalized,rowCount:normalized.length};},release:destroy=>client.release(destroy)};},close:()=>Promise.reject(new GovernancePersistenceError("UNAVAILABLE"))};
+ const result=await inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence(projection);if(result.readiness!=="READY"||result.provenance===null)throw new GovernancePersistenceError("UNAVAILABLE");if(humanExtensionObserved)await assertFirstPartyCredentialPersistenceReady(pool);return result.provenance;
 }
 // AO-approved equivalent catalog forms only. The unchanged base verifier checks nullability through pg_attribute first.
 export function normalizeIdentityConstraintCatalog<R extends Record<string,unknown>>(rows:readonly R[]):readonly R[]{

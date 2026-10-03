@@ -86,3 +86,12 @@ export function requireSessionId(context: RequestContext): string {
   }
   return context.sessionId;
 }
+
+export async function executeBoundaryAsync<T>(context: RequestContext, operation: () => Promise<T>): Promise<ApiResponse<T>> {
+  try {
+    const result = await operation();
+    return executeBoundary(context, () => result);
+  } catch (error: unknown) {
+    return executeBoundary(context, () => { throw error; });
+  }
+}

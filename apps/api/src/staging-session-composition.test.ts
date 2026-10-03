@@ -26,8 +26,8 @@ import {
 const now = new Date("2026-09-13T00:00:00.000Z");
 
 class AuthenticationStub implements AuthenticationAdapter {
-  public verify(_evidence: AuthenticationEvidence): AuthenticatedIdentity {
-    return {
+  public verify(_evidence: AuthenticationEvidence): Promise<AuthenticatedIdentity> {
+    return Promise.resolve({
       principalId: "staging-agent-1",
       principalType: "HUMAN",
       roles: ["AGT"],
@@ -35,7 +35,7 @@ class AuthenticationStub implements AuthenticationAdapter {
       assurance: "MFA",
       isMfaVerified: true,
       status: "ACTIVE",
-    };
+    });
   }
 }
 
@@ -90,10 +90,10 @@ function options(databasePath: string): StagingSessionCompositionOptions {
   };
 }
 
-function withDirectory(run: (databasePath: string) => void): void {
+async function withDirectory(run: (databasePath: string) => void | Promise<void>): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), "rel001-staging-session-"));
   try {
-    run(join(directory, "identity.sqlite"));
+    await run(join(directory, "identity.sqlite"));
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -116,9 +116,9 @@ test("requires the durable Staging Session boundary and rejects development or i
   }
 });
 
-test("reopens one durable Session truth for shared Core and Console access consumers", () => withDirectory((databasePath) => {
+test("reopens one durable Session truth for shared Core and Console access consumers", () => withDirectory(async (databasePath) => {
   const first = createStagingSessionComposition(options(databasePath));
-  const created = first.sessionService.createSession({
+  const created = await first.sessionService.createSession({
     evidence: { credentialReference: "credential-ref-staging-1", requestedScope: "staging" },
     correlationId: "correlation-staging-session-create",
   });
