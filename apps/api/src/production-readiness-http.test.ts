@@ -54,6 +54,37 @@ function canonicalRoots(): readonly ProductionChildRoot[] {
   ]);
 }
 
+test("listener rejects a concurrent start and close during bind awaits and releases the socket", async () => {
+  const listener = createProductionRuntimeHttpListener({ port: 0, readiness: createProductionReadinessState(), roots: canonicalRoots() });
+  const first = listener.start();
+  await assert.rejects(() => listener.start());
+  const stopping = listener.close();
+  await first;
+  await stopping;
+  await listener.close();
+  await assert.rejects(() => get(listener.port, "/readyz"));
+});
+
+test("listener starter cleans a partially started custom handle before safe failure", async () => {
+  let closes = 0;
+  const start = createProductionRuntimeListenerStarter({ port: 8080 } as never, createProductionReadinessState(), () => ({
+    port: 8080, start: () => Promise.reject(new Error("private bind details")),
+    close: () => { closes += 1; return Promise.resolve(); },
+  }));
+  await assert.rejects(() => Promise.resolve(start({} as never, canonicalRoots())));
+  assert.equal(closes, 1);
+});
+
+test("listener startup rollback is bounded when partial handle close hangs", async () => {
+  let closes = 0;
+  const start = createProductionRuntimeListenerStarter({ port: 8080 } as never, createProductionReadinessState(), () => ({
+    port: 8080, start: () => Promise.reject(new Error("private bind details")),
+    close: () => { closes++; return new Promise<void>(() => undefined); },
+  }), 5);
+  await assert.rejects(() => Promise.resolve(start({} as never, canonicalRoots())), { reason: "ACTIVATION_CLEANUP_FAILED" });
+  assert.equal(closes, 1);
+});
+
 test("serves bounded NOT_READY then READY from the same operational listener", async () => {
   const state = createProductionReadinessState();
   const listener = createProductionRuntimeHttpListener({ port: 0, readiness: state, roots: canonicalRoots() });

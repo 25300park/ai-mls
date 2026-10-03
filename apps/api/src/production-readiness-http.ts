@@ -6,6 +6,7 @@ import { PublicationNodeHttpResponseWriter } from "../../../modules/publication/
 import { PublicationNodeHttpServerError, type PublicationHttpRequestHandler } from "../../../modules/publication/src/publication-node-http-contracts.js";
 import type { ProductionBootstrapDependencies, ProductionChildRoot } from "./production-bootstrap.js";
 import type { RailwayProductionRuntimeConfiguration } from "./production-runtime-configuration.js";
+import { ProductionCleanupBudget, ProductionRuntimeActivationError } from "./production-runtime-activation.js";
 
 export interface ProductionReadinessState {
   readiness(): "READY" | "NOT_READY";
@@ -17,6 +18,7 @@ export interface ProductionRuntimeHttpListener {
   readonly port: number;
   start(): Promise<void>;
   close(): Promise<void>;
+  stopAccepting?(): void;
 }
 
 export type ProductionRuntimeHttpListenerFactory = (options: Readonly<{
@@ -78,25 +80,37 @@ export function createProductionRuntimeHttpListener(options: Readonly<{
   let boundPort = -1;
   let started = false;
   let closed = false;
+  let starting: Promise<void> | undefined;
+  let closing: Promise<void> | undefined;
+  const stopAccepting = (): void => {
+    options.readiness.markNotReady();
+    closed = true;
+    closing ??= started ? close(server, shutdownTimeoutMilliseconds) : (async (): Promise<void> => {
+      try { await starting; } catch { /* failed bind owns no listening socket */ }
+      if (server.listening) await close(server, shutdownTimeoutMilliseconds);
+    })();
+    void closing.catch(() => undefined); // close() reports the same failure after all activation cleanup.
+  };
   return Object.freeze({
     get port(): number {
       if (!started || boundPort < 0) throw new Error("Production listener is unavailable.");
       return boundPort;
     },
-    start: async (): Promise<void> => {
-      if (started || closed) throw new Error("Production listener is unavailable.");
-      await listen(server, options.port);
-      const address = server.address();
-      if (address === null || typeof address === "string") throw new Error("Production listener is unavailable.");
-      boundPort = address.port;
-      started = true;
+    start: (): Promise<void> => {
+      if (starting !== undefined || closed) return Promise.reject(new Error("Production listener is unavailable."));
+      starting = (async (): Promise<void> => {
+        await listen(server, options.port);
+        const address = server.address();
+        if (address === null || typeof address === "string") throw new Error("Production listener is unavailable.");
+        boundPort = address.port;
+        started = true;
+      })();
+      return starting;
     },
+    stopAccepting,
     close: async (): Promise<void> => {
-      options.readiness.markNotReady();
-      if (closed) return;
-      closed = true;
-      if (!started) return;
-      await close(server, shutdownTimeoutMilliseconds);
+      stopAccepting();
+      await closing;
     },
   });
 }
@@ -105,6 +119,7 @@ export function createProductionRuntimeListenerStarter(
   configuration: RailwayProductionRuntimeConfiguration,
   readiness: ProductionReadinessState,
   listenerFactory: ProductionRuntimeHttpListenerFactory = createProductionRuntimeHttpListener,
+  cleanupTimeoutMilliseconds = 25_000,
 ): ProductionBootstrapDependencies["startListeners"] {
   return async (_context, roots) => {
     assertProductionHttpRoots(roots);
@@ -113,8 +128,16 @@ export function createProductionRuntimeListenerStarter(
       readiness,
       roots,
     });
-    await listener.start();
-    return Object.freeze({ close: () => listener.close() });
+    try { await listener.start(); } catch {
+      try { await new ProductionCleanupBudget(cleanupTimeoutMilliseconds).run(() => listener.close()); } catch {
+        throw new ProductionRuntimeActivationError("ACTIVATION_CLEANUP_FAILED");
+      }
+      throw new Error("Production listener is unavailable.");
+    }
+    return Object.freeze({
+      stopAccepting: () => listener.stopAccepting === undefined ? listener.close() : listener.stopAccepting(),
+      close: () => listener.close(),
+    });
   };
 }
 

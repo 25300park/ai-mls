@@ -9,6 +9,10 @@ import {
   type ProductionRuntimeConfiguration,
 } from "./production-bootstrap.js";
 import { executeProductionBootstrap, type ProductionBootstrapEngineDependencies } from "./production-bootstrap-engine.js";
+import { CURRENT_PRODUCTION_REQUIRED_WORKERS_MANIFEST } from "./production-runtime-activation.js";
+import { createProductionReadinessState, createProductionRuntimeHttpListener } from "./production-readiness-http.js";
+import { runProductionMain } from "./production-main.js";
+import type { ProductionBootstrapDependencies } from "./production-bootstrap.js";
 import { CURRENT_PRODUCTION_REQUIRED_SECRETS_MANIFEST, CURRENT_PRODUCTION_REQUIRED_SECRET_COMPOSITION, validateRequiredSecretsManifest } from "./production-required-secrets.js";
 import {
   assertCanonicalProductionChildRootsPostgreSqlReady,
@@ -43,6 +47,7 @@ function harness(failAt?: string): Readonly<{ events: string[]; dependencies: Pr
       : () => { events.push(`${event}-close`); },
   });
   const dependencies: ProductionBootstrapEngineDependencies = {
+    ...{ requiredWorkersManifest: CURRENT_PRODUCTION_REQUIRED_WORKERS_MANIFEST },
     parseConfiguration: () => step("parse", configuration()),
     validateConfiguration: () => { step("validate-config", undefined); },
     validateMandatorySecretReferences: () => { step("validate-secret-refs", undefined); },
@@ -88,17 +93,79 @@ test("executes the exact canonical order and constructs Session only after gate 
     "service-identities", "gate-pass", "human-identity", "resolve-secrets", "component-schemas",
     "session-create", "root-014-create", "root-015-create", "root-018-create", "root-019-create",
     "root-022-create", "listeners-start", "root-014-activate", "root-015-activate", "root-018-activate",
-    "root-019-activate", "root-022-activate", "workers-start",
+    "root-019-activate", "root-022-activate",
   ]);
   assert.equal(runtime.readiness(), "READY");
   assert.equal(runtime.validationFingerprint, "sha256:validation-fingerprint");
   await runtime.close();
-  assert.deepEqual(events.slice(-10), [
-    "listeners-close", "workers-close", "root-022-close", "root-019-close", "root-018-close",
+  assert.deepEqual(events.slice(-9), [
+    "listeners-close", "root-022-close", "root-019-close", "root-018-close",
     "root-015-close", "root-014-close", "session-close", "identity-close", "pool-close",
   ]);
   await runtime.close();
-  assert.equal(events.filter((event) => event.endsWith("-close")).length, 10);
+  assert.equal(events.filter((event) => event.endsWith("-close")).length, 9);
+});
+
+test("missing or unknown worker manifest blocks before listener and releases the sole pool", async () => {
+  for (const manifest of [undefined, { schemaVersion: 1, workers: ["API-017"] }]) {
+    const f = harness();
+    const dependencies = { ...f.dependencies, requiredWorkersManifest: manifest };
+    await assert.rejects(() => executeProductionBootstrap({}, dependencies), { reason: "WORKER_MANIFEST_INVALID" });
+    assert.equal(f.events.includes("listeners-start"), false);
+    assert.equal(f.events.includes("workers-start"), false);
+    assert.equal(f.events.filter((event) => event === "pool-close").length, 1);
+    assert.ok(f.events.includes("resolve-secrets"));
+  }
+});
+
+test("duplicate bootstrap rejects before a second pool or listener is created", async () => {
+  const f = harness();
+  const first = executeProductionBootstrap({}, f.dependencies);
+  await assert.rejects(() => executeProductionBootstrap({}, f.dependencies), { reason: "DUPLICATE_ACTIVATION" });
+  const runtime = await first;
+  await assert.rejects(() => executeProductionBootstrap({}, f.dependencies), { reason: "DUPLICATE_ACTIVATION" });
+  await runtime.close();
+  assert.equal(f.events.filter((event) => event === "pool-open").length, 1);
+  assert.equal(f.events.filter((event) => event === "listeners-start").length, 1);
+});
+
+test("hung child cleanup cannot prevent remaining Session, authority and pool cleanup", async () => {
+  const f = harness();
+  const dependencies = { ...f.dependencies, cleanupTimeoutMilliseconds: 20,
+    childRootFactories: { ...f.dependencies.childRootFactories,
+      "FEAT-022": () => ({ componentId: "FEAT-022" as const, activateRuntime: () => undefined,
+        close: () => { f.events.push("hung-close"); return new Promise<void>(() => undefined); } }),
+    } };
+  const runtime = await executeProductionBootstrap({}, dependencies);
+  await assert.rejects(() => runtime.close(), { reason: "SHUTDOWN_FAILED" });
+  assert.equal(f.events.filter((event) => event === "pool-close").length, 1);
+  assert.deepEqual(f.events.slice(-3), ["session-close", "identity-close", "pool-close"]);
+});
+
+test("composed empty-worker startup reaches READY on a disposable local listener and closes the borrowed pool once", async () => {
+  const f = harness();
+  const readiness = createProductionReadinessState();
+  let listener: ReturnType<typeof createProductionRuntimeHttpListener> | undefined;
+  const dependencies = { ...f.dependencies, startListeners: async (_context: unknown, roots: Parameters<typeof createProductionRuntimeHttpListener>[0]["roots"]) => {
+    assert.equal(readiness.readiness(), "NOT_READY");
+    listener = createProductionRuntimeHttpListener({ port: 0, readiness, roots: roots.map((root) => ({ ...root,
+      ...(["API-014", "API-015"].includes(root.componentId) ? { httpHandler: { handle: () => Promise.resolve({ statusCode: 503, headers: {}, body: {}, requestId: "fixture" }) } } : {}) })) });
+    await listener.start();
+    return { stopAccepting: () => listener!.stopAccepting!(), close: () => listener!.close() };
+  } };
+  const running = await runProductionMain({}, {} as ProductionBootstrapDependencies, {
+    readiness, startRuntime: () => executeProductionBootstrap({}, dependencies), installSignalHandler: () => () => undefined,
+  });
+  try {
+    assert.equal(readiness.readiness(), "READY");
+    const response = await fetch(`http://127.0.0.1:${listener!.port}/readyz`);
+    assert.equal(response.status, 200); assert.deepEqual(await response.json(), { status: "READY" });
+    assert.equal(f.events.includes("workers-start"), false);
+  } finally { await running.shutdown(); }
+  await running.shutdown();
+  assert.equal(readiness.readiness(), "NOT_READY");
+  assert.equal(f.events.filter((event) => event === "pool-open").length, 1);
+  assert.equal(f.events.filter((event) => event === "pool-close").length, 1);
 });
 
 test("every pre-gate failure keeps Session, schema, child, listener, worker and provider side effects at zero", async () => {
@@ -144,8 +211,8 @@ test("shutdown reports listener failure after completing worker, child, Session,
     }),
   });
   await assert.rejects(() => runtime.close(), ProductionBootstrapError);
-  assert.deepEqual(events.slice(-10), [
-    "listeners-close-failed", "workers-close", "root-022-close", "root-019-close", "root-018-close",
+  assert.deepEqual(events.slice(-9), [
+    "listeners-close-failed", "root-022-close", "root-019-close", "root-018-close",
     "root-015-close", "root-014-close", "session-close", "identity-close", "pool-close",
   ]);
 });

@@ -17,6 +17,8 @@ import {
 } from "./production-main.js";
 import { ProductionSecretBindingError } from "./production-secret-reference-resolver.js";
 import { PostgreSqlSessionUnitOfWork, type PostgreSqlPoolPort } from "../../../modules/identity/src/index.js";
+import { issueProductionBootstrapContext } from "../../../packages/security-contracts/src/production-bootstrap-proof.js";
+import { CURRENT_PRODUCTION_REQUIRED_WORKERS_MANIFEST } from "./production-runtime-activation.js";
 
 function productionEnvironment(): Readonly<Record<string, string>> {
   return Object.freeze({
@@ -84,8 +86,8 @@ test("the Railway factory classifies every R3-A dependency without selecting tes
     createSessionUnitOfWork: "EXISTING_APPROVED_ADAPTER",
     assertComponentSchemasReady: "EXISTING_APPROVED_ADAPTER",
     childRootOptions: "REQUIRES_R3_B_CHILD_ROOT_POSTGRES",
-    startListeners: "EXISTING_BUT_NOT_PRODUCTION_COMPOSABLE",
-    startWorkers: "NEW_IMPLEMENTATION_REQUIRED",
+    startListeners: "EXISTING_APPROVED_ADAPTER",
+    startWorkers: "EXISTING_APPROVED_ADAPTER",
   });
 });
 
@@ -112,7 +114,7 @@ test("the Railway factory wires Session and API-014/015/018/019 boundaries and F
   assert.throws(() => dependencies.startWorkers({} as never, []), ProductionBootstrapError);
 });
 
-test("the Railway factory keeps listener and worker activation blocked pending later approval", async () => {
+test("the Railway factory binds the approved listener only with explicit worker manifest and issued context", async () => {
   let created = 0;
   let started = 0;
   let closed = 0;
@@ -124,18 +126,22 @@ test("the Railway factory keeps listener and worker activation blocked pending l
       close: () => { closed += 1; return Promise.resolve(); },
     });
   };
-  const factory = createRailwayProductionDependencies as unknown as (
-    environment: Readonly<Record<string, string>>,
-    readiness: ReturnType<typeof createProductionReadinessState>,
-    listenerFactory: ProductionRuntimeHttpListenerFactory,
-  ) => ProductionBootstrapDependencies;
-  const dependencies = factory(productionEnvironment(), createProductionReadinessState(), listenerFactory);
+  const dependencies = createRailwayProductionDependencies(productionEnvironment(), createProductionReadinessState(), listenerFactory,
+    undefined, undefined, CURRENT_PRODUCTION_REQUIRED_WORKERS_MANIFEST);
   await assert.rejects(async () => dependencies.startListeners({} as never, productionHttpRoots()), ProductionBootstrapError);
-
   assert.equal(created, 0);
   assert.equal(started, 0);
+  dependencies.parseConfiguration(productionEnvironment());
+  const context = issueProductionBootstrapContext({ validationFingerprint: "sha256:fixture", configurationReference: "config:production:v1" });
+  const listener = await dependencies.startListeners(context, productionHttpRoots());
+  assert.equal(created, 1); assert.equal(started, 1);
   assert.throws(() => dependencies.startWorkers({} as never, productionHttpRoots()), ProductionBootstrapError);
-  assert.equal(closed, 0);
+  await listener.close();
+  assert.equal(closed, 1);
+  const missing = createRailwayProductionDependencies(productionEnvironment(), createProductionReadinessState(), listenerFactory);
+  missing.parseConfiguration(productionEnvironment());
+  await assert.rejects(() => Promise.resolve(missing.startListeners(context, productionHttpRoots())), { reason: "WORKER_MANIFEST_INVALID" });
+  assert.equal(created, 1);
 });
 
 test("the Railway factory rejects migration, SQLite, localhost, and raw DATABASE_URL runtime authorities", () => {
@@ -173,6 +179,30 @@ test("invokes canonical start exactly once and marks readiness only after startu
   await running.shutdownComplete;
   assert.equal(readiness.readiness(), "NOT_READY");
   assert.deepEqual(events, ["start:NOT_READY", "close", "uninstall"]);
+});
+
+test("duplicate Production entry rejects before installing another signal handler or opening a pool", async () => {
+  const dependencies = {} as ProductionBootstrapDependencies;
+  let installs = 0, starts = 0, closes = 0;
+  let release!: () => void;
+  const waiting = new Promise<void>((resolve) => { release = resolve; });
+  const options = {
+    readiness: createProductionReadinessState(),
+    installSignalHandler: () => { installs++; return () => undefined; },
+    startRuntime: async () => {
+      starts++; await waiting;
+      return { readiness: () => "READY" as const, validationFingerprint: "sha256:test",
+        identitySchemaReadinessProvenance: "NATIVE_MIGRATION_LEDGER_VERIFIED" as const,
+        close: () => { closes++; return Promise.resolve(); } };
+    },
+  };
+  const first = runProductionMain({}, dependencies, options);
+  await assert.rejects(() => runProductionMain({}, dependencies, options), { reason: "DUPLICATE_ACTIVATION" });
+  release(); const running = await first;
+  await assert.rejects(() => runProductionMain({}, dependencies, options), { reason: "DUPLICATE_ACTIVATION" });
+  assert.equal(options.readiness.readiness(), "READY");
+  await running.shutdown(); await running.shutdown();
+  assert.equal(installs, 1); assert.equal(starts, 1); assert.equal(closes, 1);
 });
 
 test("SIGINT and SIGTERM share one deterministic idempotent shutdown", async () => {

@@ -10,9 +10,13 @@ import {
 } from "./production-bootstrap.js";
 import type { ProductionServiceIdentityBinding } from "./production-service-identity-resolver.js";
 import type { AsyncRegisteredServiceWorkloadAuthorityLease } from "../../../modules/identity/src/index.js";
+import { ProductionRuntimeActivation, ProductionRuntimeActivationError, ProductionCleanupBudget, validateRequiredWorkersManifest } from "./production-runtime-activation.js";
+
+const activeCompositions = new WeakSet<ProductionBootstrapEngineDependencies>();
 
 export interface ProductionBootstrapEngineDependencies extends Omit<ProductionBootstrapDependencies, "childRootOptions"> {
   readonly childRootFactories: ProductionChildRootFactories;
+  readonly cleanupTimeoutMilliseconds?: number;
 }
 
 export interface ProductionPreListenerStartupChainResult {
@@ -45,20 +49,17 @@ export async function executeProductionPreListenerStartupChain(
 
 /** Internal bootstrap engine. Production code must enter through startProductionRuntime(). */
 export async function executeProductionBootstrap(rawConfiguration: unknown, dependencies: ProductionBootstrapEngineDependencies): Promise<ProductionRuntimeHandle> {
+  if (activeCompositions.has(dependencies)) throw new ProductionRuntimeActivationError("DUPLICATE_ACTIVATION");
+  activeCompositions.add(dependencies);
   const cleanup: (() => void | Promise<void>)[] = [];
-  let listener: { close(): void | Promise<void> } | undefined;
-  let workers: { close(): void | Promise<void> } | undefined;
+  const activation = new ProductionRuntimeActivation(dependencies.cleanupTimeoutMilliseconds);
   let preListenerStartupChain: "READY" | "BLOCKED" = "BLOCKED";
   const shutdown = async (): Promise<void> => {
     let failed = false;
-    if (listener !== undefined) {
-      try { await listener.close(); } catch { failed = true; }
-    }
-    if (workers !== undefined) {
-      try { await workers.close(); } catch { failed = true; }
-    }
-    if (await cleanupReverse(cleanup)) failed = true;
-    if (failed) throw unavailable();
+    const budget = new ProductionCleanupBudget(dependencies.cleanupTimeoutMilliseconds);
+    try { await activation.close(budget, cleanup.length); } catch { failed = true; }
+    if (await cleanupReverse(cleanup, budget)) failed = true;
+    if (failed) throw Object.assign(unavailable(), { reason: "SHUTDOWN_FAILED" });
   };
   try {
     const configuration = dependencies.parseConfiguration(rawConfiguration);
@@ -73,6 +74,7 @@ export async function executeProductionBootstrap(rawConfiguration: unknown, depe
     const chain = await executeProductionPreListenerStartupChain(configuration, authority, dependencies);
     preListenerStartupChain = chain.status;
     const { identities, validationFingerprint } = chain;
+    validateRequiredWorkersManifest(dependencies.requiredWorkersManifest);
     const context = issueProductionBootstrapContext({ validationFingerprint, configurationReference: configuration.configurationReference });
     await dependencies.assertComponentSchemasReady(configuration, pool);
     const session = await dependencies.createSessionUnitOfWork(pool);
@@ -86,16 +88,16 @@ export async function executeProductionBootstrap(rawConfiguration: unknown, depe
       roots.push(root);
     }
     Object.freeze(roots);
-    listener = await dependencies.startListeners(context, roots);
-    for (const root of roots) root.activateRuntime();
-    workers = dependencies.startWorkers(context, roots);
+    await activation.start(async () => await dependencies.startListeners(context, roots), [], () => {
+      for (const root of roots) root.activateRuntime();
+    });
 
     let state: "READY" | "NOT_READY" = "READY";
     let closing: Promise<void> | undefined;
     return Object.freeze({
       validationFingerprint,
       identitySchemaReadinessProvenance,
-      readiness: () => state,
+      readiness: () => state === "READY" ? activation.readiness() : state,
       close: async () => {
         state = "NOT_READY";
         await (closing ??= shutdown());
@@ -103,9 +105,11 @@ export async function executeProductionBootstrap(rawConfiguration: unknown, depe
     });
   } catch (error) {
     try { await shutdown(); } catch { /* startup remains unavailable after exhaustive cleanup */ }
+    if (error instanceof ProductionRuntimeActivationError) throw Object.assign(unavailable(), { reason: error.reason, preListenerStartupChain });
     throw Object.assign(
       new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE", error instanceof ChildRootSchemaReadinessError ? error.evidence : undefined),
-      { preListenerStartupChain },
+      { preListenerStartupChain, ...(error instanceof ProductionBootstrapError && Reflect.get(error, "preListenerStartupChain") === "BLOCKED"
+        ? { reason: "PRE_LISTENER_NOT_READY" as const } : {}) },
     );
   }
 }
@@ -123,10 +127,10 @@ function assertRequiredIdentities(configuration: ProductionRuntimeConfiguration,
   if (expected.length !== actual.length || expected.some((value, index) => value !== actual[index])) throw unavailable();
 }
 
-async function cleanupReverse(cleanup: readonly (() => void | Promise<void>)[]): Promise<boolean> {
+async function cleanupReverse(cleanup: readonly (() => void | Promise<void>)[], budget: ProductionCleanupBudget): Promise<boolean> {
   let failed = false;
   for (let index = cleanup.length - 1; index >= 0; index -= 1) {
-    try { await cleanup[index]?.(); } catch { failed = true; }
+    try { await budget.run(() => cleanup[index]?.(), index + 1); } catch { failed = true; }
   }
   return failed;
 }

@@ -19,7 +19,10 @@ import {
   createProductionReadinessState,
   type ProductionReadinessState,
   type ProductionRuntimeHttpListenerFactory,
+  createProductionRuntimeListenerStarter,
 } from "./production-readiness-http.js";
+import { assertProductionBootstrapContext } from "./production-bootstrap.js";
+import { CURRENT_PRODUCTION_REQUIRED_WORKERS_MANIFEST, validateRequiredWorkersManifest } from "./production-runtime-activation.js";
 import { assertR3C2AggregateSchemasReady } from "./r3c2-aggregate-readiness.js";
 import {createProductionStartupPreparation,type ProductionStartupPreparation} from "./production-startup-preparation.js";
 import {
@@ -55,8 +58,8 @@ export const RAILWAY_PRODUCTION_DEPENDENCY_CLASSIFICATION = Object.freeze({
   createSessionUnitOfWork: "EXISTING_APPROVED_ADAPTER",
   assertComponentSchemasReady: "EXISTING_APPROVED_ADAPTER",
   childRootOptions: "REQUIRES_R3_B_CHILD_ROOT_POSTGRES",
-  startListeners: "EXISTING_BUT_NOT_PRODUCTION_COMPOSABLE",
-  startWorkers: "NEW_IMPLEMENTATION_REQUIRED",
+  startListeners: "EXISTING_APPROVED_ADAPTER",
+  startWorkers: "EXISTING_APPROVED_ADAPTER",
 } satisfies Readonly<Record<string, RailwayProductionDependencyClassification>>);
 
 export interface RunningProductionMain {
@@ -76,11 +79,15 @@ export interface ProductionMainRuntimeOptions {
   readonly terminateProcess?: (exitCode: 1) => void;
 }
 
+const mainCompositions = new WeakSet<ProductionBootstrapDependencies>();
+
 export async function runProductionMain(
   rawConfiguration: unknown,
   dependencies: ProductionBootstrapDependencies,
   options: ProductionMainRuntimeOptions,
 ): Promise<RunningProductionMain> {
+  if (mainCompositions.has(dependencies)) throw Object.assign(new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE"), { reason: "DUPLICATE_ACTIVATION" });
+  mainCompositions.add(dependencies);
   options.readiness.markNotReady();
   let resolveShutdown!: () => void;
   const shutdownComplete = new Promise<void>((resolve) => { resolveShutdown = resolve; });
@@ -90,6 +97,7 @@ export async function runProductionMain(
   const failureHandler = options.handleShutdownFailure ?? markProcessFailure;
   const terminateProcess = options.terminateProcess ?? hardTerminateProcess;
   let uninstall = (options.installSignalHandler ?? installProcessSignalHandler)(() => {
+    if (stopRequested) return;
     stopRequested = true;
     options.readiness.markNotReady();
     if (runtime !== undefined) void shutdown();
@@ -184,6 +192,7 @@ export function createRailwayProductionDependencies(
   listenerFactory?: ProductionRuntimeHttpListenerFactory,
   humanAuthenticationBindings?:readonly ProductionAuthenticationBinding[],
   requiredSecretsManifest?: unknown,
+  requiredWorkersManifest?: unknown,
 ): ProductionBootstrapDependencies {
   const unreachable = (): never => { throw new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE"); };
   const unavailablePromise = <Value>(): Promise<Value> => Promise.reject(new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE"));
@@ -194,12 +203,18 @@ export function createRailwayProductionDependencies(
   let humanReadiness:ProductionHumanReadinessComponents|undefined;
   const explicitHumanBindings=humanAuthenticationBindings===undefined?[]:structuredClone(humanAuthenticationBindings);
   const explicitRequiredSecretsManifest = captureRequiredSecretsManifest(requiredSecretsManifest);
+  let explicitRequiredWorkersManifest: unknown;
+  try {
+    validateRequiredWorkersManifest(requiredWorkersManifest);
+    explicitRequiredWorkersManifest = CURRENT_PRODUCTION_REQUIRED_WORKERS_MANIFEST;
+  } catch { /* Missing/malformed input is preserved as blocked, never defaulted. */ }
   const freshnessEnvironment=Object.freeze({
     AI_MLS_HUMAN_IDLE_TIMEOUT_MILLISECONDS:environment["AI_MLS_HUMAN_IDLE_TIMEOUT_MILLISECONDS"],
     AI_MLS_HUMAN_ABSOLUTE_LIFETIME_MILLISECONDS:environment["AI_MLS_HUMAN_ABSOLUTE_LIFETIME_MILLISECONDS"],
     AI_MLS_HUMAN_MFA_FRESHNESS_MILLISECONDS:environment["AI_MLS_HUMAN_MFA_FRESHNESS_MILLISECONDS"],
   });
   return Object.freeze({
+    requiredWorkersManifest: explicitRequiredWorkersManifest,
     parseConfiguration: (raw:unknown):RailwayProductionRuntimeConfiguration=>{
       if(preparation!==undefined)throw new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE");
       startupConfiguration=parseRailwayProductionRuntimeConfiguration(raw);return startupConfiguration;
@@ -267,11 +282,11 @@ export function createRailwayProductionDependencies(
       }),
       feat022: Object.freeze({ runtimeEnvironment: "PRODUCTION" as const, snapshotResolver: Object.freeze({ resolve: unreachable }) }),
     }),
-    // R3-C4B proves the pre-listener gate only. Activation needs later explicit approval.
-    startListeners: (): Promise<ProductionAsyncClosableResource> => {
-      void listenerFactory;
-      readiness.markNotReady();
-      return unavailablePromise();
+    startListeners: async (context, roots) => {
+      try { assertProductionBootstrapContext(context); } catch { return unreachable(); }
+      if (startupConfiguration === undefined) return unreachable();
+      validateRequiredWorkersManifest(explicitRequiredWorkersManifest);
+      return await createProductionRuntimeListenerStarter(startupConfiguration, readiness, listenerFactory)(context, roots);
     },
     startWorkers: unreachable,
   });
@@ -289,7 +304,7 @@ if (isDirectExecution()) {
     adapterId:"ai-mls.identity.first-party-credential.v1",adapterKind:"FIRST_PARTY_CREDENTIAL",
     configurationRef:Object.freeze({schemaVersion:1,adapterId:"ai-mls.identity.first-party-credential.v1",algorithmProfile:"ARGON2ID_V1"}),
   })]);
-  void runProductionMain(process.env, createRailwayProductionDependencies(process.env, readiness,undefined,authenticationBindings,CURRENT_PRODUCTION_REQUIRED_SECRETS_MANIFEST), {
+  void runProductionMain(process.env, createRailwayProductionDependencies(process.env, readiness,undefined,authenticationBindings,CURRENT_PRODUCTION_REQUIRED_SECRETS_MANIFEST,CURRENT_PRODUCTION_REQUIRED_WORKERS_MANIFEST), {
     readiness,
   }).then(
     (running) => running.shutdownComplete,

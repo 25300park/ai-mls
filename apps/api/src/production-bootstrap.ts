@@ -15,6 +15,9 @@ import {
 import { executeProductionBootstrap } from "./production-bootstrap-engine.js";
 import type { ProductionServiceIdentityBinding } from "./production-service-identity-resolver.js";
 import type { PublicationHttpRequestHandler } from "../../../modules/publication/src/publication-node-http-contracts.js";
+import type { ProductionActivationListener } from "./production-runtime-activation.js";
+
+const startedCompositions = new WeakSet<ProductionBootstrapDependencies>();
 
 export {
   assertProductionBootstrapContext,
@@ -53,6 +56,7 @@ export type ProductionChildRootFactories = Readonly<Record<ProductionChildCompon
 ) => ProductionChildRoot>>;
 
 export interface ProductionBootstrapDependencies {
+  readonly requiredWorkersManifest?: unknown;
   readonly parseConfiguration: (raw: unknown) => ProductionRuntimeConfiguration;
   readonly validateConfiguration: (configuration: ProductionRuntimeConfiguration) => void;
   readonly validateMandatorySecretReferences: (configuration: ProductionRuntimeConfiguration) => void;
@@ -74,7 +78,8 @@ export interface ProductionBootstrapDependencies {
   readonly startListeners: (
     context: ProductionBootstrapContextView,
     roots: readonly ProductionChildRoot[],
-  ) => ProductionClosableResource | Promise<ProductionClosableResource>;
+  ) => ProductionActivationListener | Promise<ProductionActivationListener>;
+  /** Legacy seam retained fail-closed; current explicit empty manifest never calls it. */
   readonly startWorkers: (
     context: ProductionBootstrapContextView,
     roots: readonly ProductionChildRoot[],
@@ -98,6 +103,8 @@ export class ProductionBootstrapError extends Error {
 }
 
 export async function startProductionRuntime(rawConfiguration: unknown, dependencies: ProductionBootstrapDependencies): Promise<ProductionRuntimeHandle> {
+  if (startedCompositions.has(dependencies)) throw Object.assign(new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE"), { reason: "DUPLICATE_ACTIVATION" });
+  startedCompositions.add(dependencies);
   if (dependencies.childRootOptions === null) throw new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE");
   assertCanonicalProductionChildRootsPostgreSqlReady(dependencies.childRootOptions);
   return await executeProductionBootstrap(rawConfiguration, {
