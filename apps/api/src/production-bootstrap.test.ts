@@ -9,6 +9,7 @@ import {
   type ProductionRuntimeConfiguration,
 } from "./production-bootstrap.js";
 import { executeProductionBootstrap, type ProductionBootstrapEngineDependencies } from "./production-bootstrap-engine.js";
+import { CURRENT_PRODUCTION_REQUIRED_SECRETS_MANIFEST, CURRENT_PRODUCTION_REQUIRED_SECRET_COMPOSITION, validateRequiredSecretsManifest } from "./production-required-secrets.js";
 import {
   assertCanonicalProductionChildRootsPostgreSqlReady,
   type CanonicalProductionChildRootOptions,
@@ -253,7 +254,7 @@ test('awaits async Human readiness after service gate and before secrets with ow
  assert.equal(events.filter(e=>e==='pool-close').length,1);
 });
 
-test('service and Human readiness PASS cannot bypass the unchanged Required Secrets blocker',async()=>{
+test('service and Human readiness PASS cannot bypass a Required Secrets failure',async()=>{
  const {events,dependencies}=harness();
  await assert.rejects(executeProductionBootstrap({}, {...dependencies,
   validateHumanIdentityAuthority:async()=>{await Promise.resolve();events.push('human-identity');},
@@ -264,4 +265,34 @@ test('service and Human readiness PASS cannot bypass the unchanged Required Secr
  assert.equal(events.includes('listeners-start'),false);assert.equal(events.includes('workers-start'),false);
  assert.equal(events.includes('session-create'),false);assert.equal(events.includes('component-schemas'),false);
  assert.deepEqual(events.slice(-2),['identity-close','pool-close']);
+});
+
+test("earlier DB bootstrap failure blocks startup before a valid empty secret gate", async () => {
+ const {events,dependencies}=harness("pool-open");
+ let gates=0;
+ await assert.rejects(executeProductionBootstrap({}, {...dependencies,resolveRequiredSecrets:()=>{
+  gates+=1;validateRequiredSecretsManifest(CURRENT_PRODUCTION_REQUIRED_SECRETS_MANIFEST,CURRENT_PRODUCTION_REQUIRED_SECRET_COMPOSITION);
+  return Promise.resolve();
+ }}),ProductionBootstrapError);
+ assert.equal(gates,0);
+ assert.equal(events.includes("human-identity"),false);
+ assert.equal(events.includes("listeners-start"),false);
+ assert.equal(events.includes("workers-start"),false);
+});
+
+test("empty secret gate follows Identity gates and preserves cleanup at the activation hold", async () => {
+ const {events,dependencies}=harness();
+ await assert.rejects(executeProductionBootstrap({}, {...dependencies,resolveRequiredSecrets:()=>{
+  validateRequiredSecretsManifest(CURRENT_PRODUCTION_REQUIRED_SECRETS_MANIFEST,CURRENT_PRODUCTION_REQUIRED_SECRET_COMPOSITION);
+  events.push("empty-secrets-ready");
+  return Promise.resolve();
+ },startListeners:()=>{throw new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE");}}),ProductionBootstrapError);
+ assert.ok(events.indexOf("human-identity")<events.indexOf("empty-secrets-ready"));
+ assert.ok(events.indexOf("empty-secrets-ready")<events.indexOf("component-schemas"));
+ assert.equal(events.includes("listeners-start"),false);
+ assert.equal(events.includes("workers-start"),false);
+ assert.equal(events.some(event=>event.endsWith("-activate")),false);
+ assert.equal(events.filter(event=>event==="pool-open").length,1);
+ assert.equal(events.filter(event=>event==="pool-close").length,1);
+ assert.deepEqual(events.slice(-8),["root-022-close","root-019-close","root-018-close","root-015-close","root-014-close","session-close","identity-close","pool-close"]);
 });

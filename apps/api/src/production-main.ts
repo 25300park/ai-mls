@@ -12,14 +12,11 @@ import {
   startProductionRuntime,
   type ProductionAsyncClosableResource,
   type ProductionBootstrapDependencies,
-  type ProductionBootstrapContextView,
-  type ProductionChildRoot,
   type ProductionRuntimeConfiguration,
   type ProductionRuntimeHandle,
 } from "./production-bootstrap.js";
 import {
   createProductionReadinessState,
-  createProductionRuntimeListenerStarter,
   type ProductionReadinessState,
   type ProductionRuntimeHttpListenerFactory,
 } from "./production-readiness-http.js";
@@ -33,6 +30,12 @@ import { createRailwaySealedProductionPostgreSqlPool } from "./production-secret
 import type { ProductionServiceIdentityBinding } from "./production-service-identity-resolver.js";
 import type {ProductionAuthenticationBinding} from "./production-human-identity-contracts.js";
 import {createProductionHumanReadinessComponents,validateProductionHumanIdentityReadiness,HumanIdentityReadinessError,type ProductionHumanReadinessComponents} from "./production-human-identity-readiness.js";
+import {
+  captureRequiredSecretsManifest,
+  CURRENT_PRODUCTION_REQUIRED_SECRETS_MANIFEST,
+  CURRENT_PRODUCTION_REQUIRED_SECRET_COMPOSITION,
+  validateRequiredSecretsManifest,
+} from "./production-required-secrets.js";
 
 export type ProductionSignal = "SIGINT" | "SIGTERM";
 
@@ -47,12 +50,12 @@ export const RAILWAY_PRODUCTION_DEPENDENCY_CLASSIFICATION = Object.freeze({
   openIdentityAuthorityReadOnly: "EXISTING_APPROVED_ADAPTER",
   validateHumanIdentityAuthority: "EXISTING_APPROVED_ADAPTER",
   resolveRequiredServiceIdentities: "EXISTING_APPROVED_ADAPTER",
-  resolveRequiredSecrets: "EXTERNAL_PREREQUISITE",
+  resolveRequiredSecrets: "EXISTING_APPROVED_ADAPTER",
   validateStartupGate: "EXISTING_APPROVED_ADAPTER",
   createSessionUnitOfWork: "EXISTING_APPROVED_ADAPTER",
   assertComponentSchemasReady: "EXISTING_APPROVED_ADAPTER",
   childRootOptions: "REQUIRES_R3_B_CHILD_ROOT_POSTGRES",
-  startListeners: "EXISTING_APPROVED_ADAPTER",
+  startListeners: "EXISTING_BUT_NOT_PRODUCTION_COMPOSABLE",
   startWorkers: "NEW_IMPLEMENTATION_REQUIRED",
 } satisfies Readonly<Record<string, RailwayProductionDependencyClassification>>);
 
@@ -180,6 +183,7 @@ export function createRailwayProductionDependencies(
   readiness: ProductionReadinessState = createProductionReadinessState(),
   listenerFactory?: ProductionRuntimeHttpListenerFactory,
   humanAuthenticationBindings?:readonly ProductionAuthenticationBinding[],
+  requiredSecretsManifest?: unknown,
 ): ProductionBootstrapDependencies {
   const unreachable = (): never => { throw new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE"); };
   const unavailablePromise = <Value>(): Promise<Value> => Promise.reject(new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE"));
@@ -189,6 +193,7 @@ export function createRailwayProductionDependencies(
   let preparation:ProductionStartupPreparation|undefined;
   let humanReadiness:ProductionHumanReadinessComponents|undefined;
   const explicitHumanBindings=humanAuthenticationBindings===undefined?[]:structuredClone(humanAuthenticationBindings);
+  const explicitRequiredSecretsManifest = captureRequiredSecretsManifest(requiredSecretsManifest);
   const freshnessEnvironment=Object.freeze({
     AI_MLS_HUMAN_IDLE_TIMEOUT_MILLISECONDS:environment["AI_MLS_HUMAN_IDLE_TIMEOUT_MILLISECONDS"],
     AI_MLS_HUMAN_ABSOLUTE_LIFETIME_MILLISECONDS:environment["AI_MLS_HUMAN_ABSOLUTE_LIFETIME_MILLISECONDS"],
@@ -221,7 +226,10 @@ export function createRailwayProductionDependencies(
       if(authority!==preparation?.authority||configuration!==startupConfiguration)return unavailablePromise();
       return preparation.resolveRequired();
     },
-    resolveRequiredSecrets: (): Promise<void> => unavailablePromise(),
+    resolveRequiredSecrets: (configuration: ProductionRuntimeConfiguration): Promise<void> => Promise.resolve().then(() => {
+      if (configuration.providerExecutionAuthorized !== false) return unreachable();
+      validateRequiredSecretsManifest(explicitRequiredSecretsManifest, CURRENT_PRODUCTION_REQUIRED_SECRET_COMPOSITION);
+    }),
     validateStartupGate: (configuration:ProductionRuntimeConfiguration,identities:readonly ProductionServiceIdentityBinding[]):string=>{
       if(preparation===undefined||configuration!==startupConfiguration)return unreachable();return preparation.validateStartupGate(identities);
     },
@@ -259,11 +267,12 @@ export function createRailwayProductionDependencies(
       }),
       feat022: Object.freeze({ runtimeEnvironment: "PRODUCTION" as const, snapshotResolver: Object.freeze({ resolve: unreachable }) }),
     }),
-    startListeners: (context: ProductionBootstrapContextView, roots: readonly ProductionChildRoot[]) => createProductionRuntimeListenerStarter(
-      parseRailwayProductionRuntimeConfiguration(environment),
-      readiness,
-      listenerFactory,
-    )(context, roots),
+    // R3-C4B proves the pre-listener gate only. Activation needs later explicit approval.
+    startListeners: (): Promise<ProductionAsyncClosableResource> => {
+      void listenerFactory;
+      readiness.markNotReady();
+      return unavailablePromise();
+    },
     startWorkers: unreachable,
   });
 }
@@ -280,7 +289,7 @@ if (isDirectExecution()) {
     adapterId:"ai-mls.identity.first-party-credential.v1",adapterKind:"FIRST_PARTY_CREDENTIAL",
     configurationRef:Object.freeze({schemaVersion:1,adapterId:"ai-mls.identity.first-party-credential.v1",algorithmProfile:"ARGON2ID_V1"}),
   })]);
-  void runProductionMain(process.env, createRailwayProductionDependencies(process.env, readiness,undefined,authenticationBindings), {
+  void runProductionMain(process.env, createRailwayProductionDependencies(process.env, readiness,undefined,authenticationBindings,CURRENT_PRODUCTION_REQUIRED_SECRETS_MANIFEST), {
     readiness,
   }).then(
     (running) => running.shutdownComplete,

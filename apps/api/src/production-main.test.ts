@@ -79,12 +79,12 @@ test("the Railway factory classifies every R3-A dependency without selecting tes
     openIdentityAuthorityReadOnly: "EXISTING_APPROVED_ADAPTER",
     validateHumanIdentityAuthority: "EXISTING_APPROVED_ADAPTER",
     resolveRequiredServiceIdentities: "EXISTING_APPROVED_ADAPTER",
-    resolveRequiredSecrets: "EXTERNAL_PREREQUISITE",
+    resolveRequiredSecrets: "EXISTING_APPROVED_ADAPTER",
     validateStartupGate: "EXISTING_APPROVED_ADAPTER",
     createSessionUnitOfWork: "EXISTING_APPROVED_ADAPTER",
     assertComponentSchemasReady: "EXISTING_APPROVED_ADAPTER",
     childRootOptions: "REQUIRES_R3_B_CHILD_ROOT_POSTGRES",
-    startListeners: "EXISTING_APPROVED_ADAPTER",
+    startListeners: "EXISTING_BUT_NOT_PRODUCTION_COMPOSABLE",
     startWorkers: "NEW_IMPLEMENTATION_REQUIRED",
   });
 });
@@ -112,7 +112,7 @@ test("the Railway factory wires Session and API-014/015/018/019 boundaries and F
   assert.throws(() => dependencies.startWorkers({} as never, []), ProductionBootstrapError);
 });
 
-test("the Railway factory composes exactly one injectable listener and no duplicate worker engine", async () => {
+test("the Railway factory keeps listener and worker activation blocked pending later approval", async () => {
   let created = 0;
   let started = 0;
   let closed = 0;
@@ -130,13 +130,12 @@ test("the Railway factory composes exactly one injectable listener and no duplic
     listenerFactory: ProductionRuntimeHttpListenerFactory,
   ) => ProductionBootstrapDependencies;
   const dependencies = factory(productionEnvironment(), createProductionReadinessState(), listenerFactory);
-  const listener = await dependencies.startListeners({} as never, productionHttpRoots());
+  await assert.rejects(async () => dependencies.startListeners({} as never, productionHttpRoots()), ProductionBootstrapError);
 
-  assert.equal(created, 1);
-  assert.equal(started, 1);
+  assert.equal(created, 0);
+  assert.equal(started, 0);
   assert.throws(() => dependencies.startWorkers({} as never, productionHttpRoots()), ProductionBootstrapError);
-  await listener.close();
-  assert.equal(closed, 1);
+  assert.equal(closed, 0);
 });
 
 test("the Railway factory rejects migration, SQLite, localhost, and raw DATABASE_URL runtime authorities", () => {
