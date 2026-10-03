@@ -31,6 +31,8 @@ import {
 } from "./production-runtime-configuration.js";
 import { createRailwaySealedProductionPostgreSqlPool } from "./production-secret-reference-resolver.js";
 import type { ProductionServiceIdentityBinding } from "./production-service-identity-resolver.js";
+import type {ProductionAuthenticationBinding} from "./production-human-identity-contracts.js";
+import {createProductionHumanReadinessComponents,validateProductionHumanIdentityReadiness,HumanIdentityReadinessError,type ProductionHumanReadinessComponents} from "./production-human-identity-readiness.js";
 
 export type ProductionSignal = "SIGINT" | "SIGTERM";
 
@@ -43,7 +45,7 @@ export type RailwayProductionDependencyClassification =
 
 export const RAILWAY_PRODUCTION_DEPENDENCY_CLASSIFICATION = Object.freeze({
   openIdentityAuthorityReadOnly: "EXISTING_APPROVED_ADAPTER",
-  validateHumanIdentityAuthority: "NEW_IMPLEMENTATION_REQUIRED",
+  validateHumanIdentityAuthority: "EXISTING_APPROVED_ADAPTER",
   resolveRequiredServiceIdentities: "EXISTING_APPROVED_ADAPTER",
   resolveRequiredSecrets: "EXTERNAL_PREREQUISITE",
   validateStartupGate: "EXISTING_APPROVED_ADAPTER",
@@ -177,6 +179,7 @@ export function createRailwayProductionDependencies(
   environment: Readonly<Record<string, string | undefined>>,
   readiness: ProductionReadinessState = createProductionReadinessState(),
   listenerFactory?: ProductionRuntimeHttpListenerFactory,
+  humanAuthenticationBindings?:readonly ProductionAuthenticationBinding[],
 ): ProductionBootstrapDependencies {
   const unreachable = (): never => { throw new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE"); };
   const unavailablePromise = <Value>(): Promise<Value> => Promise.reject(new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE"));
@@ -184,6 +187,13 @@ export function createRailwayProductionDependencies(
   const auditSink = new AuditLog({ clock, idFactory: randomUUID });
   let startupConfiguration:RailwayProductionRuntimeConfiguration|undefined;
   let preparation:ProductionStartupPreparation|undefined;
+  let humanReadiness:ProductionHumanReadinessComponents|undefined;
+  const explicitHumanBindings=humanAuthenticationBindings===undefined?[]:structuredClone(humanAuthenticationBindings);
+  const freshnessEnvironment=Object.freeze({
+    AI_MLS_HUMAN_IDLE_TIMEOUT_MILLISECONDS:environment["AI_MLS_HUMAN_IDLE_TIMEOUT_MILLISECONDS"],
+    AI_MLS_HUMAN_ABSOLUTE_LIFETIME_MILLISECONDS:environment["AI_MLS_HUMAN_ABSOLUTE_LIFETIME_MILLISECONDS"],
+    AI_MLS_HUMAN_MFA_FRESHNESS_MILLISECONDS:environment["AI_MLS_HUMAN_MFA_FRESHNESS_MILLISECONDS"],
+  });
   return Object.freeze({
     parseConfiguration: (raw:unknown):RailwayProductionRuntimeConfiguration=>{
       if(preparation!==undefined)throw new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE");
@@ -200,9 +210,13 @@ export function createRailwayProductionDependencies(
         )),
     openIdentityAuthorityReadOnly: (pool:PostgreSqlPoolPort): Promise<AsyncRegisteredServiceWorkloadAuthorityLease> => {
       if(startupConfiguration===undefined||preparation!==undefined)return unavailablePromise();
-      preparation=createProductionStartupPreparation(pool,startupConfiguration,clock);return Promise.resolve(preparation.authority);
+      preparation=createProductionStartupPreparation(pool,startupConfiguration,clock);
+      humanReadiness=createProductionHumanReadinessComponents(pool,clock,auditSink);return Promise.resolve(preparation.authority);
     },
-    validateHumanIdentityAuthority: unreachable,
+    validateHumanIdentityAuthority:async(configuration:ProductionRuntimeConfiguration):Promise<void>=>{
+      if(configuration!==startupConfiguration||humanReadiness===undefined)throw new HumanIdentityReadinessError("COMPOSITION_INPUT");
+      await validateProductionHumanIdentityReadiness(freshnessEnvironment,explicitHumanBindings,humanReadiness);
+    },
     resolveRequiredServiceIdentities: (authority:AsyncRegisteredServiceWorkloadAuthorityLease,configuration:ProductionRuntimeConfiguration): Promise<readonly ProductionServiceIdentityBinding[]> => {
       if(authority!==preparation?.authority||configuration!==startupConfiguration)return unavailablePromise();
       return preparation.resolveRequired();
@@ -261,7 +275,12 @@ function isDirectExecution(): boolean {
 
 if (isDirectExecution()) {
   const readiness = createProductionReadinessState();
-  void runProductionMain(process.env, createRailwayProductionDependencies(process.env, readiness), {
+  // Explicit AO-approved binding supplied by the Production root; factory callers get no default.
+  const authenticationBindings:readonly ProductionAuthenticationBinding[]=Object.freeze([Object.freeze({
+    adapterId:"ai-mls.identity.first-party-credential.v1",adapterKind:"FIRST_PARTY_CREDENTIAL",
+    configurationRef:Object.freeze({schemaVersion:1,adapterId:"ai-mls.identity.first-party-credential.v1",algorithmProfile:"ARGON2ID_V1"}),
+  })]);
+  void runProductionMain(process.env, createRailwayProductionDependencies(process.env, readiness,undefined,authenticationBindings), {
     readiness,
   }).then(
     (running) => running.shutdownComplete,

@@ -58,7 +58,7 @@ export interface ProductionBootstrapDependencies {
   readonly validateMandatorySecretReferences: (configuration: ProductionRuntimeConfiguration) => void;
   readonly openPostgreSqlPool: (configuration: ProductionRuntimeConfiguration) => Promise<PostgreSqlPoolPort>;
   readonly openIdentityAuthorityReadOnly: (pool: PostgreSqlPoolPort) => Promise<AsyncRegisteredServiceWorkloadAuthorityLease>;
-  readonly validateHumanIdentityAuthority: (configuration: ProductionRuntimeConfiguration) => void;
+  readonly validateHumanIdentityAuthority: (configuration: ProductionRuntimeConfiguration) => void | Promise<void>;
   readonly resolveRequiredServiceIdentities: (
     authority: AsyncRegisteredServiceWorkloadAuthorityLease,
     configuration: ProductionRuntimeConfiguration,

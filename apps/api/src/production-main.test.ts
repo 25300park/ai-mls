@@ -77,7 +77,7 @@ test("the executable composition fails closed before PostgreSQL when sealed runt
 test("the Railway factory classifies every R3-A dependency without selecting test or development composition", () => {
   assert.deepEqual(RAILWAY_PRODUCTION_DEPENDENCY_CLASSIFICATION, {
     openIdentityAuthorityReadOnly: "EXISTING_APPROVED_ADAPTER",
-    validateHumanIdentityAuthority: "NEW_IMPLEMENTATION_REQUIRED",
+    validateHumanIdentityAuthority: "EXISTING_APPROVED_ADAPTER",
     resolveRequiredServiceIdentities: "EXISTING_APPROVED_ADAPTER",
     resolveRequiredSecrets: "EXTERNAL_PREREQUISITE",
     validateStartupGate: "EXISTING_APPROVED_ADAPTER",
@@ -251,4 +251,14 @@ test("a bounded close timeout invokes the hard non-zero terminal action", async 
   signalHandler?.("SIGTERM");
   await running.shutdownComplete;
   assert.deepEqual(events, ["uninstall", "terminal-failure", "terminate:1"]);
+});
+
+test('Production Human gate requires explicit composition binding and cannot fabricate tenant context',async()=>{
+ const environment=productionEnvironment();let reads=0,closes=0;
+ const pool:PostgreSqlPoolPort={connect:()=>{reads++;return Promise.reject(new Error('database must not be queried for missing binding'));},close:()=>{closes++;return Promise.resolve();}};
+ const dependencies=createRailwayProductionDependencies(environment);
+ const configuration=dependencies.parseConfiguration(environment);
+ await dependencies.openIdentityAuthorityReadOnly(pool);
+ await assert.rejects(async()=>dependencies.validateHumanIdentityAuthority(configuration),{reason:'AUTH_BINDING'});
+ assert.equal(reads,0);assert.equal(closes,0);
 });

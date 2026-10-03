@@ -40,12 +40,12 @@ export async function executeProductionBootstrap(rawConfiguration: unknown, depe
     const authority = await dependencies.openIdentityAuthorityReadOnly(pool);
     cleanup.push(() => authority.close());
     const identitySchemaReadinessProvenance = await authority.assertSchemaReady();
-    dependencies.validateHumanIdentityAuthority(configuration);
     const identities = Object.freeze([...(await dependencies.resolveRequiredServiceIdentities(authority, configuration))]);
     assertRequiredIdentities(configuration, identities);
-    await dependencies.resolveRequiredSecrets(configuration);
     const validationFingerprint = dependencies.validateStartupGate(configuration, identities);
     if (!safeReference(validationFingerprint)) throw unavailable();
+    await dependencies.validateHumanIdentityAuthority(configuration);
+    await dependencies.resolveRequiredSecrets(configuration);
     const context = issueProductionBootstrapContext({ validationFingerprint, configurationReference: configuration.configurationReference });
     await dependencies.assertComponentSchemasReady(configuration, pool);
     const session = await dependencies.createSessionUnitOfWork(pool);

@@ -84,7 +84,7 @@ test("executes the exact canonical order and constructs Session only after gate 
   assert.equal(runtime.identitySchemaReadinessProvenance, "HISTORICAL_MIGRATION_ATTESTATION_VERIFIED");
   assert.deepEqual(events, [
     "parse", "validate-config", "validate-secret-refs", "pool-open", "identity-open", "identity-schema-ready",
-    "human-identity", "service-identities", "resolve-secrets", "gate-pass", "component-schemas",
+    "service-identities", "gate-pass", "human-identity", "resolve-secrets", "component-schemas",
     "session-create", "root-014-create", "root-015-create", "root-018-create", "root-019-create",
     "root-022-create", "listeners-start", "root-014-activate", "root-015-activate", "root-018-activate",
     "root-019-activate", "root-022-activate", "workers-start",
@@ -235,4 +235,33 @@ test("R3-B8 bootstrap preserves safe aggregate evidence while closing prerequisi
   });
   assert.equal(events.includes("session-create"),false);
   assert.deepEqual(events.slice(-2),["identity-close","pool-close"]);
+});
+
+test('awaits async Human readiness after service gate and before secrets with owner-only cleanup',async()=>{
+ const {events,dependencies}=harness();
+ let rejectReadiness!:(reason:Error)=>void;
+ const pending=new Promise<void>((_resolve,reject)=>{rejectReadiness=reject;});
+ const start=executeProductionBootstrap({}, {...dependencies,validateHumanIdentityAuthority:()=>{events.push('human-identity');return pending;}});
+ const rejected=assert.rejects(start,ProductionBootstrapError);
+ await new Promise<void>(resolve=>setImmediate(resolve));
+ assert.equal(events.includes('gate-pass'),true);
+ assert.equal(events.includes('resolve-secrets'),false);
+ assert.equal(events.includes('listeners-start'),false);
+ rejectReadiness(new Error('private credential detail'));
+ await rejected;
+ assert.deepEqual(events.slice(-2),['identity-close','pool-close']);
+ assert.equal(events.filter(e=>e==='pool-close').length,1);
+});
+
+test('service and Human readiness PASS cannot bypass the unchanged Required Secrets blocker',async()=>{
+ const {events,dependencies}=harness();
+ await assert.rejects(executeProductionBootstrap({}, {...dependencies,
+  validateHumanIdentityAuthority:async()=>{await Promise.resolve();events.push('human-identity');},
+  resolveRequiredSecrets:()=>{events.push('resolve-secrets');return Promise.reject(new Error('required secrets unavailable'));},
+ }),ProductionBootstrapError);
+ assert.ok(events.indexOf('gate-pass')<events.indexOf('human-identity'));
+ assert.ok(events.indexOf('human-identity')<events.indexOf('resolve-secrets'));
+ assert.equal(events.includes('listeners-start'),false);assert.equal(events.includes('workers-start'),false);
+ assert.equal(events.includes('session-create'),false);assert.equal(events.includes('component-schemas'),false);
+ assert.deepEqual(events.slice(-2),['identity-close','pool-close']);
 });
