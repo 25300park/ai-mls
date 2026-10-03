@@ -22,6 +22,39 @@ export interface AsyncSessionRepository {
   appendRevocation(expectedVersion: number, input: SessionRevocationRecord): Promise<void>;
 }
 
+// Read authority only: no mutation identity, row lock, transaction or pool ownership.
+export class PostgreSqlSessionReader {
+  public constructor(private readonly pool: PostgreSqlPoolPort) {}
+
+  public async assertReadPathReady(): Promise<void> {
+    await this.#read("SELECT session_id, session_version, state, payload_json FROM app_identity.identity_sessions LIMIT 0");
+  }
+
+  public async find(sessionId: string): Promise<DurableSessionRecord | undefined> {
+    if (!safeIdentifier(sessionId)) return undefined;
+    const result = await this.#read(
+      "SELECT session_id, session_version, state, payload_json FROM app_identity.identity_sessions WHERE session_id = $1",
+      [sessionId],
+    );
+    if (result.rows.length > 1) throw unavailable();
+    return result.rows[0] === undefined ? undefined : decodeRecord(result.rows[0]);
+  }
+
+  async #read(sql: string, values?: readonly unknown[]): Promise<PostgreSqlQueryResult<SessionRow>> {
+    let client: PostgreSqlClientPort | undefined;
+    let discard = false;
+    try {
+      client = await this.pool.connect();
+      return await safeQuery<SessionRow>(client, sql, values);
+    } catch {
+      discard = true;
+      throw unavailable();
+    } finally {
+      try { client?.release(discard); } catch { throw unavailable(); }
+    }
+  }
+}
+
 export interface AsyncSessionUnitOfWork {
   transaction<Result>(
     identity: SessionMutationIdentity,
