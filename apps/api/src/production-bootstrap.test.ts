@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import type { AsyncRegisteredServiceWorkloadAuthorityLease } from "../../../modules/identity/src/index.js";
@@ -19,6 +20,64 @@ import {
   assertCanonicalProductionChildRootsPostgreSqlReady,
   type CanonicalProductionChildRootOptions,
 } from "./production-child-root-registry.js";
+
+test("R3F fresh composition restarts with distinct evidence and one new pool after clean shutdown", async () => {
+  const attempts = [];
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const f = harness();
+    const observation = new ProductionRuntimeObservability();
+    assert.equal(observation.snapshot().readiness, "NOT_READY");
+    const runtime = await executeProductionBootstrap({}, { ...f.dependencies, observability: observation });
+    attempts.push(observation.snapshot());
+    assert.equal(runtime.readiness(), "READY");
+    assert.equal(observation.snapshot().physicalPoolCount, 1);
+    assert.equal(observation.snapshot().requiredWorkerCount, 0);
+    const close = runtime.close();
+    assert.equal(observation.snapshot().readiness, "NOT_READY");
+    await Promise.all([close, runtime.close(), runtime.close()]);
+    assert.equal(observation.snapshot().startupPhase, "STOPPED");
+    assert.equal(observation.snapshot().poolReadiness, "CLOSED");
+    assert.equal(f.events.filter(e => e === "pool-open").length, 1);
+    assert.equal(f.events.filter(e => e === "pool-close").length, 1);
+    assert.equal(f.events.filter(e => e === "listeners-start").length, 1);
+    assert.equal(f.events.filter(e => e === "listeners-close").length, 1);
+  }
+  assert.notEqual(attempts[0]?.runtimeAttemptId, attempts[1]?.runtimeAttemptId);
+  assert.equal(attempts[0]?.startupPhase, "RUNTIME_READY");
+});
+
+test("R3F canonical fresh-process bootstraps terminate without retained fixture handles", () => {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const environment = { ...process.env };
+    delete environment["NODE_TEST_CONTEXT"];
+    const child = spawnSync(process.execPath, ["--test", "--test-name-pattern=R3F fresh composition", fileURLToPath(import.meta.url)], { env: environment, encoding: "utf8", timeout: 15_000 });
+    assert.equal(child.error, undefined);
+    assert.equal(child.signal, null);
+    assert.equal(child.status, 0, child.stdout + child.stderr);
+    assert.match(child.stdout, /R3F fresh composition/);
+  }
+});
+
+test("R3F failed startup rolls back ownership and cannot poison a fresh attempt", async () => {
+  for (const point of ["listeners-start", "root-018-activate", "component-schemas"]) {
+    const f = harness(point);
+    const observation = new ProductionRuntimeObservability();
+    await assert.rejects(executeProductionBootstrap({}, { ...f.dependencies, observability: observation }));
+    const failed = observation.snapshot();
+    assert.equal(failed.startupPhase, "STARTUP_FAILED");
+    assert.equal(failed.readiness, "NOT_READY");
+    assert.equal(f.events.filter(e => e === "pool-close").length, 1);
+    assert.equal(f.events.at(-1), "pool-close");
+    if (point === "root-018-activate") assert.equal(f.events.filter(e => e === "listeners-close").length, 1);
+    const next = harness();
+    const runtime = await executeProductionBootstrap({}, next.dependencies);
+    assert.equal(runtime.readiness(), "READY");
+    assert.notEqual(runtime.startupEvidence?.().runtimeAttemptId, failed.runtimeAttemptId);
+    await runtime.close();
+    assert.equal(observation.snapshot().startupPhase, "STARTUP_FAILED");
+    assert.equal(next.events.filter(e => e === "pool-close").length, 1);
+  }
+});
 
 function configuration(): ProductionRuntimeConfiguration {
   return Object.freeze({
@@ -189,14 +248,17 @@ test("hung child cleanup cannot prevent remaining Session, authority and pool cl
 });
 
 test("composed empty-worker startup reaches READY on a disposable local listener and closes the borrowed pool once", async () => {
+  let port = 0;
+  for (let attempt = 0; attempt < 2; attempt++) {
   const f = harness();
   const readiness = createProductionReadinessState();
   let listener: ReturnType<typeof createProductionRuntimeHttpListener> | undefined;
   const dependencies = { ...f.dependencies, startListeners: async (_context: unknown, roots: Parameters<typeof createProductionRuntimeHttpListener>[0]["roots"]) => {
     assert.equal(readiness.readiness(), "NOT_READY");
-    listener = createProductionRuntimeHttpListener({ port: 0, readiness, roots: roots.map((root) => ({ ...root,
+    listener = createProductionRuntimeHttpListener({ port, readiness, roots: roots.map((root) => ({ ...root,
       ...(["API-014", "API-015"].includes(root.componentId) ? { httpHandler: { handle: () => Promise.resolve({ statusCode: 503, headers: {}, body: {}, requestId: "fixture" }) } } : {}) })) });
     await listener.start();
+    port = listener.port;
     return { stopAccepting: () => listener!.stopAccepting!(), close: () => listener!.close() };
   } };
   const running = await runProductionMain({}, {} as ProductionBootstrapDependencies, {
@@ -212,6 +274,7 @@ test("composed empty-worker startup reaches READY on a disposable local listener
   assert.equal(readiness.readiness(), "NOT_READY");
   assert.equal(f.events.filter((event) => event === "pool-open").length, 1);
   assert.equal(f.events.filter((event) => event === "pool-close").length, 1);
+  }
 });
 
 test("every pre-gate failure keeps Session, schema, child, listener, worker and provider side effects at zero", async () => {

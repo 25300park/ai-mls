@@ -10,6 +10,28 @@ test("only an explicit current empty worker manifest is eligible", () => {
   }
 });
 
+test("R3F failed worker and cleanup attempts remain single-use while fresh activation recovers", async () => {
+  for (const failStop of [false, true]) {
+    const f = fixture(3, failStop);
+    // Force a completed worker stop failure in the cleanup variant.
+    const workers = failStop ? [f.workers[0]!, () => Promise.resolve({ close: () => { f.events.push("worker-2-stop"); throw new Error("fixture"); } }), f.workers[2]!] : f.workers;
+    await assert.rejects(f.activation.start(() => Promise.resolve(f.listener), workers), {
+      reason: failStop ? "ACTIVATION_CLEANUP_FAILED" : "WORKER_START_FAILED",
+    });
+    assert.equal(f.activation.readiness(), "NOT_READY");
+    assert.deepEqual(f.events.slice(-3), ["worker-2-stop", "worker-1-stop", "listener-close"]);
+    const before = [...f.events];
+    await Promise.all([f.activation.close(), f.activation.close()]);
+    await assert.rejects(f.activation.start(() => Promise.resolve(f.listener), []), { reason: "DUPLICATE_ACTIVATION" });
+    assert.deepEqual(f.events, before);
+    const next = fixture();
+    await next.activation.start(() => Promise.resolve(next.listener), next.workers);
+    assert.equal(next.activation.readiness(), "READY");
+    await next.activation.close();
+    assert.deepEqual(next.events.slice(-5), ["ingress-stop", "worker-3-stop", "worker-2-stop", "worker-1-stop", "listener-close"]);
+  }
+});
+
 function fixture(failWorker?: number, failStop?: boolean) {
   const events: string[] = [];
   const activation = new ProductionRuntimeActivation();

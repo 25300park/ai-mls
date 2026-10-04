@@ -20,6 +20,39 @@ import { PostgreSqlSessionUnitOfWork, type PostgreSqlPoolPort } from "../../../m
 import { issueProductionBootstrapContext } from "../../../packages/security-contracts/src/production-bootstrap-proof.js";
 import { CURRENT_PRODUCTION_REQUIRED_WORKERS_MANIFEST } from "./production-runtime-activation.js";
 
+test("R3F actual process signal hooks are removed after stop and failed start before a fresh composition", async () => {
+  const initialInt = process.listenerCount("SIGINT"), initialTerm = process.listenerCount("SIGTERM");
+  let closes = 0;
+  const startRuntime = (): Promise<ProductionRuntimeHandle> => Promise.resolve({
+    readiness: () => "READY", validationFingerprint: "sha256:fixture",
+    identitySchemaReadinessProvenance: "NATIVE_MIGRATION_LEDGER_VERIFIED",
+    close: () => { closes++; return Promise.resolve(); },
+  });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const readiness = createProductionReadinessState();
+    const running = await runProductionMain({}, {} as ProductionBootstrapDependencies, { readiness, startRuntime });
+    assert.equal(process.listenerCount("SIGINT"), initialInt + 1);
+    assert.equal(process.listenerCount("SIGTERM"), initialTerm + 1);
+    process.emit(attempt === 0 ? "SIGINT" : "SIGTERM");
+    process.emit(attempt === 0 ? "SIGTERM" : "SIGINT");
+    assert.equal(readiness.readiness(), "NOT_READY");
+    await Promise.all([running.shutdownComplete, running.shutdown(), running.shutdown()]);
+    assert.equal(closes, attempt + 1);
+    assert.equal(process.listenerCount("SIGINT"), initialInt);
+    assert.equal(process.listenerCount("SIGTERM"), initialTerm);
+  }
+  await assert.rejects(runProductionMain({}, {} as ProductionBootstrapDependencies, {
+    readiness: createProductionReadinessState(), startRuntime: () => Promise.reject(new Error("fixture")),
+  }));
+  assert.equal(process.listenerCount("SIGINT"), initialInt);
+  assert.equal(process.listenerCount("SIGTERM"), initialTerm);
+  const last = await runProductionMain({}, {} as ProductionBootstrapDependencies, { readiness: createProductionReadinessState(), startRuntime });
+  await last.shutdown();
+  assert.equal(closes, 3);
+  assert.equal(process.listenerCount("SIGINT"), initialInt);
+  assert.equal(process.listenerCount("SIGTERM"), initialTerm);
+});
+
 function productionEnvironment(): Readonly<Record<string, string>> {
   return Object.freeze({
     RUNTIME_ENVIRONMENT: "PRODUCTION",
