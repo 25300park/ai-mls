@@ -23,6 +23,7 @@ import {
 } from "./production-readiness-http.js";
 import { assertProductionBootstrapContext } from "./production-bootstrap.js";
 import { CURRENT_PRODUCTION_REQUIRED_WORKERS_MANIFEST, validateRequiredWorkersManifest } from "./production-runtime-activation.js";
+import { ProductionRuntimeObservability, safeStartupFailureCode } from "./production-runtime-observability.js";
 import { assertR3C2AggregateSchemasReady } from "./r3c2-aggregate-readiness.js";
 import {createProductionStartupPreparation,type ProductionStartupPreparation} from "./production-startup-preparation.js";
 import {
@@ -100,12 +101,14 @@ export async function runProductionMain(
     if (stopRequested) return;
     stopRequested = true;
     options.readiness.markNotReady();
+    dependencies.observability?.shutdownRequested();
     if (runtime !== undefined) void shutdown();
   });
   const shutdown = (): Promise<void> => {
     if (shutdownPromise !== undefined) return shutdownPromise;
     stopRequested = true;
     options.readiness.markNotReady();
+    dependencies.observability?.shutdownRequested();
     if (runtime === undefined) return shutdownComplete;
     shutdownPromise = (async (): Promise<void> => {
       let failed = false;
@@ -117,6 +120,7 @@ export async function runProductionMain(
         uninstall();
         uninstall = (): void => undefined;
         if (failed) {
+          if (dependencies.observability?.snapshot().startupPhase === "SHUTTING_DOWN") dependencies.observability.shutdownFinished(true);
           failureHandler();
           terminateProcess(1);
         }
@@ -133,6 +137,10 @@ export async function runProductionMain(
     }
   } catch (error) {
     options.readiness.markNotReady();
+    const observation = dependencies.observability;
+    if (observation !== undefined && !["STARTUP_FAILED", "SHUTDOWN_FAILED", "STOPPED"].includes(observation.snapshot().startupPhase)) {
+      observation.failed(safeStartupFailureCode(error));
+    }
     uninstall();
     throw error instanceof ProductionBootstrapError
       ? error
@@ -193,6 +201,7 @@ export function createRailwayProductionDependencies(
   humanAuthenticationBindings?:readonly ProductionAuthenticationBinding[],
   requiredSecretsManifest?: unknown,
   requiredWorkersManifest?: unknown,
+  observability: ProductionRuntimeObservability = new ProductionRuntimeObservability(),
 ): ProductionBootstrapDependencies {
   const unreachable = (): never => { throw new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE"); };
   const unavailablePromise = <Value>(): Promise<Value> => Promise.reject(new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE"));
@@ -214,6 +223,7 @@ export function createRailwayProductionDependencies(
     AI_MLS_HUMAN_MFA_FRESHNESS_MILLISECONDS:environment["AI_MLS_HUMAN_MFA_FRESHNESS_MILLISECONDS"],
   });
   return Object.freeze({
+    observability,
     requiredWorkersManifest: explicitRequiredWorkersManifest,
     parseConfiguration: (raw:unknown):RailwayProductionRuntimeConfiguration=>{
       if(preparation!==undefined)throw new ProductionBootstrapError("PRODUCTION_STARTUP_UNAVAILABLE");
@@ -304,7 +314,8 @@ if (isDirectExecution()) {
     adapterId:"ai-mls.identity.first-party-credential.v1",adapterKind:"FIRST_PARTY_CREDENTIAL",
     configurationRef:Object.freeze({schemaVersion:1,adapterId:"ai-mls.identity.first-party-credential.v1",algorithmProfile:"ARGON2ID_V1"}),
   })]);
-  void runProductionMain(process.env, createRailwayProductionDependencies(process.env, readiness,undefined,authenticationBindings,CURRENT_PRODUCTION_REQUIRED_SECRETS_MANIFEST,CURRENT_PRODUCTION_REQUIRED_WORKERS_MANIFEST), {
+  const observability = new ProductionRuntimeObservability({ sink: (snapshot): void => { process.stdout.write(`${JSON.stringify(snapshot)}\n`); } });
+  void runProductionMain(process.env, createRailwayProductionDependencies(process.env, readiness,undefined,authenticationBindings,CURRENT_PRODUCTION_REQUIRED_SECRETS_MANIFEST,CURRENT_PRODUCTION_REQUIRED_WORKERS_MANIFEST,observability), {
     readiness,
   }).then(
     (running) => running.shutdownComplete,

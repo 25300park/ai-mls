@@ -90,6 +90,9 @@ test("serves bounded NOT_READY then READY from the same operational listener", a
   const listener = createProductionRuntimeHttpListener({ port: 0, readiness: state, roots: canonicalRoots() });
   await listener.start();
   try {
+    assert.deepEqual(await get(listener.port, "/livez"), { statusCode: 200, body: '{"status":"LIVE"}' });
+    assert.deepEqual(await get(listener.port, "/livez", "HEAD"), { statusCode: 200, body: "" });
+    assert.equal((await get(listener.port, "/livez", "POST")).statusCode, 405);
     assert.deepEqual(await get(listener.port, "/readyz"), {
       statusCode: 503, body: '{"status":"NOT_READY"}',
     });

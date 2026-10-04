@@ -16,6 +16,7 @@ import { executeProductionBootstrap } from "./production-bootstrap-engine.js";
 import type { ProductionServiceIdentityBinding } from "./production-service-identity-resolver.js";
 import type { PublicationHttpRequestHandler } from "../../../modules/publication/src/publication-node-http-contracts.js";
 import type { ProductionActivationListener } from "./production-runtime-activation.js";
+import type { ProductionRuntimeObservability, ProductionStartupEvidenceSnapshot } from "./production-runtime-observability.js";
 
 const startedCompositions = new WeakSet<ProductionBootstrapDependencies>();
 
@@ -56,6 +57,7 @@ export type ProductionChildRootFactories = Readonly<Record<ProductionChildCompon
 ) => ProductionChildRoot>>;
 
 export interface ProductionBootstrapDependencies {
+  readonly observability?: ProductionRuntimeObservability;
   readonly requiredWorkersManifest?: unknown;
   readonly parseConfiguration: (raw: unknown) => ProductionRuntimeConfiguration;
   readonly validateConfiguration: (configuration: ProductionRuntimeConfiguration) => void;
@@ -87,6 +89,7 @@ export interface ProductionBootstrapDependencies {
 }
 
 export interface ProductionRuntimeHandle {
+  readonly startupEvidence?: () => ProductionStartupEvidenceSnapshot;
   readonly validationFingerprint: string;
   readonly identitySchemaReadinessProvenance: PostgreSqlIdentitySchemaReadinessProvenance;
   readiness(): "READY" | "NOT_READY";

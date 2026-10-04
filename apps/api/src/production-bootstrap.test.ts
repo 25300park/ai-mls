@@ -13,6 +13,7 @@ import { CURRENT_PRODUCTION_REQUIRED_WORKERS_MANIFEST } from "./production-runti
 import { createProductionReadinessState, createProductionRuntimeHttpListener } from "./production-readiness-http.js";
 import { runProductionMain } from "./production-main.js";
 import type { ProductionBootstrapDependencies } from "./production-bootstrap.js";
+import { ProductionRuntimeObservability } from "./production-runtime-observability.js";
 import { CURRENT_PRODUCTION_REQUIRED_SECRETS_MANIFEST, CURRENT_PRODUCTION_REQUIRED_SECRET_COMPOSITION, validateRequiredSecretsManifest } from "./production-required-secrets.js";
 import {
   assertCanonicalProductionChildRootsPostgreSqlReady,
@@ -97,13 +98,58 @@ test("executes the exact canonical order and constructs Session only after gate 
   ]);
   assert.equal(runtime.readiness(), "READY");
   assert.equal(runtime.validationFingerprint, "sha256:validation-fingerprint");
+  assert.equal(runtime.startupEvidence?.().readiness, "READY");
+  assert.equal(runtime.startupEvidence?.().requiredWorkerCount, 0);
   await runtime.close();
+  assert.equal(runtime.startupEvidence?.().startupPhase, "STOPPED");
+  assert.equal(runtime.startupEvidence?.().poolReadiness, "CLOSED");
   assert.deepEqual(events.slice(-9), [
     "listeners-close", "root-022-close", "root-019-close", "root-018-close",
     "root-015-close", "root-014-close", "session-close", "identity-close", "pool-close",
   ]);
   await runtime.close();
   assert.equal(events.filter((event) => event.endsWith("-close")).length, 9);
+});
+
+test("bootstrap publishes exact safe gate failures and complete phase evidence without extra database reads", async () => {
+  for (const [failAt, gate] of [["service-identities", "serviceWorkloadGate"], ["human-identity", "humanIdentityGate"], ["resolve-secrets", "requiredSecretsGate"]] as const) {
+    const f = harness(failAt);
+    const logs: ReturnType<ProductionRuntimeObservability["snapshot"]>[] = [];
+    const observation = new ProductionRuntimeObservability({ sink: (snapshot) => { logs.push(snapshot); } });
+    await assert.rejects(() => executeProductionBootstrap({}, { ...f.dependencies, observability: observation }));
+    const snapshot = observation.snapshot();
+    assert.equal(snapshot.startupPhase, "STARTUP_FAILED"); assert.equal(snapshot[gate], "FAILED");
+    assert.equal(snapshot.failureCode, "PRE_LISTENER_NOT_READY"); assert.equal(snapshot.readiness, "NOT_READY");
+    assert.equal(snapshot.listenerState, "NOT_STARTED"); assert.equal(snapshot.poolReadiness, "CLOSED");
+    assert.equal(JSON.stringify(logs).includes("private"), false); assert.equal(JSON.stringify(logs).includes("SELECT"), false);
+    assert.equal(f.events.filter((event) => event === "pool-open").length, 1);
+  }
+});
+
+test("listener failure and shutdown failure remain distinct observed classifications", async () => {
+  const f = harness("listeners-start");
+  const observation = new ProductionRuntimeObservability();
+  await assert.rejects(() => executeProductionBootstrap({}, { ...f.dependencies, observability: observation }));
+  assert.equal(observation.snapshot().failureCode, "LISTENER_START_FAILED");
+  assert.equal(observation.snapshot().listenerState, "FAILED");
+  const successful = harness();
+  const runtime = await executeProductionBootstrap({}, { ...successful.dependencies, startListeners: () => ({ close: () => { throw new Error("private close"); } }) });
+  await assert.rejects(() => runtime.close());
+  assert.equal(runtime.startupEvidence?.().startupPhase, "SHUTDOWN_FAILED");
+  assert.equal(runtime.startupEvidence?.().failureCode, "SHUTDOWN_FAILED");
+  assert.equal(runtime.startupEvidence?.().poolReadiness, "CLOSED");
+});
+
+test("pool-only shutdown failure preserves successful listener and zero-worker cleanup evidence", async () => {
+  const f = harness();
+  const runtime = await executeProductionBootstrap({}, { ...f.dependencies,
+    openPostgreSqlPool: () => Promise.resolve({ connect: () => Promise.reject(new Error("unused")), close: () => Promise.reject(new Error("private pool failure")) }),
+  });
+  await assert.rejects(() => runtime.close());
+  const snapshot = runtime.startupEvidence!();
+  assert.equal(snapshot.startupPhase, "SHUTDOWN_FAILED"); assert.equal(snapshot.failureCode, "SHUTDOWN_FAILED");
+  assert.equal(snapshot.listenerState, "STOPPED"); assert.equal(snapshot.workerState, "STOPPED");
+  assert.equal(snapshot.requiredWorkerCount, 0); assert.equal(snapshot.poolReadiness, "FAILED");
 });
 
 test("missing or unknown worker manifest blocks before listener and releases the sole pool", async () => {

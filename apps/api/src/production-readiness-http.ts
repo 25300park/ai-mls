@@ -52,16 +52,17 @@ export function createProductionRuntimeHttpListener(options: Readonly<{
   const requestReader = new PublicationNodeHttpRequestReader(1_048_576, () => globalThis.crypto.randomUUID());
   const responseWriter = new PublicationNodeHttpResponseWriter();
   const server = (options.serverFactory ?? createServer)((request, response) => {
-    if (request.url === "/readyz") {
+    if (request.url === "/readyz" || request.url === "/livez") {
       response.setHeader("content-type", "application/json");
       if (request.method !== "GET" && request.method !== "HEAD") {
         response.statusCode = 405;
         response.end(request.method === "HEAD" ? undefined : '{"status":"NOT_READY"}');
         return;
       }
-      const ready = options.readiness.readiness() === "READY";
+      const live = request.url === "/livez";
+      const ready = live || options.readiness.readiness() === "READY";
       response.statusCode = ready ? 200 : 503;
-      response.end(request.method === "HEAD" ? undefined : ready ? '{"status":"READY"}' : '{"status":"NOT_READY"}');
+      response.end(request.method === "HEAD" ? undefined : live ? '{"status":"LIVE"}' : ready ? '{"status":"READY"}' : '{"status":"NOT_READY"}');
       return;
     }
     if (isApplicationRoute(request.url)) {

@@ -76,6 +76,14 @@ test("the executable composition fails closed before PostgreSQL when sealed runt
   await assert.rejects(() => dependencies.openPostgreSqlPool(configuration), ProductionSecretBindingError);
 });
 
+test("Production entry exposes safe startup failure evidence when bootstrap cannot begin", async () => {
+  const dependencies = createRailwayProductionDependencies(productionEnvironment());
+  await assert.rejects(() => runProductionMain({}, dependencies, { readiness: createProductionReadinessState(), installSignalHandler: () => () => undefined }));
+  assert.equal(dependencies.observability?.snapshot().startupPhase, "STARTUP_FAILED");
+  assert.equal(dependencies.observability?.snapshot().readiness, "NOT_READY");
+  assert.equal(dependencies.observability?.snapshot().liveness, "LIVE");
+});
+
 test("the Railway factory classifies every R3-A dependency without selecting test or development composition", () => {
   assert.deepEqual(RAILWAY_PRODUCTION_DEPENDENCY_CLASSIFICATION, {
     openIdentityAuthorityReadOnly: "EXISTING_APPROVED_ADAPTER",

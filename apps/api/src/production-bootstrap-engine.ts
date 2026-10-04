@@ -11,6 +11,7 @@ import {
 import type { ProductionServiceIdentityBinding } from "./production-service-identity-resolver.js";
 import type { AsyncRegisteredServiceWorkloadAuthorityLease } from "../../../modules/identity/src/index.js";
 import { ProductionRuntimeActivation, ProductionRuntimeActivationError, ProductionCleanupBudget, validateRequiredWorkersManifest } from "./production-runtime-activation.js";
+import { ProductionRuntimeObservability, safeStartupFailureCode, type ProductionObservedFailureCode } from "./production-runtime-observability.js";
 
 const activeCompositions = new WeakSet<ProductionBootstrapEngineDependencies>();
 
@@ -26,7 +27,7 @@ export interface ProductionPreListenerStartupChainResult {
 }
 
 export type ProductionPreListenerGateDependencies = Pick<ProductionBootstrapDependencies,
-  "resolveRequiredServiceIdentities" | "validateStartupGate" | "validateHumanIdentityAuthority" | "resolveRequiredSecrets">;
+  "resolveRequiredServiceIdentities" | "validateStartupGate" | "validateHumanIdentityAuthority" | "resolveRequiredSecrets" | "observability">;
 
 /** Internal readiness composition; borrows authority and grants no runtime activation. */
 export async function executeProductionPreListenerStartupChain(
@@ -34,15 +35,27 @@ export async function executeProductionPreListenerStartupChain(
   authority: AsyncRegisteredServiceWorkloadAuthorityLease,
   dependencies: ProductionPreListenerGateDependencies,
 ): Promise<ProductionPreListenerStartupChainResult> {
+  const observation = dependencies.observability;
+  observation?.advance("PRE_LISTENER_VALIDATING");
+  let gate: "serviceWorkloadGate" | "humanIdentityGate" | "requiredSecretsGate" = "serviceWorkloadGate";
   try {
     const identities = Object.freeze([...(await dependencies.resolveRequiredServiceIdentities(authority, configuration))]);
     assertRequiredIdentities(configuration, identities);
     const validationFingerprint = dependencies.validateStartupGate(configuration, identities);
     if (!safeReference(validationFingerprint)) throw unavailable();
+    observation?.gate(gate, "READY");
+    gate = "humanIdentityGate";
     await dependencies.validateHumanIdentityAuthority(configuration);
+    observation?.gate(gate, "READY");
+    gate = "requiredSecretsGate";
     await dependencies.resolveRequiredSecrets(configuration);
+    observation?.gate(gate, "READY_EMPTY_MANIFEST");
+    observation?.advance("PRE_LISTENER_READY");
     return Object.freeze({ status: "READY", validationFingerprint, identities });
-  } catch {
+  } catch (error) {
+    const fallback = gate === "serviceWorkloadGate" ? "SERVICE_WORKLOAD_GATE_FAILED" : gate === "humanIdentityGate" ? "HUMAN_IDENTITY_GATE_FAILED" : "REQUIRED_SECRETS_GATE_FAILED";
+    observation?.gate(gate, "FAILED", safeStartupFailureCode(error, fallback));
+    observation?.failed("PRE_LISTENER_NOT_READY");
     throw Object.assign(unavailable(), { preListenerStartupChain: "BLOCKED" as const });
   }
 }
@@ -51,6 +64,8 @@ export async function executeProductionPreListenerStartupChain(
 export async function executeProductionBootstrap(rawConfiguration: unknown, dependencies: ProductionBootstrapEngineDependencies): Promise<ProductionRuntimeHandle> {
   if (activeCompositions.has(dependencies)) throw new ProductionRuntimeActivationError("DUPLICATE_ACTIVATION");
   activeCompositions.add(dependencies);
+  const observation = dependencies.observability ?? new ProductionRuntimeObservability();
+  let failureContext: ProductionObservedFailureCode = "PRODUCTION_STARTUP_UNAVAILABLE";
   const cleanup: (() => void | Promise<void>)[] = [];
   const activation = new ProductionRuntimeActivation(dependencies.cleanupTimeoutMilliseconds);
   let preListenerStartupChain: "READY" | "BLOCKED" = "BLOCKED";
@@ -58,7 +73,9 @@ export async function executeProductionBootstrap(rawConfiguration: unknown, depe
     let failed = false;
     const budget = new ProductionCleanupBudget(dependencies.cleanupTimeoutMilliseconds);
     try { await activation.close(budget, cleanup.length); } catch { failed = true; }
+    observation.emptyWorkersStopped();
     if (await cleanupReverse(cleanup, budget)) failed = true;
+    if (observation.snapshot().startupPhase === "SHUTTING_DOWN") observation.shutdownFinished(failed);
     if (failed) throw Object.assign(unavailable(), { reason: "SHUTDOWN_FAILED" });
   };
   try {
@@ -66,17 +83,28 @@ export async function executeProductionBootstrap(rawConfiguration: unknown, depe
     assertProductionConfiguration(configuration);
     dependencies.validateConfiguration(configuration);
     dependencies.validateMandatorySecretReferences(configuration);
+    failureContext = "DATABASE_READINESS_FAILED";
     const pool = await dependencies.openPostgreSqlPool(configuration);
-    cleanup.push(() => pool.close());
+    observation.poolOpened();
+    cleanup.push(async () => {
+      try { await pool.close(); observation.poolClosed(); }
+      catch (error) { observation.poolCloseFailed(); throw error; }
+    });
     const authority = await dependencies.openIdentityAuthorityReadOnly(pool);
     cleanup.push(() => authority.close());
     const identitySchemaReadinessProvenance = await authority.assertSchemaReady();
-    const chain = await executeProductionPreListenerStartupChain(configuration, authority, dependencies);
+    observation.identityReadVerified();
+    failureContext = "PRE_LISTENER_NOT_READY";
+    const chain = await executeProductionPreListenerStartupChain(configuration, authority, { ...dependencies, observability: observation });
     preListenerStartupChain = chain.status;
     const { identities, validationFingerprint } = chain;
     validateRequiredWorkersManifest(dependencies.requiredWorkersManifest);
+    observation.workerManifestReady();
     const context = issueProductionBootstrapContext({ validationFingerprint, configurationReference: configuration.configurationReference });
+    failureContext = "DATABASE_READINESS_FAILED";
     await dependencies.assertComponentSchemasReady(configuration, pool);
+    observation.poolReady();
+    failureContext = "PRODUCTION_STARTUP_UNAVAILABLE";
     const session = await dependencies.createSessionUnitOfWork(pool);
     cleanup.push(() => session.close());
 
@@ -88,22 +116,38 @@ export async function executeProductionBootstrap(rawConfiguration: unknown, depe
       roots.push(root);
     }
     Object.freeze(roots);
-    await activation.start(async () => await dependencies.startListeners(context, roots), [], () => {
+    observation.advance("ACTIVATING_LISTENER");
+    await activation.start(async () => {
+      const listener = await dependencies.startListeners(context, roots);
+      if (typeof listener?.close !== "function") throw unavailable();
+      return {
+        ...(listener.stopAccepting === undefined ? {} : { stopAccepting: (): void | Promise<void> => listener.stopAccepting!() }),
+        close: async (): Promise<void> => {
+          try { await listener.close(); observation.listenerClosed(); }
+          catch (error) { observation.listenerClosed(true); throw error; }
+        },
+      };
+    }, [], () => {
+      observation.advance("ACTIVATING_WORKERS");
       for (const root of roots) root.activateRuntime();
     });
+    observation.advance("RUNTIME_READY");
 
     let state: "READY" | "NOT_READY" = "READY";
     let closing: Promise<void> | undefined;
     return Object.freeze({
+      startupEvidence: () => observation.snapshot(),
       validationFingerprint,
       identitySchemaReadinessProvenance,
       readiness: () => state === "READY" ? activation.readiness() : state,
       close: async () => {
         state = "NOT_READY";
+        if (closing === undefined) observation.advance("SHUTTING_DOWN");
         await (closing ??= shutdown());
       },
     });
   } catch (error) {
+    if (observation.snapshot().startupPhase !== "STARTUP_FAILED") observation.failed(safeStartupFailureCode(error, failureContext));
     try { await shutdown(); } catch { /* startup remains unavailable after exhaustive cleanup */ }
     if (error instanceof ProductionRuntimeActivationError) throw Object.assign(unavailable(), { reason: error.reason, preListenerStartupChain });
     throw Object.assign(
