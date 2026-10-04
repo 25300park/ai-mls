@@ -80,13 +80,23 @@ export class PostgreSqlAuditEvidenceStore implements AuditEvidenceTransactionPar
   }
   // Audit owns validation and INSERT; the caller owns BEGIN/COMMIT/ROLLBACK/release.
   public async materializeOnClient(client: PostgreSqlClientPort, input: AuditEvidenceReadRecord): Promise<AuditEvidenceReadRecord> {
+    return this.materializeForRole(client, input, "ai_mls_production_runtime");
+  }
+  // Bounded one-shot Identity registration only; existing runtime participant is unchanged.
+  public async materializeRegistrationOnClient(client: PostgreSqlClientPort, input: AuditEvidenceReadRecord): Promise<AuditEvidenceReadRecord> {
+    assertAuditEvidence(input);
+    requireValue(input.eventType === "REGISTERED_SERVICE_WORKLOAD.REGISTERED"
+      && input.scopeRef === `registered-service-workload:${input.aggregateId}:${input.aggregateVersion}`);
+    return this.materializeForRole(client, input, "ai_mls_production_registration_operator");
+  }
+  private async materializeForRole(client: PostgreSqlClientPort, input: AuditEvidenceReadRecord, expectedRole: string): Promise<AuditEvidenceReadRecord> {
     if (this.#state.closed || this.#state.quarantined) throw new GovernancePersistenceError("UNAVAILABLE");
     assertAuditEvidence(input);
     const record = structuredClone(input);
     this.#state.active++;
     try {
     const role = await client.query("SELECT current_user AS role");
-    if (role.rows[0]?.["role"] !== "ai_mls_production_runtime") throw new GovernancePersistenceError("UNAVAILABLE");
+    if (role.rows[0]?.["role"] !== expectedRole) throw new GovernancePersistenceError("UNAVAILABLE");
     const replay = await this.select(client,record.auditEvidenceRef);
     if (replay) { if (canonicalJson(replay) !== canonicalJson(record)) throw new GovernancePersistenceError("CONFLICT"); return record; }
     requireValue(record.eventType !== "WORKLOAD_STARTUP_BINDING.ACTIVATED" || record.payloadSchemaVersion === 2);

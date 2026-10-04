@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "tenantId": "bcc988b1-00c9-481b-9dbb-bfb56b5ea91f",
+  "principalId": "f2f97677-8f55-4d62-a5cc-2ff10e757718",
+  "environment": "PRODUCTION",
+  "service": "AI_MLS_API",
+  "purpose": "AI_MLS_PRODUCTION_API_RUNTIME",
+  "audience": "ai-mls-api"
+}

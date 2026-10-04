@@ -1,3 +1,4 @@
+import { registrationOperatorAclReady } from "../../../modules/identity/src/registration-operator-acl.js";
 import type { PostgreSqlPoolPort, PostgreSqlQueryResult } from "../../../modules/identity/src/postgresql-pool.js";
 import { inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence } from "../../../modules/identity/src/registered-service-workload-postgresql-schema.js";
 import { GovernancePersistenceError, newLeaseState, operate } from "../../../modules/organization/src/governance-persistence-support.js";
@@ -43,4 +44,12 @@ export async function assertR3C2AggregateSchemasReady(pool:PostgreSqlPoolPort):P
   const proof=R3C2B_EVIDENCE_CONTRACTS.find(c=>c.schemaName==="app_identity")!;const rows=b.rows.filter(r=>r["schema_name"]===proof.schemaName&&r["table_name"]===proof.tableName);if(rows.length!==1||rows[0]?.["fingerprint"]!==proof.fingerprint||rows[0]?.["authority_ok"]!==true)throw new GovernancePersistenceError("UNAVAILABLE");
  });
  await assertR3C2CTeamPersistenceReady(pool);
+}
+
+/** Production operational readiness includes the separately approved one-shot operator boundary. */
+export async function assertRegistrationAggregateSchemasReady(pool: PostgreSqlPoolPort): Promise<void> {
+ await operate(pool,newLeaseState(),"READ_ONLY",async client=>{
+  if(!await registrationOperatorAclReady(client))throw new GovernancePersistenceError("UNAVAILABLE");
+ });
+ await assertR3C2AggregateSchemasReady(pool);
 }

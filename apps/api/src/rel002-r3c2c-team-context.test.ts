@@ -68,11 +68,11 @@ test("R3-C2C historical activation replay performs no new INSERT",async()=>{
 });
 test("R3-C2C evidence schema versions are exact numeric values",()=>{const {authorizationTeamId:omitted,...legacy}=activation.payload;void omitted;for(const payloadSchemaVersion of ["1","2",true,null])assert.throws(()=>assertAuditEvidence({...activation,payloadSchemaVersion,payload:payloadSchemaVersion==="1"?legacy:activation.payload}));});
 import { createHash } from "node:crypto";
-import { evaluateR3C2CTeamPersistence, R3C2C_TEAM_CONTRACTS } from "./r3c2c-postgresql-readiness.js";
+import { evaluateR3C2CTeamPersistence, R3C2C_TEAM_CONTRACTS, R3C2C_TEAM_CATALOG_QUERY } from "./r3c2c-postgresql-readiness.js";
 test("R3-C2C readiness rejects missing, duplicate, drift and migration-role input",async()=>{
  const rows=R3C2C_TEAM_CONTRACTS.map(c=>({schema_name:c.schemaName,table_name:c.tableName,fingerprint:c.fingerprint,authority_ok:true}));
  for(const [values,role,expected] of [[rows,"ai_mls_production_runtime","READY"],[[],"ai_mls_production_runtime","NOT_READY"],[[...rows,...rows],"ai_mls_production_runtime","NOT_READY"],[[{...rows[0],fingerprint:"drift"},rows[1]],"ai_mls_production_runtime","NOT_READY"],[rows,"ai_mls_production_migration_operator","NOT_READY"]] as const){
-  const pool:PostgreSqlPoolPort={connect:()=>Promise.resolve({query:<R extends Record<string,unknown>>(sql:string)=>Promise.resolve({rows:(sql==="SELECT current_user AS role"?[{role}]:sql.startsWith("WITH ")?values:[]) as unknown as readonly R[],rowCount:0}),release:()=>undefined}),close:()=>Promise.resolve()};
+  const pool:PostgreSqlPoolPort={connect:()=>Promise.resolve({query:<R extends Record<string,unknown>>(sql:string)=>Promise.resolve({rows:(sql==="SELECT current_user AS role"?[{role}]:sql === R3C2C_TEAM_CATALOG_QUERY?values:[]) as unknown as readonly R[],rowCount:0}),release:()=>undefined}),close:()=>Promise.resolve()};
   assert.equal((await evaluateR3C2CTeamPersistence(pool)).status,expected);
  }
 });

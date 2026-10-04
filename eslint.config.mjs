@@ -5,7 +5,7 @@ export default tseslint.config(
     ignores: ["dist/**", "node_modules/**"],
   },
   {
-    files: ["apps/**/*.ts", "modules/**/*.ts", "packages/**/*.ts"],
+    files: ["apps/**/*.ts", "modules/**/*.ts", "packages/**/*.ts", "tools/production/**/*.ts"],
     extends: [
       ...tseslint.configs.recommendedTypeChecked,
       ...tseslint.configs.stylisticTypeChecked,

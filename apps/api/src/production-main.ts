@@ -24,7 +24,7 @@ import {
 import { assertProductionBootstrapContext } from "./production-bootstrap.js";
 import { CURRENT_PRODUCTION_REQUIRED_WORKERS_MANIFEST, validateRequiredWorkersManifest } from "./production-runtime-activation.js";
 import { ProductionRuntimeObservability, safeStartupFailureCode } from "./production-runtime-observability.js";
-import { assertR3C2AggregateSchemasReady } from "./r3c2-aggregate-readiness.js";
+import { assertRegistrationAggregateSchemasReady } from "./r3c2-aggregate-readiness.js";
 import {createProductionStartupPreparation,type ProductionStartupPreparation} from "./production-startup-preparation.js";
 import {
   parseRailwayProductionRuntimeConfiguration,
@@ -261,7 +261,7 @@ export function createRailwayProductionDependencies(
     createSessionUnitOfWork: (pool: PostgreSqlPoolPort): Promise<ProductionAsyncClosableResource> =>
       Promise.resolve(new PostgreSqlSessionUnitOfWork(pool)),
     assertComponentSchemasReady: async (_configuration: ProductionRuntimeConfiguration, pool: PostgreSqlPoolPort): Promise<void> => {
-      await assertR3C2AggregateSchemasReady(pool);
+      await assertRegistrationAggregateSchemasReady(pool);
     },
     childRootOptions: Object.freeze({
       api014: Object.freeze({ runtimeEnvironment: "PRODUCTION" as const }),
