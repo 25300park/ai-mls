@@ -7,7 +7,8 @@
 | 문서 상태 | DRAFT |
 | 소유 역할 | Architecture Owner / 승인된 migration operator |
 | Packet ID | REL002-R3G1B-MISSING-MIGRATIONS-V1 |
-| CANDIDATE_HEAD | 3aa2b20787b6cb4c4aea7aa3015b5748885df824 |
+| CANDIDATE_HEAD | f8b050127b8e3bb4d23d5482f49d3077013006de |
+| PROPOSED_WINDOW_ID | REL002-R3G1B-013-AUDIT001-f8b050127b8e-PROPOSED-01 |
 | Packet state | DESIGNED |
 | EXECUTION_AUTHORIZED | NO |
 | SAFE_TO_EXECUTE | NO |
@@ -16,7 +17,7 @@
 
 이 문서는 Identity 013 및 Audit 001의 향후 Human-controlled 실행 절차만 설계한다. 문서 작성은 Production 실행 승인이 아니다. Production 조회·변경, migration 실행, Railway/Supabase 접근, 018 재시도, commit/push를 수행하지 않았다. 기존 historical report와 migration bytes는 보존한다. 별도 완료 보고서나 index 변경은 이번 범위에 포함하지 않는다.
 
-상태 전이는 `DESIGNED -> READY_FOR_HUMAN_APPROVAL -> AUTHORIZED -> EXECUTED`이다. 준비 증거가 수집되어도 GATE-10 승인 전에는 AUTHORIZED가 아니다. EXECUTED는 두 artifact의 실제 실행 결과와 검증 결과가 기록된 상태이며, 성공을 자동으로 의미하지 않는다. 기존 backup/restore evidence는 존재하지만 current-window recovery gap과 execution approval이 미해결이므로 DESIGNED를 유지한다.
+상태 전이는 `DESIGNED -> READY_FOR_HUMAN_APPROVAL -> AUTHORIZED -> EXECUTED`이다. 준비 증거가 수집되어도 GATE-10 승인 전에는 AUTHORIZED가 아니다. EXECUTED는 두 artifact의 실제 실행 결과와 검증 결과가 기록된 상태이며, 성공을 자동으로 의미하지 않는다. 새 logical backup 및 global-state Human evidence가 존재하지만 isolated restore/current-window acceptance와 execution approval이 미해결이므로 DESIGNED를 유지한다.
 
 사용자 제공 관찰: app_identity 및 identity_registered_service_workloads는 migration operator 소유로 존재한다. identity_workload_evidence, app_audit, audit_evidence_read_records는 없다. 018은 실패 후 ROLLBACK되어 ACL 변경이 남지 않았다. 이는 제공된 관찰이며 이 문서 작성 과정의 Production 확인 결과가 아니다. ledger의 NOT_RECORDED는 실행 권한이나 미적용의 단독 증명이 아니다.
 
@@ -47,8 +48,8 @@
 | GATE-03 | 두 exact artifact의 bytes와 승인 SHA/sidecar 일치 | PASS — repository only; 실행 직전 재확인 |
 | GATE-04 | app_identity schema owner; runtime role 존재; migration operator DB CREATE 및 필요한 authority; 충돌 없음 | NOT_VERIFIED |
 | GATE-05 | 정확한 missing objects 및 partial function/trigger/schema 잔재 없음 | NOT_VERIFIED — 사용자 missing-object 관찰 존재, 실행용 partial-state 확인 필요 |
-| GATE-06 | exact-target backup의 ref·시점·무결성·복구 접근 가능성과 post-backup 변경 보호 | BLOCKED_CURRENTNESS_RECONCILIATION |
-| GATE-07 | isolated restore verification ref와 결과 | 기존 DEC-194 rehearsal PASS; 이번 candidate/window reuse 승인 PENDING |
+| GATE-06 | exact-target backup의 ref·시점·무결성·복구 접근 가능성과 post-backup 변경 보호 | BACKUP_CREATED_PENDING_ISOLATED_RESTORE — Human-reported binding; 새 candidate/window acceptance 미확정 |
+| GATE-07 | current logical backup의 isolated restore verification ref와 결과 | PENDING — 새 restore 미실행; 기존 DEC-194 rehearsal은 historical evidence |
 | GATE-08 | 아래 failure 절차, 두 commit 경계, verifier 적용 가능성 및 escalation owner 확인 | NOT_VERIFIED |
 | GATE-09 | 승인된 실행 window와 증거 currentness | NOT_VERIFIED |
 | GATE-10 | 두 exact SHA/target/order에 대한 explicit Human/AO execution approval | NOT_VERIFIED |
@@ -84,7 +85,7 @@ B. 아래 Identity-specific structural probe를 read-only로 수행한다. app_a
 
 C. B 검토 PASS 및 동일 승인 범위/세션 확인 후 Audit 001을 한 번 실행한다.
 
-D. 두 root가 존재한 상태에서 새 `019_r3g1b_production_recovery.verify.sql`로 최종 검증한다. 정확한 두 expected result rows 모두 `ready=true`여야 PASS이며 오류 없이 SELECT 완료만으로는 PASS가 아니다.
+D. 두 root가 존재한 상태에서 새 `020_r3g1b_registration_membership_compatibility.verify.sql`로 최종 검증한다. 정확한 두 expected result rows 모두 `ready=true`여야 PASS이며 오류 없이 SELECT 완료만으로는 PASS가 아니다.
 
 E. exact schema/table ownership을 read-only 확인한다.
 
@@ -130,7 +131,7 @@ B의 PASS는 결과를 frozen Identity 013과 대조하여 7개 exact columns/ty
 
 ### D: forward final verifier
 
-[019 forward verifier](../../modules/identity/migrations/postgresql/production/019_r3g1b_production_recovery.verify.sql)와 [forward verification contract](REL002_R3G1B_PRODUCTION_MIGRATION_FORWARD_VERIFICATION_CONTRACT.md)를 사용한다. Identity / Audit 두 expected rows가 각각 정확히 한 개이고 ready=true여야 한다. NULL/false/missing/duplicate/error는 STOP이다. Historical root fingerprint는 Identity `88222856a373735336da52e4cae9f2c8`, Audit `5cb4da03f37cfb0623fd3ef5262ca474` 그대로이다. DEC-192 PUBLIC TEMPORARY 및 exact managed membership은 별도 role/ACL 검사로 검증한다. Broad privilege exemption이나 PUBLIC/membership 보수는 허용하지 않는다.
+[020 final verifier](../../modules/identity/migrations/postgresql/production/020_r3g1b_registration_membership_compatibility.verify.sql)와 [exact registration managed-membership compatibility contract](REL002_R3G1B_REGISTRATION_OPERATOR_MANAGED_MEMBERSHIP_COMPATIBILITY.md)를 사용한다. [019](../../modules/identity/migrations/postgresql/production/019_r3g1b_production_recovery.verify.sql)와 그 [historical forward contract](REL002_R3G1B_PRODUCTION_MIGRATION_FORWARD_VERIFICATION_CONTRACT.md)는 보존하지만 이 final R3-G1B Production verification path에서는 020으로 superseded되었다. 020은 exact 세 managed membership 행과 양방향 set equality를 요구하며 다른 security semantics는 019와 동일하다. Identity / Audit 두 expected rows가 각각 정확히 한 개이고 ready=true여야 한다. NULL/false/missing/duplicate/error는 STOP이다. Historical root fingerprint는 Identity `88222856a373735336da52e4cae9f2c8`, Audit `5cb4da03f37cfb0623fd3ef5262ca474` 그대로이다. DEC-192 PUBLIC TEMPORARY 및 exact managed membership은 별도 role/ACL 검사로 검증한다. Broad privilege exemption이나 PUBLIC/membership 보수는 허용하지 않는다.
 
 Historical 013/Audit 001 verifiers는 immutable로 보존하지만 현재 Production baseline의 최종 실행 gate로 사용하지 않는다. Identity-only intermediate 상태에도 사용할 수 없다. 019의 focused/disposable 20/20 PASS, affected 23/23 PASS 및 implementation closeout은 LOCAL/DISPOSABLE evidence이다. 실제 Production에서 019를 실행하지 않았으며 Production readiness는 NOT_VERIFIED이다. 018은 이 window에서 EXCLUDED / SEPARATE_APPROVAL이다.
 
@@ -175,7 +176,7 @@ Identity 013:
 모든 gate와 execution approval을 충족하고 두 migration을 완료한 뒤, 아래 SELECT의 두 expected rows ready=true를 검토한다:
 
 ```psql
-\i 'D:/04. AI-MLS/.worktrees/rel002-r3c2-runtime-startup/modules/identity/migrations/postgresql/production/019_r3g1b_production_recovery.verify.sql'
+\i 'D:/04. AI-MLS/.worktrees/rel002-r3c2-runtime-startup/modules/identity/migrations/postgresql/production/020_r3g1b_registration_membership_compatibility.verify.sql'
 ```
 
 ON_ERROR_STOP은 script 오류 시 중단하지만 기존 interactive 세션의 transaction을 자동으로 ROLLBACK하거나 세션을 종료하지 않는다. 오류/non-zero/연결 손실이면 operator는 다음 단계를 중단하고 아래 분류를 적용한다. 자동 retry는 없다.
@@ -201,8 +202,9 @@ ON_ERROR_STOP은 script 오류 시 중단하지만 기존 interactive 세션의 
 | Production target | project/ref/database/region, 실제 확인 ref는 NOT_VERIFIED |
 | operator | named human + DB identity + backend pid; NOT_VERIFIED |
 | preflight timestamp | NOT_EXECUTED |
-| backup evidence ref | REL002-EVIDENCE-BACKUP-RESTORE-001; currentness BLOCKED |
-| restore evidence ref | REL002-EVIDENCE-BACKUP-RESTORE-001; window reuse PENDING |
+| backup evidence ref | [current logical backup evidence](../evidence/REL002_R3G1B_CURRENT_LOGICAL_BACKUP_EVIDENCE.md); BACKUP_CREATED_PENDING_ISOLATED_RESTORE; candidate/window acceptance PENDING |
+| restore evidence ref | current logical backup isolated restore PENDING / NOT_EXECUTED; historical REL002-EVIDENCE-BACKUP-RESTORE-001 보존 |
+| global-state evidence ref | [current selected global evidence](../evidence/REL002_R3G1B_CURRENT_GLOBAL_STATE_EVIDENCE.md); Human-reported exact role/member/DB ACL tuple |
 | execution approval | NOT_AUTHORIZED; approver/ref/window 필요 |
 | start/end time | NOT_EXECUTED |
 | execution result | NOT_EXECUTED — 각 migration별 |
@@ -214,13 +216,13 @@ identity_schema_migrations의 later Identity/Audit 적용 포괄성을 가정하
 
 ## 9. 문서 검증과 제한
 
-문서 검증 범위는 exact SHA/sidecar/역사 bytes 일치, artifact/reference link, gate/순서/commit 경계 및 실행 금지 일관성, 이번 단일 신규 문서 범위 확인이다. DB/test/build를 실행하지 않는다. historical files/source/primary checkout은 변경하지 않는다. 기존 untracked historical reports를 보존한다.
+문서 검증 범위는 exact SHA/sidecar/역사 bytes 일치, artifact/reference link, gate/순서/commit 경계 및 실행 금지 일관성, 이번 기존 packet 한 파일의 갱신 범위 확인이다. DB/test/build를 실행하지 않는다. historical files/source/primary checkout은 변경하지 않는다. 기존 untracked historical reports를 보존한다.
 
-BACKUP_GATE=BLOCKED_CURRENTNESS_RECONCILIATION; RESTORE_GATE=PENDING_CURRENT_WINDOW_ACCEPTANCE; VERIFIER_GATE=PASS_LOCAL_DISPOSABLE; EXECUTION_AUTHORIZED=NO; SAFE_TO_EXECUTE=NO; SAFE_TO_RETRY_018=NO. Production mutation=NONE. Commit=NOT_CREATED. Push=NOT_PERFORMED. 실제 Production readiness/deployability는 이 설계로 승격되지 않는다.
+BACKUP_GATE=BACKUP_CREATED_PENDING_ISOLATED_RESTORE; RESTORE_GATE=PENDING_CURRENT_WINDOW_ACCEPTANCE; VERIFIER_GATE=PASS_LOCAL_DISPOSABLE; EXECUTION_AUTHORIZED=NO; SAFE_TO_EXECUTE=NO; SAFE_TO_RETRY_018=NO. Production mutation=NONE. Commit=NOT_CREATED. Push=NOT_PERFORMED. 실제 Production readiness/deployability는 이 설계로 승격되지 않는다.
 
 ## 10. Current-window drift reconciliation
 
-이 reconciliation은 repository evidence 및 현재 Human-confirmed facts에 근거한다. 실시간 Production 조회가 아니다. Execution window 제안 ID는 `REL002-R3G1B-013-AUDIT001-3aa2b20787b6-PROPOSED-01`이며 start/end/timezone/owner approval은 UNASSIGNED다.
+이 reconciliation은 repository evidence 및 현재 Human-confirmed facts에 근거한다. 실시간 Production 조회가 아니다. Execution window 제안 ID는 `REL002-R3G1B-013-AUDIT001-f8b050127b8e-PROPOSED-01`이며 start/end/timezone/owner approval은 UNASSIGNED다.
 
 | CHANGE_ID | CATEGORY | STATUS | PRODUCTION_EFFECT | RECOVERY_RELEVANCE | EVIDENCE_SOURCE |
 |---|---|---|---|---|---|
@@ -246,11 +248,42 @@ OLD_BACKUP_RECOVERY_GAP=PRESENT. 2026-09-24 backup만으로 006/007/011/017 및 
 
 BACKUP_PATH_RECOMMENDATION=B — NEW_CURRENT_BACKUP_STRONGLY_PREFERRED. 현재 consistency set을 보호하는 새 backup과 관련 role/ACL/credential recovery disposition을 우선 검토한다. 이는 고정 age에 따른 mandatory policy가 아니며 신규 backup만으로 provider-global roles/sealed variables까지 보호된다고 주장하지 않는다. 기존 backup 재사용은 post-backup changes 보존·복구 증거와 Data/Operations/Security owner의 exact candidate/window 승인 없이는 진행할 수 없다. Current authority/audit evidence를 구 backup으로 조용히 덮어쓰는 복구는 canonical failure policy에 따라 금지된다.
 
-BACKUP_GATE=BLOCKED_CURRENTNESS_RECONCILIATION. APPROVAL_STATUS=PENDING_HUMAN_APPROVAL. EXECUTION_AUTHORIZED=NO. SAFE_TO_EXECUTE=NO. SAFE_TO_RETRY_018=NO. 문서 rebase는 Git history rebase가 아니며 baseline candidate에 대한 packet 갱신만 수행했다. Production/Railway/Supabase mutation=NONE. Commit=NOT_CREATED. Push=NOT_PERFORMED.
-## 12. AO execution-window backup gate decision / closeout binding
+당시 reconciliation 상태는 BACKUP_GATE=BLOCKED_CURRENTNESS_RECONCILIATION이었다. 현재 backup gate는 §13의 BACKUP_CREATED_PENDING_ISOLATED_RESTORE를 따른다. APPROVAL_STATUS=PENDING_HUMAN_APPROVAL. EXECUTION_AUTHORIZED=NO. SAFE_TO_EXECUTE=NO. SAFE_TO_RETRY_018=NO. 문서 rebase는 Git history rebase가 아니며 baseline candidate에 대한 packet 갱신만 수행했다. Production/Railway/Supabase mutation=NONE. Commit=NOT_CREATED. Push=NOT_PERFORMED.
 
-현재 AO 결정: 기존 `2026-09-24 22:53:36 +00:00` backup은 upcoming execution window에 승인되지 않았다. Identity 013 / Audit 001 execution authorization 전에 새 current Production backup이 필요하다. BACKUP_GATE=BLOCKED_NEW_CURRENT_BACKUP_REQUIRED. 이전 BLOCKED_CURRENTNESS_RECONCILIATION 상태와 위 drift 분석은 그 판단 근거로 보존한다. 이는 이번 execution-window gate 결정이며 canonical backup 정책에 global max age 또는 항상 신규 backup 의무를 추가하지 않는다. 새 backup의 exact target, consistency set, currentness, restore/recovery readiness 및 owner approval 증거가 필요하다. 이번 문서 closeout은 backup 생성/Production 접근/실행을 승인하지 않는다.
+## 12. Historical AO execution-window backup gate decision / closeout binding
 
-위 CANDIDATE_HEAD `3aa2b20787b6cb4c4aea7aa3015b5748885df824`는 packet의 pre-closeout baseline이다. Proposed window ID `REL002-R3G1B-013-AUDIT001-3aa2b20787b6-PROPOSED-01`은 final approved window가 아니다. 이 packet closeout이 새 HEAD를 만들면 최종 execution window와 새 backup의 candidate binding은 그 새 packet-closeout HEAD를 명시해야 한다. 자기 commit SHA를 문서에 삽입하기 위한 후속 수정은 하지 않는다. Window start/end/timezone, backup evidence reference 및 execution approval은 아직 UNASSIGNED/PENDING이다.
+당시 AO 결정: 기존 `2026-09-24 22:53:36 +00:00` backup은 upcoming execution window에 승인되지 않았다. Identity 013 / Audit 001 execution authorization 전에 새 current Production backup이 필요하다. BACKUP_GATE=BLOCKED_NEW_CURRENT_BACKUP_REQUIRED. 이전 BLOCKED_CURRENTNESS_RECONCILIATION 상태와 위 drift 분석은 그 판단 근거로 보존한다. 이는 이번 execution-window gate 결정이며 canonical backup 정책에 global max age 또는 항상 신규 backup 의무를 추가하지 않는다. 새 backup의 exact target, consistency set, currentness, restore/recovery readiness 및 owner approval 증거가 필요하다. 이번 문서 closeout은 backup 생성/Production 접근/실행을 승인하지 않는다.
+
+Historical packet의 CANDIDATE_HEAD `3aa2b20787b6cb4c4aea7aa3015b5748885df824`는 당시 pre-closeout baseline이었다. 아래 기록은 당시 closeout binding 안내이며 현재 candidate/window는 §13을 따른다. Proposed window ID `REL002-R3G1B-013-AUDIT001-3aa2b20787b6-PROPOSED-01`은 final approved window가 아니다. 이 packet closeout이 새 HEAD를 만들면 최종 execution window와 새 backup의 candidate binding은 그 새 packet-closeout HEAD를 명시해야 한다. 자기 commit SHA를 문서에 삽입하기 위한 후속 수정은 하지 않는다. Window start/end/timezone, backup evidence reference 및 execution approval은 아직 UNASSIGNED/PENDING이다.
 
 VERIFIER_GATE=PASS — LOCAL/DISPOSABLE ONLY. EXECUTION_AUTHORIZED=NO. SAFE_TO_EXECUTE=NO. SAFE_TO_RETRY_018=NO. 018은 EXCLUDED / SEPARATE_APPROVAL을 유지한다. Historical backup/restore 증거 및 migration/verifier bytes는 변경하지 않는다.
+
+## 13. Current 020 packet rebinding — documentation only
+
+CANDIDATE_HEAD=f8b050127b8e3bb4d23d5482f49d3077013006de
+PROPOSED_WINDOW_ID=REL002-R3G1B-013-AUDIT001-f8b050127b8e-PROPOSED-01
+WINDOW_APPROVED=NO
+EXECUTION_STATUS=NOT_AUTHORIZED
+
+승인 후의 순서는 Identity 013 -> intermediate exact structural probe -> Audit 001 -> 020 final verifier -> ownership verification이다. final PASS는 app_identity.identity_workload_evidence 및 app_audit.audit_evidence_read_records result rows가 각각 정확히 한 개이고 모두 ready=true인 경우만이다. missing/duplicate/NULL/false/error는 STOP이다. 019는 immutable로 보존하지만 final 실행 명령에는 사용하지 않는다. 018은 EXCLUDED / SEPARATE_APPROVAL이며 이번 proposed window에 포함하지 않는다.
+
+020 closeout evidence: focused/disposable 30 PASS, affected 11 PASS / 4 SKIP, regression 1887 PASS / 1 authorized immutable historical fingerprint mismatch / 22 SKIP. Build/lint/typecheck PASS. 이는 LOCAL/DISPOSABLE ONLY이며 actual Production readiness는 NOT_VERIFIED이다.
+
+[Current logical backup evidence](../evidence/REL002_R3G1B_CURRENT_LOGICAL_BACKUP_EVIDENCE.md)와 [current global-state evidence](../evidence/REL002_R3G1B_CURRENT_GLOBAL_STATE_EVIDENCE.md)는 현재 untracked local documentation이며 이번 packet-only 단계에서 stage/commit하지 않는다. 링크가 local worktree에서 유효하다는 것은 Git-contained execution bundle이 완결되었다는 뜻이 아니다.
+
+Backup file=ai-mls-production-pre013-audit001-20261005-223349.dump; size=391501; SHA256=CD16C5E5E61A65551DE7E497A1B2D3E3621F3C65A547A895BB7DC98E6BDE587F. Human-reported archive creation/list validation은 backup 존재 증거이며 isolated restore PASS가 아니다. Artifact는 RESTRICTED로 repository 밖에 보관한다.
+
+위 evidence의 원래 candidate=976a1de1b4dbbd6fe8958fec9239a8178aae0990 및 proposed window binding은 변경하지 않았다. 이번 packet candidate/window 변경은 해당 backup을 새 window에 자동 승인하지 않는다. execution 전 AO currentness/consistency acceptance, selected global evidence의 capture timing/provenance 및 isolated restore 검증이 필요하다. operator/TLS/CA 증명의 미결 상태도 유지한다. 세 행 topology는 새 compatibility approval 및 020을 통해 수용하며 이전 evidence의 당시 019 mismatch 결론은 재작성하지 않는다.
+
+BACKUP_GATE=BACKUP_CREATED_PENDING_ISOLATED_RESTORE
+RESTORE_GATE=PENDING_CURRENT_WINDOW_ACCEPTANCE
+VERIFIER_GATE=PASS_LOCAL_DISPOSABLE_020
+EXECUTION_AUTHORIZED=NO
+SAFE_TO_EXECUTE=NO
+SAFE_TO_RETRY_018=NO
+SOURCE_CHANGED=NO — packet documentation only
+PRODUCTION_MUTATION=NONE
+COMMIT=NOT_CREATED
+PUSH=NOT_PERFORMED
+
+이번 작업은 packet만 수정한다. 013/Audit001/019/020 bytes, historical evidence, backup/global evidence 및 primary checkout은 변경하지 않는다. 이후 packet commit이 새 HEAD를 만들면 candidate/window의 후속 명시적 rebinding이 필요하며 자기 commit SHA를 삽입하기 위해 문서를 자동 재수정하지 않는다.
