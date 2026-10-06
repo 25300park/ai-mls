@@ -4,7 +4,8 @@ import test from "node:test";
 import { Client } from "pg";
 
 const base = "modules/identity/migrations/postgresql/production/";
-const verifier = base + "019_r3g1b_production_recovery.verify.sql";
+const historicalVerifier = base + "019_r3g1b_production_recovery.verify.sql";
+const verifier = base + "020_r3g1b_registration_membership_compatibility.verify.sql";
 const enabled = process.env["REL002_TEST_POSTGRES_DISPOSABLE"] === "CONFIRMED"
   && process.env["REL002_TEST_POSTGRES_PORT"] === "55444";
 
@@ -23,10 +24,10 @@ test("forward recovery verifier on exclusive disposable post-013/Audit001 pre-01
   try {
     // Fresh dedicated cluster required. Never reset a shared database.
     assert.equal((await admin.query<Record<string, unknown>>("SELECT count(*)::int AS n FROM pg_namespace WHERE nspname IN ('app_identity','app_audit')")).rows[0]?.["n"], 0);
-    await admin.query<Record<string, unknown>>("CREATE ROLE supabase_admin SUPERUSER; CREATE ROLE ai_mls_production_migration_operator LOGIN NOINHERIT; CREATE ROLE ai_mls_production_runtime LOGIN NOINHERIT; CREATE ROLE ai_mls_production_registration_operator LOGIN NOINHERIT; REVOKE CREATE ON DATABASE postgres FROM PUBLIC; GRANT CONNECT,CREATE ON DATABASE postgres TO ai_mls_production_migration_operator; GRANT CONNECT ON DATABASE postgres TO ai_mls_production_runtime,ai_mls_production_registration_operator; GRANT ai_mls_production_migration_operator,ai_mls_production_runtime TO postgres WITH ADMIN TRUE, INHERIT FALSE, SET FALSE");
+    await admin.query<Record<string, unknown>>("CREATE ROLE supabase_admin SUPERUSER; CREATE ROLE ai_mls_production_migration_operator LOGIN NOINHERIT; CREATE ROLE ai_mls_production_runtime LOGIN NOINHERIT; CREATE ROLE ai_mls_production_registration_operator LOGIN NOINHERIT; REVOKE CREATE ON DATABASE postgres FROM PUBLIC; GRANT CONNECT,CREATE ON DATABASE postgres TO ai_mls_production_migration_operator; GRANT CONNECT ON DATABASE postgres TO ai_mls_production_runtime,ai_mls_production_registration_operator; GRANT ai_mls_production_migration_operator,ai_mls_production_runtime,ai_mls_production_registration_operator TO postgres WITH ADMIN TRUE, INHERIT FALSE, SET FALSE");
     fixtureCreated = true;
     // Emulate managed-provider grant provenance in this disposable cluster only.
-    await admin.query<Record<string, unknown>>("UPDATE pg_auth_members SET grantor='supabase_admin'::regrole WHERE roleid IN ('ai_mls_production_runtime'::regrole,'ai_mls_production_migration_operator'::regrole)");
+    await admin.query<Record<string, unknown>>("UPDATE pg_auth_members SET grantor='supabase_admin'::regrole WHERE roleid IN ('ai_mls_production_runtime'::regrole,'ai_mls_production_migration_operator'::regrole,'ai_mls_production_registration_operator'::regrole)");
     await migration.connect();
     await migration.query<Record<string, unknown>>("CREATE SCHEMA app_identity; REVOKE ALL ON SCHEMA app_identity FROM PUBLIC,ai_mls_production_runtime; GRANT USAGE ON SCHEMA app_identity TO ai_mls_production_runtime");
     await migration.query<Record<string, unknown>>(await readFile(base + "013_identity_workload_evidence_v1.up.sql", "utf8"));
@@ -50,7 +51,12 @@ test("forward recovery verifier on exclusive disposable post-013/Audit001 pre-01
         assert.equal(result.rows.every(r => r["ready"] === true), expected, JSON.stringify(result.rows));
       } finally { await migration.query<Record<string, unknown>>("ROLLBACK"); }
     };
-    await t.test("canonical structures PUBLIC-only TEMPORARY and managed membership PASS", async () => { await check(true); });
+    await t.test("canonical structures PUBLIC-only TEMPORARY and exact three-row managed membership PASS", async () => { await check(true); });
+    await t.test("019 remains fail-closed for approved three-row topology", async () => {
+      const result = await migration.query<Record<string, unknown>>(await readFile(historicalVerifier, "utf8"));
+      assert.equal(result.rows.length, 2);
+      assert.ok(result.rows.every(r => r["membership_ok"] === false && r["ready"] === false));
+    });
     const negative = async (name: string, change: string) => {
       await t.test(name, async () => {
         await admin.query<Record<string, unknown>>("BEGIN");
@@ -64,6 +70,15 @@ test("forward recovery verifier on exclusive disposable post-013/Audit001 pre-01
         await check(true);
       });
     };
+    await negative("registration membership missing rejected", "DELETE FROM pg_auth_members WHERE roleid='ai_mls_production_registration_operator'::regrole AND member='postgres'::regrole");
+    await negative("registration membership reversed rejected", "DELETE FROM pg_auth_members WHERE roleid='ai_mls_production_registration_operator'::regrole AND member='postgres'::regrole; GRANT postgres TO ai_mls_production_registration_operator WITH ADMIN TRUE, INHERIT FALSE, SET FALSE");
+    await negative("registration membership wrong grantor rejected", "UPDATE pg_auth_members SET grantor='postgres'::regrole WHERE roleid='ai_mls_production_registration_operator'::regrole");
+    await negative("registration membership admin false rejected", "GRANT ai_mls_production_registration_operator TO postgres WITH ADMIN FALSE");
+    await negative("registration membership inherit true rejected", "GRANT ai_mls_production_registration_operator TO postgres WITH INHERIT TRUE");
+    await negative("registration membership set true rejected", "GRANT ai_mls_production_registration_operator TO postgres WITH SET TRUE");
+    await negative("fourth membership rejected", "GRANT ai_mls_production_registration_operator TO supabase_admin WITH ADMIN TRUE, INHERIT FALSE, SET FALSE");
+    await negative("migration membership missing rejected", "DELETE FROM pg_auth_members WHERE roleid='ai_mls_production_migration_operator'::regrole AND member='postgres'::regrole");
+    await negative("runtime membership missing rejected", "DELETE FROM pg_auth_members WHERE roleid='ai_mls_production_runtime'::regrole AND member='postgres'::regrole");
     await negative("direct runtime TEMPORARY rejected", "GRANT TEMPORARY ON DATABASE postgres TO ai_mls_production_runtime");
     await negative("direct migration TEMPORARY rejected", "GRANT TEMPORARY ON DATABASE postgres TO ai_mls_production_migration_operator");
     await negative("runtime ownership rejected", "ALTER TABLE app_identity.identity_workload_evidence OWNER TO ai_mls_production_runtime");
