@@ -1,3 +1,4 @@
+import type { PostgreSqlPoolPort } from "./postgresql-pool.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { spawnSync } from "node:child_process";
@@ -5,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { REGISTRATION_OPERATOR_ACL_QUERY } from "./registration-operator-acl.js";
-import { parseRegistrationManifest, REGISTRATION_DATABASE_TARGET, REGISTRATION_OPERATOR } from "./register-service-workload.js";
+import { RegisterServiceWorkloadCommand, parseRegistrationManifest, REGISTRATION_DATABASE_TARGET, REGISTRATION_OPERATOR } from "./register-service-workload.js";
 import { openRegistrationOperatorPool, parseRegistrationRunnerArguments } from "../../../tools/production/register-service-workload.js";
 
 export function registrationFixture(id = "fixture-registration"): unknown {
@@ -18,7 +19,7 @@ test("registration manifest exact tuple and generated timestamp policy", () => {
 test("forward provisioning checksums and standalone verifier match exact implementation", async () => {
   const base="modules/identity/migrations/postgresql/production/";
   for(const file of ["017_registration_operator_role.sql","018_registration_operator_grants.sql"]) assert.equal(createHash("sha256").update(await readFile(base+file)).digest("hex"),(await readFile(base+file+".sha256","utf8")).trim());
-  assert.ok((await readFile(base+"018_registration_operator_grants.verify.sql","utf8")).includes(REGISTRATION_OPERATOR_ACL_QUERY));
+  assert.match(await readFile(base+"018_registration_operator_grants.verify.sql","utf8"), /NOT EXISTS \(SELECT 1 FROM pg_auth_members WHERE member=/u);
 });
 test("registration scope has no arbitrary, tenant or principal fallback", () => {
   const value = parseRegistrationManifest(registrationFixture());
@@ -44,5 +45,26 @@ test("actual one-shot CLI exits fail-closed without echoing unsupported credenti
     assert.equal((child.stdout+child.stderr).includes("DO_NOT_ECHO_FIXTURE"),false);
     assert.equal(child.stderr.includes("stack"),false);
     if(args[0]==="--dry-run") assert.deepEqual(JSON.parse(child.stderr),{command:"REGISTER_SERVICE_WORKLOAD",DRY_RUN:"FAIL",EXPECTED_WRITES:3,ACTUAL_WRITES:0});
+  }
+});
+
+test("runtime registration ACL requires the complete forward 023 POST contract", async () => {
+  const sql = (await readFile("modules/identity/migrations/postgresql/production/023_registration_operator_managed_compatibility_grants.verify.sql", "utf8")).trim().replace(/;$/u, "");
+  assert.ok(REGISTRATION_OPERATOR_ACL_QUERY.includes(sql));
+  assert.match(REGISTRATION_OPERATOR_ACL_QUERY, /count\(\*\)=2/u);
+});
+test("runner blocks both modes before transaction when 023 POST is not ready", async () => {
+  for (const mode of ["DRY_RUN", "EXECUTE"] as const) {
+    const queries: string[] = [];
+    const pool = { connect: () => Promise.resolve({
+      query: (sql: string) => {
+        queries.push(sql);
+        return Promise.resolve({ rows: sql === REGISTRATION_OPERATOR_ACL_QUERY ? [{ ready: false }] : [{ current_user: REGISTRATION_OPERATOR, session_user: REGISTRATION_OPERATOR, database: "postgres" }], rowCount: 1 });
+      }, release: () => undefined,
+    }), close: () => Promise.resolve() };
+    const command = new RegisterServiceWorkloadCommand(pool as unknown as PostgreSqlPoolPort);
+    await assert.rejects(command.run(registrationFixture(), mode), { code: "UNAVAILABLE" });
+    assert.equal(queries.includes(REGISTRATION_OPERATOR_ACL_QUERY), true);
+    assert.equal(queries.some(sql => /^(?:BEGIN|INSERT)/u.test(sql)), false);
   }
 });
