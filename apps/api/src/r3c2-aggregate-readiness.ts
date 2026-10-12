@@ -1,3 +1,4 @@
+import { withPublicationCatalogCompatibility } from "./publication-catalog-compatibility.js";
 import { registrationOperatorAclReady } from "../../../modules/identity/src/registration-operator-acl.js";
 import type { PostgreSqlClientPort, PostgreSqlPoolPort, PostgreSqlQueryResult } from "../../../modules/identity/src/postgresql-pool.js";
 import { inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence } from "../../../modules/identity/src/registered-service-workload-postgresql-schema.js";
@@ -161,7 +162,7 @@ export const R3C2_ADMINISTRATION_SCHEMA_OVERLAY={tableCount:10,columnsHash:"1eb3
 export async function assertR3C2AggregateSchemasReady(pool:PostgreSqlPoolPort):Promise<void>{
  await operate(pool,newLeaseState(),false,()=>Promise.resolve());
  const contracts=R3B1_CHILD_ROOT_SCHEMA_CONTRACTS.map(c=>c.schemaName==="app_administration"?{...c,...R3C2_ADMINISTRATION_SCHEMA_OVERLAY}:c);
- if((await evaluateContracts(pool,contracts)).status!=="READY")throw new GovernancePersistenceError("UNAVAILABLE");
+ if((await evaluateContracts(withPublicationCatalogCompatibility(pool),contracts)).status!=="READY")throw new GovernancePersistenceError("UNAVAILABLE");
  await assertR3C2IdentityBaseReady(pool);
  await operate(pool,newLeaseState(),"READ_ONLY",async client=>{
   await assertR3C1CatalogCompatibility(client,["app_administration","app_organization"]);
