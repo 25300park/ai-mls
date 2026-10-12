@@ -78,14 +78,19 @@ export async function inspectPostgreSqlRegisteredServiceWorkloadSchema(pool: Pos
   return (await inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence(pool)).readiness;
 }
 
-export async function inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence(pool: PostgreSqlPoolPort): Promise<PostgreSqlIdentitySchemaEvidence> {
+/** Trusted composition-only SELECT expression; function integrity is always checked independently. */
+export interface HistoricalIdentitySchemaCompatibility {
+  readonly historicalCompatibilityQuery: string;
+}
+
+export async function inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence(pool: PostgreSqlPoolPort, compatibility?: HistoricalIdentitySchemaCompatibility): Promise<PostgreSqlIdentitySchemaEvidence> {
   let client: PostgreSqlClientPort | undefined;
   let transactionOpen = false;
   try {
     client = await pool.connect();
     await client.query("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
     transactionOpen = true;
-    const result = await inspectClient(client);
+    const result = await inspectClient(client, compatibility);
     await client.query("COMMIT");
     transactionOpen = false;
     return result;
@@ -99,7 +104,7 @@ export async function inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence(p
   }
 }
 
-async function inspectClient(client: PostgreSqlClientPort): Promise<PostgreSqlIdentitySchemaEvidence> {
+async function inspectClient(client: PostgreSqlClientPort, historicalCompatibility?: HistoricalIdentitySchemaCompatibility): Promise<PostgreSqlIdentitySchemaEvidence> {
   const namespace = await client.query<{ present: boolean }>(
     "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = 'app_identity') AS present",
   );
@@ -250,7 +255,7 @@ async function inspectClient(client: PostgreSqlClientPort): Promise<PostgreSqlId
             AND proc.pronargs = 0 AND proc.provolatile = 's' AND NOT proc.prosecdef
             AND md5(upper(pg_catalog.regexp_replace(btrim(proc.prosrc), '\\s+', ' ', 'g')))
               = '392f0ab48d4de10de66923de4372c2d3')
-          AND app_identity.identity_historical_attestation_schema_is_exact()
+          AND ${historicalCompatibility === undefined ? "app_identity.identity_historical_attestation_schema_is_exact()" : `(${historicalCompatibility.historicalCompatibilityQuery})`}
           AS historical_attestation_schema_compatible
        FROM pg_catalog.pg_proc proc
        JOIN pg_catalog.pg_namespace nsp ON nsp.oid = proc.pronamespace

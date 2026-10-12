@@ -331,3 +331,34 @@ function ownerTable(name: string): string {
   if (name.startsWith("identity_sessions_")) return "identity_sessions";
   return "identity_registered_service_workloads";
 }
+
+test("historical query seam retains mandatory function integrity, attestation validation and provenance", async () => {
+  const attestation = {
+    migration_id: "REL002-P2D0B-IDENTITY-PG-V1", artifact_checksum: "b3b1ec9e1cf3b43abecba19acda9c99a126b4a12f09c7547594973bf6607546e",
+    contract_id: "identity.registered-service-workload", schema_version: 1, database_engine: "POSTGRESQL",
+    contract_fingerprint: "33456be7c009748461ba123dc02de46adcbbfe8b64edeac94588c8c820d01c82", target_environment: "PRODUCTION",
+    historical_applied_at: null, historical_applied_at_known: false, evidence_recorded_at: "2026-09-24T00:00:00.000Z",
+    operator_evidence_ref: "evidence:operator", backup_evidence_ref: "evidence:backup", schema_verification_evidence_ref: "evidence:schema",
+    reason: "HISTORICAL_APPLIED_AT_UNRECOVERABLE", result: "VERIFIED_EXISTING_SCHEMA",
+  };
+  for (const mode of ["valid", "malformed", "integrity", "conflict"] as const) {
+    const queries: string[] = [];
+    const {pool,releases} = harness(text => {
+      queries.push(text);
+      if(text.includes("rel.relkind AS relation_kind")) return result([...Object.keys(tableColumns),"identity_historical_migration_attestations"].sort().map(relation_name=>({relation_name,relation_kind:"r"})));
+      if(text.includes("identity_schema_migrations ORDER") && mode!=="conflict") return result([]);
+      if(text.includes("historical_attestation_schema_compatible")) {
+        assert.match(text,/count\(\*\) = 1/u); assert.match(text,/392f0ab48d4de10de66923de4372c2d3/u);
+        assert.ok(text.includes("AND (SELECT false OR true)"));
+        assert.ok(!text.includes("AND app_identity.identity_historical_attestation_schema_is_exact()"));
+        return result([{historical_attestation_schema_compatible:mode!=="integrity"}]);
+      }
+      if(text.includes("identity_historical_migration_attestations ORDER")) return result([{...attestation,...(mode==="malformed"?{artifact_checksum:"wrong"}:{})}]);
+      return readyResponse(text);
+    });
+    const evidence=await inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence(pool,{historicalCompatibilityQuery:"SELECT false OR true"});
+    assert.equal(evidence.readiness,mode==="valid"?"READY":"NOT_READY_INCOMPATIBLE_SCHEMA");
+    assert.equal(evidence.provenance,mode==="valid"?"HISTORICAL_MIGRATION_ATTESTATION_VERIFIED":null);
+    assert.equal(queries[0],"BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");assert.equal(queries.at(-1),"COMMIT");assert.deepEqual(releases,[false]);
+  }
+});
