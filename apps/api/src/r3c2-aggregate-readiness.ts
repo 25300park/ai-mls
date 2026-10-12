@@ -1,4 +1,5 @@
 import { withAdvisoryCatalogCompatibility } from "./advisory-catalog-compatibility.js";
+import { assertR3C2BIdentityCatalogCompatibility } from "./r3c2b-identity-catalog-compatibility.js";
 import { withExternalIntegrationCatalogCompatibility } from "./external-integration-catalog-compatibility.js";
 import { withConnectorCatalogCompatibility } from "./connector-catalog-compatibility.js";
 import { withAdministrationCatalogCompatibility } from "./administration-catalog-compatibility.js";
@@ -174,8 +175,7 @@ export async function assertR3C2AggregateSchemasReady(pool:PostgreSqlPoolPort):P
  await assertR3C2IdentityBaseReady(pool);
  await operate(pool,newLeaseState(),"READ_ONLY",async client=>{
   await assertR3C1CatalogCompatibility(client,["app_administration","app_organization"]);
-  const b=await client.query(R3C2B_EVIDENCE_CATALOG_QUERY);
-  const proof=R3C2B_EVIDENCE_CONTRACTS.find(c=>c.schemaName==="app_identity")!;const rows=b.rows.filter(r=>r["schema_name"]===proof.schemaName&&r["table_name"]===proof.tableName);if(rows.length!==1||rows[0]?.["fingerprint"]!==proof.fingerprint||rows[0]?.["authority_ok"]!==true)throw new GovernancePersistenceError("UNAVAILABLE");
+  await assertR3C2BIdentityCatalogCompatibility(client);
  });
  await assertR3C2CTeamPersistenceReady(pool);
 }
