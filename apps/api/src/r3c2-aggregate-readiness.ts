@@ -1,3 +1,4 @@
+import { assertR3C2CCatalogCompatibility } from "./r3c2c-catalog-compatibility.js";
 import { withAdvisoryCatalogCompatibility } from "./advisory-catalog-compatibility.js";
 import { assertR3C2BIdentityCatalogCompatibility } from "./r3c2b-identity-catalog-compatibility.js";
 import { withExternalIntegrationCatalogCompatibility } from "./external-integration-catalog-compatibility.js";
@@ -10,7 +11,7 @@ import { inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence } from "../../
 import { GovernancePersistenceError, newLeaseState, operate } from "../../../modules/organization/src/governance-persistence-support.js";
 import { assertR3C1CatalogCompatibility } from "./r3c1-catalog-compatibility.js";
 import { R3C2B_EVIDENCE_CATALOG_QUERY, R3C2B_EVIDENCE_CONTRACTS } from "./r3c2b-postgresql-readiness.js";
-import { assertR3C2CTeamPersistenceReady, R3C2C_TEAM_CATALOG_QUERY, R3C2C_TEAM_CONTRACTS } from "./r3c2c-postgresql-readiness.js";
+import { R3C2C_TEAM_CATALOG_QUERY, R3C2C_TEAM_CONTRACTS } from "./r3c2c-postgresql-readiness.js";
 import { evaluateContracts, R3B1_CHILD_ROOT_SCHEMA_CONTRACTS } from "./child-root-postgresql-readiness.js";
 import { FIRST_PARTY_CREDENTIAL_CATALOG_QUERY, FIRST_PARTY_CREDENTIAL_FINGERPRINTS } from "./first-party-authentication-readiness.js";
 import { PRODUCTION_SESSION_BINDING_CATALOG_QUERY, PRODUCTION_SESSION_BINDING_FINGERPRINT } from "./production-trusted-binding-readiness.js";
@@ -177,7 +178,7 @@ export async function assertR3C2AggregateSchemasReady(pool:PostgreSqlPoolPort):P
   await assertR3C1CatalogCompatibility(client,["app_administration","app_organization"]);
   await assertR3C2BIdentityCatalogCompatibility(client);
  });
- await assertR3C2CTeamPersistenceReady(pool);
+ await assertR3C2CCatalogCompatibility(pool);
 }
 
 /** Production operational readiness includes the separately approved one-shot operator boundary. */
