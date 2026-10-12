@@ -2,7 +2,7 @@ import { registrationOperatorAclReady } from "../../../modules/identity/src/regi
 import type { PostgreSqlClientPort, PostgreSqlPoolPort, PostgreSqlQueryResult } from "../../../modules/identity/src/postgresql-pool.js";
 import { inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence } from "../../../modules/identity/src/registered-service-workload-postgresql-schema.js";
 import { GovernancePersistenceError, newLeaseState, operate } from "../../../modules/organization/src/governance-persistence-support.js";
-import { R3C1_CATALOG_QUERY, R3C1_PERSISTENCE_CONTRACTS } from "./r3c1-postgresql-readiness.js";
+import { assertR3C1CatalogCompatibility } from "./r3c1-catalog-compatibility.js";
 import { R3C2B_EVIDENCE_CATALOG_QUERY, R3C2B_EVIDENCE_CONTRACTS } from "./r3c2b-postgresql-readiness.js";
 import { assertR3C2CTeamPersistenceReady, R3C2C_TEAM_CATALOG_QUERY, R3C2C_TEAM_CONTRACTS } from "./r3c2c-postgresql-readiness.js";
 import { evaluateContracts, R3B1_CHILD_ROOT_SCHEMA_CONTRACTS } from "./child-root-postgresql-readiness.js";
@@ -164,10 +164,8 @@ export async function assertR3C2AggregateSchemasReady(pool:PostgreSqlPoolPort):P
  if((await evaluateContracts(pool,contracts)).status!=="READY")throw new GovernancePersistenceError("UNAVAILABLE");
  await assertR3C2IdentityBaseReady(pool);
  await operate(pool,newLeaseState(),"READ_ONLY",async client=>{
-  const c1=await client.query(R3C1_CATALOG_QUERY);const b=await client.query(R3C2B_EVIDENCE_CATALOG_QUERY);
-  for(const contract of R3C1_PERSISTENCE_CONTRACTS.filter(c=>c.schemaName!=="app_identity")){
-   const rows=c1.rows.filter(r=>r["schema_name"]===contract.schemaName&&r["table_name"]===contract.tableName);if(rows.length!==1||rows[0]?.["fingerprint"]!==contract.fingerprint||rows[0]?.["authority_ok"]!==true)throw new GovernancePersistenceError("UNAVAILABLE");
-  }
+  await assertR3C1CatalogCompatibility(client,["app_administration","app_organization"]);
+  const b=await client.query(R3C2B_EVIDENCE_CATALOG_QUERY);
   const proof=R3C2B_EVIDENCE_CONTRACTS.find(c=>c.schemaName==="app_identity")!;const rows=b.rows.filter(r=>r["schema_name"]===proof.schemaName&&r["table_name"]===proof.tableName);if(rows.length!==1||rows[0]?.["fingerprint"]!==proof.fingerprint||rows[0]?.["authority_ok"]!==true)throw new GovernancePersistenceError("UNAVAILABLE");
  });
  await assertR3C2CTeamPersistenceReady(pool);
