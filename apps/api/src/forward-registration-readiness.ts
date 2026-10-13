@@ -105,7 +105,7 @@ export async function validateForwardRegistrationAuthority(client: PostgreSqlCli
 }
 
 /** Does not provision a role, close the caller's pool, or confer registration execution authority. */
-export async function validateForwardRegistrationStructure(pool: PostgreSqlPoolPort, contractId: unknown): Promise<void> {
+export async function validateForwardRegistrationStructureEvidence(pool: PostgreSqlPoolPort, contractId: unknown): Promise<ForwardRegistrationStructureEvidence> {
  assertForwardRegistrationContract(contractId);
  const client = await pool.connect();
  try { await identity(client,'ai_mls_production_runtime'); } finally { client.release(); }
@@ -115,6 +115,17 @@ export async function validateForwardRegistrationStructure(pool: PostgreSqlPoolP
  await assertR3C2AggregateSchemasReady(forward);
  const provenance = await assertR3C2IdentityBaseReady(forward);
  if (provenance !== 'NATIVE_MIGRATION_LEDGER_VERIFIED' && provenance !== 'HISTORICAL_MIGRATION_ATTESTATION_VERIFIED') throw unavailable();
+ return Object.freeze({artifact_bindings_verified:true,r3c2_ready:true,identity_provenance:provenance,forward_structure_ready:true});
+}
+
+export interface ForwardRegistrationStructureEvidence {
+ readonly artifact_bindings_verified: true;
+ readonly r3c2_ready: true;
+ readonly identity_provenance: 'NATIVE_MIGRATION_LEDGER_VERIFIED' | 'HISTORICAL_MIGRATION_ATTESTATION_VERIFIED';
+ readonly forward_structure_ready: true;
+}
+export async function validateForwardRegistrationStructure(pool: PostgreSqlPoolPort, contractId: unknown): Promise<void> {
+ await validateForwardRegistrationStructureEvidence(pool,contractId);
 }
 
 /** Operational readiness on the runtime pool; separate from registration command authority. */

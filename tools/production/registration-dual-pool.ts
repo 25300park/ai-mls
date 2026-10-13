@@ -1,6 +1,7 @@
 import type { PostgreSqlClientPort, PostgreSqlPoolPort, PostgreSqlQueryResult } from "../../modules/identity/src/postgresql-pool.js";
 import { parseRegistrationManifest, RegisterServiceWorkloadCommand, RegistrationCommandError, type RegistrationResult, type ProductionWorkloadRegistrationManifestV1 } from "../../modules/identity/src/register-service-workload.js";
 import { FORWARD_REGISTRATION_CONTRACT_ID, forwardRegistrationIdentityReady, validateForwardRegistrationStructure, validateForwardRegistrationAuthority } from "../../apps/api/src/forward-registration-readiness.js";
+import { assertForwardRegistrationContract, validateForwardRegistrationStructureEvidence, type ForwardRegistrationStructureEvidence } from "../../apps/api/src/forward-registration-readiness.js";
 
 export const REGISTRATION_TARGET_QUERY = `SELECT current_user,session_user,current_database() AS database,
  current_setting('server_version_num') AS server_version_num,inet_server_addr()::text AS address,
@@ -15,7 +16,56 @@ function assertTarget(row: Record<string,unknown>, role: string): void {
 }
 export function assertIndependentRegistrationTargets(runtime: Record<string,unknown>, registration: Record<string,unknown>): void {
  assertTarget(runtime,'ai_mls_production_runtime');assertTarget(registration,'ai_mls_production_registration_operator');
+ assertRegistrationSessionPair(runtime,registration);
+}
+/** Shared identity comparison only; callers must separately enforce endpoint policy. */
+export function assertRegistrationSessionPair(runtime: Record<string,unknown>, registration: Record<string,unknown>): void {
+ if(!forwardRegistrationIdentityReady([runtime],'ai_mls_production_runtime')||!forwardRegistrationIdentityReady([registration],'ai_mls_production_registration_operator')
+ || !Number.isInteger(runtime['pid']) || Number(runtime['pid'])<=0 || !Number.isInteger(registration['pid']) || Number(registration['pid'])<=0)throw unavailable();
  if(runtime['pid']===registration['pid']||['address','port','database_oid','cluster_started','server_version_num','database'].some(k=>runtime[k]!==registration[k]))throw unavailable();
+}
+
+export interface RegistrationReadinessTargetPolicy {
+ readonly name: 'PRODUCTION_STRICT' | 'LOCAL_OWNED_DISPOSABLE';
+ readonly validateRuntime: (row: Record<string,unknown>)=>Promise<void>;
+ readonly validatePair: (runtime: Record<string,unknown>,registration: Record<string,unknown>)=>Promise<void>;
+}
+const productionReadinessPolicy: RegistrationReadinessTargetPolicy = Object.freeze({
+ name:'PRODUCTION_STRICT',
+ validateRuntime:async(row:Record<string,unknown>):Promise<void>=>{assertTarget(row,'ai_mls_production_runtime');await Promise.resolve();},
+ validatePair:async(runtime:Record<string,unknown>,registration:Record<string,unknown>):Promise<void>=>{assertIndependentRegistrationTargets(runtime,registration);await Promise.resolve();},
+});
+
+/** Borrows pools; never constructs a command or grants execution authority.
+ * Policy/validator injection is trusted composition, unavailable to the production runner/CLI.
+ */
+export async function validateDualPoolRegistrationOperationalReadiness(
+ runtime:PostgreSqlPoolPort, registration:PostgreSqlPoolPort, contractId:unknown,
+ policy:RegistrationReadinessTargetPolicy=productionReadinessPolicy,
+ validators:{structure:(pool:PostgreSqlPoolPort,id:unknown)=>Promise<ForwardRegistrationStructureEvidence>;authority:(client:PostgreSqlClientPort,id:unknown)=>Promise<void>}={structure:validateForwardRegistrationStructureEvidence,authority:validateForwardRegistrationAuthority},
+):Promise<Readonly<ForwardRegistrationStructureEvidence & {contract_id:string;target_policy:string;runtime_identity_verified:true;registration_identity_verified:true;target_match:true;sessions_distinct:true;identity_provenance_verified:true;forward_authority_ready:true;operational_ready:true;writes:0}>> {
+ try {
+ assertForwardRegistrationContract(contractId);
+ if(runtime===registration||!policy||!['PRODUCTION_STRICT','LOCAL_OWNED_DISPOSABLE'].includes(policy.name)||typeof policy.validateRuntime!=='function'||typeof policy.validatePair!=='function')throw unavailable();
+ let runtimeRow:Record<string,unknown>;
+ const runtimeClient=await runtime.connect();
+ try{runtimeRow=await target(runtimeClient);await policy.validateRuntime(runtimeRow);}finally{runtimeClient.release();}
+ const structure=await validators.structure(noRoleSwitches(runtime),contractId);
+ if(structure.artifact_bindings_verified!==true||structure.r3c2_ready!==true||structure.forward_structure_ready!==true
+ ||!['NATIVE_MIGRATION_LEDGER_VERIFIED','HISTORICAL_MIGRATION_ATTESTATION_VERIFIED'].includes(structure.identity_provenance))throw unavailable();
+ const registrationClient=await noRoleSwitches(registration).connect();
+ try{
+  await policy.validatePair(runtimeRow,await target(registrationClient));
+  await validators.authority(registrationClient,contractId);
+ }finally{registrationClient.release();}
+ return Object.freeze({...structure,contract_id:FORWARD_REGISTRATION_CONTRACT_ID,target_policy:policy.name,runtime_identity_verified:true,registration_identity_verified:true,target_match:true,sessions_distinct:true,identity_provenance_verified:true,forward_authority_ready:true,operational_ready:true,writes:0});
+ }catch{throw unavailable();}
+}
+
+/** Outer readiness harness owns physical pools; attempt both closures independently. */
+export async function closeRegistrationReadinessPools(runtime:PostgreSqlPoolPort,registration:PostgreSqlPoolPort):Promise<void>{
+ const results=await Promise.allSettled([...new Set([runtime,registration])].map(async pool=>pool.close()));
+ if(results.some(result=>result.status==='rejected'))throw unavailable();
 }
 export function assertRegistrationExecuteAuthorization(value: unknown): void {
  if(!value||typeof value!=='object'||(value as Record<string,unknown>)['humanAuthorized']!==true||(value as Record<string,unknown>)['quiescentWindowConfirmed']!==true)throw unavailable();
