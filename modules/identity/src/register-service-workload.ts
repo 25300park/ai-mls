@@ -51,10 +51,14 @@ const tables = ["app_identity.identity_registered_service_workloads","app_identi
 const registrationColumns = "registration_id,tenant_id,principal_id,principal_type,assurance,environment,status,workload_purpose,audience,registration_version,identity_evidence_ref,audit_evidence_ref,created_at,updated_at";
 
 /** Identity-owned one-shot transaction. Pool ownership stays with the runner. */
+export interface RegistrationRuntimeReadinessDependency {
+  validateAuthority(client: PostgreSqlClientPort): Promise<void>;
+  beforeInspection(client: PostgreSqlClientPort, manifest: ProductionWorkloadRegistrationManifestV1, mode: "DRY_RUN" | "EXECUTE"): Promise<void>;
+}
 export class RegisterServiceWorkloadCommand {
   private quarantined = false;
   private readonly audit: PostgreSqlAuditEvidenceStore;
-  public constructor(private readonly pool: PostgreSqlPoolPort, private readonly clock: () => Date = () => new Date()) { this.audit = new PostgreSqlAuditEvidenceStore(pool); }
+  public constructor(private readonly pool: PostgreSqlPoolPort, private readonly clock: () => Date = () => new Date(), private readonly readiness?: RegistrationRuntimeReadinessDependency) { this.audit = new PostgreSqlAuditEvidenceStore(pool); }
   public async run(input: unknown, mode: "DRY_RUN" | "EXECUTE"): Promise<RegistrationResult> {
     const manifest = parseRegistrationManifest(input);
     demand(mode === "DRY_RUN" || mode === "EXECUTE");
@@ -64,7 +68,8 @@ export class RegisterServiceWorkloadCommand {
       client = await this.pool.connect();
       const identity = (await client.query("SELECT current_user,session_user,current_database() AS database")).rows[0];
       demand(identity?.["current_user"] === REGISTRATION_OPERATOR && identity["session_user"] === REGISTRATION_OPERATOR && identity["database"] === manifest.expectedDatabaseTarget.database, "UNAVAILABLE");
-      demand(await registrationOperatorAclReady(client), "UNAVAILABLE");
+      if (this.readiness) await this.readiness.validateAuthority(client);
+      else demand(await registrationOperatorAclReady(client), "UNAVAILABLE");
       for (const schema of ["app_identity","app_audit"]) {
         const acl = (await client.query("SELECT has_schema_privilege(current_user,$1,'USAGE') AS use,has_schema_privilege(current_user,$1,'CREATE') AS create", [schema])).rows[0];
         demand(acl?.["use"] === true && acl["create"] === false, "UNAVAILABLE");
@@ -75,6 +80,7 @@ export class RegisterServiceWorkloadCommand {
       }
       await client.query(mode === "DRY_RUN" ? "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY" : "BEGIN"); begun = true;
       if (mode === "EXECUTE") await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`registration:${manifest.registrationId}`]);
+      if (this.readiness) await this.readiness.beforeInspection(client, manifest, mode);
       const replay = await this.inspect(client, manifest);
       let actualWrites: 0 | 3 = 0;
       if (!replay && mode === "EXECUTE") {

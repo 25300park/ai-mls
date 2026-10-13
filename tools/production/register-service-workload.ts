@@ -1,7 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
-import { PgConnectionPoolAdapter, type PostgreSqlPoolPort } from "../../modules/identity/src/postgresql-pool.js";
-import { parseRegistrationManifest, RegisterServiceWorkloadCommand, RegistrationCommandError, REGISTRATION_DATABASE_TARGET, REGISTRATION_OPERATOR } from "../../modules/identity/src/register-service-workload.js";
+import { X509Certificate } from "node:crypto";
+import { PgConnectionPoolAdapter, type PostgreSqlPoolPort, type PgConnectionPoolOptions } from "../../modules/identity/src/postgresql-pool.js";
+import { parseRegistrationManifest, RegistrationCommandError, REGISTRATION_DATABASE_TARGET, REGISTRATION_OPERATOR } from "../../modules/identity/src/register-service-workload.js";
+import { parseRailwayProductionRuntimeConfiguration, createProductionPostgreSqlPoolOptions } from "../../apps/api/src/production-runtime-configuration.js";
+import { forwardRegistrationValidators, runDualPoolRegistration, type DualPoolRegistrationDependencies } from "./registration-dual-pool.js";
 
 export const REGISTRATION_CONNECTION_BINDING = "AI_MLS_PRODUCTION_REGISTRATION_DATABASE_CONNECTION_V1";
 export const REGISTRATION_CA_BINDING = "AI_MLS_PRODUCTION_REGISTRATION_DATABASE_CA_CERT_V1";
@@ -11,6 +14,9 @@ export function parseRegistrationRunnerArguments(args: readonly string[]): Regis
   return Object.freeze({ mode: args[0] === "--execute" ? "EXECUTE" : "DRY_RUN", manifestPath: args[2] });
 }
 export function openRegistrationOperatorPool(environment: Readonly<Record<string,string | undefined>>): PostgreSqlPoolPort {
+  return new PgConnectionPoolAdapter(registrationPoolOptions(environment));
+}
+function registrationPoolOptions(environment: Readonly<Record<string,string | undefined>>): PgConnectionPoolOptions {
   try {
     const connection = environment[REGISTRATION_CONNECTION_BINDING];
     const ca = environment[REGISTRATION_CA_BINDING];
@@ -19,23 +25,34 @@ export function openRegistrationOperatorPool(environment: Readonly<Record<string
     if (!["postgres:","postgresql:"].includes(url.protocol) || url.hostname !== REGISTRATION_DATABASE_TARGET.host
       || url.port !== "5432" || url.pathname !== "/postgres" || decodeURIComponent(url.username) !== REGISTRATION_OPERATOR
       || !url.password || url.search !== "" || url.hash !== "") throw new Error();
-    return new PgConnectionPoolAdapter({ connectionString:connection,connectionTimeoutMilliseconds:10000,idleTimeoutMilliseconds:30000,statementTimeoutMilliseconds:30000,idleTransactionTimeoutMilliseconds:30000,shutdownTimeoutMilliseconds:30000,maxConnections:1,applicationName:"ai-mls-registration-operator",ssl:{rejectUnauthorized:true,ca} });
+    if(ca.length>65536||!ca.includes('-----BEGIN CERTIFICATE-----'))throw new Error();
+    new X509Certificate(ca);
+    return { connectionString:connection,connectionTimeoutMilliseconds:10000,idleTimeoutMilliseconds:30000,statementTimeoutMilliseconds:30000,idleTransactionTimeoutMilliseconds:30000,shutdownTimeoutMilliseconds:30000,maxConnections:1,applicationName:"ai-mls-registration-operator",ssl:{rejectUnauthorized:true,ca} };
   } catch { throw new RegistrationCommandError("UNAVAILABLE"); }
 }
-export async function runRegistrationOperator(args: readonly string[], environment: Readonly<Record<string,string | undefined>>, output: (safe: string) => void = line => { process.stdout.write(`${line}\n`); }): Promise<void> {
+export function createRegistrationRunnerDependencies(environment: Readonly<Record<string,string|undefined>>): DualPoolRegistrationDependencies {
+  try {
+    // Validate both sealed configurations before creating either pool. No raw URL fallback.
+    const configuration=parseRailwayProductionRuntimeConfiguration(environment);
+    const runtimeOptions=createProductionPostgreSqlPoolOptions(configuration,{
+      connectionString:environment['AI_MLS_PRODUCTION_IDENTITY_DATABASE_CONNECTION_V1']??'',
+      caCertificate:environment['AI_MLS_PRODUCTION_IDENTITY_DATABASE_CA_CERT_V1']??'',
+    });
+    const registrationOptions=registrationPoolOptions(environment);
+    return {...forwardRegistrationValidators,createRuntimePool:()=>new PgConnectionPoolAdapter(runtimeOptions),createRegistrationPool:()=>new PgConnectionPoolAdapter(registrationOptions)};
+  }catch{throw new RegistrationCommandError('UNAVAILABLE');}
+}
+export async function runRegistrationOperator(args: readonly string[], environment: Readonly<Record<string,string | undefined>>, output: (safe: string) => void = line => { process.stdout.write(`${line}\n`); }, dependencies?: DualPoolRegistrationDependencies): Promise<void> {
   const options = parseRegistrationRunnerArguments(args);
-  let pool: PostgreSqlPoolPort | undefined;
   let report: string | undefined;
   try {
     const text = await readFile(options.manifestPath, "utf8");
     if (Buffer.byteLength(text) > 32768) throw new RegistrationCommandError("INPUT_INVALID");
     const raw: unknown = JSON.parse(text);
     const manifest = parseRegistrationManifest(raw);
-    pool = openRegistrationOperatorPool(environment);
-    const result = await new RegisterServiceWorkloadCommand(pool).run(manifest, options.mode);
-    report = JSON.stringify({ command:"REGISTER_SERVICE_WORKLOAD",mode:result.mode,result:result.result,DRY_RUN:options.mode === "DRY_RUN" ? "PASS" : "NOT_REQUESTED",EXPECTED_WRITES:result.expectedWrites,ACTUAL_WRITES:result.actualWrites,registrationId:manifest.registrationId,registrationVersion:manifest.registrationVersion,executionRole:REGISTRATION_OPERATOR });
+    const result = await runDualPoolRegistration(manifest, options.mode, dependencies??createRegistrationRunnerDependencies(environment));
+    report = JSON.stringify({ command:"REGISTER_SERVICE_WORKLOAD",mode:result.mode,result:result.result,DRY_RUN:options.mode === "DRY_RUN" ? "PASS" : "NOT_REQUESTED",EXPECTED_WRITES:result.expectedWrites,ACTUAL_WRITES:result.actualWrites,executionRole:REGISTRATION_OPERATOR });
   } catch { throw new RegistrationCommandError("UNAVAILABLE"); }
-  finally { if (pool) await pool.close(); }
   if (report !== undefined) output(report);
 }
 if (process.argv[1] !== undefined && pathToFileURL(process.argv[1]).href === import.meta.url) {
