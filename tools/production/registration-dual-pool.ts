@@ -1,3 +1,4 @@
+import { traceRegistrationReadiness, type RegistrationReadinessObserver, type RegistrationReadinessSubgate } from "../../apps/api/src/forward-registration-readiness.js";
 import type { PostgreSqlClientPort, PostgreSqlPoolPort, PostgreSqlQueryResult } from "../../modules/identity/src/postgresql-pool.js";
 import { parseRegistrationManifest, RegisterServiceWorkloadCommand, RegistrationCommandError, type RegistrationResult, type ProductionWorkloadRegistrationManifestV1 } from "../../modules/identity/src/register-service-workload.js";
 import { FORWARD_REGISTRATION_CONTRACT_ID, forwardRegistrationIdentityReady, validateForwardRegistrationStructure, validateForwardRegistrationAuthority } from "../../apps/api/src/forward-registration-readiness.js";
@@ -14,26 +15,34 @@ function assertTarget(row: Record<string,unknown>, role: string): void {
   ||typeof row['address']!=='string'||!row['address']||typeof row['cluster_started']!=='string'||!row['cluster_started']
   ||!Number.isInteger(row['pid'])||Number(row['pid'])<=0||!Number.isInteger(row['database_oid'])||Number(row['database_oid'])<=0)throw unavailable();
 }
-export function assertIndependentRegistrationTargets(runtime: Record<string,unknown>, registration: Record<string,unknown>): void {
- assertTarget(runtime,'ai_mls_production_runtime');assertTarget(registration,'ai_mls_production_registration_operator');
- assertRegistrationSessionPair(runtime,registration);
+function traceSessionCheck(subgate:RegistrationReadinessSubgate,observer:RegistrationReadinessObserver|undefined,operation:()=>void):void{
+ const report=(result:'PASS'|'FAIL'):void=>{try{observer?.({subgate,result,category:result==='PASS'?'NONE':'OPERATION_REJECTED'});}catch{/* observer has no authority */}};
+ try{operation();report('PASS');}catch(error){report('FAIL');throw error;}
+}
+export function assertIndependentRegistrationTargets(runtime: Record<string,unknown>, registration: Record<string,unknown>,observer?:RegistrationReadinessObserver): void {
+ traceSessionCheck('RUNTIME_SESSION_RECHECK',observer,()=>assertTarget(runtime,'ai_mls_production_runtime'));
+ traceSessionCheck('REGISTRATION_IDENTITY',observer,()=>assertTarget(registration,'ai_mls_production_registration_operator'));
+ assertRegistrationSessionPair(runtime,registration,observer);
 }
 /** Shared identity comparison only; callers must separately enforce endpoint policy. */
-export function assertRegistrationSessionPair(runtime: Record<string,unknown>, registration: Record<string,unknown>): void {
- if(!forwardRegistrationIdentityReady([runtime],'ai_mls_production_runtime')||!forwardRegistrationIdentityReady([registration],'ai_mls_production_registration_operator')
- || !Number.isInteger(runtime['pid']) || Number(runtime['pid'])<=0 || !Number.isInteger(registration['pid']) || Number(registration['pid'])<=0)throw unavailable();
- if(runtime['pid']===registration['pid']||['address','port','database_oid','cluster_started','server_version_num','database'].some(k=>runtime[k]!==registration[k]))throw unavailable();
+export function assertRegistrationSessionPair(runtime: Record<string,unknown>, registration: Record<string,unknown>,observer?:RegistrationReadinessObserver): void {
+ traceSessionCheck('SESSION_PAIR_IDENTITIES',observer,()=>{
+  if(!forwardRegistrationIdentityReady([runtime],'ai_mls_production_runtime')||!forwardRegistrationIdentityReady([registration],'ai_mls_production_registration_operator')
+  || !Number.isInteger(runtime['pid']) || Number(runtime['pid'])<=0 || !Number.isInteger(registration['pid']) || Number(registration['pid'])<=0)throw unavailable();
+ });
+ traceSessionCheck('DISTINCT_BACKENDS',observer,()=>{if(runtime['pid']===registration['pid'])throw unavailable();});
+ traceSessionCheck('SAME_TARGET',observer,()=>{if(['address','port','database_oid','cluster_started','server_version_num','database'].some(k=>runtime[k]!==registration[k]))throw unavailable();});
 }
 
 export interface RegistrationReadinessTargetPolicy {
  readonly name: 'PRODUCTION_STRICT' | 'LOCAL_OWNED_DISPOSABLE';
  readonly validateRuntime: (row: Record<string,unknown>)=>Promise<void>;
- readonly validatePair: (runtime: Record<string,unknown>,registration: Record<string,unknown>)=>Promise<void>;
+ readonly validatePair: (runtime: Record<string,unknown>,registration: Record<string,unknown>,observer?:RegistrationReadinessObserver)=>Promise<void>;
 }
 const productionReadinessPolicy: RegistrationReadinessTargetPolicy = Object.freeze({
  name:'PRODUCTION_STRICT',
  validateRuntime:async(row:Record<string,unknown>):Promise<void>=>{assertTarget(row,'ai_mls_production_runtime');await Promise.resolve();},
- validatePair:async(runtime:Record<string,unknown>,registration:Record<string,unknown>):Promise<void>=>{assertIndependentRegistrationTargets(runtime,registration);await Promise.resolve();},
+ validatePair:async(runtime:Record<string,unknown>,registration:Record<string,unknown>,observer?:RegistrationReadinessObserver):Promise<void>=>{assertIndependentRegistrationTargets(runtime,registration,observer);await Promise.resolve();},
 });
 
 /** Borrows pools; never constructs a command or grants execution authority.
@@ -42,23 +51,29 @@ const productionReadinessPolicy: RegistrationReadinessTargetPolicy = Object.free
 export async function validateDualPoolRegistrationOperationalReadiness(
  runtime:PostgreSqlPoolPort, registration:PostgreSqlPoolPort, contractId:unknown,
  policy:RegistrationReadinessTargetPolicy=productionReadinessPolicy,
- validators:{structure:(pool:PostgreSqlPoolPort,id:unknown)=>Promise<ForwardRegistrationStructureEvidence>;authority:(client:PostgreSqlClientPort,id:unknown)=>Promise<void>}={structure:validateForwardRegistrationStructureEvidence,authority:validateForwardRegistrationAuthority},
+ validators:{structure:(pool:PostgreSqlPoolPort,id:unknown,observer?:RegistrationReadinessObserver)=>Promise<ForwardRegistrationStructureEvidence>;authority:(client:PostgreSqlClientPort,id:unknown,observer?:RegistrationReadinessObserver)=>Promise<void>}={structure:validateForwardRegistrationStructureEvidence,authority:validateForwardRegistrationAuthority},
+ observer?:RegistrationReadinessObserver,
 ):Promise<Readonly<ForwardRegistrationStructureEvidence & {contract_id:string;target_policy:string;runtime_identity_verified:true;registration_identity_verified:true;target_match:true;sessions_distinct:true;identity_provenance_verified:true;forward_authority_ready:true;operational_ready:true;writes:0}>> {
  try {
- assertForwardRegistrationContract(contractId);
- if(runtime===registration||!policy||!['PRODUCTION_STRICT','LOCAL_OWNED_DISPOSABLE'].includes(policy.name)||typeof policy.validateRuntime!=='function'||typeof policy.validatePair!=='function')throw unavailable();
- let runtimeRow:Record<string,unknown>;
- const runtimeClient=await runtime.connect();
- try{runtimeRow=await target(runtimeClient);await policy.validateRuntime(runtimeRow);}finally{runtimeClient.release();}
- const structure=await validators.structure(noRoleSwitches(runtime),contractId);
- if(structure.artifact_bindings_verified!==true||structure.r3c2_ready!==true||structure.forward_structure_ready!==true
- ||!['NATIVE_MIGRATION_LEDGER_VERIFIED','HISTORICAL_MIGRATION_ATTESTATION_VERIFIED'].includes(structure.identity_provenance))throw unavailable();
- const registrationClient=await noRoleSwitches(registration).connect();
+ await traceRegistrationReadiness('CONTRACT',observer,()=>assertForwardRegistrationContract(contractId));
+ await traceRegistrationReadiness('POOL_SEPARATION_POLICY',observer,()=>{
+  if(runtime===registration||!policy||!['PRODUCTION_STRICT','LOCAL_OWNED_DISPOSABLE'].includes(policy.name)||typeof policy.validateRuntime!=='function'||typeof policy.validatePair!=='function')throw unavailable();
+ });
+ const runtimeRow=await traceRegistrationReadiness('RUNTIME_SESSION',observer,async()=>{
+  const runtimeClient=await runtime.connect();
+  try{const row=await target(runtimeClient);await policy.validateRuntime(row);return row;}finally{runtimeClient.release();}
+ });
+ const structure=await traceRegistrationReadiness('FORWARD_STRUCTURE',observer,()=>validators.structure(noRoleSwitches(runtime),contractId,observer));
+ await traceRegistrationReadiness('STRUCTURE_RESULT',observer,()=>{
+  if(structure.artifact_bindings_verified!==true||structure.r3c2_ready!==true||structure.forward_structure_ready!==true
+  ||!['NATIVE_MIGRATION_LEDGER_VERIFIED','HISTORICAL_MIGRATION_ATTESTATION_VERIFIED'].includes(structure.identity_provenance))throw unavailable();
+ });
+ const registrationClient=await traceRegistrationReadiness('REGISTRATION_SESSION',observer,()=>noRoleSwitches(registration).connect());
  try{
-  await policy.validatePair(runtimeRow,await target(registrationClient));
-  await validators.authority(registrationClient,contractId);
+  await traceRegistrationReadiness('SESSION_PAIR',observer,async()=>policy.validatePair(runtimeRow,await target(registrationClient),observer));
+  await traceRegistrationReadiness('FORWARD_AUTHORITY',observer,()=>validators.authority(registrationClient,contractId,observer));
  }finally{registrationClient.release();}
- return Object.freeze({...structure,contract_id:FORWARD_REGISTRATION_CONTRACT_ID,target_policy:policy.name,runtime_identity_verified:true,registration_identity_verified:true,target_match:true,sessions_distinct:true,identity_provenance_verified:true,forward_authority_ready:true,operational_ready:true,writes:0});
+ return traceRegistrationReadiness('OPERATIONAL_RESULT',observer,()=>Object.freeze({...structure,contract_id:FORWARD_REGISTRATION_CONTRACT_ID,target_policy:policy.name,runtime_identity_verified:true as const,registration_identity_verified:true as const,target_match:true as const,sessions_distinct:true as const,identity_provenance_verified:true as const,forward_authority_ready:true as const,operational_ready:true as const,writes:0 as const}));
  }catch{throw unavailable();}
 }
 

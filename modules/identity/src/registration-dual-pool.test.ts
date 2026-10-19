@@ -129,3 +129,39 @@ test('all four existing sealed bindings are required without opening a pool',()=
  }
  for(const key of ['AI_MLS_PRODUCTION_IDENTITY_DATABASE_CONNECTION_V1','AI_MLS_PRODUCTION_REGISTRATION_DATABASE_CONNECTION_V1'])assert.throws(()=>createRegistrationRunnerDependencies({...environment,[key]:connection(key.includes('IDENTITY')?REGISTRATION_OPERATOR:runtime.current_user)}),{code:'UNAVAILABLE'});
 });
+
+test('readiness trace identifies first structural failure and never opens registration pool client',async()=>{
+ const {validateDualPoolRegistrationOperationalReadiness}=await import('../../../tools/production/registration-dual-pool.js');
+ const trace:unknown[]=[];let registrationConnected=false,runtimeReleased=false;
+ const runtimePool:PostgreSqlPoolPort={connect:()=>Promise.resolve({query:<R extends Record<string,unknown>>(_sql:string)=>Promise.resolve({rows:[runtime] as unknown as R[],rowCount:1}),release:()=>{runtimeReleased=true;}}),close:()=>Promise.resolve()};
+ const registrationPool:PostgreSqlPoolPort={connect:()=>{registrationConnected=true;return Promise.reject(Error('DO_NOT_LOG'));},close:()=>Promise.resolve()};
+ await assert.rejects(validateDualPoolRegistrationOperationalReadiness(runtimePool,registrationPool,FORWARD_REGISTRATION_CONTRACT_ID,undefined,{structure:()=>Promise.reject(Error('DO_NOT_LOG_URI')),authority:()=>Promise.resolve()},event=>trace.push(event)));
+ assert.equal(runtimeReleased,true);assert.equal(registrationConnected,false);
+ const failures=trace.filter(e=>Reflect.get(e as object,'result')==='FAIL');assert.equal(Reflect.get(failures[0] as object,'subgate'),'FORWARD_STRUCTURE');assert.doesNotMatch(JSON.stringify(trace),/DO_NOT_LOG/u);
+});
+
+for(const failing of ['RUNTIME_SESSION','STRUCTURE_RESULT','REGISTRATION_SESSION','SESSION_PAIR','FORWARD_AUTHORITY'] as const)test(`strict readiness first rejection is ${failing}`,async()=>{
+ const {validateDualPoolRegistrationOperationalReadiness}=await import('../../../tools/production/registration-dual-pool.js');
+ const events:{subgate:string;result:string}[]=[];
+ const pool=(kind:'runtime'|'registration'):PostgreSqlPoolPort=>({close:()=>Promise.resolve(),connect:()=>{
+  if(kind==='registration'&&failing==='REGISTRATION_SESSION')return Promise.reject(Error('DO_NOT_LOG'));
+  const row=kind==='runtime'?{...runtime,...(failing==='RUNTIME_SESSION'?{session_user:'wrong'}:{})}:{...registration,...(failing==='SESSION_PAIR'?{pid:runtime.pid}:{})};
+  return Promise.resolve({query:<R extends Record<string,unknown>>(_sql:string)=>Promise.resolve({rows:[row] as unknown as R[],rowCount:1}),release:()=>undefined});
+ }});
+ const evidence={artifact_bindings_verified:true as const,r3c2_ready:true as const,forward_structure_ready:true as const,identity_provenance:'NATIVE_MIGRATION_LEDGER_VERIFIED' as const};
+ await assert.rejects(validateDualPoolRegistrationOperationalReadiness(pool('runtime'),pool('registration'),FORWARD_REGISTRATION_CONTRACT_ID,undefined,{structure:()=>Promise.resolve(failing==='STRUCTURE_RESULT'?{...evidence,r3c2_ready:false} as unknown as typeof evidence:evidence),authority:()=>failing==='FORWARD_AUTHORITY'?Promise.reject(Error('DO_NOT_LOG')):Promise.resolve()},event=>events.push(event)));
+ assert.equal(events.find(e=>e.result==='FAIL')?.subgate,failing==='SESSION_PAIR'?'DISTINCT_BACKENDS':failing);assert.doesNotMatch(JSON.stringify(events),/DO_NOT_LOG|fixture|127\.0/u);
+});
+test('nested full R3C2 failure is emitted before structural wrapper failure',async()=>{
+ const {validateDualPoolRegistrationOperationalReadiness}=await import('../../../tools/production/registration-dual-pool.js');
+ const events:{subgate:string;result:string}[]=[];
+ const p:PostgreSqlPoolPort={connect:()=>Promise.resolve({query:<R extends Record<string,unknown>>(sql:string)=>Promise.resolve({rows:(sql===REGISTRATION_TARGET_QUERY||sql===FORWARD_REGISTRATION_IDENTITY_QUERY?[runtime]:[]) as unknown as R[],rowCount:sql===REGISTRATION_TARGET_QUERY||sql===FORWARD_REGISTRATION_IDENTITY_QUERY?1:0}),release:()=>undefined}),close:()=>Promise.resolve()};
+ await assert.rejects(validateDualPoolRegistrationOperationalReadiness(p,{...p},FORWARD_REGISTRATION_CONTRACT_ID,undefined,undefined,e=>events.push(e)));
+ assert.equal(events.find(e=>e.result==='FAIL')?.subgate,'FULL_R3C2');
+});
+test('throwing trace sink cannot alter successful operational readiness',async()=>{
+ const {validateDualPoolRegistrationOperationalReadiness}=await import('../../../tools/production/registration-dual-pool.js');
+ const p=(row:Record<string,unknown>):PostgreSqlPoolPort=>({connect:()=>Promise.resolve({query:<R extends Record<string,unknown>>(_sql:string)=>Promise.resolve({rows:[row] as unknown as R[],rowCount:1}),release:()=>undefined}),close:()=>Promise.resolve()});
+ const result=await validateDualPoolRegistrationOperationalReadiness(p(runtime),p(registration),FORWARD_REGISTRATION_CONTRACT_ID,undefined,{structure:()=>Promise.resolve({artifact_bindings_verified:true,r3c2_ready:true,forward_structure_ready:true,identity_provenance:'NATIVE_MIGRATION_LEDGER_VERIFIED'}),authority:()=>Promise.resolve()},()=>{throw Error('DO_NOT_LOG');});
+ assert.equal(result.operational_ready,true);assert.equal(result.writes,0);
+});

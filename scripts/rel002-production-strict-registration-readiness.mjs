@@ -18,11 +18,13 @@ async function canonicalDependencies(){
  // These modules also export command APIs; no command API is called here.
  const [{createRegistrationRunnerDependencies},{validateDualPoolRegistrationOperationalReadiness}]=await Promise.all([
   import('../dist/tools/production/register-service-workload.js'),import('../dist/tools/production/registration-dual-pool.js')]);
- return {createDependencies:createRegistrationRunnerDependencies,validate:(runtime,registration)=>validateDualPoolRegistrationOperationalReadiness(runtime,registration,CONTRACT_ID)};
+ return {createDependencies:createRegistrationRunnerDependencies,validate:(runtime,registration,_contract,trace)=>validateDualPoolRegistrationOperationalReadiness(runtime,registration,CONTRACT_ID,undefined,undefined,trace)};
 }
 // Test dependencies are available only through this imported function, never CLI input.
 export async function runReadiness(environment,output,testDependencies){
  let stage='CONFIGURATION',failed=false,closed=true;const pools=[];
+ const allowedSubgates=new Set(['CONTRACT','POOL_SEPARATION_POLICY','RUNTIME_SESSION','FORWARD_STRUCTURE','RUNTIME_STRUCTURE_IDENTITY','FULL_R3C2','IDENTITY_BASE_PROVENANCE','STRUCTURE_RESULT','REGISTRATION_SESSION','SESSION_PAIR','FORWARD_AUTHORITY','OPERATIONAL_RESULT','NATIVE_PROVENANCE','RUNTIME_SESSION_RECHECK','REGISTRATION_IDENTITY','SESSION_PAIR_IDENTITIES','DISTINCT_BACKENDS','SAME_TARGET','REGISTRATION_AUTHORITY_IDENTITY','REGISTRATION_AUTHORITY_CATALOG']);
+ const trace=event=>{try{if(!event||!allowedSubgates.has(event.subgate)||!['PASS','FAIL'].includes(event.result))return;output('READINESS_SUBGATE='+event.subgate);output('READINESS_RESULT='+event.result);output('FAILURE_CATEGORY='+(event.result==='PASS'?'NONE':'OPERATION_REJECTED'));}catch{/* diagnostics never change decisions */}};
  try{
   if(environment.REL002_PRODUCTION_READINESS_ONLY!=='YES'||environment.DATABASE_URL!==undefined
    ||environment.REL002_LOCAL_DISPOSABLE!==undefined||environment.LOCAL_OWNED_DISPOSABLE!==undefined
@@ -37,8 +39,9 @@ export async function runReadiness(environment,output,testDependencies){
   const observation={dispatched:0};
   const runtime=observePool(physicalRuntime,observation),registration=observePool(physicalRegistration,observation);
   stage='READINESS';
-  const result=await dependencies.validate(runtime,registration,CONTRACT_ID);
+  const result=await dependencies.validate(runtime,registration,CONTRACT_ID,trace);
   stage='RESULT_ASSERTIONS';
+  trace({subgate:'NATIVE_PROVENANCE',result:result?.identity_provenance==='NATIVE_MIGRATION_LEDGER_VERIFIED'?'PASS':'FAIL'});
   if(!result||result.contract_id!==CONTRACT_ID||result.target_policy!=='PRODUCTION_STRICT'
    ||result.identity_provenance!=='NATIVE_MIGRATION_LEDGER_VERIFIED'||result.writes!==0
    ||flags.some(key=>result[key]!==true))throw Error();

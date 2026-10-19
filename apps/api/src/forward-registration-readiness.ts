@@ -96,24 +96,37 @@ async function identity(client: PostgreSqlClientPort, role: string): Promise<voi
  if (!forwardRegistrationIdentityReady((await client.query(FORWARD_REGISTRATION_IDENTITY_QUERY)).rows,role)) throw unavailable();
 }
 
+export type RegistrationReadinessSubgate = 'CONTRACT' | 'POOL_SEPARATION_POLICY' | 'RUNTIME_SESSION' | 'FORWARD_STRUCTURE' | 'RUNTIME_STRUCTURE_IDENTITY' | 'FULL_R3C2' | 'IDENTITY_BASE_PROVENANCE' | 'STRUCTURE_RESULT' | 'REGISTRATION_SESSION' | 'SESSION_PAIR' | 'FORWARD_AUTHORITY' | 'OPERATIONAL_RESULT' | 'RUNTIME_SESSION_RECHECK' | 'REGISTRATION_IDENTITY' | 'SESSION_PAIR_IDENTITIES' | 'DISTINCT_BACKENDS' | 'SAME_TARGET' | 'REGISTRATION_AUTHORITY_IDENTITY' | 'REGISTRATION_AUTHORITY_CATALOG';
+export interface RegistrationReadinessDiagnostic { readonly subgate: RegistrationReadinessSubgate; readonly result: 'PASS' | 'FAIL'; readonly category: 'NONE' | 'OPERATION_REJECTED' }
+export type RegistrationReadinessObserver = (event: RegistrationReadinessDiagnostic) => void;
+/** Observation never changes authority, operation results, or original error propagation. */
+export async function traceRegistrationReadiness<T>(subgate:RegistrationReadinessSubgate,observer:RegistrationReadinessObserver|undefined,operation:()=>T|Promise<T>):Promise<T>{
+ const report=(result:'PASS'|'FAIL'):void=>{try{observer?.(Object.freeze({subgate,result,category:result==='PASS'?'NONE':'OPERATION_REJECTED'}));}catch{/* diagnostic sink has no authority */}};
+ try{const value=await operation();report('PASS');return value;}catch(error){report('FAIL');throw error;}
+}
+
 /** Read-only catalog authority check; callers must separately validate structure on the runtime pool. */
-export async function validateForwardRegistrationAuthority(client: PostgreSqlClientPort, contractId: unknown): Promise<void> {
+export async function validateForwardRegistrationAuthority(client: PostgreSqlClientPort, contractId: unknown, observer?: RegistrationReadinessObserver): Promise<void> {
  assertForwardRegistrationContract(contractId);
- await identity(client,'ai_mls_production_registration_operator');
- const rows = (await client.query(FORWARD_REGISTRATION_AUTHORITY_QUERY)).rows;
- if (rows.length !== 1 || rows[0]?.['ready'] !== true) throw unavailable();
+ await traceRegistrationReadiness('REGISTRATION_AUTHORITY_IDENTITY',observer,()=>identity(client,'ai_mls_production_registration_operator'));
+ await traceRegistrationReadiness('REGISTRATION_AUTHORITY_CATALOG',observer,async()=>{
+  const rows = (await client.query(FORWARD_REGISTRATION_AUTHORITY_QUERY)).rows;
+  if (rows.length !== 1 || rows[0]?.['ready'] !== true) throw unavailable();
+ });
 }
 
 /** Does not provision a role, close the caller's pool, or confer registration execution authority. */
-export async function validateForwardRegistrationStructureEvidence(pool: PostgreSqlPoolPort, contractId: unknown): Promise<ForwardRegistrationStructureEvidence> {
+export async function validateForwardRegistrationStructureEvidence(pool: PostgreSqlPoolPort, contractId: unknown, observer?: RegistrationReadinessObserver): Promise<ForwardRegistrationStructureEvidence> {
  assertForwardRegistrationContract(contractId);
- const client = await pool.connect();
- try { await identity(client,'ai_mls_production_runtime'); } finally { client.release(); }
+ await traceRegistrationReadiness('RUNTIME_STRUCTURE_IDENTITY',observer,async()=>{
+  const client = await pool.connect();
+  try { await identity(client,'ai_mls_production_runtime'); } finally { client.release(); }
+ });
  const forward = projectedPool(pool);
  // The full chain verifies all five artifact bindings and current roots. Structural
  // projection checks contamination, never operational provisioning completeness.
- await assertR3C2AggregateSchemasReady(forward);
- const provenance = await assertR3C2IdentityBaseReady(forward);
+ await traceRegistrationReadiness('FULL_R3C2',observer,()=>assertR3C2AggregateSchemasReady(forward));
+ const provenance = await traceRegistrationReadiness('IDENTITY_BASE_PROVENANCE',observer,()=>assertR3C2IdentityBaseReady(forward));
  if (provenance !== 'NATIVE_MIGRATION_LEDGER_VERIFIED' && provenance !== 'HISTORICAL_MIGRATION_ATTESTATION_VERIFIED') throw unavailable();
  return Object.freeze({artifact_bindings_verified:true,r3c2_ready:true,identity_provenance:provenance,forward_structure_ready:true});
 }
