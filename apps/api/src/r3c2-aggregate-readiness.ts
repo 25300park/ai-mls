@@ -106,12 +106,15 @@ export function normalizeIdentityExtensionCatalogQuery(query: string): string {
  return query.replaceAll('WHERE k.conrelid=c.oid)', "WHERE k.conrelid=c.oid AND k.contype <> 'n')");
 }
 
-async function validateIdentityExtensions(client: PostgreSqlClientPort): Promise<void> {
+export type IdentityBaseDiagnosticStage = 'IDENTITY_EXTENSION_INVENTORY' | 'IDENTITY_TEAM_CONTRACT' | 'IDENTITY_EVIDENCE_CONTRACT' | 'IDENTITY_HUMAN_CONTRACT' | 'IDENTITY_SESSION_CONTRACT' | 'IDENTITY_FUNCTION_INVENTORY' | 'IDENTITY_BASE_SCHEMA_PROVENANCE';
+async function validateIdentityExtensions(client: PostgreSqlClientPort, observe: (stage: IdentityBaseDiagnosticStage) => void): Promise<void> {
+ observe('IDENTITY_EXTENSION_INVENTORY');
  const tables=await client.query("SELECT relname AS table_name, relkind AS kind FROM pg_catalog.pg_class WHERE relnamespace='app_identity'::regnamespace AND relkind IN ('r','p','v','m','f','S')");
  const present=new Set(tables.rows.map(r=>String(r['table_name'])));
  const baseTables=new Set(['identity_schema_contracts','identity_schema_migrations','identity_sessions','identity_session_revocations','identity_registered_service_workloads','identity_historical_migration_attestations']);
  if(tables.rows.some(r=>r['kind']!=='r' || (!baseTables.has(String(r['table_name'])) && !IDENTITY_EXTENSION_TABLES.has(String(r['table_name'])))))throw new GovernancePersistenceError('UNAVAILABLE');
  const check=async(query:string,contracts:readonly {schemaName:string;tableName:string;fingerprint:string}[]):Promise<void>=>{
+  observe(query===R3C2C_TEAM_CATALOG_QUERY?'IDENTITY_TEAM_CONTRACT':query===R3C2B_EVIDENCE_CATALOG_QUERY?'IDENTITY_EVIDENCE_CONTRACT':query===FIRST_PARTY_CREDENTIAL_CATALOG_QUERY?'IDENTITY_HUMAN_CONTRACT':'IDENTITY_SESSION_CONTRACT');
   const result=await client.query(normalizeIdentityExtensionCatalogQuery(query));
   const projected=result.rows.map(row=>{
    const pair=row['schema_name']==='app_identity'?NORMALIZED_EXTENSION_FINGERPRINTS[String(row['table_name'])]:undefined;
@@ -123,10 +126,12 @@ async function validateIdentityExtensions(client: PostgreSqlClientPort): Promise
  if(present.has('workload_startup_binding_versions'))await check(R3C2C_TEAM_CATALOG_QUERY,R3C2C_TEAM_CONTRACTS.filter(c=>c.schemaName==='app_identity'));
  if(present.has('identity_workload_evidence'))await check(R3C2B_EVIDENCE_CATALOG_QUERY,R3C2B_EVIDENCE_CONTRACTS.filter(c=>c.schemaName==='app_identity'));
  if(present.has('identity_human_principals') || present.has('identity_human_credentials')){
+  observe('IDENTITY_HUMAN_CONTRACT');
   const role=await client.query('SELECT current_user AS role');
   if(role.rows.length!==1 || role.rows[0]?.['role']!=='ai_mls_production_runtime')throw new GovernancePersistenceError('UNAVAILABLE');
   await check(FIRST_PARTY_CREDENTIAL_CATALOG_QUERY,Object.entries(FIRST_PARTY_CREDENTIAL_FINGERPRINTS).map(([tableName,fingerprint])=>({schemaName:'app_identity',tableName,fingerprint})));
  }
+ observe('IDENTITY_SESSION_CONTRACT');
  const binding=await client.query("SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid=to_regclass('app_identity.identity_sessions') AND attname IN ('tenant_id','team_id','team_binding_origin') AND NOT attisdropped) OR EXISTS (SELECT 1 FROM pg_catalog.pg_constraint WHERE conrelid=to_regclass('app_identity.identity_sessions') AND conname='identity_sessions_production_binding_check') OR EXISTS (SELECT 1 FROM pg_catalog.pg_trigger WHERE tgrelid=to_regclass('app_identity.identity_sessions') AND tgname='identity_sessions_production_binding_guard') AS present");
  if(binding.rows[0]?.['present']===true)await check(PRODUCTION_SESSION_BINDING_CATALOG_QUERY,[{schemaName:'app_identity',tableName:'identity_sessions',fingerprint:PRODUCTION_SESSION_BINDING_FINGERPRINT}]);
  const functions=new Set(['reject_session_revocation_mutation']);
@@ -134,14 +139,16 @@ async function validateIdentityExtensions(client: PostgreSqlClientPort): Promise
  for(const table of IDENTITY_EXTENSION_TABLES)if(present.has(table))functions.add(table+'_guard');
  if(present.has('workload_startup_binding_versions'))functions.add('workload_startup_binding_versions_authorization_team_guard');
  if(binding.rows[0]?.['present']===true)functions.add('identity_sessions_production_binding_guard');
+ observe('IDENTITY_FUNCTION_INVENTORY');
  const inventory=await client.query("SELECT proname AS name FROM pg_catalog.pg_proc WHERE pronamespace='app_identity'::regnamespace");
  if(inventory.rows.length!==functions.size || inventory.rows.some(r=>!functions.has(String(r['name']))) || new Set(inventory.rows.map(r=>r['name'])).size!==functions.size)throw new GovernancePersistenceError('UNAVAILABLE');
 }
 
-export async function assertR3C2IdentityBaseReady(pool:PostgreSqlPoolPort):Promise<NonNullable<Awaited<ReturnType<typeof inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence>>['provenance']>>{
+export async function assertR3C2IdentityBaseReady(pool:PostgreSqlPoolPort, observer?: (stage: IdentityBaseDiagnosticStage) => void):Promise<NonNullable<Awaited<ReturnType<typeof inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence>>['provenance']>>{
+ const observe=(stage:IdentityBaseDiagnosticStage):void=>{try{observer?.(stage);}catch{/* diagnostic observer has no authority */}};
  const projection:PostgreSqlPoolPort={connect:async()=>{const client=await pool.connect();let extensionsValidated=false;return {
   query:async<R extends Record<string,unknown>>(sql:string,values?:readonly unknown[]):Promise<PostgreSqlQueryResult<R>>=>{
-   if(!extensionsValidated && sql.startsWith('SELECT EXISTS')){await validateIdentityExtensions(client);extensionsValidated=true;}
+   if(!extensionsValidated && sql.startsWith('SELECT EXISTS')){await validateIdentityExtensions(client,observe);extensionsValidated=true;observe('IDENTITY_BASE_SCHEMA_PROVENANCE');}
    const result=await client.query<R>(sql,values);
    if(!sql.includes('pg_catalog')||!sql.includes('app_identity'))return result;
    const rows=result.rows.filter(row=>!IDENTITY_EXTENSION_TABLES.has(String(row['relation_name']??row['table_name'])) && !(row['table_name']==='identity_sessions' && (SESSION_BINDING_COLUMNS.has(String(row['column_name'])) || row['constraint_name']==='identity_sessions_production_binding_check' || row['trigger_name']==='identity_sessions_production_binding_guard')));

@@ -43,3 +43,30 @@ test("R3-C2 aggregate readiness fails closed with missing roots and excludes mig
  const path="./r3c2-aggregate-readiness.js";const {assertR3C2AggregateSchemasReady}=await import(path) as {assertR3C2AggregateSchemasReady:(pool:PostgreSqlPoolPort)=>Promise<void>};
  for(const role of ["ai_mls_production_runtime","ai_mls_production_migration_operator"]){let releases=0;const pool:PostgreSqlPoolPort={connect:()=>Promise.resolve({query:<R extends Record<string,unknown>>(sql:string)=>Promise.resolve({rows:(sql==="SELECT current_user AS role"?[{role}]:[]) as unknown as readonly R[],rowCount:sql==="SELECT current_user AS role"?1:0}),release:()=>{releases++;}}),close:()=>Promise.reject(Error("shared pool close forbidden"))};await assert.rejects(assertR3C2AggregateSchemasReady(pool));assert.ok(releases>0);}
 });
+
+ test('initial Identity diagnostic identifies bounded extension stage without raw data',async()=>{
+ const {assertInitialProductionIdentityReady}=await import('./production-initial-identity-diagnostics.js');
+ const events:unknown[]=[];let leases=0,releases=0;const queries:string[]=[];
+ const pool:PostgreSqlPoolPort={connect:async()=>{await Promise.resolve();leases++;return {query:async<R extends Record<string,unknown>>(sql:string)=>{await Promise.resolve();queries.push(sql);if(sql.includes('current_setting'))return {rows:[{binding0:true,binding1:true,binding2:true,binding3:true,binding4:true}] as unknown as R[],rowCount:1};if(sql.startsWith('SELECT relname'))throw Object.assign(Error('DO_NOT_LOG'),{code:'42501'});return {rows:[] as R[],rowCount:0};},release:()=>{releases++;}};},close:()=>Promise.reject(Error('must not close borrowed pool'))};
+ await assert.rejects(assertInitialProductionIdentityReady(pool,event=>events.push(event)));
+ assert.equal(leases,1);assert.equal(releases,1);assert.equal(queries.at(-1),'ROLLBACK');
+ const serialized=JSON.stringify(events);assert.match(serialized,/IDENTITY_EXTENSION_INVENTORY/u);assert.match(serialized,/42501/u);assert.doesNotMatch(serialized,/DO_NOT_LOG|SELECT |ROLLBACK/u);
+ assert.equal(events.filter(e=>Reflect.get(e as object,'stage')==='ARTIFACT_BINDING').length,5);
+ });
+
+for(const mode of ['missing','mismatch','unavailable','sink-failure'] as const)test(`initial Identity diagnostic preserves failure and cleanup with ${mode} observation`,async()=>{
+ const {assertInitialProductionIdentityReady}=await import('./production-initial-identity-diagnostics.js');
+ const events:unknown[]=[];let released=0;
+ const pool:PostgreSqlPoolPort={connect:()=>Promise.resolve({query:async<R extends Record<string,unknown>>(sql:string)=>{
+  await Promise.resolve();
+  if(sql.includes('current_setting')){if(mode==='unavailable')throw Error('DO_NOT_LOG_CA');return {rows:[Object.fromEntries(Array.from({length:5},(_,i)=>[[`present${i}`,mode!=='missing'],[`binding${i}`,false]]).flat())] as unknown as R[],rowCount:1};}
+  if(sql.startsWith('SELECT relname'))throw Error('DO_NOT_LOG_CREDENTIAL');
+  return {rows:[] as R[],rowCount:0};},release:()=>{released++;}}),close:()=>Promise.reject(Error('must not close'))};
+ await assert.rejects(assertInitialProductionIdentityReady(pool,event=>{if(mode==='sink-failure')throw Error('DO_NOT_LOG');events.push(event);}));
+ assert.equal(released,1);
+ if(mode!=='sink-failure'){
+  assert.equal(Reflect.get(events[0] as object,'code'),mode==='missing'?'MISSING':mode==='mismatch'?'MISMATCH':'UNRESOLVED');
+  assert.equal(Reflect.get(events.at(-1) as object,'stage'),'IDENTITY_EXTENSION_INVENTORY');
+  assert.doesNotMatch(JSON.stringify(events),/DO_NOT_LOG|SELECT |password|postgresql:\/\//u);
+ }
+});
