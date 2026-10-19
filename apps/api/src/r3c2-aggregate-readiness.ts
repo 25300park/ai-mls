@@ -1,3 +1,4 @@
+import type { ChildRootObserver } from './child-root-diagnostics.js';
 import { assertR3C2CCatalogCompatibility } from "./r3c2c-catalog-compatibility.js";
 import { withAdvisoryCatalogCompatibility } from "./advisory-catalog-compatibility.js";
 import { assertR3C2BIdentityCatalogCompatibility } from "./r3c2b-identity-catalog-compatibility.js";
@@ -181,7 +182,7 @@ export function normalizeIdentityConstraintCatalog<R extends Record<string,unkno
 export const R3C2_ADMINISTRATION_SCHEMA_OVERLAY={tableCount:10,columnsHash:"1eb33dcc20c8b692372b6e2d1da8b878",constraintsHash:"8cf02a2621c0025cd9da20aa8067a6a0",indexesHash:"5141be628669fe760ab3bef0aaffd21f",runtimeAclHash:"fdbcb05ab9c63d6343a1031f9031d175",triggerHash:"8ed1639b6ba4ddfc9a5659d7883703bc",functionHash:"8c99d747ddbc1c55f45c51afe08ad382",effectiveAclHash:"5440826e79d6d01961f000d3a5cba88b"} as const;
 export type FullR3C2Child = 'RUNTIME_ACCESS' | 'PUBLICATION' | 'ADMINISTRATION' | 'CONNECTOR' | 'EXTERNAL_INTEGRATION' | 'ADVISORY' | 'IDENTITY_BASE_PROVENANCE' | 'R3C1_R3C2B_TRANSACTION' | 'R3C1' | 'R3C2B' | 'R3C2C';
 export interface FullR3C2ChildDiagnostic { readonly child: FullR3C2Child; readonly result: 'PASS' | 'FAIL' }
-export async function assertR3C2AggregateSchemasReady(pool:PostgreSqlPoolPort,observer?:(event:FullR3C2ChildDiagnostic)=>void):Promise<void>{
+export async function assertR3C2AggregateSchemasReady(pool:PostgreSqlPoolPort,observer?:(event:FullR3C2ChildDiagnostic)=>void,rootObserver?:ChildRootObserver):Promise<void>{
  const report=(child:FullR3C2Child,result:'PASS'|'FAIL'):void=>{try{observer?.(Object.freeze({child,result}));}catch{/* observation has no authority */}};
  const trace=async(child:FullR3C2Child,operation:()=>Promise<unknown>):Promise<void>=>{try{await operation();report(child,'PASS');}catch(error){report(child,'FAIL');throw error;}};
  pool=withAdvisoryCatalogCompatibility(pool);
@@ -190,7 +191,7 @@ export async function assertR3C2AggregateSchemasReady(pool:PostgreSqlPoolPort,ob
  pool=withAdministrationCatalogCompatibility(pool);
  await trace('RUNTIME_ACCESS',()=>operate(pool,newLeaseState(),false,()=>Promise.resolve()));
  const contracts=R3B1_CHILD_ROOT_SCHEMA_CONTRACTS.map(c=>c.schemaName==="app_administration"?{...c,...R3C2_ADMINISTRATION_SCHEMA_OVERLAY}:c);
- const evidence=await evaluateContracts(withPublicationCatalogCompatibility(pool),contracts);
+ const evidence=await evaluateContracts(withPublicationCatalogCompatibility(pool),contracts,rootObserver);
  const names:Readonly<Record<string,FullR3C2Child>>={app_publication:'PUBLICATION',app_administration:'ADMINISTRATION',app_connector:'CONNECTOR',app_external_integration:'EXTERNAL_INTEGRATION',app_advisory:'ADVISORY'};
  for(const child of evidence.children){const name=names[child.schemaName];if(name)report(name,child.status);}
  if(evidence.status!=="READY")throw new GovernancePersistenceError("UNAVAILABLE");

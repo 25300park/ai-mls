@@ -1,3 +1,5 @@
+import { CHILD_ROOT_NAMES, childRootFailureDetail, reportChildRoot, rootRequirement } from './child-root-diagnostics.js';
+import type { ChildRootObserver } from './child-root-diagnostics.js';
 import type { PostgreSqlPoolPort } from "../../../modules/identity/src/index.js";
 
 export interface R3B1ChildRootSchemaContract {
@@ -135,24 +137,36 @@ async function assertContractsReady(pool: PostgreSqlPoolPort, contracts: readonl
   if (evidence.status !== "READY") throw new ChildRootSchemaReadinessError(evidence);
 }
 
-export async function evaluateContracts(pool: PostgreSqlPoolPort, contracts: readonly R3B1ChildRootSchemaContract[]): Promise<ChildRootSchemaReadinessEvidence> {
+export async function evaluateContracts(pool: PostgreSqlPoolPort, contracts: readonly R3B1ChildRootSchemaContract[], observer?: ChildRootObserver): Promise<ChildRootSchemaReadinessEvidence> {
   let client: Awaited<ReturnType<PostgreSqlPoolPort["connect"]>> | undefined;
   let evidence: ChildRootSchemaReadinessEvidence;
   try {
     client = await pool.connect();
     const result = await client.query<ReadinessRow>(READINESS_QUERY);
+    for(const contract of contracts){const root=CHILD_ROOT_NAMES[contract.schemaName];if(root)reportChildRoot(observer,root,'QUERY_EXECUTION','PASS');}
     const malformed = result.rowCount !== result.rows.length || result.rowCount < contracts.length
       || (contracts.length === R3B1_CHILD_ROOT_SCHEMA_CONTRACTS.length && result.rowCount !== contracts.length);
     evidence = summarize(contracts.map(contract => {
       const rows = result.rows.filter(row => row.schema_name === contract.schemaName);
       const row = rows[0];
       const failed = malformed || rows.length !== 1 || schemaMismatch(row, contract);
+      const root=CHILD_ROOT_NAMES[contract.schemaName];
+      if(root){reportChildRoot(observer,root,'ROOT_CARDINALITY',malformed||rows.length!==1?'FAIL':'PASS');
+       if(!malformed&&rows.length===1&&row&&observer){
+        const expected:Readonly<Record<string,unknown>>={artifact_sha256:contract.artifactSha256,table_count:contract.tableCount,schema_comment:contract.schemaComment,columns_hash:contract.columnsHash,constraints_hash:contract.constraintsHash,indexes_hash:contract.indexesHash,runtime_acl_hash:contract.runtimeAclHash,trigger_hash:contract.triggerHash,function_hash:contract.functionHash,effective_acl_hash:contract.effectiveAclHash};
+        for(const [key,value] of Object.entries(expected))reportChildRoot(observer,root,rootRequirement(key),row[key]===value?'PASS':'FAIL');
+        const authority={...row,...expected};reportChildRoot(observer,root,'AUTHORITY_CONTRACT',schemaMismatch(authority,contract)?'FAIL':'PASS');
+       }
+      }
       return Object.freeze({ schemaName: contract.schemaName, status: failed ? "FAIL" as const : "PASS" as const, reason: failed ? "SCHEMA_CONTRACT_MISMATCH" as const : null });
     }));
-  } catch {
+   } catch(error) {
+    const detail=childRootFailureDetail(error);
+    if(detail)reportChildRoot(observer,detail.root,detail.requirement,'FAIL');
+    else for(const contract of contracts){const root=CHILD_ROOT_NAMES[contract.schemaName];if(root)reportChildRoot(observer,root,'QUERY_EXECUTION','FAIL',error);}
     evidence = unavailableEvidence(contracts);
   }
-  try { client?.release(); } catch { evidence = unavailableEvidence(contracts); }
+  try { client?.release(); } catch { for(const contract of contracts){const root=CHILD_ROOT_NAMES[contract.schemaName];if(root)reportChildRoot(observer,root,'CONNECTION_RELEASE','FAIL');} evidence = unavailableEvidence(contracts); }
   return evidence;
 }
 

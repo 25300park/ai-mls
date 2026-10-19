@@ -33,5 +33,12 @@ test("historical child-root query/constant and forward composition boundary unch
  assert.equal(contract.constraintsHash,"6ba8469f5859fb9e951e6f09872823d0");
  assert.doesNotMatch(READINESS_QUERY,/c.contype <> 'n'/);
  const source=await readFile("apps/api/src/r3c2-aggregate-readiness.ts","utf8");
- assert.match(source,/evaluateContracts\(withPublicationCatalogCompatibility\(pool\),contracts\)/);
+ assert.match(source,/evaluateContracts\(withPublicationCatalogCompatibility\(pool\),contracts,rootObserver\)/);
+});
+
+test('Publication exact rejection exposes only bounded requirement metadata',async()=>{
+ const {childRootFailureDetail}=await import('./child-root-diagnostics.js');
+ for(const [key,requirement] of [['columns_hash','COLUMNS'],['runtime_usage','AUTHORITY_CONTRACT'],['artifact_sha256','ARTIFACT_BINDING'],['constraints_hash','CONSTRAINTS'],['publication_inventory','INVENTORY']] as const){
+  try{publicationCompatibleRow({...canonical(),[key]:'PRIVATE_VALUE'});assert.fail('must reject');}catch(error){assert.deepEqual(childRootFailureDetail(error),{root:'PUBLICATION',requirement});}
+ }
 });

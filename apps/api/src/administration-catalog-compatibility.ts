@@ -1,3 +1,4 @@
+import { childRootFailure, rootRequirement } from './child-root-diagnostics.js';
 import { READINESS_QUERY, R3B1_CHILD_ROOT_SCHEMA_CONTRACTS } from "./child-root-postgresql-readiness.js";
 import type { PostgreSqlPoolPort, PostgreSqlClientPort, PostgreSqlQueryResult } from "../../../modules/identity/src/postgresql-pool.js";
 import { PUBLICATION_COMPATIBILITY_QUERY } from "./publication-catalog-compatibility.js";
@@ -14,18 +15,19 @@ export const ADMINISTRATION_PUBLICATION_COMPATIBILITY_QUERY=capture(PUBLICATION_
 const hashes={columns_hash:administration.columnsHash,indexes_hash:administration.indexesHash,runtime_acl_hash:administration.runtimeAclHash,trigger_hash:administration.triggerHash,function_hash:administration.functionHash,effective_acl_hash:administration.effectiveAclHash};
 export function administrationCompatibleRow(row:Record<string,unknown>):Record<string,unknown>{
  const version=row["server_version_num"];
- if(typeof version!=="string"|| !/^\d{6}$/.test(version))throw new Error("ADMINISTRATION_CATALOG_UNAVAILABLE");
+ if(typeof version!=="string"|| !/^\d{6}$/.test(version))throw childRootFailure('ADMINISTRATION','SERVER_VERSION');
  const major=Math.floor(Number(version)/10000);
- if(major!==17&&major!==18)throw new Error("ADMINISTRATION_CATALOG_UNAVAILABLE");
- if(row["schema_name"]!=="app_administration")throw new Error("ADMINISTRATION_CATALOG_UNAVAILABLE");
+ if(major!==17&&major!==18)throw childRootFailure('ADMINISTRATION','SERVER_VERSION');
+ if(row["schema_name"]!=="app_administration")throw childRootFailure('ADMINISTRATION','ROOT_CARDINALITY');
  const inventory=row["administration_inventory"];
- if(!Array.isArray(inventory)||inventory.length!==10||inventory.some((name,i)=>name!==ADMINISTRATION_TABLES[i]))throw new Error("ADMINISTRATION_CATALOG_UNAVAILABLE");
+ if(!Array.isArray(inventory)||inventory.length!==10||inventory.some((name,i)=>name!==ADMINISTRATION_TABLES[i]))throw childRootFailure('ADMINISTRATION','INVENTORY');
  // This semantic constraints component is never sufficient on its own.
  // Nullable state, all six remaining components, artifact and every existing authority gate stay exact.
  const exact:Record<string,unknown>={...hashes,artifact_sha256:administration.artifactSha256,table_count:10,schema_comment:administration.schemaComment,owner_name:"ai_mls_production_migration_operator",runtime_usage:true,runtime_create:false,unexpected_role_membership:false};
  for(const key of ["public_acl_count","runtime_grant_option_count","table_owner_violation_count","function_owner_violation_count","table_acl_violation_count","unexpected_runtime_membership_count","public_schema_acl_count","schema_grant_option_count","function_acl_violation_count","sequence_count"])exact[key]=0;
- if(Object.entries(exact).some(([key,value])=>row[key]!==value))throw new Error("ADMINISTRATION_CATALOG_UNAVAILABLE");
- if(row["constraints_hash"]!==(major===17?"deca8e7e11e48e84be3e2155bf3e9c3b":administration.constraintsHash))throw new Error("ADMINISTRATION_CATALOG_UNAVAILABLE");
+ const mismatch=Object.entries(exact).find(([key,value])=>row[key]!==value);
+ if(mismatch)throw childRootFailure('ADMINISTRATION',rootRequirement(mismatch[0]));
+ if(row["constraints_hash"]!==(major===17?"deca8e7e11e48e84be3e2155bf3e9c3b":administration.constraintsHash))throw childRootFailure('ADMINISTRATION','CONSTRAINTS');
  return major===17?{...row,constraints_hash:administration.constraintsHash}:row;
 }
 /** Only the forward R3C2 composition uses this adapter; historical consumers stay exact. */
@@ -34,7 +36,7 @@ export function withAdministrationCatalogCompatibility(pool:PostgreSqlPoolPort):
   query:async<R extends Record<string,unknown>>(sql:string,values?:readonly unknown[]):Promise<PostgreSqlQueryResult<R>>=>{
    if(sql!==READINESS_QUERY&&sql!==PUBLICATION_COMPATIBILITY_QUERY)return client.query<R>(sql,values);
    const result=await client.query<R>(sql===READINESS_QUERY?ADMINISTRATION_COMPATIBILITY_QUERY:ADMINISTRATION_PUBLICATION_COMPATIBILITY_QUERY,values);
-   if(result.rowCount!==5||result.rows.length!==5||new Set(result.rows.map(r=>r["schema_name"])).size!==5||result.rows.filter(r=>r["schema_name"]==="app_administration").length!==1)throw new Error("ADMINISTRATION_CATALOG_UNAVAILABLE");
+   if(result.rowCount!==5||result.rows.length!==5||new Set(result.rows.map(r=>r["schema_name"])).size!==5||result.rows.filter(r=>r["schema_name"]==="app_administration").length!==1)throw childRootFailure('ADMINISTRATION','ROOT_CARDINALITY');
    return {...result,rows:result.rows.map(row=>row["schema_name"]==="app_administration"?administrationCompatibleRow(row) as R:row)};
   },release:():void=>client.release()
  };}};

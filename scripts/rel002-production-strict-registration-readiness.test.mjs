@@ -37,3 +37,13 @@ test('Full R3C2 child output is bounded and cannot reflect injected data',async(
  assert.equal(closed,2);assert.deepEqual(lines.filter(x=>x.startsWith('FULL_R3C2_CHILD=')),['FULL_R3C2_CHILD=PUBLICATION','FULL_R3C2_CHILD=ADMINISTRATION']);
  assert.ok(lines.includes('RESULT=PASS'));assert.ok(lines.includes('RESULT=FAIL'));assert.doesNotMatch(lines.join('\n'),/SECRET/u);
 });
+
+test('root requirement diagnostics allow only safe enums and SQLSTATE; query hash cannot be injected',async()=>{
+ const lines=[];let closed=0;const pool=()=>({close:async()=>{closed++;}});
+ await runReadiness(environment(),line=>lines.push(line),{createDependencies:()=>({createRuntimePool:pool,createRegistrationPool:pool}),validate:async(_r,_g,_id,trace)=>{
+ trace({subgate:'FULL_R3C2',result:'FAIL',rootDetail:{root:'PUBLICATION',requirement:'QUERY_EXECUTION',result:'FAIL',sqlstate:'42501',querySha256:'SECRET'}});
+ trace({subgate:'FULL_R3C2',result:'FAIL',rootDetail:{root:'ADVISORY',requirement:'CONSTRAINTS',result:'FAIL',sqlstate:'SECRET'}});
+ trace({subgate:'FULL_R3C2',result:'FAIL',rootDetail:{root:'SECRET',requirement:'QUERY_EXECUTION',result:'FAIL'}});
+ throw Error('SECRET');}});
+ assert.equal(closed,2);assert.ok(lines.includes('FULL_R3C2_ROOT=PUBLICATION'));assert.ok(lines.includes('ROOT_REQUIREMENT=QUERY_EXECUTION'));assert.ok(lines.includes('SQLSTATE=42501'));assert.ok(lines.includes('SQLSTATE=null'));assert.ok(lines.includes('QUERY_SHA256=null'));assert.doesNotMatch(lines.join('\n'),/SECRET/u);
+});
