@@ -87,6 +87,20 @@ function configuration(): ProductionRuntimeConfiguration {
   });
 }
 
+test("initial authority/schema failure diagnostics distinguish gates without exposing raw errors", async context => {
+ const lines:string[]=[];
+ context.mock.method(process.stderr,'write',(chunk:unknown):boolean=>{lines.push(String(chunk));return true;});
+ for(const [failure,stage] of [['identity-open','INITIAL_IDENTITY_AUTHORITY_OPEN'],['identity-schema-ready','INITIAL_IDENTITY_READINESS']]) {
+  lines.length=0;const f=harness(failure);
+  await assert.rejects(executeProductionBootstrap({},f.dependencies));
+  const diagnostics=lines.filter(line=>line.includes('PRODUCTION_RUNTIME_DATABASE_DIAGNOSTIC')).map(line=>JSON.parse(line) as Record<string,unknown>);
+  assert.equal(diagnostics.length,1);assert.equal(diagnostics[0]?.['stage'],stage);assert.equal(diagnostics[0]?.['code'],'READINESS_UNAVAILABLE');
+  assert.doesNotMatch(lines.join(''),/private|SELECT secret/u);
+  assert.equal(f.events.filter(event=>event==='pool-close').length,1);
+  assert.ok(!f.events.includes('listeners-start'));
+ }
+});
+
 function harness(failAt?: string): Readonly<{ events: string[]; dependencies: ProductionBootstrapEngineDependencies }> {
   const events: string[] = [];
   const step = <T>(name: string, value: T): T => {

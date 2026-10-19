@@ -1,4 +1,5 @@
 import { ChildRootSchemaReadinessError } from "./child-root-postgresql-readiness.js";
+import { emitRuntimeDatabaseDiagnostic, safeRuntimeDatabaseFailure } from "./production-runtime-pool.js";
 import { issueProductionBootstrapContext } from "../../../packages/security-contracts/src/production-bootstrap-proof.js";
 import {
   ProductionBootstrapError,
@@ -90,9 +91,21 @@ export async function executeProductionBootstrap(rawConfiguration: unknown, depe
       try { await pool.close(); observation.poolClosed(); }
       catch (error) { observation.poolCloseFailed(); throw error; }
     });
-    const authority = await dependencies.openIdentityAuthorityReadOnly(pool);
+    const authority = await (async (): Promise<AsyncRegisteredServiceWorkloadAuthorityLease> => {
+      try { return await dependencies.openIdentityAuthorityReadOnly(pool); }
+      catch (error) {
+        emitRuntimeDatabaseDiagnostic(safeRuntimeDatabaseFailure("INITIAL_IDENTITY_AUTHORITY_OPEN", error));
+        throw error;
+      }
+    })();
     cleanup.push(() => authority.close());
-    const identitySchemaReadinessProvenance = await authority.assertSchemaReady();
+    const identitySchemaReadinessProvenance = await (async (): ReturnType<AsyncRegisteredServiceWorkloadAuthorityLease["assertSchemaReady"]> => {
+      try { return await authority.assertSchemaReady(); }
+      catch (error) {
+        emitRuntimeDatabaseDiagnostic(safeRuntimeDatabaseFailure("INITIAL_IDENTITY_READINESS", error));
+        throw error;
+      }
+    })();
     observation.identityReadVerified();
     failureContext = "PRE_LISTENER_NOT_READY";
     const chain = await executeProductionPreListenerStartupChain(configuration, authority, { ...dependencies, observability: observation });

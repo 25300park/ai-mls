@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { rootCertificates } from "node:tls";
 import { createProductionRuntimePool } from "./production-runtime-pool.js";
+import type { RuntimeDatabaseDiagnostic } from "./production-runtime-pool.js";
 import { createRuntimeArtifactStartupOptions } from "./runtime-artifact-startup-bindings.js";
 import { parseRailwayProductionRuntimeConfiguration } from "./production-runtime-configuration.js";
 import { R3B1_CHILD_ROOT_SCHEMA_CONTRACTS } from "./child-root-postgresql-readiness.js";
@@ -98,4 +99,28 @@ test("Production and readiness use one constructor; registration construction re
  assert.match(runner,/createRegistrationPool:\(\)=>new PgConnectionPoolAdapter\(registrationOptions\)/u);
  assert.match(helper,/createRegistrationRunnerDependencies/u);
  assert.doesNotMatch(helper,/createRuntimeArtifactStartupOptions|new Pool\(/u);
+});
+
+test("physical connection errors retain only safe code before the generic adapter masks them", async () => {
+ const events:RuntimeDatabaseDiagnostic[]=[];
+ const pool=createProductionRuntimePool(parseRailwayProductionRuntimeConfiguration(environment()),secrets,()=>({connect:()=>Promise.reject(Object.assign(Error('DO_NOT_LOG_PASSWORD'),{code:'28P01',detail:'DO_NOT_LOG_URI'})),end:()=>Promise.resolve()}),event=>events.push(event));
+ await assert.rejects(pool.connect());await pool.close();
+ assert.equal(events.length,1);assert.equal(events[0]?.stage,'PHYSICAL_CONNECTION');assert.equal(events[0]?.sqlstate,'28P01');
+ assert.doesNotMatch(JSON.stringify(events),/DO_NOT_LOG/u);
+});
+
+test("query failure diagnostics preserve first SQLSTATE and hash, without SQL, values or rollback replacement", async () => {
+ const events:RuntimeDatabaseDiagnostic[]=[];
+ const pool=createProductionRuntimePool(parseRailwayProductionRuntimeConfiguration(environment()),secrets,()=>({connect:()=>Promise.resolve({query:()=>Promise.reject(Object.assign(Error('DO_NOT_LOG_SQL'),{code:'42501'})),release:()=>undefined}),end:()=>Promise.resolve()}),event=>events.push(event));
+ const client=await pool.connect();
+ await assert.rejects(client.query('SELECT DO_NOT_LOG_SQL', ['DO_NOT_LOG_PARAMETERS']));
+ await assert.rejects(client.query('ROLLBACK'));
+ client.release();await pool.close();
+ const failures=events.filter(e=>e.status==='FAIL');assert.equal(failures.length,1);assert.equal(failures[0]?.sqlstate,'42501');assert.match(failures[0]?.querySha256??'',/^[0-9a-f]{64}$/u);
+ assert.doesNotMatch(JSON.stringify(events),/DO_NOT_LOG|ROLLBACK/u);
+});
+
+test("a failed diagnostic sink does not change successful pool/query behavior",async()=>{
+ const pool=createProductionRuntimePool(parseRailwayProductionRuntimeConfiguration(environment()),secrets,()=>({connect:()=>Promise.resolve({query:()=>Promise.resolve({rows:[],rowCount:0}),release:()=>undefined}),end:()=>Promise.resolve()}),()=>{throw Error('sink unavailable');});
+ const client=await pool.connect();assert.equal((await client.query('SELECT 1')).rowCount,0);client.release();await pool.close();
 });
