@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { PostgreSqlPoolPort, PostgreSqlQueryResult } from "../../../modules/identity/src/postgresql-pool.js";
 import { R3B1_CHILD_ROOT_SCHEMA_CONTRACTS } from "./child-root-postgresql-readiness.js";
-import { assertR3C2IdentityBaseReady, type IdentityBaseDiagnosticStage } from "./r3c2-aggregate-readiness.js";
+import { assertR3C2IdentityBaseReady, type IdentityTeamRequirement, type IdentityBaseDiagnosticStage } from "./r3c2-aggregate-readiness.js";
 import { classifyPhysicalConnectionFailure } from "./production-connection-diagnostics.js";
 
 interface InitialIdentityDiagnostic {
@@ -9,6 +9,8 @@ interface InitialIdentityDiagnostic {
  readonly stage: IdentityBaseDiagnosticStage | 'ARTIFACT_BINDING';
  readonly code: 'PRESENT_MATCH' | 'MISSING' | 'MISMATCH' | 'UNRESOLVED' | 'READY' | 'READINESS_UNAVAILABLE';
  readonly artifactKey?: string;
+ readonly requirement?: IdentityTeamRequirement;
+ readonly result?: 'PASS' | 'FAIL';
  readonly sqlstate: string | null;
  readonly querySha256: string | null;
 }
@@ -29,6 +31,6 @@ export async function assertInitialProductionIdentityReady(pool: PostgreSqlPoolP
    try{return await client.query<R>(sql,values);}catch(error){if(sql!=='ROLLBACK')sqlstate=classifyPhysicalConnectionFailure(error).sqlstate;throw error;}
   }};
  }};
- try{const provenance=await assertR3C2IdentityBaseReady(diagnosticPool,value=>{stage=value;querySha256=null;});report({event:'PRODUCTION_INITIAL_IDENTITY_DIAGNOSTIC',stage,code:'READY',sqlstate:null,querySha256:null});return provenance;}
+ try{const provenance=await assertR3C2IdentityBaseReady(diagnosticPool,(value,requirement,result)=>{stage=value;if(requirement===undefined){querySha256=null;}else{report({event:'PRODUCTION_INITIAL_IDENTITY_DIAGNOSTIC',stage,code:result===true?'READY':'READINESS_UNAVAILABLE',requirement,result:result===true?'PASS':'FAIL',sqlstate:null,querySha256});}});report({event:'PRODUCTION_INITIAL_IDENTITY_DIAGNOSTIC',stage,code:'READY',sqlstate:null,querySha256:null});return provenance;}
  catch(error){report({event:'PRODUCTION_INITIAL_IDENTITY_DIAGNOSTIC',stage,code:'READINESS_UNAVAILABLE',sqlstate,querySha256});throw error;}
 }

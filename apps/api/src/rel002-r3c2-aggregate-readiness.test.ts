@@ -70,3 +70,22 @@ for(const mode of ['missing','mismatch','unavailable','sink-failure'] as const)t
   assert.doesNotMatch(JSON.stringify(events),/DO_NOT_LOG|SELECT |password|postgresql:\/\//u);
  }
 });
+
+ test('team requirement diagnostic reports cardinality fingerprint and authority independently',async()=>{
+ const {assertInitialProductionIdentityReady}=await import('./production-initial-identity-diagnostics.js');
+ for(const mode of ['missing','fingerprint','authority'] as const){
+  const events:unknown[]=[];
+  const pool:PostgreSqlPoolPort={connect:()=>Promise.resolve({query:async<R extends Record<string,unknown>>(sql:string)=>{
+   await Promise.resolve();let rows:Record<string,unknown>[]=[];
+   if(sql.startsWith('SELECT relname'))rows=[{table_name:'workload_startup_binding_versions',kind:'r'}];
+   else if(sql.includes('AS fingerprint')&&sql.includes('workload_startup_binding_versions'))rows=mode==='missing'?[]:[{schema_name:'app_identity',table_name:'workload_startup_binding_versions',fingerprint:mode==='fingerprint'?'DO_NOT_LOG_FINGERPRINT':'474c1456def4862e43167f2777a94c23',authority_ok:mode!=='authority'}];
+   return {rows:rows as R[],rowCount:rows.length};
+  },release:()=>undefined}),close:()=>Promise.resolve()};
+  await assert.rejects(assertInitialProductionIdentityReady(pool,e=>events.push(e)));
+  const checks=events.filter(e=>Reflect.get(e as object,'requirement')!==undefined);
+  assert.equal(checks.length,3);
+  const expected=mode==='missing'?'ROOT_CARDINALITY':mode==='fingerprint'?'FINGERPRINT_CONTRACT':'AUTHORITY_CONTRACT';
+  assert.equal(checks.some(e=>Reflect.get(e as object,'requirement')===expected&&Reflect.get(e as object,'result')==='FAIL'),true);
+  assert.doesNotMatch(JSON.stringify(events),/DO_NOT_LOG|474c1456|be3dbce8/u);
+ }
+ });

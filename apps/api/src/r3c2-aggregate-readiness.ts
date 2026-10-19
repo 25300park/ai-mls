@@ -107,7 +107,9 @@ export function normalizeIdentityExtensionCatalogQuery(query: string): string {
 }
 
 export type IdentityBaseDiagnosticStage = 'IDENTITY_EXTENSION_INVENTORY' | 'IDENTITY_TEAM_CONTRACT' | 'IDENTITY_EVIDENCE_CONTRACT' | 'IDENTITY_HUMAN_CONTRACT' | 'IDENTITY_SESSION_CONTRACT' | 'IDENTITY_FUNCTION_INVENTORY' | 'IDENTITY_BASE_SCHEMA_PROVENANCE';
-async function validateIdentityExtensions(client: PostgreSqlClientPort, observe: (stage: IdentityBaseDiagnosticStage) => void): Promise<void> {
+export type IdentityTeamRequirement = 'ROOT_CARDINALITY' | 'FINGERPRINT_CONTRACT' | 'AUTHORITY_CONTRACT';
+export type IdentityBaseDiagnosticObserver = (stage: IdentityBaseDiagnosticStage, requirement?: IdentityTeamRequirement, result?: boolean) => void;
+async function validateIdentityExtensions(client: PostgreSqlClientPort, observe: IdentityBaseDiagnosticObserver): Promise<void> {
  observe('IDENTITY_EXTENSION_INVENTORY');
  const tables=await client.query("SELECT relname AS table_name, relkind AS kind FROM pg_catalog.pg_class WHERE relnamespace='app_identity'::regnamespace AND relkind IN ('r','p','v','m','f','S')");
  const present=new Set(tables.rows.map(r=>String(r['table_name'])));
@@ -121,6 +123,11 @@ async function validateIdentityExtensions(client: PostgreSqlClientPort, observe:
    return pair && row['fingerprint']===pair[0]?{...row,fingerprint:pair[1]}:row;
   });
   for(const contract of contracts){const rows=projected.filter(r=>r['schema_name']===contract.schemaName && r['table_name']===contract.tableName);
+   if(query===R3C2C_TEAM_CATALOG_QUERY){
+    observe('IDENTITY_TEAM_CONTRACT','ROOT_CARDINALITY',rows.length===1);
+    observe('IDENTITY_TEAM_CONTRACT','FINGERPRINT_CONTRACT',rows.length===1&&rows[0]?.['fingerprint']===contract.fingerprint);
+    observe('IDENTITY_TEAM_CONTRACT','AUTHORITY_CONTRACT',rows.length===1&&rows[0]?.['authority_ok']===true);
+   }
    if(rows.length!==1 || rows[0]?.['fingerprint']!==contract.fingerprint || rows[0]?.['authority_ok']!==true)throw new GovernancePersistenceError('UNAVAILABLE');}
  };
  if(present.has('workload_startup_binding_versions'))await check(R3C2C_TEAM_CATALOG_QUERY,R3C2C_TEAM_CONTRACTS.filter(c=>c.schemaName==='app_identity'));
@@ -144,8 +151,8 @@ async function validateIdentityExtensions(client: PostgreSqlClientPort, observe:
  if(inventory.rows.length!==functions.size || inventory.rows.some(r=>!functions.has(String(r['name']))) || new Set(inventory.rows.map(r=>r['name'])).size!==functions.size)throw new GovernancePersistenceError('UNAVAILABLE');
 }
 
-export async function assertR3C2IdentityBaseReady(pool:PostgreSqlPoolPort, observer?: (stage: IdentityBaseDiagnosticStage) => void):Promise<NonNullable<Awaited<ReturnType<typeof inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence>>['provenance']>>{
- const observe=(stage:IdentityBaseDiagnosticStage):void=>{try{observer?.(stage);}catch{/* diagnostic observer has no authority */}};
+export async function assertR3C2IdentityBaseReady(pool:PostgreSqlPoolPort, observer?: IdentityBaseDiagnosticObserver):Promise<NonNullable<Awaited<ReturnType<typeof inspectPostgreSqlRegisteredServiceWorkloadSchemaEvidence>>['provenance']>>{
+ const observe:IdentityBaseDiagnosticObserver=(stage,requirement,result):void=>{try{observer?.(stage,requirement,result);}catch{/* diagnostic observer has no authority */}};
  const projection:PostgreSqlPoolPort={connect:async()=>{const client=await pool.connect();let extensionsValidated=false;return {
   query:async<R extends Record<string,unknown>>(sql:string,values?:readonly unknown[]):Promise<PostgreSqlQueryResult<R>>=>{
    if(!extensionsValidated && sql.startsWith('SELECT EXISTS')){await validateIdentityExtensions(client,observe);extensionsValidated=true;observe('IDENTITY_BASE_SCHEMA_PROVENANCE');}
