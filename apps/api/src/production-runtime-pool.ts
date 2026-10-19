@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { PgConnectionPoolAdapter, type PgPoolFactory, type PostgreSqlPoolPort, type PostgreSqlClientPort, type PostgreSqlQueryResult } from "../../../modules/identity/src/postgresql-pool.js";
 import { createProductionPostgreSqlPoolOptions, type RailwayProductionRuntimeConfiguration, type ResolvedProductionDatabaseSecrets } from "./production-runtime-configuration.js";
 import { createRuntimeArtifactStartupOptions } from "./runtime-artifact-startup-bindings.js";
-import { classifyPhysicalConnectionFailure, type SafeTransportCode } from "./production-connection-diagnostics.js";
+import { classifyPhysicalConnectionFailure, diagnoseProductionDatabaseDnsFamilies, type FamilyLookup, type SafeTransportCode } from "./production-connection-diagnostics.js";
 
 type DatabaseDiagnosticStage = "PHYSICAL_CONNECTION" | "READINESS_QUERY" | "INITIAL_IDENTITY_AUTHORITY_OPEN" | "INITIAL_IDENTITY_READINESS";
 export interface RuntimeDatabaseDiagnostic {
@@ -14,6 +14,8 @@ export interface RuntimeDatabaseDiagnostic {
   readonly sqlstate: string | null;
   readonly querySha256: string | null;
   readonly transportCode?: SafeTransportCode;
+  readonly dnsIPv4Available?: boolean | null;
+  readonly dnsIPv6Available?: boolean | null;
 }
 export function safeRuntimeDatabaseFailure(stage: DatabaseDiagnosticStage, error: unknown, query?: string): RuntimeDatabaseDiagnostic {
   let code: unknown;
@@ -51,6 +53,7 @@ export function createProductionRuntimePool(
   secrets: ResolvedProductionDatabaseSecrets,
   factory: PgPoolFactory = physicalFactory,
   diagnosticSink: (diagnostic: RuntimeDatabaseDiagnostic) => void = emitRuntimeDatabaseDiagnostic,
+  dnsLookup?: FamilyLookup,
 ): PostgreSqlPoolPort {
   const target = configuration.identityDatabase;
   if (target.host !== "db.mfonujjeokvpsfucfxuq.supabase.co" || target.port !== 5432 || target.name !== "postgres" || target.user !== "ai_mls_production_runtime") throw new Error("Production runtime pool is unavailable.");
@@ -71,7 +74,15 @@ export function createProductionRuntimePool(
       connect: async (): Promise<PostgreSqlClientPort> => {
         let client: PostgreSqlClientPort;
         try { client = await physical.connect(); }
-        catch (error) { reportFailure("PHYSICAL_CONNECTION", error); throw error; }
+        catch (error) {
+          if (!failed) {
+            failed = true;
+            const diagnostic = safeRuntimeDatabaseFailure("PHYSICAL_CONNECTION", error);
+            const dns = await diagnoseProductionDatabaseDnsFamilies(dnsLookup);
+            report(Object.freeze({ ...diagnostic, ...dns }));
+          }
+          throw error;
+        }
         if (!connected) { connected = true; report(Object.freeze({ event: "PRODUCTION_RUNTIME_DATABASE_DIAGNOSTIC", stage: "PHYSICAL_CONNECTION", status: "PASS", code: "CONNECTION_ESTABLISHED", sqlstate: null, querySha256: null })); }
         return {
           query: async <Row extends Record<string, unknown>>(text: string, values?: readonly unknown[]): Promise<PostgreSqlQueryResult<Row>> => {

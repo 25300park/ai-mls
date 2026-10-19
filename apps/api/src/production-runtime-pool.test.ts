@@ -103,7 +103,7 @@ test("Production and readiness use one constructor; registration construction re
 
 test("physical connection errors retain only safe code before the generic adapter masks them", async () => {
  const events:RuntimeDatabaseDiagnostic[]=[];
- const pool=createProductionRuntimePool(parseRailwayProductionRuntimeConfiguration(environment()),secrets,()=>({connect:()=>Promise.reject(Object.assign(Error('DO_NOT_LOG_PASSWORD'),{code:'28P01',detail:'DO_NOT_LOG_URI'})),end:()=>Promise.resolve()}),event=>events.push(event));
+ const pool=createProductionRuntimePool(parseRailwayProductionRuntimeConfiguration(environment()),secrets,()=>({connect:()=>Promise.reject(Object.assign(Error('DO_NOT_LOG_PASSWORD'),{code:'28P01',detail:'DO_NOT_LOG_URI'})),end:()=>Promise.resolve()}),event=>events.push(event),()=>Promise.resolve([]));
  await assert.rejects(pool.connect());await pool.close();
  assert.equal(events.length,1);assert.equal(events[0]?.stage,'PHYSICAL_CONNECTION');assert.equal(events[0]?.sqlstate,'28P01');
  assert.doesNotMatch(JSON.stringify(events),/DO_NOT_LOG/u);
@@ -111,7 +111,7 @@ test("physical connection errors retain only safe code before the generic adapte
 
 test("query failure diagnostics preserve first SQLSTATE and hash, without SQL, values or rollback replacement", async () => {
  const events:RuntimeDatabaseDiagnostic[]=[];
- const pool=createProductionRuntimePool(parseRailwayProductionRuntimeConfiguration(environment()),secrets,()=>({connect:()=>Promise.resolve({query:()=>Promise.reject(Object.assign(Error('DO_NOT_LOG_SQL'),{code:'42501'})),release:()=>undefined}),end:()=>Promise.resolve()}),event=>events.push(event));
+ const pool=createProductionRuntimePool(parseRailwayProductionRuntimeConfiguration(environment()),secrets,()=>({connect:()=>Promise.resolve({query:()=>Promise.reject(Object.assign(Error('DO_NOT_LOG_SQL'),{code:'42501'})),release:()=>undefined}),end:()=>Promise.resolve()}),event=>events.push(event),()=>Promise.resolve([]));
  const client=await pool.connect();
  await assert.rejects(client.query('SELECT DO_NOT_LOG_SQL', ['DO_NOT_LOG_PARAMETERS']));
  await assert.rejects(client.query('ROLLBACK'));
@@ -123,4 +123,20 @@ test("query failure diagnostics preserve first SQLSTATE and hash, without SQL, v
 test("a failed diagnostic sink does not change successful pool/query behavior",async()=>{
  const pool=createProductionRuntimePool(parseRailwayProductionRuntimeConfiguration(environment()),secrets,()=>({connect:()=>Promise.resolve({query:()=>Promise.resolve({rows:[],rowCount:0}),release:()=>undefined}),end:()=>Promise.resolve()}),()=>{throw Error('sink unavailable');});
  const client=await pool.connect();assert.equal((await client.query('SELECT 1')).rowCount,0);client.release();await pool.close();
+});
+
+for (const [families, ipv4, ipv6] of [[[4],true,false],[[6],false,true],[[4,6],true,true],[null,null,null]] as const) test(`physical failure emits awaited DNS observation ${String(families)}`, async () => {
+ const events:RuntimeDatabaseDiagnostic[]=[];
+ let inspected=false;
+ const pool=createProductionRuntimePool(parseRailwayProductionRuntimeConfiguration(environment()),secrets,()=>({connect:()=>Promise.reject(Object.assign(Error('DO_NOT_LOG'),{code:'ENETUNREACH'})),end:()=>Promise.resolve()}),event=>events.push(event),async()=>{
+  await Promise.resolve();inspected=true;
+  if(families===null) throw Error('DO_NOT_LOG_DNS');
+  return families.map(family=>({family,address:'DO_NOT_LOG_ADDRESS'}));
+ });
+ await assert.rejects(pool.connect());await pool.close();
+ assert.equal(inspected,true);assert.equal(events.length,1);
+ assert.equal(events[0]?.transportCode,'NETWORK_UNREACHABLE');
+ assert.equal(Reflect.get(events[0], 'dnsIPv4Available'),ipv4);
+ assert.equal(Reflect.get(events[0], 'dnsIPv6Available'),ipv6);
+ assert.doesNotMatch(JSON.stringify(events),/DO_NOT_LOG/u);
 });

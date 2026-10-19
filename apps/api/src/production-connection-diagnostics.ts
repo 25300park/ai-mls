@@ -59,12 +59,14 @@ export function classifyPhysicalConnectionFailure(error: unknown): ConnectionCla
   return Object.freeze({ transportCode: found[0]!.transportCode, sqlstate: new Set(found.map(item => item.sqlstate)).size === 1 ? found[0]!.sqlstate : null });
 }
 
-export interface DnsFamilyDiagnostic { readonly dnsIPv4Available: boolean; readonly dnsIPv6Available: boolean }
-type FamilyLookup = () => Promise<readonly {readonly family: number}[]>;
-/** Separately invoked diagnostic only: never called by pool/startup/readiness. */
+export interface DnsFamilyDiagnostic { readonly dnsIPv4Available: boolean | null; readonly dnsIPv6Available: boolean | null }
+export type FamilyLookup = () => Promise<readonly {readonly family: number}[]>;
+/** Bounded observation only; never influences connection configuration or authority. */
 export async function diagnoseProductionDatabaseDnsFamilies(resolveFamilies: FamilyLookup = () => lookup("db.mfonujjeokvpsfucfxuq.supabase.co", { all: true })): Promise<DnsFamilyDiagnostic> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const records = await resolveFamilies();
+    const records = await Promise.race([Promise.resolve().then(resolveFamilies), new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("DNS_DIAGNOSTIC_TIMEOUT")), 1000); })]);
     return Object.freeze({ dnsIPv4Available: records.some(record => record.family === 4), dnsIPv6Available: records.some(record => record.family === 6) });
-  } catch { return Object.freeze({ dnsIPv4Available: false, dnsIPv6Available: false }); }
+  } catch { return Object.freeze({ dnsIPv4Available: null, dnsIPv6Available: null }); }
+  finally { if (timer !== undefined) clearTimeout(timer); }
 }

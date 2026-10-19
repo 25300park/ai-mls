@@ -51,11 +51,13 @@ test("DNS family diagnostics return only booleans and never resolved addresses",
     const result=await diagnoseProductionDatabaseDnsFamilies(()=>Promise.resolve(families.map(family=>({family,address:"DO_NOT_LOG_IP"}))));
     assert.deepEqual(result,{dnsIPv4Available:ipv4,dnsIPv6Available:ipv6});assert.doesNotMatch(JSON.stringify(result),/DO_NOT_LOG/u);
   }
-  assert.deepEqual(await diagnoseProductionDatabaseDnsFamilies(()=>Promise.reject(Error("DO_NOT_LOG_HOST"))),{dnsIPv4Available:false,dnsIPv6Available:false});
+  assert.deepEqual(await diagnoseProductionDatabaseDnsFamilies(()=>Promise.reject(Error("DO_NOT_LOG_HOST"))),{dnsIPv4Available:null,dnsIPv6Available:null});
 });
 
 test("DNS inspection is separate from pool and readiness decisions", () => {
   const pool=readFileSync("apps/api/src/production-runtime-pool.ts","utf8");
-  assert.doesNotMatch(pool,/diagnoseProductionDatabaseDnsFamilies|setDefaultResultOrder|autoSelectFamily/u);
+  assert.doesNotMatch(pool,/setDefaultResultOrder|autoSelectFamily/u);
   assert.match(pool,/classifyPhysicalConnectionFailure/u);
 });
+
+test("DNS observation deadline returns null for unresolved lookup", async()=>{ assert.deepEqual(await diagnoseProductionDatabaseDnsFamilies(()=>new Promise(()=>undefined)),{dnsIPv4Available:null,dnsIPv6Available:null}); });
