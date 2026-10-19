@@ -4,6 +4,7 @@ import { X509Certificate } from "node:crypto";
 import { PgConnectionPoolAdapter, type PostgreSqlPoolPort, type PgConnectionPoolOptions } from "../../modules/identity/src/postgresql-pool.js";
 import { parseRegistrationManifest, RegistrationCommandError, REGISTRATION_DATABASE_TARGET, REGISTRATION_OPERATOR } from "../../modules/identity/src/register-service-workload.js";
 import { parseRailwayProductionRuntimeConfiguration, createProductionPostgreSqlPoolOptions } from "../../apps/api/src/production-runtime-configuration.js";
+import { createProductionRuntimePool } from "../../apps/api/src/production-runtime-pool.js";
 import { forwardRegistrationValidators, runDualPoolRegistration, type DualPoolRegistrationDependencies } from "./registration-dual-pool.js";
 
 export const REGISTRATION_CONNECTION_BINDING = "AI_MLS_PRODUCTION_REGISTRATION_DATABASE_CONNECTION_V1";
@@ -39,7 +40,7 @@ export function createRegistrationRunnerDependencies(environment: Readonly<Recor
       caCertificate:environment['AI_MLS_PRODUCTION_IDENTITY_DATABASE_CA_CERT_V1']??'',
     });
     const registrationOptions=registrationPoolOptions(environment);
-    return {...forwardRegistrationValidators,createRuntimePool:()=>new PgConnectionPoolAdapter(runtimeOptions),createRegistrationPool:()=>new PgConnectionPoolAdapter(registrationOptions)};
+    return {...forwardRegistrationValidators,createRuntimePool:()=>createProductionRuntimePool(configuration,{connectionString:runtimeOptions.connectionString,caCertificate:environment['AI_MLS_PRODUCTION_IDENTITY_DATABASE_CA_CERT_V1']??''}),createRegistrationPool:()=>new PgConnectionPoolAdapter(registrationOptions)};
   }catch{throw new RegistrationCommandError('UNAVAILABLE');}
 }
 export async function runRegistrationOperator(args: readonly string[], environment: Readonly<Record<string,string | undefined>>, output: (safe: string) => void = line => { process.stdout.write(`${line}\n`); }, dependencies?: DualPoolRegistrationDependencies): Promise<void> {

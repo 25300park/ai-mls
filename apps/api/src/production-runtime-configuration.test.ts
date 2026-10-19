@@ -1,3 +1,5 @@
+import { createRuntimeArtifactStartupOptions } from "./runtime-artifact-startup-bindings.js";
+import { R3B1_CHILD_ROOT_SCHEMA_CONTRACTS } from "./child-root-postgresql-readiness.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { rootCertificates } from "node:tls";
@@ -108,4 +110,18 @@ test("R3-C2 Production config requires exact explicit registration/version pins"
  const result=parseRailwayProductionRuntimeConfiguration(configured) as unknown as {requiredServiceWorkloadPins:unknown};
  assert.deepEqual(result.requiredServiceWorkloadPins,[{registrationId:"registration-api-014",registrationVersion:2},{registrationId:"registration-api-015",registrationVersion:3}]);
  for(const value of [undefined,"[]","latest",JSON.stringify([{registrationId:"registration-api-014",registrationVersion:0}]),JSON.stringify([{registrationId:"registration-api-014",registrationVersion:2,latest:true}])])assert.throws(()=>parseRailwayProductionRuntimeConfiguration({...configured,REQUIRED_SERVICE_WORKLOAD_PINS:value}));
+});
+
+test("exact five canonical artifacts reject incomplete, duplicate, extra and altered material", () => {
+ const contracts=R3B1_CHILD_ROOT_SCHEMA_CONTRACTS;
+ const value=createRuntimeArtifactStartupOptions();
+ assert.equal(value,contracts.map(c=>`-c ai_mls.r3b1_${c.schemaName.slice(4)}_artifact_sha256=${c.artifactSha256}`).join(" "));
+ for(const bad of [contracts.slice(1),[...contracts,contracts[0]!],[contracts[0]!,...contracts.slice(0,4)],...['','a'.repeat(63),'A'.repeat(64),' '+contracts[0]!.artifactSha256,'0'.repeat(64)].map(hash=>[{...contracts[0]!,artifactSha256:hash},...contracts.slice(1)])]) assert.throws(()=>createRuntimeArtifactStartupOptions(bad));
+ for(const key of ['PGOPTIONS','options','startupOptions','runtimeStartupBindings',...R3B1_CHILD_ROOT_SCHEMA_CONTRACTS.map(c=>`ai_mls.r3b1_${c.schemaName.slice(4)}_artifact_sha256`)])assert.throws(()=>parseRailwayProductionRuntimeConfiguration({...environment(),[key]:'-c search_path=public'}));
+});
+
+test("every canonical hash alteration and URI option substitution fail closed",()=>{
+ for(const contract of R3B1_CHILD_ROOT_SCHEMA_CONTRACTS)assert.throws(()=>createRuntimeArtifactStartupOptions(R3B1_CHILD_ROOT_SCHEMA_CONTRACTS.map(c=>c===contract?{...c,artifactSha256:'0'.repeat(64)}:c)));
+ const configuration=parseRailwayProductionRuntimeConfiguration(environment());
+ assert.throws(()=>createProductionPostgreSqlPoolOptions(configuration,{connectionString:"postgresql://ai_mls_production_runtime:secret@db.mfonujjeokvpsfucfxuq.supabase.co:5432/postgres?options=x",caCertificate}));
 });

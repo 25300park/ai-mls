@@ -1,14 +1,13 @@
 import { X509Certificate } from "node:crypto";
 
 import {
-  PgConnectionPoolAdapter,
   type PgPoolFactory,
   type PostgreSqlPoolPort,
 } from "../../../modules/identity/src/postgresql-pool.js";
 import {
-  createProductionPostgreSqlPoolOptions,
   type RailwayProductionRuntimeConfiguration,
 } from "./production-runtime-configuration.js";
+import { createProductionRuntimePool } from "./production-runtime-pool.js";
 
 const connectionReference = "railway-sealed-env:AI_MLS_PRODUCTION_IDENTITY_DATABASE_CONNECTION_V1";
 const certificateReference = "railway-sealed-env:AI_MLS_PRODUCTION_IDENTITY_DATABASE_CA_CERT_V1";
@@ -38,10 +37,7 @@ export function createRailwaySealedProductionPostgreSqlPool(
     const connectionString = environment[connectionVariable];
     const caCertificate = environment[certificateVariable];
     if (!safeConnectionString(connectionString) || !safeCertificate(caCertificate)) throw unavailable();
-    const options = createProductionPostgreSqlPoolOptions(configuration, { connectionString, caCertificate });
-    return factory === undefined
-      ? new PgConnectionPoolAdapter(options)
-      : new PgConnectionPoolAdapter(options, factory);
+    return createProductionRuntimePool(configuration, { connectionString, caCertificate }, factory);
   } catch {
     throw unavailable();
   }

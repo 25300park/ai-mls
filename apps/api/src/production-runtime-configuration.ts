@@ -48,6 +48,7 @@ export function parseRailwayProductionRuntimeConfiguration(raw: unknown): Railwa
   const source = asStringRecord(raw);
   if (source["DATABASE_URL"] !== undefined) throw unavailable();
   const runtimeEnvironment = exact(source, "RUNTIME_ENVIRONMENT", "PRODUCTION");
+  if (["PGOPTIONS", "options", "startupOptions", "runtimeStartupBindings", ...["publication","administration","connector","external_integration","advisory"].map(name => `ai_mls.r3b1_${name}_artifact_sha256`)].some(key => source[key] !== undefined)) throw unavailable();
   const configurationReference = reference(source, "CONFIGURATION_REFERENCE");
   const requiredServiceRegistrations = registrations(required(source, "REQUIRED_SERVICE_REGISTRATIONS"));
   const requiredServiceWorkloadPins = workloadPins(required(source,"REQUIRED_SERVICE_WORKLOAD_PINS"),requiredServiceRegistrations);
