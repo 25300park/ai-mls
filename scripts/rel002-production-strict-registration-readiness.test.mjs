@@ -25,3 +25,15 @@ for(const sql of ['INSERT INTO x VALUES (1)','SET ROLE postgres','SELECT pg_advi
 test('entrypoint has no command invocation or validator injection',async()=>{const source=await readFile(new URL('./rel002-production-strict-registration-readiness.mjs',import.meta.url),'utf8');assert.ok(!/RegisterServiceWorkloadCommand|runDualPoolRegistration\(|runRegistrationOperator\(|assertRegistrationExecuteAuthorization\(/.test(source));assert.ok(source.includes('validateDualPoolRegistrationOperationalReadiness(runtime,registration,CONTRACT_ID,undefined,undefined,trace)'));});
 
 test('readiness subgate output is allowlisted, safe and cleanup remains complete',async()=>{const lines=[];let closed=0;const pools=()=>({close:async()=>{closed++;}});await runReadiness(environment(),line=>lines.push(line),{createDependencies:()=>({createRuntimePool:pools,createRegistrationPool:pools}),validate:async(_r,_g,_id,trace)=>{trace({subgate:'DO_NOT_LOG_URI',result:'FAIL'});trace({subgate:'FULL_R3C2',result:'FAIL',category:'DO_NOT_LOG'});throw Error('DO_NOT_LOG');}});assert.equal(closed,2);assert.ok(lines.includes('READINESS_SUBGATE=FULL_R3C2'));assert.ok(lines.includes('READINESS_RESULT=FAIL'));assert.ok(lines.includes('FAIL_STAGE=READINESS'));assert.doesNotMatch(lines.join('\n'),/DO_NOT_LOG/u);});
+
+test('Full R3C2 child output is bounded and cannot reflect injected data',async()=>{
+ const lines=[];let closed=0;const pool=()=>({close:async()=>{closed++;}});
+ await runReadiness(environment(),line=>lines.push(line),{createDependencies:()=>({createRuntimePool:pool,createRegistrationPool:pool}),validate:async(_r,_g,_id,trace)=>{
+ trace({subgate:'FULL_R3C2',child:'PUBLICATION',result:'PASS'});
+ trace({subgate:'FULL_R3C2',child:'ADMINISTRATION',result:'FAIL',category:'SECRET'});
+ trace({subgate:'FULL_R3C2',child:'SECRET',result:'FAIL'});
+ trace({subgate:'CONTRACT',child:'R3C1',result:'FAIL'});
+ throw Error('SECRET');}});
+ assert.equal(closed,2);assert.deepEqual(lines.filter(x=>x.startsWith('FULL_R3C2_CHILD=')),['FULL_R3C2_CHILD=PUBLICATION','FULL_R3C2_CHILD=ADMINISTRATION']);
+ assert.ok(lines.includes('RESULT=PASS'));assert.ok(lines.includes('RESULT=FAIL'));assert.doesNotMatch(lines.join('\n'),/SECRET/u);
+});

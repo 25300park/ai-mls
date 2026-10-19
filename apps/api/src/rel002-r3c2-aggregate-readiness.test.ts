@@ -89,3 +89,14 @@ for(const mode of ['missing','mismatch','unavailable','sink-failure'] as const)t
   assert.doesNotMatch(JSON.stringify(events),/DO_NOT_LOG|474c1456|be3dbce8/u);
  }
  });
+
+for(const role of ['ai_mls_production_runtime','wrong-role'])test('aggregate child diagnostics preserve rejection and release: '+role,async()=>{
+ const {assertR3C2AggregateSchemasReady}=await import('./r3c2-aggregate-readiness.js');
+ const events:unknown[]=[];let releases=0,queries=0;
+ const pool:PostgreSqlPoolPort={connect:async()=>{await Promise.resolve();return {query:async<R extends Record<string,unknown>>(sql:string)=>{await Promise.resolve();queries++;return {rows:(sql==='SELECT current_user AS role'?[{role}]:[]) as unknown as R[],rowCount:sql==='SELECT current_user AS role'?1:0};},release:()=>{releases++;}};},close:()=>Promise.reject(Error('borrowed pool'))};
+ await assert.rejects(assertR3C2AggregateSchemasReady(pool,event=>events.push(event)));
+ const children=events as {child:string,result:string}[];
+ assert.deepEqual(children,role==='wrong-role'?[{child:'RUNTIME_ACCESS',result:'FAIL'}]:[{child:'RUNTIME_ACCESS',result:'PASS'},...['PUBLICATION','ADMINISTRATION','CONNECTOR','EXTERNAL_INTEGRATION','ADVISORY'].map(child=>({child,result:'FAIL'}))]);
+ assert.equal(releases,role==='wrong-role'?1:2);assert.equal(queries,role==='wrong-role'?1:2);
+ await assert.rejects(assertR3C2AggregateSchemasReady(pool,()=>{throw Error('DO_NOT_LOG');}));
+});

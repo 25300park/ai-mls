@@ -1,3 +1,4 @@
+import type { FullR3C2Child } from './r3c2-aggregate-readiness.js';
 import type { PostgreSqlClientPort, PostgreSqlPoolPort } from "../../../modules/identity/src/postgresql-pool.js";
 import { REGISTRATION_OPERATOR_ACL_QUERY } from "../../../modules/identity/src/registration-operator-acl.js";
 import { GovernancePersistenceError } from "../../../modules/organization/src/governance-persistence-support.js";
@@ -97,7 +98,7 @@ async function identity(client: PostgreSqlClientPort, role: string): Promise<voi
 }
 
 export type RegistrationReadinessSubgate = 'CONTRACT' | 'POOL_SEPARATION_POLICY' | 'RUNTIME_SESSION' | 'FORWARD_STRUCTURE' | 'RUNTIME_STRUCTURE_IDENTITY' | 'FULL_R3C2' | 'IDENTITY_BASE_PROVENANCE' | 'STRUCTURE_RESULT' | 'REGISTRATION_SESSION' | 'SESSION_PAIR' | 'FORWARD_AUTHORITY' | 'OPERATIONAL_RESULT' | 'RUNTIME_SESSION_RECHECK' | 'REGISTRATION_IDENTITY' | 'SESSION_PAIR_IDENTITIES' | 'DISTINCT_BACKENDS' | 'SAME_TARGET' | 'REGISTRATION_AUTHORITY_IDENTITY' | 'REGISTRATION_AUTHORITY_CATALOG';
-export interface RegistrationReadinessDiagnostic { readonly subgate: RegistrationReadinessSubgate; readonly result: 'PASS' | 'FAIL'; readonly category: 'NONE' | 'OPERATION_REJECTED' }
+export interface RegistrationReadinessDiagnostic { readonly child?: FullR3C2Child; readonly subgate: RegistrationReadinessSubgate; readonly result: 'PASS' | 'FAIL'; readonly category: 'NONE' | 'OPERATION_REJECTED' }
 export type RegistrationReadinessObserver = (event: RegistrationReadinessDiagnostic) => void;
 /** Observation never changes authority, operation results, or original error propagation. */
 export async function traceRegistrationReadiness<T>(subgate:RegistrationReadinessSubgate,observer:RegistrationReadinessObserver|undefined,operation:()=>T|Promise<T>):Promise<T>{
@@ -125,7 +126,7 @@ export async function validateForwardRegistrationStructureEvidence(pool: Postgre
  const forward = projectedPool(pool);
  // The full chain verifies all five artifact bindings and current roots. Structural
  // projection checks contamination, never operational provisioning completeness.
- await traceRegistrationReadiness('FULL_R3C2',observer,()=>assertR3C2AggregateSchemasReady(forward));
+ await traceRegistrationReadiness('FULL_R3C2',observer,()=>assertR3C2AggregateSchemasReady(forward,event=>{try{observer?.(Object.freeze({subgate:'FULL_R3C2',child:event.child,result:event.result,category:event.result==='PASS'?'NONE':'OPERATION_REJECTED'}));}catch{/* observation has no authority */}}));
  const provenance = await traceRegistrationReadiness('IDENTITY_BASE_PROVENANCE',observer,()=>assertR3C2IdentityBaseReady(forward));
  if (provenance !== 'NATIVE_MIGRATION_LEDGER_VERIFIED' && provenance !== 'HISTORICAL_MIGRATION_ATTESTATION_VERIFIED') throw unavailable();
  return Object.freeze({artifact_bindings_verified:true,r3c2_ready:true,identity_provenance:provenance,forward_structure_ready:true});
