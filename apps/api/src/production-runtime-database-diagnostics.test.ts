@@ -12,3 +12,8 @@ test("transport codes are allowlisted and arbitrary error code/name/message neve
  const diagnostic=safeRuntimeDatabaseFailure('INITIAL_IDENTITY_READINESS',{code:'DO_NOT_LOG',name:'DO_NOT_LOG',message:'DO_NOT_LOG'});
  assert.equal(diagnostic.sqlstate,null);assert.equal(diagnostic.code,'READINESS_UNAVAILABLE');assert.doesNotMatch(JSON.stringify(diagnostic),/DO_NOT_LOG/u);
 });
+test("physical connection diagnostics classify network errors hidden in nested causes",()=>{
+ const diagnostic=safeRuntimeDatabaseFailure('PHYSICAL_CONNECTION',{cause:{code:'ENETUNREACH',address:'DO_NOT_LOG_ADDRESS',message:'DO_NOT_LOG_MESSAGE'}});
+ assert.equal(Reflect.get(diagnostic,'transportCode'),'NETWORK_UNREACHABLE');
+ assert.doesNotMatch(JSON.stringify(diagnostic),/DO_NOT_LOG/u);
+});

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { PgConnectionPoolAdapter, type PgPoolFactory, type PostgreSqlPoolPort, type PostgreSqlClientPort, type PostgreSqlQueryResult } from "../../../modules/identity/src/postgresql-pool.js";
 import { createProductionPostgreSqlPoolOptions, type RailwayProductionRuntimeConfiguration, type ResolvedProductionDatabaseSecrets } from "./production-runtime-configuration.js";
 import { createRuntimeArtifactStartupOptions } from "./runtime-artifact-startup-bindings.js";
+import { classifyPhysicalConnectionFailure, type SafeTransportCode } from "./production-connection-diagnostics.js";
 
 type DatabaseDiagnosticStage = "PHYSICAL_CONNECTION" | "READINESS_QUERY" | "INITIAL_IDENTITY_AUTHORITY_OPEN" | "INITIAL_IDENTITY_READINESS";
 export interface RuntimeDatabaseDiagnostic {
@@ -12,13 +13,15 @@ export interface RuntimeDatabaseDiagnostic {
   readonly code: string;
   readonly sqlstate: string | null;
   readonly querySha256: string | null;
+  readonly transportCode?: SafeTransportCode;
 }
 export function safeRuntimeDatabaseFailure(stage: DatabaseDiagnosticStage, error: unknown, query?: string): RuntimeDatabaseDiagnostic {
   let code: unknown;
   try { code = error !== null && typeof error === "object" ? Reflect.get(error, "code") : undefined; } catch { code = undefined; }
-  const sqlstate = typeof code === "string" && /^(?:08|0A|22|23|25|28|3D|3F|40|42|53|54|55|57|58|F0|P0|XX)[0-9A-Z]{3}$/u.test(code) ? code : null;
+  const classification = classifyPhysicalConnectionFailure(error);
+  const sqlstate = classification.sqlstate;
   const transport = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN", "CERT_HAS_EXPIRED", "ERR_TLS_CERT_ALTNAME_INVALID", "UNABLE_TO_VERIFY_LEAF_SIGNATURE", "SELF_SIGNED_CERT_IN_CHAIN", "DEPTH_ZERO_SELF_SIGNED_CERT"]);
-  return Object.freeze({ event: "PRODUCTION_RUNTIME_DATABASE_DIAGNOSTIC", stage, status: "FAIL", code: sqlstate !== null ? "POSTGRESQL_ERROR" : typeof code === "string" && transport.has(code) ? code : "READINESS_UNAVAILABLE", sqlstate, querySha256: query === undefined ? null : createHash("sha256").update(query).digest("hex") });
+  return Object.freeze({ event: "PRODUCTION_RUNTIME_DATABASE_DIAGNOSTIC", stage, status: "FAIL", code: sqlstate !== null ? "POSTGRESQL_ERROR" : typeof code === "string" && transport.has(code) ? code : "READINESS_UNAVAILABLE", sqlstate, querySha256: query === undefined ? null : createHash("sha256").update(query).digest("hex"), ...(stage === "PHYSICAL_CONNECTION" ? {transportCode: classification.transportCode} : {}) });
 }
 export function emitRuntimeDatabaseDiagnostic(diagnostic: RuntimeDatabaseDiagnostic): void {
   try { process.stderr.write(`${JSON.stringify(diagnostic)}\n`); } catch { /* diagnostics never change fail-closed behavior */ }
