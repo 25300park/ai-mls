@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { X509Certificate } from "node:crypto";
-import { PgConnectionPoolAdapter, type PostgreSqlPoolPort, type PgConnectionPoolOptions } from "../../modules/identity/src/postgresql-pool.js";
+import { PgConnectionPoolAdapter, type PostgreSqlPoolPort, type PgConnectionPoolOptions, type PgPoolFactory } from "../../modules/identity/src/postgresql-pool.js";
 import { parseRegistrationManifest, RegistrationCommandError, REGISTRATION_DATABASE_TARGET, REGISTRATION_OPERATOR } from "../../modules/identity/src/register-service-workload.js";
 import { parseRailwayProductionRuntimeConfiguration, createProductionPostgreSqlPoolOptions } from "../../apps/api/src/production-runtime-configuration.js";
 import { createProductionRuntimePool } from "../../apps/api/src/production-runtime-pool.js";
@@ -14,8 +14,8 @@ export function parseRegistrationRunnerArguments(args: readonly string[]): Regis
   if (args.length !== 3 || !["--dry-run","--execute"].includes(args[0] ?? "") || args[1] !== "--manifest" || !args[2] || args[2].startsWith("--")) throw new RegistrationCommandError("INPUT_INVALID");
   return Object.freeze({ mode: args[0] === "--execute" ? "EXECUTE" : "DRY_RUN", manifestPath: args[2] });
 }
-export function openRegistrationOperatorPool(environment: Readonly<Record<string,string | undefined>>): PostgreSqlPoolPort {
-  return new PgConnectionPoolAdapter(registrationPoolOptions(environment));
+export function openRegistrationOperatorPool(environment: Readonly<Record<string,string | undefined>>, factory?: PgPoolFactory): PostgreSqlPoolPort {
+  return new PgConnectionPoolAdapter(registrationPoolOptions(environment),factory);
 }
 function registrationPoolOptions(environment: Readonly<Record<string,string | undefined>>): PgConnectionPoolOptions {
   try {
