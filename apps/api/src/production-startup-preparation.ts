@@ -16,7 +16,7 @@ import {canonicalJson,safeText} from "../../../modules/organization/src/governan
 import type {RailwayProductionRuntimeConfiguration} from "./production-runtime-configuration.js";
 import type {ProductionServiceIdentityBinding,ProductionPinnedServiceIdentityReference} from "./production-service-identity-resolver.js";
 import {ProductionStartupBindingResolver,ProductionStartupBindingError} from "./production-startup-binding-resolver.js";
-import {assertR3C2AggregateSchemasReady} from "./r3c2-aggregate-readiness.js";
+import {FORWARD_REGISTRATION_CONTRACT_ID,projectForwardRegistrationPool,validateForwardRegistrationReadiness} from "./forward-registration-readiness.js";
 import type {AsyncRegisteredServiceWorkloadAuthorityLease} from "../../../modules/identity/src/registered-service-workload-postgresql.js";
 import type {RegisteredServiceWorkloadRecord} from "../../../modules/identity/src/registered-service-workload.js";
 import type {RegisteredServiceWorkloadIdentityEvidence,RegisteredServiceWorkloadAuditEvidence} from "../../../modules/identity/src/registered-service-workload-evidence-authority.js";
@@ -48,8 +48,12 @@ export function createProductionStartupPreparation(pool:PostgreSqlPoolPort,confi
  }});
  let closed=false,receipt:{identities:readonly ProductionServiceIdentityBinding[];fingerprint:string}|undefined;
  const close=async():Promise<void>=>{closed=true;receipt=undefined;const results=await Promise.allSettled([store.close(),proof.close(),audit.close(),bindings.close(),projects.close(),organizations.close(),administration.close()]);if(results.some(r=>r.status==="rejected"))throw new ProductionStartupBindingError("REVALIDATION");};
- const authority:AsyncRegisteredServiceWorkloadAuthorityLease={findByRegistrationId:(id:string):Promise<Readonly<RegisteredServiceWorkloadRecord>|undefined>=>store.findByRegistrationId(id),assertSchemaReady:()=>assertInitialProductionIdentityReady(pool),close};
- const resolver=new ProductionStartupBindingResolver({authority,identityEvidence:proof,auditEvidence:audit,bindings,organizations,projects,administration,teamVerifier:new AdministrationWorkloadStartupTeamVerifier(administration,clock),authorization:createAsyncAdministrationBackedAuthorizationService({...administration,auditSink:new AuditLog({clock,idFactory:randomUUID}),clock,policyVersion:"REL002-R3C2-scope.use"}),assertAggregateReady:():Promise<void>=>assertR3C2AggregateSchemasReady(pool),expectedWorkloadPurpose:config.startupWorkloadPurpose,expectedAudience:config.startupWorkloadAudience});
+ const authority:AsyncRegisteredServiceWorkloadAuthorityLease={findByRegistrationId:(id:string):Promise<Readonly<RegisteredServiceWorkloadRecord>|undefined>=>store.findByRegistrationId(id),assertSchemaReady:async()=>{
+  // Runtime-authenticated structure and independent catalog authority; never an operator session.
+  await validateForwardRegistrationReadiness(pool,FORWARD_REGISTRATION_CONTRACT_ID);
+  return assertInitialProductionIdentityReady(projectForwardRegistrationPool(pool));
+ },close};
+ const resolver=new ProductionStartupBindingResolver({authority,identityEvidence:proof,auditEvidence:audit,bindings,organizations,projects,administration,teamVerifier:new AdministrationWorkloadStartupTeamVerifier(administration,clock),authorization:createAsyncAdministrationBackedAuthorizationService({...administration,auditSink:new AuditLog({clock,idFactory:randomUUID}),clock,policyVersion:"REL002-R3C2-scope.use"}),assertAggregateReady:():Promise<void>=>validateForwardRegistrationReadiness(pool,FORWARD_REGISTRATION_CONTRACT_ID),expectedWorkloadPurpose:config.startupWorkloadPurpose,expectedAudience:config.startupWorkloadAudience});
  return Object.freeze({authority,close,resolveRequired:async():Promise<readonly ProductionServiceIdentityBinding[]>=>{
   if(closed)throw new ProductionStartupBindingError("REVALIDATION");receipt=undefined;
   try{const {identities,fingerprints}=await resolveStartupPins(resolver,config.requiredServiceWorkloadPins);

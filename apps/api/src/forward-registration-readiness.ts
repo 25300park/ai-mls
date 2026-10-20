@@ -79,7 +79,8 @@ export function projectForwardRegistrationQuery(query: string): string {
   .replaceAll(`(CASE WHEN ${present} THEN true ELSE ${temporary} END)`,publicTemporary);
 }
 
-function projectedPool(pool: PostgreSqlPoolPort): PostgreSqlPoolPort {
+/** Borrowed exact-query projection shared by forward readiness and Production startup. */
+export function projectForwardRegistrationPool(pool: PostgreSqlPoolPort): PostgreSqlPoolPort {
  return { close: (): Promise<void> => Promise.reject(unavailable()), connect: async (): Promise<PostgreSqlClientPort> => {
   const client = await pool.connect();
   return { release: destroy => client.release(destroy), query: (sql, values) => client.query(projectForwardRegistrationQuery(sql),values) };
@@ -124,7 +125,7 @@ export async function validateForwardRegistrationStructureEvidence(pool: Postgre
   const client = await pool.connect();
   try { await identity(client,'ai_mls_production_runtime'); } finally { client.release(); }
  });
- const forward = projectedPool(pool);
+ const forward = projectForwardRegistrationPool(pool);
  // The full chain verifies all five artifact bindings and current roots. Structural
  // projection checks contamination, never operational provisioning completeness.
  await traceRegistrationReadiness('FULL_R3C2',observer,()=>assertR3C2AggregateSchemasReady(forward,event=>{try{observer?.(Object.freeze({subgate:'FULL_R3C2',child:event.child,result:event.result,category:event.result==='PASS'?'NONE':'OPERATION_REJECTED'}));}catch{/* observation has no authority */}},rootDetail=>{try{observer?.(Object.freeze({subgate:'FULL_R3C2',rootDetail,result:rootDetail.result,category:rootDetail.category}));}catch{/* observation has no authority */}}));
