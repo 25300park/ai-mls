@@ -26,6 +26,35 @@
 
 그 외는 `DEFER_POST_MVP`로 기록하고 구현하지 않는다. 승인된 목표 순서는 MVP completion → deployment → Human testing → Human-requested fixes → autonomous background validation이다. 이 순서가 background 작업이나 Production 실행을 자동 승인하지는 않는다.
 
+### MVP-FIRST + ARCHITECTURE-CONFORMANCE DUAL GUARD
+
+구현은 `MVP_REQUIRED = YES` **그리고** `ARCHITECTURE_CONFORMANT = YES`일 때만 진행한다. MVP-FIRST는 **언제**, canonical architecture는 **어떻게** 구현하는지를 통제한다. MVP 속도를 이유로 architecture를 우회하지 않는다.
+
+`ARCHITECTURE_CONFORMANT = YES`의 필수 조건:
+
+- 기존 canonical module/service/store/UoW 및 authority boundary 재사용
+- 기존 database/schema ownership, session/auth/Audit, runtime/startup architecture 재사용
+- API/service boundary와 승인된 migration/historical contract 보존
+- parallel/duplicate engine 없음
+
+새 source 구현 전에 다음을 식별한다:
+
+```text
+CANONICAL_OWNER = ...
+CANONICAL_EXISTING_PATH = ...
+REUSED_COMPONENTS = ...
+MINIMUM_EXTENSION = ...
+DUPLICATE_COMPONENT_CREATED = NO
+```
+
+기능이 부족하면 가장 가까운 canonical owner만 최소 확장한다. Identity는 Identity, Audit은 기존 Audit participant, Session은 SessionService/기존 persistence, startup은 canonical forward readiness, DB는 schema owner의 canonical migration을 확장한다. canonical owner를 식별할 수 없으면 `ARCHITECTURE_CONFORMANT = NO`로 중단하고 `HUMAN_GATE_SCOPE_AUTHORITY_CHANGE`의 architecture 결정을 요청한다.
+
+다음 MVP shortcut은 금지한다: 임시 duplicate service, 대체 DB access path, duplicate queue/Audit/auth/session engine, canonical writer가 있는데 직접 SQL mutation, authority를 우회하는 MVP API, permanent bootstrap bypass, parallel startup verifier, MVP 직후 교체가 필요한 별도 architecture. 발견하면 `ARCHITECTURE_DRIFT_DETECTED = YES`로 기록하고 기존 canonical 경로를 사용하도록 재설계한다.
+
+임시 구현의 기본값은 NO이다. isolated·명시적 disposable·canonical contract 불변·제거 시 data migration 불필요 조건을 모두 만족하고 Human/AO가 명시적으로 승인한 경우만 허용한다.
+
+판정 순서: MVP 불필요 → defer; MVP 필수 + canonical 경로 존재 → 재사용; 일부만 존재 → 최소 확장; owner 불명 → architecture gate. 충돌 시 data integrity/irreversible safety → 기존 canonical architecture → MVP completion speed → generalization/future-proofing 순으로 판단한다.
+
 ### Local 자율 실행 / Human Gate
 
 승인된 MVP 범위의 repository inspection, code modification, diagnostics, grep/search, tests, build, typecheck, lint, diff, checksum, local PowerShell-equivalent checks, local migration analysis, regression, source verification 및 실패 후 correction은 Codex가 직접 수행한다. Human에게 로컬 명령을 복사·실행하거나 결과를 전달하는 test runner 역할을 요구하지 않는다. 도구 제약이 있어도 가능한 로컬 대안을 먼저 수행하고 정확한 제약만 보고한다.
@@ -71,7 +100,14 @@ Human action이 필요한 경계는 다음 여섯 가지뿐이다:
 ```text
 MVP_SCOPE_CHECK = PASS / FAIL
 CURRENT_TASK_REQUIRED_FOR_MVP = YES / NO
+ARCHITECTURE_CONFORMANCE_CHECK = PASS / FAIL
+CANONICAL_OWNER = ...
+CANONICAL_EXISTING_PATH = ...
+REUSED_COMPONENTS = ...
+MINIMUM_EXTENSION = ...
+DUPLICATE_COMPONENT_CREATED = YES / NO
 SCOPE_DRIFT_DETECTED = YES / NO
+ARCHITECTURE_DRIFT_DETECTED = YES / NO
 POST_MVP_DEFERRED = ...
 HUMAN_ACTION_REQUIRED = YES / NO
 HUMAN_ACTION_REASON = NONE / PRODUCTION_MUTATION / DEPLOYMENT / SECRET_CUSTODY / DESTRUCTIVE_OPERATION / PRODUCT_TEST / SCOPE_AUTHORITY_CHANGE

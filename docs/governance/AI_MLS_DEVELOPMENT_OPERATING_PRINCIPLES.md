@@ -13,6 +13,7 @@
 이 문서는 [root AGENTS.md](../../AGENTS.md)의 `AI-MLS MVP-FIRST EXECUTION AUTHORITY`를 구현하는 **하위 지침**이다. 독립적인 scope/authority source가 아니며 현재 Human 지시와 AGENTS.md가 우선한다. 아래 기존 절과 충돌하면 이 절을 적용한다. 경쟁하는 MVP 정책 문서를 만들지 않는다.
 
 - `MVP_COMPLETION_IS_PRIMARY = TRUE`. 모든 작업은 먼저 `MVP_REQUIRED = YES / NO`를 판정한다.
+- 구현은 `MVP_REQUIRED = YES`와 `ARCHITECTURE_CONFORMANT = YES`를 모두 만족해야 한다. MVP 속도는 canonical architecture 우회를 허용하지 않는다.
 - MVP completion/deployment, Production startup, Human product testing, Human-requested MVP defect 또는 필수 data/security integrity를 직접 막지 않으면 `DEFER_POST_MVP`이다.
 - Human을 로컬 test runner로 사용하지 않는다. 승인된 로컬 inspection/implementation/diagnostics/search/tests/build/typecheck/lint/diff/checksum/PowerShell-equivalent checks/migration analysis/regression/source verification 및 실패 후 correction은 Codex가 수행한다.
 - Human Gate는 `PRODUCTION_MUTATION`, `DEPLOYMENT`, `SECRET_CUSTODY`, `DESTRUCTIVE_OPERATION`, `PRODUCT_TEST`, `SCOPE_AUTHORITY_CHANGE`의 여섯 분류뿐이다. 이미 부여된 승인은 반복 요청하지 않으며 구체적 Production 접근 금지는 유지한다.
@@ -20,7 +21,17 @@
 - verifier chaining, generalized blocker subsystem, 무관한 migration 후속 architecture, unchanged PASS 재검증, 로컬 진단의 Human 전가 또는 deployment를 단축하지 않는 governance는 `SCOPE_DRIFT_DETECTED = YES`, `ACTION = RETURN_TO_SHORTEST_MVP_PATH`이다. 필수 integrity 검증은 유지하면서 최소 직접 수정으로 돌아간다.
 - 승인 범위의 기본 루프는 inspect → implement → test → diagnose → fix → retest → affected validation → build/typecheck → diff/secret check → candidate이다. 일반적인 로컬 실패로 종료하지 않는다.
 - 구현 중 focused tests, stable candidate에서 focused + affected + build/typecheck + scoped lint + diff + secret scan을 사용한다. Full regression은 stable release candidate 또는 실제 broad/high-risk shared-core 변경에만 실행하고 unchanged PASS를 재사용한다.
-- 모든 완료 보고는 AGENTS.md의 일곱 MVP 상태 필드를 포함한다. 별도 보고서 파일은 사용자 요청 또는 실제 필요한 추적 기록이 있을 때만 작성한다.
+- 모든 완료 보고는 AGENTS.md의 MVP/architecture 상태 계약을 포함한다: scope/architecture PASS 여부, canonical owner/path, 재사용 component, 최소 확장, duplicate 여부, scope/architecture drift, defer 항목, Human action/reason, 최단 MVP 경로. 별도 보고서 파일은 사용자 요청 또는 실제 필요한 추적 기록이 있을 때만 작성한다.
+
+### Architecture conformance 구현 규칙
+
+새 source 전에 `CANONICAL_OWNER`, `CANONICAL_EXISTING_PATH`, `REUSED_COMPONENTS`, `MINIMUM_EXTENSION`, `DUPLICATE_COMPONENT_CREATED = NO`를 식별한다. 기존 module/service/store/UoW, authority, schema ownership, session/auth/Audit, runtime/startup 및 API boundary를 재사용하고 승인된 migration/historical contract를 보존한다.
+
+기능이 없으면 가장 가까운 owner를 최소 확장한다. Identity → Identity, Audit → 기존 PostgreSQL Audit participant, Session → SessionService/기존 persistence, startup → canonical forward readiness, DB → schema owner의 migration이다. owner를 식별할 수 없으면 구현하지 않고 architecture 결정을 요청한다.
+
+duplicate service/queue/Audit/auth/session engine, 대체 DB access path, canonical writer를 우회하는 직접 SQL mutation, authority 우회 MVP API, permanent bootstrap bypass, parallel startup verifier와 MVP 직후 교체할 별도 architecture는 금지한다. 발견 시 `ARCHITECTURE_DRIFT_DETECTED = YES`, `ARCHITECTURE_CONFORMANT = NO`로 기록하고 canonical 경로로 재설계한다.
+
+임시 구현은 기본 금지이며 isolated·명시적 disposable·canonical contract 불변·제거 시 data migration 불필요 조건과 Human/AO 명시 승인을 모두 요구한다. 우선순위는 data integrity/irreversible safety → 기존 canonical architecture → MVP completion speed → generalization/future-proofing이다. 아래 기존 우선순위 절이 architecture보다 속도를 앞세우는 것으로 해석되어서는 안 된다.
 
 ### 현재 REL002 MVP 재평가
 
@@ -31,7 +42,46 @@
 | Audit | enrollment + credential + Identity receipt + 필요한 Audit event의 동일 transaction 원자성. 기존 participant 재사용; 필요한 최소 event/forward-state 변경만 검토 | 두 번째 Audit engine, 범용 evidence 체계, 무관한 event 확장 |
 | Migration024 | 위 최소 기능에 필요한 additive storage/receipt와 bounded PG17 pre/post 검증; 기존 startup 계약과 충돌하면 최소 integration만 해결 | 범용 migration/verifier/recovery framework, verifier를 위한 추가 verifier |
 
-이 재평가는 이전 20-file candidate 전체를 MVP 필수로 일괄 승인하지 않는다. 기존 source/증거는 보존하고 각 변경을 실제 MVP dependency로 재분류한다. Audit003이 기존 R3C2 exact 계약과 충돌하면 자동 적용하지 않고 필요한 최소 forward integration만 해결한다. 이 문서 작업에서는 source/migration/Production 상태를 변경하지 않는다.
+### 현재 REL002 22-file candidate dual-guard 판정
+
+검토 worktree: `D:\04. AI-MLS\.worktrees\rel002-r3c2-runtime-startup`. 아래 경로는 해당 worktree 기준이다. 이전 20개 중 불필요한 정책/완료 문서 2개는 제외하고, MVP startup integration에 필요한 기존 readiness 소스·테스트 4개를 더한 22개만 검토한다. 각 YES는 현재 source의 architecture 적합성 판정이며 commit/deployment/Production mutation 승인이 아니다.
+
+CANONICAL_OWNER: Identity, Audit, Production composition/forward readiness.
+
+CANONICAL_EXISTING_PATH: 승인된 `FirstHumanBootstrap` → `PostgreSqlFirstHumanBootstrapUnitOfWork` → 기존 credential reader/Session repository; 기존 `PostgreSqlAuditEvidenceStore`; canonical `r3c2-aggregate-readiness`/`r3c2c-catalog-compatibility`.
+
+REUSED_COMPONENTS: `Argon2idV1Verifier`, `PostgreSqlHumanCredentialReader`, `DurableSessionRecord`/validator, `createPostgreSqlSessionRepository`, 동일 PG client의 Audit participant, canonical pool port, 기존 forward readiness와 단일 024 verifier.
+
+MINIMUM_EXTENSION: 정확한 두 Human의 승인·Identity 소유 TOTP/key 보호·원자적 enrollment/Audit, owner 소유 additive storage, 검증 후 기존 base projection을 유지하는 forward startup integration. `DUPLICATE_COMPONENT_CREATED = NO`.
+
+| 파일 | MVP_REQUIRED | ARCHITECTURE_CONFORMANT | canonical 소유/재사용 근거 |
+|---|---|---|---|
+| `modules/identity/src/first-human-bootstrap.ts` | YES | YES | Identity 내부 승인된 bootstrap lifecycle; canonical Argon2/session record·repository 사용 |
+| `modules/identity/src/first-human-bootstrap.test.ts` | YES | YES | 같은 Identity 경로의 철회·재사용 방지 검증 |
+| `modules/identity/src/first-human-contract.ts` | YES | YES | 의존성 없는 공유 tenant 계약; 새 authority 아님 |
+| `modules/identity/src/first-human-owner-proof.ts` | YES | YES | 기존 EnrollmentOwnerVerifier port의 단일 승인 adapter; DB credential을 Human authority로 대체하지 않음 |
+| `modules/identity/src/first-human-key-custody.ts` | YES | YES | Identity TOTP key port, 단일 binding/key ID; 새 KMS 없음 |
+| `modules/identity/src/first-human-production-adapters.test.ts` | YES | YES | 같은 adapter/composition 경계의 fail-closed 검증 |
+| `modules/audit/src/audit-evidence-read-postgresql.ts` | YES | YES | 기존 Audit 저장/재실행 participant의 최소 확장 |
+| `modules/audit/src/first-human-audit-contract.ts` | YES | YES | Audit 소유의 필요한 bootstrap event 계약 |
+| `modules/audit/src/first-human-bootstrap-audit.ts` | YES | YES | 기존 Audit participant에 같은 UoW client를 전달; 독립 engine/commit 없음 |
+| `modules/audit/src/first-human-bootstrap-audit.test.ts` | YES | YES | 같은 client/transaction 및 payload 제한 검증 |
+| `apps/api/src/first-human-bootstrap-production.ts` | YES | YES | 승인된 Identity UoW·Audit·pool port를 연결; 새 DB client/API/authority 경로 없음 |
+| `apps/api/src/first-human-bootstrap-schema.ts` | YES | YES | 단일 scoped post-apply verifier; 기존 startup이 같은 predicate 재사용 |
+| `apps/api/src/first-human-bootstrap-schema-expected.ts` | YES | YES | 위 verifier의 정확한 catalog 자료; 독립 verifier 아님 |
+| `apps/api/src/first-human-bootstrap-schema.test.ts` | YES | YES | 같은 verifier의 drift/권한/major 거부 검증 |
+| `modules/audit/migrations/postgresql/production/003_first_human_bootstrap_events_v1.up.sql` | YES | YES | Audit schema owner의 forward 확장; Audit001/002 불변 |
+| `modules/audit/migrations/postgresql/production/003_first_human_bootstrap_events_v1.up.sql.sha256` | YES | YES | 같은 canonical migration artifact 고정 |
+| `scripts/rel002-first-human-composition-local.mjs` | YES | YES | 승인된 owned/disposable local fixture만 사용; Production 대체 access path 아님 |
+| `docs/diagnostics/REL002_MIGRATION024_BOOTSTRAP_READ_ONLY_PREFLIGHT.sql` | YES | YES | 단일 단계 구분 SELECT-only preflight; writer/authority 생성 없음 |
+| `apps/api/src/r3c2c-catalog-compatibility.ts` | YES | YES | 기존 forward R3C2C consumer에 정확한 Audit003 profile만 확장 |
+| `apps/api/src/r3c2c-catalog-compatibility.test.ts` | YES | YES | 같은 consumer의 19-component/authority/mixed-state 거부 검증 |
+| `apps/api/src/r3c2-aggregate-readiness.ts` | YES | YES | 기존 aggregate에서 024를 검증 후 분리; 새 startup pipeline 없음 |
+| `apps/api/src/rel002-r3c2-aggregate-readiness.test.ts` | YES | YES | 같은 canonical aggregate의 partial/drift 거부 검증 |
+
+Bootstrap session은 승인된 `BOOTSTRAP_AUTHORITY_V1`의 제한된 Identity lifecycle로, 기존 Session persistence에 기록되고 일반 SessionService의 read/refresh 경로에서 거부된다. 별도 session table/engine, 일반 authority bypass 또는 영구 bootstrap flag를 추가하지 않는다. TOTP는 Identity 소유이며 Audit003은 별도 Audit DB/queue/engine을 만들지 않는다. Migration024는 기존 `app_identity`/migration owner를 유지한다.
+
+판정: `ARCHITECTURE_CONFORMANCE_CHECK = PASS`, `ARCHITECTURE_DRIFT_DETECTED = NO`. 현재 local PASS evidence는 관련 source가 변경되지 않아 재사용한다. 실제 외부 owner proof/key custody와 Production 적용은 여전히 별도 경계이며, 이 문서 작업에서는 제품 source/migration/Production 상태를 변경하지 않는다. 범용 registry/KMS/recovery/evidence engine, parallel verifier/startup/auth/session 경로는 계속 POST-MVP로 연기한다.
 
 최단 경로: 필수 Human A/B enrollment 입력·secret custody 해결 → 최소 schema/Audit integration 확인 및 별도 승인된 적용 → Human A/B 생성 → authentication + TOTP → bootstrap sessions → first-authority ceremony → startup binding → Railway MVP deployment → Human product test → 요청된 수정 → 승인된 autonomous background validation.
 
